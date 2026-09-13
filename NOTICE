@@ -1,0 +1,19 @@
+rs-power adapts power-flow formulations and result allocation from MATPOWER
+8.1, tag commit 3f8ecfdbc79b07697d6b45f8d868ac1c2d27f788:
+https://github.com/MATPOWER/matpower/tree/8.1
+
+Relevant upstream routines include makeYbus, makeBdc, makeSbus, newtonpf,
+dSbus_dV, pfsoln, bustypes, ext2int, int2ext and runpf.
+
+Copyright (c) 1996-2025, Power Systems Engineering Research Center (PSERC)
+and individual contributors. All rights reserved.
+Primary developers: Ray Zimmerman and Carlos Murillo-Sanchez.
+The complete upstream license is in tests/fixtures/MATPOWER-LICENSE and
+must accompany redistributions of this derived software.
+
+MATPOWER's case data is expressly excluded from its software BSD license.
+The six bundled upstream .m files retain their original provenance and
+citation comments. JSON reference data was generated from these cases by
+MATPOWER 8.1. Synthetic scenarios are modifications of case9; see
+scripts/generate_reference.m. Do not interpret this project's software
+license as a separate license grant for third-party case data.

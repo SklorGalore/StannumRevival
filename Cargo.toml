@@ -1,0 +1,15 @@
+[package]
+name = "rs-power"
+version = "0.1.0"
+edition = "2024"
+description = "Sparse AC and DC power flow with MATPOWER case support"
+license = "BSD-3-Clause"
+
+[dependencies]
+faer = { version = "0.24", default-features = false, features = ["std", "sparse-linalg"] }
+num-complex = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
+
