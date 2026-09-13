@@ -1,4 +1,6 @@
-use rs_power::{Model, PowerFlowOptions, SolveStatus, load_matpower, solve};
+use rs_power::{
+    Model, PowerFlowOptions, RawOptions, SolveStatus, load_matpower, load_raw_with_options, solve,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
@@ -10,7 +12,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("dc") => Model::Dc,
         Some(_) => return Err("model must be ac or dc".into()),
     };
-    let case = load_matpower(path)?;
+    let case = if std::path::Path::new(&path)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("raw"))
+    {
+        let imported = load_raw_with_options(path, &RawOptions::default())?;
+        for warning in imported.warnings {
+            eprintln!("RAW line {}: {}", warning.line, warning.message);
+        }
+        imported.case
+    } else {
+        load_matpower(path)?
+    };
     let result = solve(
         &case,
         &PowerFlowOptions {

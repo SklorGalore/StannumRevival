@@ -296,7 +296,7 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
                 };
                 base = Some(n);
             }
-            "bus" | "gen" | "branch" | "gencost" => {
+            "bus" | "gen" | "branch" | "gencost" | "dcline" => {
                 if matrices.contains_key(name) {
                     return Err(field.error("duplicate matrix"));
                 }
@@ -424,11 +424,21 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    let dcline = matrices.remove("dcline");
+    if dcline
+        .as_ref()
+        .is_some_and(|rows| rows.iter().any(|r| r.len() < 17))
+    {
+        return Err(Error::InvalidCase(
+            "dcline requires at least 17 columns".into(),
+        ));
+    }
     Ok(Case {
         base_mva: base.ok_or_else(|| missing("baseMVA"))?,
         buses,
         generators,
         branches,
+        dcline,
         gencost: matrices.remove("gencost"),
         labels,
     })

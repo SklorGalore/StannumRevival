@@ -70,6 +70,9 @@ pub struct Case {
     pub buses: Vec<Bus>,
     pub generators: Vec<Generator>,
     pub branches: Vec<Branch>,
+    /// MATPOWER DC line rows (at least 17 columns), retained for import/export.
+    /// The power-flow solver does not yet support nonempty DC line tables.
+    pub dcline: Option<Vec<Vec<f64>>>,
     /// Optional cost rows, preserved for future optimization support.
     pub gencost: Option<Vec<Vec<f64>>>,
     /// Literal bus_name, gentype and genfuel string tables.

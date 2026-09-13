@@ -83,6 +83,14 @@ pub fn format_matpower(case: &Case) -> Result<String, Error> {
             row
         }),
     )?;
+    if let Some(lines) = &case.dcline {
+        if lines.iter().any(|r| r.len() < 17) {
+            return Err(Error::InvalidCase(
+                "dcline requires at least 17 columns".into(),
+            ));
+        }
+        matrix(&mut out, "dcline", lines.iter().cloned())?;
+    }
     if let Some(costs) = &case.gencost {
         matrix(&mut out, "gencost", costs.iter().cloned())?;
     }

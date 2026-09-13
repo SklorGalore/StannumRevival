@@ -382,6 +382,13 @@ fn zero_offline(net: &Network, case: &mut Case) {
 
 /// Solve a validated single-network case. Input data is never modified.
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
+    if input.dcline.as_ref().is_some_and(|rows| !rows.is_empty()) {
+        return Err(Error::Unsupported(
+            "DC transmission lines are retained for import/export but are not supported by solve"
+                .into(),
+        ));
+    }
+
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
         || !opt.q_limit_tolerance.is_finite()

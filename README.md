@@ -1,7 +1,7 @@
 # rs-power
 
 A Rust library for balanced, steady-state AC and DC power flow, with literal
-MATPOWER version-2 case loading. The initial implementation uses a sparse
+MATPOWER version-2 and PSS/E RAW revision 23–33 case loading. The initial implementation uses a sparse
 Newton–Raphson solver and optional generator reactive-limit enforcement.
 
 ## Usage
@@ -39,6 +39,68 @@ tables, NaN, unsupported label fields, and multiline labels before writing.
 Comments and original numeric formatting are not retained. Saving overwrites
 the destination; its stem must be a valid MATLAB function name.
 
+Load PSS/E `.raw` files with `load_raw("network.raw")?` or `parse_raw(&text)?`.
+Revisions 23–33 are supported, including comma/whitespace delimiters, quoted
+names, mixed line endings, and revision detection from the header or its PSS/E
+comment. An unidentified revision defaults to 23. `Q` ends the input; it is
+optional after a section terminator. Trailing empty sections may be omitted.
+Malformed required data still returns a source-located error.
+
+The default conversion follows **MATPOWER 8.1's RAW importer**, including its
+approximations. Use the options API to inspect warnings or reject lossy imports:
+
+```rust
+use rs_power::{load_raw_with_options, RawOptions};
+let imported = load_raw_with_options(
+    "tests/fixtures/raw/revision_33.raw",
+    &RawOptions { revision: None, strict: false },
+)?;
+for warning in &imported.warnings {
+    eprintln!("line {}: {}", warning.line, warning.message);
+}
+let case = imported.case;
+# Ok::<(), rs_power::Error>(())
+```
+
+`parse_raw_with_options` provides the same report for strings. Set `revision`
+to override detection, or `strict: true` to reject approximations and ignored
+equipment. The convenience APIs return only `Case` and discard warnings;
+the example prints them. Warning wording and counts are not MATPOWER-compatible.
+
+RAW conversion sorts buses by ID, retains bus names, aggregates loads and shunts,
+normalizes negative metered-end branch IDs, and converts two- and three-winding
+transformers (CW/CZ 1–3), adding star buses with MATPOWER's numbering and winding
+statuses. Impedance conversion uses the winding nominal voltage base, matching
+MATPOWER's `use_winding_baseV=1`, including its zero-NOMV behavior. ZIP loads are
+frozen at the supplied bus voltage. Switched shunts use BINIT, including offline
+records, as in MATPOWER. Transformer magnetizing admittance, tap controls,
+correction tables, remote regulation and wind control are ignored with warnings
+when present. Unsupported equipment sections are skipped with warnings, following
+MATPOWER; ownership, zone, interchange and grouping metadata are not retained.
+Change-code files warn and are treated as standalone cases, never incremental
+updates. Unknown branch endpoints are retained with warnings; invalid transformer
+endpoints are skipped. `solve` still validates the resulting network.
+
+Two-terminal DC links are converted with MATPOWER's lossless approximation and
+reactive-limit estimates, and retained in `Case::dcline` (17-column numeric rows).
+Literal MATPOWER import/export preserves this table. **The solver rejects
+nonempty DC line tables**; DC transmission support is separate from DC power
+flow on an AC network. To solve an exported DC-line case in MATPOWER, enable its
+extension with `toggle_dcline(mpc, 'on')`. RAW export is not provided.
+
+Conversion tests compare every numeric bus, generator, branch and DC-line field,
+and bus names, against generated MATPOWER 8.1 results. They cover all supported
+revision layouts, all transformer CW/CZ combinations, partial winding statuses,
+DC control modes, and three upstream RAW fixtures. AC/DC solution comparisons
+also run for compatible reference cases. This establishes tested conversion
+compatibility, not full PSS/E modeling or parity on every malformed file or
+unimplemented revision. Regenerate the synthetic inputs and reference outputs:
+
+```sh
+python3 scripts/generate_raw_inputs.py
+octave --no-gui --quiet --eval "addpath('scripts'); generate_raw_reference('/path/to/matpower', 'tests/fixtures/raw')"
+```
+
 `solve` borrows its input and returns a separate case with solved bus voltages
 and generator outputs. `branch_flows` contains `[PF, QF, PT, QT]` for each input
 branch. Bus IDs and all original row ordering are preserved. Power is in MW/MVAr,
@@ -70,7 +132,7 @@ affected buses to PQ and reassigns the reference bus when necessary.
 The loader accepts the following data-only subset without running MATLAB:
 
 - Version `'2'`, literal `baseMVA`, and numeric `bus`, `gen`, `branch` tables.
-- Optional numeric `gencost`, preserved without interpretation.
+- Optional numeric `gencost` and `dcline`, preserved without interpretation.
 - Literal `bus_name`, `gentype`, and `genfuel` string-cell tables, preserved in
   `Case::labels`.
 - Standard `function mpc = name` or `function mpc = name()` wrappers, optional
