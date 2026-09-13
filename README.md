@@ -29,6 +29,16 @@ Set `model: Model::Dc` for DC flow or `enforce_q_limits: true` for AC
 reactive-limit enforcement. Cases can also be built or modified directly using
 the public `Case`, `Bus`, `Generator`, and `Branch` structures.
 
+Export an edited case with `save_matpower("edited_case.m", &case)?`. The file
+defines a MATLAB function named after its file stem, ready for MATPOWER's
+`loadcase`. Use `format_matpower(&case)?` for a string of literal assignments,
+and `parse_matpower(&text)?` to read one. Both export functions preserve row
+order, extra columns, costs, and labels; generator statuses are normalized to
+0/1 because the Rust representation is boolean. Serialization rejects ragged
+tables, NaN, unsupported label fields, and multiline labels before writing.
+Comments and original numeric formatting are not retained. Saving overwrites
+the destination; its stem must be a valid MATLAB function name.
+
 `solve` borrows its input and returns a separate case with solved bus voltages
 and generator outputs. `branch_flows` contains `[PF, QF, PT, QT]` for each input
 branch. Bus IDs and all original row ordering are preserved. Power is in MW/MVAr,

@@ -8,7 +8,7 @@ pub enum BusType {
 }
 
 /// A bus. Power and shunt values are MW/MVAr on the system base.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bus {
     pub id: u32,
     pub kind: BusType,
@@ -28,7 +28,7 @@ pub struct Bus {
     pub extra: Vec<f64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Generator {
     pub bus: u32,
     pub pg: f64,
@@ -44,7 +44,7 @@ pub struct Generator {
     pub extra: Vec<f64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Branch {
     pub from: u32,
     pub to: u32,
@@ -64,7 +64,7 @@ pub struct Branch {
     pub extra: Vec<f64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Case {
     pub base_mva: f64,
     pub buses: Vec<Bus>,

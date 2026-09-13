@@ -2,10 +2,12 @@
 mod case;
 mod input;
 mod network;
+mod output;
 mod solver;
 
 pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use input::{load_matpower, parse_matpower};
+pub use output::{format_matpower, save_matpower};
 pub use solver::{Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve};
 
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
