@@ -6,7 +6,7 @@ use std::{collections::HashMap, path::Path};
 /// Options for RAW import. Defaults to MATPOWER-style conversion with warnings.
 #[derive(Clone, Debug, Default)]
 pub struct RawOptions {
-    /// Override revision detection (supported revisions: 23 through 33).
+    /// Override revision detection (supported revisions: 23 through 33, and 35).
     pub revision: Option<u32>,
     /// Reject lossy approximations and ignored equipment instead of warning.
     pub strict: bool,
@@ -180,9 +180,11 @@ fn section_names(rev: u32) -> Vec<&'static str> {
     if rev >= 31 {
         names.push("fixed shunt");
     }
+    names.extend(["generator", "branch"]);
+    if rev >= 35 {
+        names.push("system switching device");
+    }
     names.extend([
-        "generator",
-        "branch",
         if rev <= 27 {
             "transformer adjustment"
         } else {
@@ -231,9 +233,10 @@ pub fn load_raw_with_options(
     path: impl AsRef<Path>,
     options: &RawOptions,
 ) -> Result<RawImport, Error> {
-    parse_raw_with_options(&std::fs::read_to_string(path)?, options)
+    let bytes = std::fs::read(path)?;
+    parse_raw_with_options(&String::from_utf8_lossy(&bytes), options)
 }
-/// Parse RAW revisions 23–33 using MATPOWER-style conversions. Warnings are
+/// Parse RAW revisions 23–33 and 35 using MATPOWER-style conversions. Warnings are
 /// available through `parse_raw_with_options`; this convenience API drops them.
 pub fn parse_raw(input: &str) -> Result<Case, Error> {
     Ok(parse_raw_with_options(input, &RawOptions::default())?.case)
@@ -245,17 +248,18 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         .replace("\r\n", "\n")
         .replace('\r', "\n");
     let mut lines = normalized.lines().enumerate();
-    let (_, header_text) = lines
-        .next()
+    let (header_index, header_text) = lines
+        .find(|(_, text)| !text.trim().is_empty() && !text.trim_start().starts_with("@!"))
         .ok_or_else(|| Error::InvalidCase("empty RAW file".into()))?;
-    let header = record(1, header_text)?;
+    let header_line = header_index + 1;
+    let header = record(header_line, header_text)?;
     let mut ctx = Context {
         options,
         warnings: vec![],
     };
     if header.num(0)? != 0.0 {
         ctx.warn(
-            1,
+            header_line,
             true,
             "IC is nonzero: change cases are not applied as incremental updates",
         )?;
@@ -277,15 +281,19 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         .revision
         .or(detected.filter(|rev| *rev != 0))
         .unwrap_or(23);
-    if !(23..=33).contains(&rev) {
+    if !((23..=33).contains(&rev) || rev == 35) {
         return Err(Error::Unsupported(format!(
-            "RAW revision {rev}; supported revisions are 23–33"
+            "RAW revision {rev}; supported revisions are 23–33 and 35"
         )));
     }
     if options.revision.is_some() {
-        ctx.warn(1, false, format!("explicitly using RAW revision {rev}"))?;
+        ctx.warn(
+            header_line,
+            false,
+            format!("explicitly using RAW revision {rev}"),
+        )?;
     } else if detected.is_none_or(|rev| rev == 0) {
-        ctx.warn(1, false, "unknown revision; using revision 23")?;
+        ctx.warn(header_line, false, "unknown revision; using revision 23")?;
     }
     let base_mva = header.num(1)?;
     if base_mva <= 0.0 {
@@ -299,6 +307,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     let names = section_names(rev);
     let mut sections: Vec<Vec<Record>> = vec![];
     let mut current = vec![];
+    let mut system_wide = rev >= 35;
     for (i, text) in lines {
         // Q terminates input, including any trailing sequence data.
         if text
@@ -312,11 +321,18 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
             break;
         }
+        if text.trim_start().starts_with("@!") {
+            continue;
+        }
         let r = record(i + 1, text)?;
         if r.fields.is_empty() {
             continue;
         }
         if r.fields.len() == 1 && r.fields[0] == "0" {
+            if system_wide {
+                system_wide = false;
+                continue;
+            }
             if let Some((_, tail)) = r.comment.to_uppercase().split_once("END OF ")
                 && let Some((label, _)) = tail.split_once(" DATA")
                 && let Some(expected) = names.get(sections.len())
@@ -329,7 +345,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 )?;
             }
             sections.push(std::mem::take(&mut current));
-        } else {
+        } else if !system_wide {
             current.push(r);
         }
     }
@@ -459,14 +475,16 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 "switched shunt frozen at BINIT; switching controls ignored",
             )?;
         }
-        if rev >= 32 && !r.status(3)? {
+        if rev >= 32 && !r.status(if rev >= 35 { 4 } else { 3 })? {
             ctx.warn(
                 r.line,
                 true,
                 "switched shunt status ignored when applying BINIT, matching MATPOWER",
             )?;
         }
-        let col = if rev <= 27 {
+        let col = if rev >= 35 {
+            11
+        } else if rev <= 27 {
             5
         } else if rev <= 29 {
             6
@@ -486,7 +504,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 "remote generator regulation ignored; voltage setpoint applied locally",
             )?;
         }
-        if r.optional(26, 0.0)? != 0.0 {
+        let shift = usize::from(rev >= 35);
+        if r.optional(26 + shift, 0.0)? != 0.0 {
             ctx.warn(
                 r.line,
                 true,
@@ -500,18 +519,30 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             qmax: r.num(4)?,
             qmin: r.num(5)?,
             vg: r.num(6)?,
-            mbase: r.num(8)?,
-            online: r.status(14)?,
-            pmax: r.num(16)?,
-            pmin: r.num(17)?,
+            mbase: r.num(8 + shift)?,
+            online: r.status(14 + shift)?,
+            pmax: r.num(16 + shift)?,
+            pmin: r.num(17 + shift)?,
             extra: vec![0.0; 11],
         });
     }
     for r in section("branch") {
         let from = r.id(0)?;
         let to = r.integer(1, true)?;
-        let online = r.status(if rev <= 27 { 15 } else { 13 })?;
-        let shunt = if rev <= 27 { 11 } else { 9 };
+        let online = r.status(if rev >= 35 {
+            23
+        } else if rev <= 27 {
+            15
+        } else {
+            13
+        })?;
+        let shunt = if rev >= 35 {
+            19
+        } else if rev <= 27 {
+            11
+        } else {
+            9
+        };
         for (id, col) in [(from, shunt), (to, shunt + 2)] {
             if let Some(&i) = indices.get(&id) {
                 if online {
@@ -532,9 +563,9 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             r: r.num(3)?,
             x: r.num(4)?,
             b: r.num(5)?,
-            rate_a: r.num(6)?,
-            rate_b: r.num(7)?,
-            rate_c: r.num(8)?,
+            rate_a: r.num(if rev >= 35 { 7 } else { 6 })?,
+            rate_b: r.num(if rev >= 35 { 8 } else { 7 })?,
+            rate_c: r.num(if rev >= 35 { 9 } else { 8 })?,
             tap: if rev <= 27 { r.optional(9, 0.0)? } else { 0.0 },
             shift: if rev <= 27 { r.optional(10, 0.0)? } else { 0.0 },
             online,

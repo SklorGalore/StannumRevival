@@ -1,7 +1,7 @@
 # rs-power
 
 A Rust library for balanced, steady-state AC and DC power flow, with literal
-MATPOWER version-2 and PSS/E RAW revision 23–33 case loading. The initial implementation uses a sparse
+MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. The initial implementation uses a sparse
 Newton–Raphson solver and optional generator reactive-limit enforcement.
 
 ## Usage
@@ -40,7 +40,7 @@ Comments and original numeric formatting are not retained. Saving overwrites
 the destination; its stem must be a valid MATLAB function name.
 
 Load PSS/E `.raw` files with `load_raw("network.raw")?` or `parse_raw(&text)?`.
-Revisions 23–33 are supported, including comma/whitespace delimiters, quoted
+Revisions 23–33 and 35 are supported, including comma/whitespace delimiters, quoted
 names, mixed line endings, and revision detection from the header or its PSS/E
 comment. An unidentified revision defaults to 23. `Q` ends the input; it is
 optional after a section terminator. Trailing empty sections may be omitted.

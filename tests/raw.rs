@@ -115,6 +115,27 @@ fn rejects_unsupported_and_malformed_data() {
 }
 
 #[test]
+fn revision_35_system_data_and_shifted_fields() {
+    let text = "@!IC,SBASE,REV,XFRRAT,NXFRAT,BASFRQ\n0,100,35,0,0,60\nTitle\nTitle\nGENERAL,THRSHZ=.0002\n0 / END OF SYSTEM-WIDE DATA, BEGIN BUS DATA\n\
+10,'Slack',230,3,1,1,1,1.02,0,1.1,.9,1.1,.9\n20,'Load',115,1,1,1,1,1,0,1.1,.9,1.1,.9\n\
+0 / END OF BUS DATA, BEGIN LOAD DATA\n20,'1',1,1,1,30,10\n0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA\n\
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA\n10,'1',50,0,100,-100,1.02,0,0,100,0,1,0,0,1,1,100,200,0\n\
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA\n10,20,'1',.01,.1,.02,'Line',100,110,120,0,0,0,0,0,0,0,0,0,.01,.02,.03,.04,1\n\
+0 / END OF BRANCH DATA, BEGIN SYSTEM SWITCHING DEVICE DATA\n0 / END OF SYSTEM SWITCHING DEVICE DATA, BEGIN TRANSFORMER DATA\n\
+0 / END OF TRANSFORMER DATA\nQ\n";
+    let imported = parse_raw_with_options(text, &RawOptions::default()).unwrap();
+    assert_eq!(imported.revision, 35);
+    assert_eq!(imported.case.generators[0].mbase, 100.0);
+    assert!(imported.case.generators[0].online);
+    assert_eq!(imported.case.branches[0].rate_a, 100.0);
+    assert!(imported.case.branches[0].online);
+    assert_eq!(
+        (imported.case.buses[0].gs, imported.case.buses[0].bs),
+        (1.0, 2.0)
+    );
+}
+
+#[test]
 fn branch_end_shunts_and_offline_equipment() {
     let c = parse_raw(&raw(&[
         BUSES,
