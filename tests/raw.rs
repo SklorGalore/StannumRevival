@@ -136,6 +136,56 @@ fn revision_35_system_data_and_shifted_fields() {
 }
 
 #[test]
+fn memphis_revision_35_real_world_case() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("_cases/MemphisCase2026_Mar7.RAW");
+    let imported = rs_power::load_raw_with_options(path, &RawOptions::default()).unwrap();
+    assert_eq!(imported.revision, 35);
+    assert_eq!(imported.case.buses.len(), 993);
+    assert_eq!(imported.case.generators.len(), 188);
+    assert_eq!(imported.case.branches.len(), 1382);
+    assert_eq!(imported.case.dcline.as_ref().map_or(0, Vec::len), 0);
+    assert_eq!(imported.case.labels["bus_name"].len(), 993);
+    assert_eq!(imported.warnings.len(), 438);
+    for message in [
+        "section label \"VSC DC LINE\"",
+        "switched shunt frozen at BINIT",
+        "remote generator regulation ignored",
+        "wind-machine control ignored",
+    ] {
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|w| w.message.contains(message))
+        );
+    }
+
+    // A large imported case must survive the literal interchange format too.
+    let formatted = rs_power::format_matpower(&imported.case).unwrap();
+    assert_eq!(rs_power::parse_matpower(&formatted).unwrap(), imported.case);
+
+    for model in [rs_power::Model::Ac, rs_power::Model::Dc] {
+        let result = solve(
+            &imported.case,
+            &PowerFlowOptions {
+                model,
+                tolerance: 1e-10,
+                max_iterations: 30,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.status, SolveStatus::Converged);
+        assert!(
+            result.residual <= 1e-10,
+            "{model:?} residual {}",
+            result.residual
+        );
+    }
+}
+
+#[test]
 fn branch_end_shunts_and_offline_equipment() {
     let c = parse_raw(&raw(&[
         BUSES,
