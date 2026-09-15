@@ -12,17 +12,23 @@ pub struct RawOptions {
     pub strict: bool,
 }
 
+/// A source-located diagnostic about RAW conversion.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RawWarning {
     /// One-based source line, or the header line for case-wide diagnostics.
     pub line: usize,
+    /// Description of the approximation or ignored input.
     pub message: String,
 }
 
+/// Converted case, effective revision, and import diagnostics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RawImport {
+    /// Converted data; network validation occurs when solving.
     pub case: Case,
+    /// Revision used after applying detection or the explicit override.
     pub revision: u32,
+    /// Diagnostics; strict mode may still return non-lossy warnings.
     pub warnings: Vec<RawWarning>,
 }
 
@@ -229,6 +235,10 @@ fn section_names(rev: u32) -> Vec<&'static str> {
 pub fn load_raw(path: impl AsRef<Path>) -> Result<Case, Error> {
     Ok(load_raw_with_options(path, &RawOptions::default())?.case)
 }
+/// Load a RAW file with revision control and conversion diagnostics.
+///
+/// Invalid UTF-8 bytes are replaced with the Unicode replacement character.
+/// Returns [`Error::Io`] on read failure, or errors from [`parse_raw_with_options`].
 pub fn load_raw_with_options(
     path: impl AsRef<Path>,
     options: &RawOptions,
@@ -242,6 +252,13 @@ pub fn parse_raw(input: &str) -> Result<Case, Error> {
     Ok(parse_raw_with_options(input, &RawOptions::default())?.case)
 }
 
+/// Parse RAW revisions 23–33 and 35 with conversion diagnostics.
+///
+/// Revision detection falls back to 23 when neither header nor comment identifies
+/// a revision. [`RawOptions::revision`] overrides detection. Strict mode rejects
+/// lossy conversions with [`Error::Unsupported`]; malformed records return
+/// source-located [`Error::Parse`] errors. Unsupported revisions are rejected.
+/// The resulting case still needs network validation by [`crate::solve`].
 pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawImport, Error> {
     let normalized = input
         .trim_start_matches('\u{feff}')

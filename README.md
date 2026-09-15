@@ -1,10 +1,25 @@
 # rs-power
 
 A Rust library for balanced, steady-state AC and DC power flow, with literal
-MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. The initial implementation uses a sparse
-Newton–Raphson solver and optional generator reactive-limit enforcement.
+MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. AC flow uses
+a sparse Newton–Raphson solver with optional generator reactive-limit enforcement.
+
+[Usage](#usage) · [Import and export](#import-and-export) ·
+[Solver results](#solver-results) · [Compatibility](#compatibility) ·
+[Verification](#verification)
 
 ## Usage
+
+Use a Rust toolchain that supports edition 2024. Add this repository as a Git
+dependency in your project’s `Cargo.toml`:
+
+```toml
+[dependencies]
+rs-power = { git = "https://github.com/SklorGalore/rs-power" }
+```
+
+The paths below refer to fixtures in a local checkout; replace them with your
+case path when using the library in another project.
 
 ```rust
 use rs_power::{load_matpower, solve, PowerFlowOptions, SolveStatus};
@@ -23,6 +38,7 @@ Run the example from this repository:
 ```sh
 cargo run --example power_flow -- tests/fixtures/case9.m ac
 cargo run --example power_flow -- tests/fixtures/case300.m dc
+cargo run --example power_flow -- tests/fixtures/raw/revision_33.raw ac
 ```
 
 Set `model: Model::Dc` for DC flow or `enforce_q_limits: true` for AC
@@ -31,6 +47,10 @@ the public `Case`, `Bus`, `Generator`, and `Branch` structures.
 Set `initialization: Initialization::Flat` to start AC Newton iterations at
 1 p.u. with each island anchored to its supplied reference-bus angle. The
 default, `Initialization::Case`, uses the case's supplied voltage iterate.
+
+## Import and export
+
+### MATPOWER
 
 Export an edited case with `save_matpower("edited_case.m", &case)?`. The file
 defines a MATLAB function named after its file stem, ready for MATPOWER's
@@ -41,6 +61,8 @@ order, extra columns, costs, and labels; generator statuses are normalized to
 tables, NaN, unsupported label fields, and multiline labels before writing.
 Comments and original numeric formatting are not retained. Saving overwrites
 the destination; its stem must be a valid MATLAB function name.
+
+### PSS/E RAW
 
 Load PSS/E `.raw` files with `load_raw("network.raw")?` or `parse_raw(&text)?`.
 Revisions 23–33 and 35 are supported, including comma/whitespace delimiters, quoted
@@ -104,6 +126,8 @@ python3 scripts/generate_raw_inputs.py
 octave --no-gui --quiet --eval "addpath('scripts'); generate_raw_reference('/path/to/matpower', 'tests/fixtures/raw')"
 ```
 
+## Solver results
+
 `solve` borrows its input and returns a separate case with solved bus voltages
 and generator outputs. `branch_flows` contains `[PF, QF, PT, QT]` for each input
 branch. Bus IDs and all original row ordering are preserved. Power is in MW/MVAr,
@@ -135,7 +159,8 @@ affected buses to PQ and reassigns the reference bus when necessary.
 The loader accepts the following data-only subset without running MATLAB:
 
 - Version `'2'`, literal `baseMVA`, and numeric `bus`, `gen`, `branch` tables.
-- Optional numeric `gencost` and `dcline`, preserved without interpretation.
+- Optional numeric `gencost`, preserved without interpretation, and `dcline`,
+  preserved for import/export and used as terminal injections when solving.
 - Literal `bus_name`, `gentype`, and `genfuel` string-cell tables, preserved in
   `Case::labels`.
 - Standard `function mpc = name` or `function mpc = name()` wrappers, optional
@@ -144,7 +169,10 @@ The loader accepts the following data-only subset without running MATLAB:
 
 Numeric matrices must be rectangular; bus/gen/branch require at least 13/10/13
 columns. Extra columns are retained without interpretation, including any
-pre-existing result columns. Read current branch results from `branch_flows`.
+pre-existing result columns. Read current branch results from `branch_flows`. Positive flow enters the branch
+at the corresponding end. Voltage, branch rating, angle-difference, and generator
+active-power limits are retained but not enforced; reactive limits are enforced
+only when requested.
 Unknown fields, arithmetic expressions, indexed assignments, function calls,
 and general MATLAB code are rejected with a source location. `.mat` files and
 version-1 cases are not supported. Parsing checks syntax and table shape;
@@ -167,11 +195,15 @@ compatibility with every MATPOWER case or numerical condition.
 
 ## Verification
 
+See the [contributor guide](https://github.com/SklorGalore/rs-power/blob/main/CONTRIBUTING.md)
+for the repository layout and fixture workflow. Run these checks from the repository root:
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 cargo test --locked --doc
+RUSTDOCFLAGS="-D warnings -D missing_docs" cargo doc --locked --no-deps
 ```
 
 Run the dependency-free optimized timing harness with `cargo bench`. It reports
@@ -208,9 +240,9 @@ limits for the dedicated infinity scenario.
 Sparse admittance rows feed a sparse analytical Jacobian; `faer` supplies sparse
 LU. Backend types remain private. There is no MATLAB/Octave or native-library
 runtime dependency. Network construction, sparse factorization and Newton
-iteration are separate internal components for future extensions; v1 does not
+iteration are separate internal components for future extensions; the current implementation does not
 cache factorizations across calls.
 
-Software is BSD-3-Clause. See [NOTICE](NOTICE) for MATPOWER attribution and its
+Software is BSD-3-Clause. See [NOTICE](https://github.com/SklorGalore/rs-power/blob/main/NOTICE) for MATPOWER attribution and its
 retained license. MATPOWER explicitly excludes case data from its software BSD
 license; the bundled cases retain their original source and citation notices.

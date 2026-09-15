@@ -18,18 +18,26 @@ pub use solver::{Initialization, Model, PowerFlowOptions, PowerFlowResult, Solve
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// File read or write failure.
     #[error("{0}")]
     Io(#[from] std::io::Error),
+    /// Malformed source data with a one-based location.
     #[error("line {line}, column {column}: {message}")]
     Parse {
+        /// One-based source line.
         line: usize,
+        /// One-based source column.
         column: usize,
+        /// Description of the invalid input.
         message: String,
     },
+    /// Invalid case data, serialization input, or solver options.
     #[error("invalid case: {0}")]
     InvalidCase(String),
+    /// Unsupported topology, options, revision, or strict RAW conversion.
     #[error("unsupported configuration: {0}")]
     Unsupported(String),
+    /// Singular system, failed factorization, or non-finite numerical result.
     #[error("numerical failure: {0}")]
     Numerical(String),
 }

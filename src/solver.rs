@@ -7,12 +7,16 @@ use faer::{
 };
 use num_complex::Complex64 as C;
 
+/// Power-flow formulation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Model {
+    /// AC power/polar Newton–Raphson with constant-power loads.
     Ac,
+    /// Linear DC power flow for active power and bus angles.
     Dc,
 }
 
+/// AC voltage initialization. Both choices apply generator setpoints at controlled buses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Initialization {
     /// Start from the voltage magnitudes and angles supplied by the case.
@@ -21,14 +25,19 @@ pub enum Initialization {
     Flat,
 }
 
+/// Solver settings; defaults to AC with a 1e-8 p.u. tolerance and 10 Newton steps.
 #[derive(Clone, Debug)]
 pub struct PowerFlowOptions {
+    /// Formulation; defaults to [`Model::Ac`].
     pub model: Model,
+    /// AC starting voltages; defaults to [`Initialization::Case`]. Ignored for DC.
     pub initialization: Initialization,
     /// Infinity norm of the constrained power mismatch, in per unit.
     pub tolerance: f64,
     /// Newton steps per reactive-limit pass. Zero evaluates the initial state.
     pub max_iterations: usize,
+    /// Fix AC reactive-limit violations and switch affected buses to PQ.
+    /// Defaults to false; enabling this for DC returns [`Error::Unsupported`].
     pub enforce_q_limits: bool,
     /// Reactive-limit violation tolerance in MVAr.
     pub q_limit_tolerance: f64,
@@ -46,22 +55,31 @@ impl Default for PowerFlowOptions {
     }
 }
 
+/// Solver outcome, distinct from input and numerical errors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SolveStatus {
+    /// The constrained mismatch meets the requested tolerance.
     Converged,
+    /// Newton reached its step limit; the result contains the final iterate.
     IterationLimit,
+    /// Reactive-limit enforcement cannot retain a feasible controlled/reference bus.
     ReactiveLimitsInfeasible,
 }
 
+/// Final case and diagnostics, including results from unsuccessful iterations.
 #[derive(Clone, Debug)]
 pub struct PowerFlowResult {
     /// Solved voltages and generator outputs, in original case order and units.
     pub case: Case,
-    /// [PF, QF, PT, QT] in MW/MVAr, in original branch order.
+    /// `[PF, QF, PT, QT]` in MW/MVAr, in original branch order.
+    /// Positive values enter the branch at that end; excluded branches are zero.
     pub branch_flows: Vec<[f64; 4]>,
+    /// Outcome to check even when [`solve`] returns `Ok`.
     pub status: SolveStatus,
     /// Total Newton steps across all reactive-limit passes (one for DC).
     pub iterations: usize,
+    /// Infinity norm of the final constrained mismatch in per unit.
+    /// This does not measure reactive-limit feasibility.
     pub residual: f64,
     /// Number of passes that fixed one or more generators at reactive limits.
     pub q_limit_passes: usize,
@@ -683,9 +701,17 @@ fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenerators>, Erro
     Ok(mappings)
 }
 
-/// Solve a validated case. Each active electrical island needs one reference bus.
+/// Validate and solve a case. Each active electrical island needs one reference bus.
 /// Active MATPOWER DC lines are represented internally by a generator at each
 /// terminal. Input data is never modified.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidCase`] for invalid data or options,
+/// [`Error::Unsupported`] for unsupported configurations, and
+/// [`Error::Numerical`] for failed numerical operations. Nonconvergence and
+/// reactive-limit infeasibility return an `Ok` result with a non-converged
+/// [`SolveStatus`].
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let original_generators = input.generators.len();
     let mut working = input.clone();

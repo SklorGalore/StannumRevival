@@ -231,6 +231,11 @@ impl Parser {
 }
 
 /// Parse literal MATPOWER version-2 data, without executing MATLAB code.
+///
+/// Accepts numeric tables and supported string labels, preserving row order and
+/// extra columns. Expressions and unknown fields return source-located
+/// [`Error::Parse`] errors. This checks syntax and table shape; [`crate::solve`]
+/// validates physical inputs and topology.
 pub fn parse_matpower(input: &str) -> Result<Case, Error> {
     let mut p = Parser {
         tokens: lex(input)?,
@@ -444,7 +449,10 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
     })
 }
 
-/// Read and parse a numeric MATPOWER `.m` case.
+/// Read and parse a literal MATPOWER `.m` case.
+///
+/// Returns [`Error::Io`] on read failure (including invalid UTF-8), or errors
+/// from [`parse_matpower`].
 pub fn load_matpower(path: impl AsRef<Path>) -> Result<Case, Error> {
     parse_matpower(&std::fs::read_to_string(path)?)
 }

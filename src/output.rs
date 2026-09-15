@@ -155,6 +155,13 @@ fn matrix(out: &mut String, name: &str, rows: impl Iterator<Item = Vec<f64>>) ->
 
 /// Save a MATPOWER `.m` function using the destination file stem as its name.
 /// Existing files are overwritten, after serialization succeeds.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidCase`] for an invalid MATLAB function name or data
+/// rejected by [`format_matpower`], and [`Error::Io`] if writing fails. The stem
+/// must start with an ASCII letter, contain only ASCII letters, digits and
+/// underscores, have at most 63 characters, and not be a MATLAB keyword.
 pub fn save_matpower(path: impl AsRef<Path>, case: &Case) -> Result<(), Error> {
     let path = path.as_ref();
     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
