@@ -4,6 +4,26 @@ version = "0.1.0"
 edition = "2024"
 description = "Sparse AC and DC power flow with MATPOWER case support"
 license = "BSD-3-Clause"
+readme = "README.md"
+repository = "https://github.com/SklorGalore/rs-power"
+homepage = "https://github.com/SklorGalore/rs-power"
+documentation = "https://docs.rs/rs-power"
+keywords = ["power-flow", "electrical", "matpower", "psse", "sparse"]
+categories = ["science", "simulation"]
+include = [
+    "/src/**",
+    "/examples/**",
+    "/benches/**",
+    "/tests/**",
+    "/_cases/**",
+    "/scripts/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/NOTICE",
+]
 
 [dependencies]
 faer = { version = "0.24", default-features = false, features = ["std", "sparse-linalg"] }
@@ -13,3 +33,6 @@ thiserror = "2"
 [dev-dependencies]
 serde_json = "1"
 
+[[bench]]
+name = "power_flow"
+harness = false

@@ -28,6 +28,9 @@ cargo run --example power_flow -- tests/fixtures/case300.m dc
 Set `model: Model::Dc` for DC flow or `enforce_q_limits: true` for AC
 reactive-limit enforcement. Cases can also be built or modified directly using
 the public `Case`, `Bus`, `Generator`, and `Branch` structures.
+Set `initialization: Initialization::Flat` to start AC Newton iterations at
+1 p.u. with each island anchored to its supplied reference-bus angle. The
+default, `Initialization::Case`, uses the case's supplied voltage iterate.
 
 Export an edited case with `save_matpower("edited_case.m", &case)?`. The file
 defines a MATLAB function named after its file stem, ready for MATPOWER's
@@ -147,10 +150,12 @@ and general MATLAB code are rejected with a source location. `.mat` files and
 version-1 cases are not supported. Parsing checks syntax and table shape;
 `solve` validates physical inputs and topology.
 
-V1 requires one connected active network and exactly one reference bus with an
-online generator. Multiple active islands and multiple reference buses return
-explicit errors. Type-4 buses and incident equipment are excluded; their bus
-data is retained, with zero output for excluded generators and branches.
+Each connected active island requires exactly one reference bus with an online
+generator. Islands are solved together while retaining independent angle
+references and slack-generator allocation. Missing or multiple reference buses
+within an island return an explicit error. Type-4 buses and incident equipment
+are excluded; their bus data is retained, with zero output for excluded
+generators and branches.
 Voltage-controlled buses without online generators are treated as PQ. DC flow
 requires nonzero active branch reactances and does not accept reactive-limit
 enforcement.
@@ -169,13 +174,19 @@ cargo test --locked --all-targets
 cargo test --locked --doc
 ```
 
+Run the dependency-free optimized timing harness with `cargo bench`. It reports
+MATPOWER parsing and AC/DC solve time for case9, case118 and case300, plus RAW
+parsing and solving for the 993-bus Memphis revision-35 case. Set
+`RS_POWER_BENCH_ITERATIONS` to change the default of 20 measured iterations.
+
 Checked-in fixtures cover case9, case14, case30, case57, case118 and case300,
 plus synthetic case9 variants for limits, slack reassignment, shared generators,
 infinite/zero-width reactive ranges, taps, phase shifts, shunts, offline
 equipment, parallel branches and nonconsecutive IDs. AC/DC comparisons require
 agreement within `1e-6` p.u. voltage, `1e-5` degrees and `1e-4` MW/MVAr. Tests
 also cover finite-difference Jacobians, nodal balance, singular systems, invalid
-inputs and nonconvergence. GitHub Actions runs checks on Linux and macOS.
+inputs and nonconvergence. GitHub Actions runs checks on Linux, macOS and
+Windows, and verifies the release package on Linux.
 
 Ordinary tests do not need Octave, MATLAB, or a MATPOWER installation. To
 regenerate fixtures, provide a trusted MATPOWER checkout at tag `8.1`, commit
