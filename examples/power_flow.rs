@@ -32,8 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
     println!(
-        "{:?}: {} iterations, residual {:.3e} p.u.",
-        result.status, result.iterations, result.residual
+        "{:?}: {} iterations, residual {:.3e} MVA",
+        result.status,
+        result.iterations,
+        result.residual * result.case.base_mva
     );
     println!("Bus       Vm (p.u.)    Va (degrees)");
     for bus in &result.case.buses {

@@ -48,6 +48,42 @@ Set `initialization: Initialization::Flat` to start AC Newton iterations at
 1 p.u. with each island anchored to its supplied reference-bus angle. The
 default, `Initialization::Case`, uses the case's supplied voltage iterate.
 
+## Interactive CLI
+
+Start a session, optionally loading a case at startup:
+
+```sh
+cargo run -- tests/fixtures/case9.m
+```
+
+```text
+rs-power> solve ac
+rs-power> buses
+rs-power> generators
+rs-power> flows
+rs-power> set enforce_q_limits on
+rs-power> solve
+rs-power> save solved_case.m
+rs-power> quit
+```
+
+Use `help` for all commands and `options` for current solver settings.
+The CLI defaults to residuals in MVA (per-unit mismatch multiplied by the case
+base MVA). Use `set residual pu` or `set residual mva` to change solve and summary
+displays immediately; `options` shows the current choice. The example reports
+MVA; solver tolerance and the library residual remain per unit. `load`
+accepts MATPOWER and RAW files, including paths with spaces and optional matching
+quotes. RAW conversion warnings are displayed. By default, `update_on_solve: true` replaces the working case with each solve's
+result, including a nonconverged iterate, so subsequent solves start from it.
+Use `set update_on_solve false` to keep the current working case unchanged during
+future solves; `options` shows this setting. Solver errors leave the working case
+unchanged. Inspection and saving use the latest result. Loading another case clears results; a failed load preserves the session.
+Saving overwrites the destination in MATPOWER format.
+
+Run `cargo install --path .` to install the `rs-power` command. Commands can also
+be piped into it; prompts are omitted and any command failure produces a nonzero
+exit status after processing the remaining commands. End-of-input exits the REPL.
+
 ## Import and export
 
 ### MATPOWER
@@ -189,7 +225,7 @@ requires nonzero active branch reactances and does not accept reactive-limit
 enforcement.
 
 OPF, continuation power flow, ZIP loads, alternative AC formulations, radial
-methods, three-phase models, extensions, language bindings and a production CLI
+methods, three-phase models, extensions and language bindings
 are outside this release. Passing these reference tests does not establish
 compatibility with every MATPOWER case or numerical condition.
 
