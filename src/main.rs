@@ -5,6 +5,14 @@ use rs_power::{
 };
 use std::io::{self, BufRead, IsTerminal, Write};
 
+const SPLASH: &str = r"
+  ____  ____        ____   _____        _______ ____
+ |  _ \ / ___|      |  _ \ / _ \ \      / / ____|  _ \
+ | |_) |\___ \ _____| |_) | | | \ \ /\ / /|  _| | |_) |
+ |  _ <  ___) |_____|  __/| |_| |\ V  V / | |___|  _ <
+ |_| \_\|____/      |_|    \___/  \_/\_/  |_____|_| \_\
+";
+
 const HELP: &str = "Commands:
   load <path>                 Load MATPOWER (.m) or PSS/E (.raw)
   summary                     Show case size and latest solve status
@@ -259,14 +267,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("usage: rs-power [case.m|case.raw]".into());
     }
     let stdin = io::stdin();
-    let interactive = stdin.is_terminal();
+    let interactive = stdin.is_terminal() && io::stdout().is_terminal();
     let mut out = io::stdout().lock();
     let mut session = Session::default();
+    if interactive {
+        write!(out, "\x1b[2J\x1b[H\x1b[1;36m{SPLASH}\x1b[0m")?;
+        writeln!(
+            out,
+            "  AC / DC power flow  |  v{}",
+            env!("CARGO_PKG_VERSION")
+        )?;
+        writeln!(out, "  Energize your next case.\n")?;
+        writeln!(out, "  Type help for commands, quit to exit.\n")?;
+        out.flush()?;
+    }
     if let Some(path) = args.first() {
         session.command(&format!("load {path}"), &mut out)?;
-    }
-    if interactive {
-        writeln!(out, "rs-power — type help for commands.")?;
     }
     let mut input = stdin.lock();
     let mut line = String::new();
