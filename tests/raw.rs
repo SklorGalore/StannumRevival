@@ -300,25 +300,13 @@ fn warning_and_strict_modes_for_ignored_equipment() {
 }
 
 #[test]
-fn dc_lines_are_preserved_but_never_silently_solved() {
+fn dc_lines_are_preserved_and_validated() {
     let c = parse_raw(include_str!("fixtures/raw/dc_modes.raw")).unwrap();
     let lines = c.dcline.as_ref().unwrap();
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[0][2], 0.0);
     assert_eq!(lines[1][3], 100.0);
     assert_eq!(lines[2][3], 50.0);
-    for model in [rs_power::Model::Ac, rs_power::Model::Dc] {
-        assert!(matches!(
-            solve(
-                &c,
-                &PowerFlowOptions {
-                    model,
-                    ..Default::default()
-                }
-            ),
-            Err(Error::Unsupported(_))
-        ));
-    }
     let mut invalid = c;
     invalid.dcline = Some(vec![vec![0.0; 16]]);
     assert!(rs_power::format_matpower(&invalid).is_err());

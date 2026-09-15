@@ -1,5 +1,6 @@
 use rs_power::{
-    BusType, Error, Initialization, Model, PowerFlowOptions, SolveStatus, parse_matpower, solve,
+    BusType, Error, Generator, Initialization, Model, PowerFlowOptions, SolveStatus,
+    parse_matpower, solve,
 };
 
 fn case() -> rs_power::Case {
@@ -20,6 +21,97 @@ fn preserves_input_and_row_order() {
         c.buses.iter().map(|b| b.id).collect::<Vec<_>>(),
         result.case.buses.iter().map(|b| b.id).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn dc_lines_match_paired_terminal_generators() {
+    for model in [Model::Ac, Model::Dc] {
+        let mut with_line = case();
+        let line = vec![
+            5.0, 7.0, 1.0, 10.0, 99.0, 2.0, 3.0, 1.0, 1.0, -100.0, 100.0, -100.0, 100.0, -100.0,
+            100.0, 1.0, 0.0,
+        ];
+        with_line.dcline = Some(vec![line.clone()]);
+        let mut equivalent = with_line.clone();
+        equivalent.dcline = None;
+        for bus in &mut equivalent.buses {
+            if bus.id == 5 || bus.id == 7 {
+                bus.kind = BusType::Pv;
+            }
+        }
+        equivalent.generators.extend([
+            Generator {
+                bus: 5,
+                pg: -10.0,
+                qg: 2.0,
+                qmax: 100.0,
+                qmin: -100.0,
+                vg: 1.0,
+                mbase: equivalent.base_mva,
+                online: true,
+                pmax: 100.0,
+                pmin: -100.0,
+                extra: Vec::new(),
+            },
+            Generator {
+                bus: 7,
+                pg: 9.0,
+                qg: 3.0,
+                qmax: 100.0,
+                qmin: -100.0,
+                vg: 1.0,
+                mbase: equivalent.base_mva,
+                online: true,
+                pmax: 100.0,
+                pmin: -100.0,
+                extra: Vec::new(),
+            },
+        ]);
+        let options = PowerFlowOptions {
+            model,
+            ..Default::default()
+        };
+        let actual = solve(&with_line, &options).unwrap();
+        let expected = solve(&equivalent, &options).unwrap();
+        assert_eq!(actual.status, SolveStatus::Converged);
+        assert_eq!(actual.case.generators.len(), with_line.generators.len());
+        for (actual, expected) in actual.case.buses.iter().zip(&expected.case.buses) {
+            assert!((actual.vm - expected.vm).abs() < 1e-10);
+            assert!((actual.va - expected.va).abs() < 1e-10);
+        }
+        assert_eq!(actual.branch_flows, expected.branch_flows);
+        let solved = &actual.case.dcline.as_ref().unwrap()[0];
+        assert_eq!(&solved[3..5], &[10.0, 9.0]);
+        assert_eq!(solved[5], expected.case.generators[3].qg);
+        assert_eq!(solved[6], expected.case.generators[4].qg);
+        assert_eq!(&solved[7..9], &[1.0, 1.0]);
+    }
+}
+
+#[test]
+fn offline_dc_lines_are_preserved_and_invalid_lines_are_rejected() {
+    let mut c = case();
+    let line = vec![
+        5.0, 7.0, 0.0, 10.0, 9.0, 2.0, 3.0, 1.0, 1.0, -100.0, 100.0, -100.0, 100.0, -100.0, 100.0,
+        1.0, 0.0,
+    ];
+    c.dcline = Some(vec![line.clone()]);
+    let result = solve(&c, &PowerFlowOptions::default()).unwrap();
+    assert_eq!(result.case.dcline.unwrap()[0], line);
+
+    for invalid in [
+        vec![0.0; 16],
+        vec![
+            5.0, 999.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ],
+    ] {
+        let mut c = case();
+        c.dcline = Some(vec![invalid]);
+        assert!(matches!(
+            solve(&c, &PowerFlowOptions::default()),
+            Err(Error::InvalidCase(_))
+        ));
+    }
 }
 
 #[test]

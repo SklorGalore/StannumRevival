@@ -1,5 +1,5 @@
 // Formulations and result allocation adapted from MATPOWER 8.1; see NOTICE.
-use crate::{BusType, Case, Error, network::Network};
+use crate::{BusType, Case, Error, Generator, network::Network};
 use faer::{
     Mat,
     prelude::Solve,
@@ -393,16 +393,7 @@ fn zero_offline(net: &Network, case: &mut Case) {
     }
 }
 
-/// Solve a validated case. Each active electrical island needs one reference bus.
-/// Input data is never modified.
-pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
-    if input.dcline.as_ref().is_some_and(|rows| !rows.is_empty()) {
-        return Err(Error::Unsupported(
-            "DC transmission lines are retained for import/export but are not supported by solve"
-                .into(),
-        ));
-    }
-
+fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
         || !opt.q_limit_tolerance.is_finite()
@@ -575,6 +566,146 @@ fn finish_ac(
         residual,
         q_limit_passes: passes,
     })
+}
+
+struct DcLineGenerators {
+    row: usize,
+    from_generator: usize,
+    to_generator: usize,
+}
+
+fn dc_bus(value: f64) -> Option<u32> {
+    if value.is_finite() && value >= 1.0 && value <= u32::MAX as f64 && value.fract() == 0.0 {
+        Some(value as u32)
+    } else {
+        None
+    }
+}
+
+fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenerators>, Error> {
+    let Some(lines) = &case.dcline else {
+        return Ok(Vec::new());
+    };
+    let buses: std::collections::HashMap<_, _> = case
+        .buses
+        .iter()
+        .enumerate()
+        .map(|(i, bus)| (bus.id, i))
+        .collect();
+    let original_generators = case.generators.len();
+    let mut mappings = Vec::new();
+    let mut from_generators = Vec::new();
+    let mut to_generators = Vec::new();
+    for (row, line) in lines.iter().enumerate() {
+        if line.len() < 17 {
+            return Err(Error::InvalidCase(
+                "dcline requires at least 17 columns".into(),
+            ));
+        }
+        if line.iter().any(|value| !value.is_finite()) {
+            return Err(Error::InvalidCase("dcline values must be finite".into()));
+        }
+        let Some(from) = dc_bus(line[0]) else {
+            return Err(Error::InvalidCase("invalid dcline from bus".into()));
+        };
+        let Some(to) = dc_bus(line[1]) else {
+            return Err(Error::InvalidCase("invalid dcline to bus".into()));
+        };
+        let (Some(&from_bus), Some(&to_bus)) = (buses.get(&from), buses.get(&to)) else {
+            return Err(Error::InvalidCase("dcline references unknown bus".into()));
+        };
+        if line[2] != 0.0 && line[2] != 1.0 {
+            return Err(Error::InvalidCase("dcline status must be 0 or 1".into()));
+        }
+        if line[9] > line[10] || line[11] > line[12] || line[13] > line[14] {
+            return Err(Error::InvalidCase("invalid dcline power limits".into()));
+        }
+        if line[7] <= 0.0 || line[8] <= 0.0 {
+            return Err(Error::InvalidCase(
+                "dcline voltage setpoints must be positive".into(),
+            ));
+        }
+        if line[2] == 0.0 {
+            continue;
+        }
+        if case.buses[from_bus].kind == BusType::Isolated
+            || case.buses[to_bus].kind == BusType::Isolated
+        {
+            return Err(Error::InvalidCase(
+                "active dcline references isolated bus".into(),
+            ));
+        }
+        if case.buses[from_bus].kind != BusType::Reference {
+            case.buses[from_bus].kind = BusType::Pv;
+        }
+        if case.buses[to_bus].kind != BusType::Reference {
+            case.buses[to_bus].kind = BusType::Pv;
+        }
+        let from_generator = original_generators + from_generators.len();
+        from_generators.push(Generator {
+            bus: from,
+            pg: -line[3],
+            qg: line[5],
+            qmax: line[12],
+            qmin: line[11],
+            vg: line[7],
+            mbase: 100.0,
+            online: true,
+            pmax: f64::INFINITY,
+            pmin: f64::NEG_INFINITY,
+            extra: Vec::new(),
+        });
+        to_generators.push(Generator {
+            bus: to,
+            pg: line[3] - line[15] - line[16] * line[3],
+            qg: line[6],
+            qmax: line[14],
+            qmin: line[13],
+            vg: line[8],
+            mbase: 100.0,
+            online: true,
+            pmax: f64::INFINITY,
+            pmin: f64::NEG_INFINITY,
+            extra: Vec::new(),
+        });
+        mappings.push(DcLineGenerators {
+            row,
+            from_generator,
+            to_generator: 0,
+        });
+    }
+    let from_count = from_generators.len();
+    for (index, mapping) in mappings.iter_mut().enumerate() {
+        mapping.to_generator = original_generators + from_count + index;
+    }
+    case.generators.extend(from_generators);
+    case.generators.extend(to_generators);
+    Ok(mappings)
+}
+
+/// Solve a validated case. Each active electrical island needs one reference bus.
+/// Active MATPOWER DC lines are represented internally by a generator at each
+/// terminal. Input data is never modified.
+pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
+    let original_generators = input.generators.len();
+    let mut working = input.clone();
+    let mappings = add_dc_line_generators(&mut working)?;
+    let mut result = solve_core(&working, opt)?;
+    if let Some(lines) = &mut result.case.dcline {
+        for mapping in mappings {
+            let from = &result.case.generators[mapping.from_generator];
+            let to = &result.case.generators[mapping.to_generator];
+            let line = &mut lines[mapping.row];
+            line[3] = -from.pg;
+            line[4] = to.pg;
+            line[5] = from.qg;
+            line[6] = to.qg;
+            line[7] = from.vg;
+            line[8] = to.vg;
+        }
+    }
+    result.case.generators.truncate(original_generators);
+    Ok(result)
 }
 
 #[cfg(test)]

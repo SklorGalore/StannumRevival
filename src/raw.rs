@@ -903,7 +903,11 @@ fn convert_dc(
         }
         dc.push(line);
     }
-    ctx.warn(rows[0].line,true,"two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits; solve does not support DC transmission lines")?;
+    ctx.warn(
+        rows[0].line,
+        true,
+        "two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
+    )?;
     case.dcline = Some(dc);
     Ok(())
 }

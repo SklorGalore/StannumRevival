@@ -86,10 +86,10 @@ endpoints are skipped. `solve` still validates the resulting network.
 
 Two-terminal DC links are converted with MATPOWER's lossless approximation and
 reactive-limit estimates, and retained in `Case::dcline` (17-column numeric rows).
-Literal MATPOWER import/export preserves this table. **The solver rejects
-nonempty DC line tables**; DC transmission support is separate from DC power
-flow on an AC network. To solve an exported DC-line case in MATPOWER, enable its
-extension with `toggle_dcline(mpc, 'on')`. RAW export is not provided.
+Literal MATPOWER import/export preserves this table. Active links are solved as
+paired terminal injections, matching MATPOWER's `toggle_dcline` power-flow
+representation; solved PF/PT/QF/QT and terminal voltages are written back to the
+table. RAW export is not provided.
 
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
