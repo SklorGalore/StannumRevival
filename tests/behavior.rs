@@ -1,4 +1,6 @@
-use rs_power::{BusType, Error, Model, PowerFlowOptions, SolveStatus, parse_matpower, solve};
+use rs_power::{
+    BusType, Error, Initialization, Model, PowerFlowOptions, SolveStatus, parse_matpower, solve,
+};
 
 fn case() -> rs_power::Case {
     parse_matpower(include_str!("fixtures/case9.m")).unwrap()
@@ -34,6 +36,31 @@ fn nonconvergence_returns_last_state() {
     assert_eq!(result.iterations, 0);
     assert!(result.residual > 1e-8);
     assert!(result.case.buses.iter().all(|b| b.vm.is_finite()));
+}
+
+#[test]
+fn flat_start_ignores_supplied_iterate_and_preserves_reference_angle() {
+    let expected = solve(&case(), &PowerFlowOptions::default()).unwrap();
+    let mut perturbed = case();
+    for (i, bus) in perturbed.buses.iter_mut().enumerate() {
+        bus.vm = 0.7 + i as f64 * 0.02;
+        bus.va = 40.0 - i as f64 * 9.0;
+    }
+    perturbed.buses[0].va = 7.0;
+    let actual = solve(
+        &perturbed,
+        &PowerFlowOptions {
+            initialization: Initialization::Flat,
+            max_iterations: 30,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(actual.status, SolveStatus::Converged);
+    for (actual, expected) in actual.case.buses.iter().zip(&expected.case.buses) {
+        assert!((actual.vm - expected.vm).abs() < 1e-8);
+        assert!((actual.va - expected.va - 7.0).abs() < 1e-7);
+    }
 }
 
 #[test]
@@ -237,4 +264,76 @@ fn one_bus_network_needs_no_factorization() {
         assert_eq!(r.status, SolveStatus::Converged);
         assert!((r.case.generators[0].pg - 10.0).abs() < 1e-10);
     }
+}
+
+fn two_island_case() -> rs_power::Case {
+    let mut combined = case();
+    let mut second = case();
+    for bus in &mut second.buses {
+        bus.id += 100;
+    }
+    for generator in &mut second.generators {
+        generator.bus += 100;
+    }
+    for branch in &mut second.branches {
+        branch.from += 100;
+        branch.to += 100;
+    }
+    combined.buses.extend(second.buses);
+    combined.generators.extend(second.generators);
+    combined.branches.extend(second.branches);
+    combined
+}
+
+#[test]
+fn solves_multiple_islands_and_preserves_combined_order() {
+    let single = case();
+    let combined = two_island_case();
+    for model in [Model::Ac, Model::Dc] {
+        let options = PowerFlowOptions {
+            model,
+            ..Default::default()
+        };
+        let expected = solve(&single, &options).unwrap();
+        let actual = solve(&combined, &options).unwrap();
+        assert_eq!(actual.status, SolveStatus::Converged);
+        assert_eq!(actual.iterations, expected.iterations);
+
+        for island in 0..2 {
+            for (i, bus) in expected.case.buses.iter().enumerate() {
+                let actual_bus = &actual.case.buses[island * single.buses.len() + i];
+                assert!((actual_bus.vm - bus.vm).abs() < 1e-10);
+                assert!((actual_bus.va - bus.va).abs() < 1e-10);
+            }
+            for (i, generator) in expected.case.generators.iter().enumerate() {
+                let actual_generator =
+                    &actual.case.generators[island * single.generators.len() + i];
+                assert!((actual_generator.pg - generator.pg).abs() < 1e-8);
+                assert!((actual_generator.qg - generator.qg).abs() < 1e-8);
+            }
+            for (i, flows) in expected.branch_flows.iter().enumerate() {
+                let actual_flows = &actual.branch_flows[island * single.branches.len() + i];
+                for j in 0..4 {
+                    assert!((actual_flows[j] - flows[j]).abs() < 1e-8);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn requires_one_reference_generator_per_active_island() {
+    let mut missing = two_island_case();
+    missing.buses[9].kind = BusType::Pq;
+    assert!(matches!(
+        solve(&missing, &PowerFlowOptions::default()),
+        Err(Error::Unsupported(message)) if message.contains("each active island")
+    ));
+
+    let mut duplicate = two_island_case();
+    duplicate.buses[10].kind = BusType::Reference;
+    assert!(matches!(
+        solve(&duplicate, &PowerFlowOptions::default()),
+        Err(Error::Unsupported(message)) if message.contains("each active island")
+    ));
 }

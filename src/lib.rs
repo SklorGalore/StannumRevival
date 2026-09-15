@@ -13,7 +13,7 @@ pub use raw::{
     RawImport, RawOptions, RawWarning, load_raw, load_raw_with_options, parse_raw,
     parse_raw_with_options,
 };
-pub use solver::{Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve};
+pub use solver::{Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve};
 
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
 #[derive(Debug, thiserror::Error)]

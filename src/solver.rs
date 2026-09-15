@@ -13,9 +13,18 @@ pub enum Model {
     Dc,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Initialization {
+    /// Start from the voltage magnitudes and angles supplied by the case.
+    Case,
+    /// Start each island at 1 p.u. and its reference-bus angle.
+    Flat,
+}
+
 #[derive(Clone, Debug)]
 pub struct PowerFlowOptions {
     pub model: Model,
+    pub initialization: Initialization,
     /// Infinity norm of the constrained power mismatch, in per unit.
     pub tolerance: f64,
     /// Newton steps per reactive-limit pass. Zero evaluates the initial state.
@@ -28,6 +37,7 @@ impl Default for PowerFlowOptions {
     fn default() -> Self {
         Self {
             model: Model::Ac,
+            initialization: Initialization::Case,
             tolerance: 1e-8,
             max_iterations: 10,
             enforce_q_limits: false,
@@ -205,18 +215,18 @@ fn newton(
             vm[i] += dx[k + angles.len()];
         }
         for i in 0..v.len() {
-            v[i] = C::from_polar(vm[i], va[i]);
-            if !v[i].re.is_finite() || !v[i].im.is_finite() || v[i].norm() == 0.0 {
+            if !vm[i].is_finite() || vm[i] <= 0.0 || !va[i].is_finite() {
                 return Err(Error::Numerical(
-                    "Newton step produced an invalid voltage".into(),
+                    "Newton step produced a non-positive or non-finite voltage magnitude".into(),
                 ));
             }
+            v[i] = C::from_polar(vm[i], va[i]);
         }
     }
     unreachable!()
 }
 
-fn allocate(net: &Network, case: &mut Case, kinds: &[BusType], reference: usize, v: &[C]) {
+fn allocate(net: &Network, case: &mut Case, kinds: &[BusType], references: &[usize], v: &[C]) {
     let power = net.power(v);
     for (i, gens) in net.gens.iter().enumerate() {
         if kinds[i] == BusType::Pq || gens.is_empty() {
@@ -270,16 +280,17 @@ fn allocate(net: &Network, case: &mut Case, kinds: &[BusType], reference: usize,
             };
         }
     }
-    let gens = &net.gens[reference];
-    let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
-    case.generators[gens[0]].pg =
-        power[reference].re * case.base_mva + case.buses[net.external[reference]].pd - other;
+    for &reference in references {
+        let gens = &net.gens[reference];
+        let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
+        case.generators[gens[0]].pg =
+            power[reference].re * case.base_mva + case.buses[net.external[reference]].pd - other;
+    }
 }
 
 fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let n = net.external.len();
-    let reference = net.reference;
-    let vars: Vec<_> = (0..n).filter(|&i| i != reference).collect();
+    let vars: Vec<_> = (0..n).filter(|i| !net.references.contains(i)).collect();
     let mut idx = vec![None; n];
     for (k, &i) in vars.iter().enumerate() {
         idx[i] = Some(k);
@@ -352,10 +363,12 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
             "DC solution failed power balance tolerance".into(),
         ));
     }
-    let gens = &net.gens[reference];
-    let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
-    let b = &case.buses[net.external[reference]];
-    case.generators[gens[0]].pg = balance[reference] * case.base_mva + b.pd + b.gs - other;
+    for &reference in &net.references {
+        let gens = &net.gens[reference];
+        let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
+        let b = &case.buses[net.external[reference]];
+        case.generators[gens[0]].pg = balance[reference] * case.base_mva + b.pd + b.gs - other;
+    }
     for (i, &e) in net.external.iter().enumerate() {
         case.buses[e].vm = 1.0;
         case.buses[e].va = va[i].to_degrees();
@@ -380,7 +393,8 @@ fn zero_offline(net: &Network, case: &mut Case) {
     }
 }
 
-/// Solve a validated single-network case. Input data is never modified.
+/// Solve a validated case. Each active electrical island needs one reference bus.
+/// Input data is never modified.
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     if input.dcline.as_ref().is_some_and(|rows| !rows.is_empty()) {
         return Err(Error::Unsupported(
@@ -407,15 +421,18 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         return dc(&net, case, opt);
     }
     let mut kinds = net.kinds.clone();
-    let mut reference = net.reference;
-    let mut v: Vec<_> = net
-        .external
-        .iter()
-        .map(|&e| {
-            let b = &case.buses[e];
-            C::from_polar(b.vm, b.va.to_radians())
-        })
-        .collect();
+    let mut references = net.references.clone();
+    let mut v = vec![C::new(1.0, 0.0); net.external.len()];
+    for (island, &reference) in net.islands.iter().zip(&net.references) {
+        let reference_angle = case.buses[net.external[reference]].va.to_radians();
+        for &i in island {
+            let b = &case.buses[net.external[i]];
+            v[i] = match opt.initialization {
+                Initialization::Case => C::from_polar(b.vm, b.va.to_radians()),
+                Initialization::Flat => C::from_polar(1.0, reference_angle),
+            };
+        }
+    }
     for (i, gens) in net.gens.iter().enumerate() {
         if kinds[i] != BusType::Pq {
             for &g in gens {
@@ -427,7 +444,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
     let (status, residual) = loop {
         let (status, it, residual) = newton(&net, &case, &kinds, &mut v, opt)?;
         iterations += it;
-        allocate(&net, &mut case, &kinds, reference, &v);
+        allocate(&net, &mut case, &kinds, &references, &v);
         if status != SolveStatus::Converged || !opt.enforce_q_limits {
             break (status, residual);
         }
@@ -449,34 +466,56 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         if violations.is_empty() {
             break (status, residual);
         }
-        if remaining.len() == violations.len()
-            && remaining
+        for island in &net.islands {
+            let island_remaining: Vec<_> = remaining
                 .iter()
-                .all(|g| violations.iter().any(|x| x.1 == *g))
-            && violations.iter().all(|x| x.3 == violations[0].3)
-        {
-            break (SolveStatus::ReactiveLimitsInfeasible, residual);
-        }
-        // Keep the last solved state intact if switching would remove every
-        // possible reference bus, including mixed upper/lower violations.
-        if kinds
-            .iter()
-            .enumerate()
-            .all(|(i, kind)| *kind == BusType::Pq || violations.iter().any(|v| v.0 == i))
-        {
-            break (SolveStatus::ReactiveLimitsInfeasible, residual);
+                .copied()
+                .filter(|g| island.iter().any(|&i| net.gens[i].contains(g)))
+                .collect();
+            let island_violations: Vec<_> = violations
+                .iter()
+                .filter(|violation| island.contains(&violation.0))
+                .collect();
+            let all_generators_violate_one_side = !island_remaining.is_empty()
+                && island_remaining.len() == island_violations.len()
+                && island_remaining
+                    .iter()
+                    .all(|g| island_violations.iter().any(|x| x.1 == *g))
+                && island_violations
+                    .iter()
+                    .all(|x| x.3 == island_violations[0].3);
+            let no_reference_candidate = island
+                .iter()
+                .all(|&i| kinds[i] == BusType::Pq || island_violations.iter().any(|v| v.0 == i));
+            if all_generators_violate_one_side || no_reference_candidate {
+                return finish_ac(
+                    input,
+                    &net,
+                    case,
+                    kinds,
+                    references,
+                    v,
+                    SolveStatus::ReactiveLimitsInfeasible,
+                    iterations,
+                    residual,
+                    passes,
+                );
+            }
         }
         for &(i, g, limit, _) in &violations {
             case.generators[g].qg = limit;
             kinds[i] = BusType::Pq;
         }
         passes += 1;
-        if kinds[reference] == BusType::Pq {
-            if let Some(i) = kinds.iter().position(|k| *k == BusType::Pv) {
-                reference = i;
+        for (island, reference) in net.islands.iter().zip(&mut references) {
+            if kinds[*reference] == BusType::Pq {
+                let i = island
+                    .iter()
+                    .copied()
+                    .find(|&i| kinds[i] == BusType::Pv)
+                    .expect("reference candidate checked above");
+                *reference = i;
                 kinds[i] = BusType::Reference;
-            } else {
-                break (SolveStatus::ReactiveLimitsInfeasible, residual);
             }
         }
         if passes > case.generators.len() {
@@ -485,14 +524,40 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             ));
         }
     };
-    let offset = if passes > 0 && reference != net.reference {
-        input.buses[net.external[net.reference]].va - v[net.reference].arg().to_degrees()
-    } else {
-        0.0
-    };
+    finish_ac(
+        input, &net, case, kinds, references, v, status, iterations, residual, passes,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_ac(
+    input: &Case,
+    net: &Network,
+    mut case: Case,
+    kinds: Vec<BusType>,
+    references: Vec<usize>,
+    v: Vec<C>,
+    status: SolveStatus,
+    iterations: usize,
+    residual: f64,
+    passes: usize,
+) -> Result<PowerFlowResult, Error> {
+    let mut offsets = vec![0.0; net.external.len()];
+    for ((island, &original), &reference) in
+        net.islands.iter().zip(&net.references).zip(&references)
+    {
+        let offset = if passes > 0 && reference != original {
+            input.buses[net.external[original]].va - v[original].arg().to_degrees()
+        } else {
+            0.0
+        };
+        for &i in island {
+            offsets[i] = offset;
+        }
+    }
     for (i, &e) in net.external.iter().enumerate() {
         case.buses[e].vm = v[i].norm();
-        case.buses[e].va = v[i].arg().to_degrees() + offset;
+        case.buses[e].va = v[i].arg().to_degrees() + offsets[i];
         case.buses[e].kind = kinds[i];
     }
     let mut flows = vec![[0.0; 4]; case.branches.len()];
@@ -501,7 +566,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         let st = v[e.t] * (e.ytf * v[e.f] + e.ytt * v[e.t]).conj() * case.base_mva;
         flows[e.original] = [sf.re, sf.im, st.re, st.im];
     }
-    zero_offline(&net, &mut case);
+    zero_offline(net, &mut case);
     Ok(PowerFlowResult {
         case,
         branch_flows: flows,

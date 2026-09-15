@@ -19,7 +19,8 @@ pub(crate) struct Network {
     pub edges: Vec<Edge>,
     pub gens: Vec<Vec<usize>>,
     pub kinds: Vec<BusType>,
-    pub reference: usize,
+    pub islands: Vec<Vec<usize>>,
+    pub references: Vec<usize>,
 }
 
 impl Network {
@@ -89,21 +90,6 @@ impl Network {
                 }
             })
             .collect();
-        let refs: Vec<_> = external
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| case.buses[**e].kind == BusType::Reference)
-            .map(|(i, _)| i)
-            .collect();
-        if refs.len() != 1 {
-            return Err(Error::Unsupported(
-                "exactly one reference bus is required".into(),
-            ));
-        }
-        let reference = refs[0];
-        if gens[reference].is_empty() {
-            return Err(invalid("reference bus needs an online generator"));
-        }
         let mut y = vec![BTreeMap::new(); n];
         let mut edges = Vec::new();
         let mut adj = vec![Vec::new(); n];
@@ -159,20 +145,42 @@ impl Network {
             *y[i].entry(i).or_default() += C::new(b.gs, b.bs) / case.base_mva;
         }
         let mut seen = vec![false; n];
-        let mut stack = vec![reference];
-        seen[reference] = true;
-        while let Some(i) = stack.pop() {
-            for &j in &adj[i] {
-                if !seen[j] {
-                    seen[j] = true;
-                    stack.push(j);
+        let mut islands = Vec::new();
+        for start in 0..n {
+            if seen[start] {
+                continue;
+            }
+            let mut island = Vec::new();
+            let mut stack = vec![start];
+            seen[start] = true;
+            while let Some(i) = stack.pop() {
+                island.push(i);
+                for &j in &adj[i] {
+                    if !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
                 }
             }
+            island.sort_unstable();
+            islands.push(island);
         }
-        if seen.contains(&false) {
-            return Err(Error::Unsupported(
-                "multiple active islands are not supported".into(),
-            ));
+        let mut references = Vec::with_capacity(islands.len());
+        for island in &islands {
+            let refs: Vec<_> = island
+                .iter()
+                .copied()
+                .filter(|&i| case.buses[external[i]].kind == BusType::Reference)
+                .collect();
+            if refs.len() != 1 {
+                return Err(Error::Unsupported(
+                    "each active island requires exactly one reference bus".into(),
+                ));
+            }
+            if gens[refs[0]].is_empty() {
+                return Err(invalid("reference bus needs an online generator"));
+            }
+            references.push(refs[0]);
         }
         Ok(Self {
             external,
@@ -181,7 +189,8 @@ impl Network {
             edges,
             gens,
             kinds,
-            reference,
+            islands,
+            references,
         })
     }
 
