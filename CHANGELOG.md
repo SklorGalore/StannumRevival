@@ -12,6 +12,15 @@ All notable changes to this project will be documented here. This project uses
   distributed and per-column slack, topology-based bridge masking, full and
   reduced AC Jacobians, and polar/Cartesian bus, branch power, current, and
   squared-magnitude derivatives.
+- Interactive CLI commands for labeled AC/DC sensitivities, Jacobians, selected
+  or full PTDF matrices, and masked or raw LODF matrices.
+- Sensitivity-run progress logging with model, case, solver, balancing, timing,
+  convergence, matrix dimensions, and explicit failure reporting.
+
+### Changed
+
+- AC branch-flow sensitivity assembly now exploits the endpoint sparsity of
+  branch derivatives instead of multiplying dense zero-filled rows.
 
 ## 0.1.0 - 2026-09-14
 

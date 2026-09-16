@@ -1,9 +1,12 @@
 //! Interactive power-flow command line.
 use rs_power::{
-    Case, Initialization, Model, PowerFlowOptions, PowerFlowResult, RawOptions, SolveStatus,
-    load_matpower, load_raw_with_options, save_matpower, solve,
+    Case, Initialization, InjectionVariable, LodfBridgeHandling, Model, PowerFlowOptions,
+    PowerFlowResult, RawOptions, SolveStatus, StateVariable, calculate_sensitivities,
+    load_matpower, load_raw_with_options, make_jacobian, make_lodf_with_bridge_handling, make_ptdf,
+    make_ptdf_columns, save_matpower, solve,
 };
 use std::io::{self, BufRead, IsTerminal, Write};
+use std::time::Instant;
 
 const SPLASH: &str = r"
   ____  ____        ____   _____        _______ ____
@@ -17,6 +20,10 @@ const HELP: &str = "Commands:
   load <path>                 Load MATPOWER (.m) or PSS/E (.raw)
   summary                     Show case size and latest solve status
   solve [ac|dc]               Solve the working case
+  sensitivities [ac|dc]       Solve and show state and branch-flow sensitivities
+  jacobian [reduced|full]     Show the AC power-flow Jacobian
+  ptdf [bus-id ...]           Show all or selected DC PTDF columns
+  lodf [mask|raw]             Show the DC LODF matrix (default mask)
   buses                       Show latest voltages (or input voltages)
   generators                  Show latest generator outputs
   flows                       Show latest branch flows
@@ -157,6 +164,142 @@ impl Session {
                     );
                 }
             }
+            ("sensitivities" | "sensitivity", "" | "ac" | "dc") => {
+                let case = self.input.as_ref().ok_or("load a case first")?;
+                let mut options = self.options.clone();
+                if !args.is_empty() {
+                    options.model = model(args)?;
+                }
+                writeln!(out, "Sensitivity analysis")?;
+                writeln!(out, "  model: {}", model_name(options.model))?;
+                writeln!(
+                    out,
+                    "  case: {} buses, {} generators, {} branches",
+                    case.buses.len(),
+                    case.generators.len(),
+                    case.branches.len()
+                )?;
+                writeln!(
+                    out,
+                    "  solver: {:?} initialization, {:.3e} p.u. tolerance, {} max iterations, Q limits {}",
+                    options.initialization,
+                    options.tolerance,
+                    options.max_iterations,
+                    if options.enforce_q_limits {
+                        "on"
+                    } else {
+                        "off"
+                    }
+                )?;
+                writeln!(out, "  active-power balance: reference bus in each island")?;
+                if cfg!(debug_assertions) {
+                    writeln!(
+                        out,
+                        "  build: debug (AC linear algebra is faster with cargo run --release)"
+                    )?;
+                }
+                if options.model == Model::Ac {
+                    writeln!(
+                        out,
+                        "  variables: non-reference voltage angles and PQ-bus magnitudes"
+                    )?;
+                } else {
+                    writeln!(out, "  variables: non-reference voltage angles")?;
+                }
+                writeln!(out, "Computing operating point and linearization...")?;
+                out.flush()?;
+                let started = Instant::now();
+                let sensitivity = match calculate_sensitivities(case, &options) {
+                    Ok(sensitivity) => sensitivity,
+                    Err(error) => {
+                        writeln!(
+                            out,
+                            "Sensitivity analysis failed after {:.3} s.",
+                            started.elapsed().as_secs_f64()
+                        )?;
+                        return Err(error.into());
+                    }
+                };
+                writeln!(
+                    out,
+                    "Sensitivity analysis completed in {:.3} s.",
+                    started.elapsed().as_secs_f64()
+                )?;
+                self.residual_units.report(&sensitivity.power_flow, out)?;
+                writeln!(
+                    out,
+                    "  state matrix: {} states x {} injection columns",
+                    sensitivity.state_variables.len(),
+                    sensitivity.injection_variables.len()
+                )?;
+                writeln!(
+                    out,
+                    "  branch-flow tensor: {} branches x {} injections x 4 flow components",
+                    sensitivity.branch_flow_sensitivities.len(),
+                    sensitivity.injection_variables.len()
+                )?;
+                write_sensitivities(&sensitivity, out)?;
+                if self.update_on_solve {
+                    self.input = Some(sensitivity.power_flow.case.clone());
+                }
+                self.options = options;
+                self.result = Some(sensitivity.power_flow);
+            }
+            ("jacobian", "" | "reduced" | "full") => {
+                let jacobian = make_jacobian(self.case()?, args == "full")?;
+                writeln!(
+                    out,
+                    "AC power-flow Jacobian (p.u.; voltage angles in radians)"
+                )?;
+                writeln!(out, "Injection    State              Value")?;
+                for (row, injection) in jacobian.row_variables.iter().enumerate() {
+                    for (column, state) in jacobian.column_variables.iter().enumerate() {
+                        writeln!(
+                            out,
+                            "{:<12} {:<12} {:>16.9e}",
+                            injection_label(*injection),
+                            state_label(*state),
+                            jacobian.values[row][column]
+                        )?;
+                    }
+                }
+            }
+            ("ptdf", _) => {
+                let case = self.case()?;
+                let bus_ids = parse_bus_ids(args)?;
+                let (columns, values) = if bus_ids.is_empty() {
+                    (
+                        case.buses.iter().map(|bus| bus.id).collect(),
+                        make_ptdf(case, None)?,
+                    )
+                } else {
+                    let values = make_ptdf_columns(case, None, &bus_ids)?;
+                    (bus_ids, values)
+                };
+                writeln!(out, "DC PTDF (MW/MW; reference-bus slack)")?;
+                write_matrix_header(out, "Branch From To", &columns, "P")?;
+                for (index, (branch, row)) in case.branches.iter().zip(&values).enumerate() {
+                    write!(out, "{:>6} {:>4} {:>4}", index + 1, branch.from, branch.to)?;
+                    write_matrix_row(out, row)?;
+                }
+            }
+            ("lodf", "" | "mask" | "raw") => {
+                let case = self.case()?;
+                let ptdf = make_ptdf(case, None)?;
+                let handling = if args == "raw" {
+                    LodfBridgeHandling::Raw
+                } else {
+                    LodfBridgeHandling::Mask
+                };
+                let lodf = make_lodf_with_bridge_handling(case, &ptdf, handling)?;
+                writeln!(out, "DC LODF (MW/MW; bridge handling: {:?})", handling)?;
+                let columns: Vec<_> = (1..=case.branches.len()).collect();
+                write_matrix_header(out, "Branch From To", &columns, "L")?;
+                for (index, (branch, row)) in case.branches.iter().zip(&lodf).enumerate() {
+                    write!(out, "{:>6} {:>4} {:>4}", index + 1, branch.from, branch.to)?;
+                    write_matrix_row(out, row)?;
+                }
+            }
             ("buses", "") => {
                 writeln!(out, "Bus       Vm (p.u.)    Va (degrees)")?;
                 for bus in &self.case()?.buses {
@@ -241,6 +384,108 @@ fn model(value: &str) -> Result<Model, Box<dyn std::error::Error>> {
         "dc" => Ok(Model::Dc),
         _ => Err("model must be ac or dc".into()),
     }
+}
+
+fn model_name(value: Model) -> &'static str {
+    match value {
+        Model::Ac => "AC",
+        Model::Dc => "DC",
+    }
+}
+
+fn state_label(variable: StateVariable) -> String {
+    match variable {
+        StateVariable::VoltageAngle(bus) => format!("Va({bus})"),
+        StateVariable::VoltageMagnitude(bus) => format!("Vm({bus})"),
+    }
+}
+
+fn injection_label(variable: InjectionVariable) -> String {
+    match variable {
+        InjectionVariable::ActivePower(bus) => format!("P({bus})"),
+        InjectionVariable::ReactivePower(bus) => format!("Q({bus})"),
+    }
+}
+
+fn write_sensitivities(
+    sensitivity: &rs_power::PowerFlowSensitivity,
+    out: &mut impl Write,
+) -> io::Result<()> {
+    writeln!(
+        out,
+        "State sensitivities (state/p.u. injection; voltage angles in radians)"
+    )?;
+    writeln!(out, "State        Injection           Value")?;
+    for (row, state) in sensitivity.state_variables.iter().enumerate() {
+        for (column, injection) in sensitivity.injection_variables.iter().enumerate() {
+            writeln!(
+                out,
+                "{:<12} {:<12} {:>16.9e}",
+                state_label(*state),
+                injection_label(*injection),
+                sensitivity.state_sensitivities[row][column]
+            )?;
+        }
+    }
+    writeln!(out, "Branch-flow sensitivities (p.u./p.u.)")?;
+    writeln!(
+        out,
+        "Branch From To Injection             dPF             dQF             dPT             dQT"
+    )?;
+    for (index, (branch, row)) in sensitivity
+        .power_flow
+        .case
+        .branches
+        .iter()
+        .zip(&sensitivity.branch_flow_sensitivities)
+        .enumerate()
+    {
+        for (injection, values) in sensitivity.injection_variables.iter().zip(row) {
+            writeln!(
+                out,
+                "{:>6} {:>4} {:>4} {:<12} {:>15.8e} {:>15.8e} {:>15.8e} {:>15.8e}",
+                index + 1,
+                branch.from,
+                branch.to,
+                injection_label(*injection),
+                values[0],
+                values[1],
+                values[2],
+                values[3]
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn parse_bus_ids(args: &str) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
+    args.split_whitespace()
+        .map(|value| {
+            value
+                .parse()
+                .map_err(|_| format!("invalid bus ID {value}").into())
+        })
+        .collect()
+}
+
+fn write_matrix_header<T: std::fmt::Display>(
+    out: &mut impl Write,
+    leading: &str,
+    columns: &[T],
+    prefix: &str,
+) -> io::Result<()> {
+    write!(out, "{leading}")?;
+    for column in columns {
+        write!(out, " {prefix}({column})")?;
+    }
+    writeln!(out)
+}
+
+fn write_matrix_row(out: &mut impl Write, row: &[f64]) -> io::Result<()> {
+    for value in row {
+        write!(out, " {:>15.8e}", value)?;
+    }
+    writeln!(out)
 }
 
 fn path_argument(value: &str) -> Result<&str, Box<dyn std::error::Error>> {

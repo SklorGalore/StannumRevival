@@ -62,6 +62,9 @@ rs-power> solve ac
 rs-power> buses
 rs-power> generators
 rs-power> flows
+rs-power> sensitivities ac
+rs-power> ptdf 4 5 6
+rs-power> lodf
 rs-power> set enforce_q_limits on
 rs-power> solve
 rs-power> save solved_case.m
@@ -80,6 +83,21 @@ Use `set update_on_solve false` to keep the current working case unchanged durin
 future solves; `options` shows this setting. Solver errors leave the working case
 unchanged. Inspection and saving use the latest result. Loading another case clears results; a failed load preserves the session.
 Saving overwrites the destination in MATPOWER format.
+
+The REPL also exposes the library's principal sensitivity matrices. Use
+`sensitivities [ac|dc]` to solve the working case and print labeled state and
+branch-flow sensitivities; like `solve`, it updates the latest result and honors
+`update_on_solve`. Before computing, the command logs the selected model, case
+size, solver settings, balancing convention, and state variables, and flushes
+that progress message immediately. It then reports elapsed time, convergence,
+and result dimensions before printing the matrices. Debug builds also note that
+AC linear algebra is substantially faster under `cargo run --release`.
+`jacobian [reduced|full]` evaluates the AC Jacobian at the latest case voltages.
+`ptdf` prints the full branch-by-bus DC matrix, while optional external bus IDs
+select and order columns (for example, `ptdf 4 5 6`).
+`lodf [mask|raw]` prints the branch-by-branch outage matrix; the default `mask`
+mode reports undefined bridge-outage columns as `NaN`. Branches use one-based
+input row numbers in all CLI matrix output.
 
 Run `cargo install --path .` to install the `rs-power` command. Commands can also
 be piped into it; prompts are omitted and any command failure produces a nonzero
@@ -208,7 +226,9 @@ State rows and injection columns identify buses by their external IDs. Angles
 are in radians; voltage magnitudes and injections are in per unit. Divide MW or
 MVAr perturbations by `base_mva` before applying the state matrix. Branch-flow
 derivatives are in p.u./p.u., which is numerically MW/MW or MVAr/MVAr on the
-common system base. In DC mode, active branch-flow derivatives are PTDFs.
+common system base. Branch-flow assembly exploits the fact that each branch
+depends only on its endpoint states, avoiding dense zero work on large AC
+cases. In DC mode, active branch-flow derivatives are PTDFs.
 
 For a full branch-by-bus DC PTDF matrix without first solving a power flow, use
 `make_ptdf`. Passing `None` uses each island's reference bus as slack; a slice

@@ -1063,10 +1063,18 @@ fn multiply_branch_derivatives(
     derivatives
         .iter()
         .map(|branch| {
+            // A two-terminal branch depends only on the angle and magnitude
+            // states at its endpoints. Preserve the dense public result while
+            // avoiding a dense branch-by-state-by-injection multiplication.
+            let nonzero: Vec<_> = branch
+                .iter()
+                .enumerate()
+                .filter(|(_, derivative)| derivative.iter().any(|value| *value != 0.0))
+                .collect();
             (0..columns)
                 .map(|column| {
                     let mut value = [0.0; 4];
-                    for (state, derivative) in branch.iter().enumerate() {
+                    for &(state, derivative) in &nonzero {
                         for component in 0..4 {
                             value[component] +=
                                 derivative[component] * state_sensitivities[state][column];

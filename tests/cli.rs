@@ -120,3 +120,58 @@ fn residual_units_switch_without_resolving() {
     );
     assert!(text.contains("invalid setting"));
 }
+
+#[test]
+fn sensitivity_commands_report_labeled_matrices() {
+    let output = run(
+        "load tests/fixtures/case9.m\nsensitivities dc\nflows\njacobian reduced\nptdf 2 3\nlodf mask\noptions\n",
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("Sensitivity analysis\n  model: DC"));
+    assert!(text.contains("case: 9 buses, 3 generators, 9 branches"));
+    assert!(text.contains("solver: Case initialization"));
+    assert!(text.contains("active-power balance: reference bus in each island"));
+    assert!(text.contains("build: debug"));
+    assert!(text.contains("Computing operating point and linearization..."));
+    assert!(text.contains("Sensitivity analysis completed in"));
+    assert!(text.contains("Converged: 1 iterations"));
+    assert!(text.contains("state matrix: 8 states x 8 injection columns"));
+    assert!(text.contains("branch-flow tensor: 9 branches x 8 injections x 4"));
+    assert!(text.contains("State sensitivities"));
+    assert!(text.contains("Va(2)        P(2)"));
+    assert!(text.contains("Branch-flow sensitivities"));
+    assert!(
+        text.contains("PF (MW)"),
+        "the sensitivity result was not retained"
+    );
+    assert!(text.contains("AC power-flow Jacobian"));
+    assert!(text.contains("DC PTDF (MW/MW; reference-bus slack)"));
+    assert!(text.contains("Branch From To P(2) P(3)"));
+    assert!(text.contains("DC LODF (MW/MW; bridge handling: Mask)"));
+    assert!(text.contains("model: Dc"));
+}
+
+#[test]
+fn failed_sensitivity_run_reports_progress_and_failure() {
+    let output =
+        run("load tests/fixtures/case9.m\nset max_iterations 0\nsensitivities ac\nsummary\n");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!output.status.success());
+    assert!(text.contains("Sensitivity analysis\n  model: AC"));
+    assert!(text.contains("Computing operating point and linearization..."));
+    assert!(text.contains("Sensitivity analysis failed after"));
+    assert!(text.contains("sensitivities are unavailable"));
+    assert!(text.contains("9 buses, 3 generators, 9 branches"));
+}
+
+#[test]
+fn sensitivity_command_errors_do_not_end_a_batch_session() {
+    let output = run("load tests/fixtures/case9.m\nptdf unknown\nptdf 999\nlodf invalid\nptdf 2\n");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!output.status.success());
+    assert!(text.contains("invalid bus ID unknown"));
+    assert!(text.contains("unknown PTDF bus ID 999"));
+    assert!(text.contains("unknown command or invalid arguments"));
+    assert!(text.contains("Branch From To P(2)"));
+}
