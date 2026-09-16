@@ -7,6 +7,11 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Optional `rs-power-gui` desktop application for loading MATPOWER and RAW
+  cases, configuring and running background AC/DC solves, reviewing convergence
+  and operating-limit checks, browsing searchable result tables, calculating a
+  bounded sensitivity preview, and exporting MATPOWER results.
+- GUI design and scope document in `GUI_PLAN.md`.
 - AC and DC state and branch-flow sensitivity calculation, including full DC
   PTDF and LODF matrices, selected bus and explicit transfer columns,
   distributed and per-column slack, topology-based bridge masking, full and

@@ -4,7 +4,7 @@ A Rust library for balanced, steady-state AC and DC power flow, with literal
 MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. AC flow uses
 a sparse Newton–Raphson solver with optional generator reactive-limit enforcement.
 
-[Usage](#usage) · [Import and export](#import-and-export) ·
+[Usage](#usage) · [Desktop GUI](#desktop-gui) · [Import and export](#import-and-export) ·
 [Solver results](#solver-results) ·
 [Sensitivity calculation](#sensitivity-calculation) · [Compatibility](#compatibility) ·
 [Verification](#verification)
@@ -102,6 +102,24 @@ input row numbers in all CLI matrix output.
 Run `cargo install --path .` to install the `rs-power` command. Commands can also
 be piped into it; prompts are omitted and any command failure produces a nonzero
 exit status after processing the remaining commands. End-of-input exits the REPL.
+
+## Desktop GUI
+
+Build and run the optional native desktop interface with:
+
+```sh
+cargo run --features gui --bin rs-power-gui
+```
+
+Open or drag in a MATPOWER or PSS/E RAW case, configure an AC or DC solve, and
+inspect convergence, operating-limit checks, and searchable bus, generator, and
+branch-flow tables. Sensitivities are calculated on demand. Solves and
+sensitivity calculations run in the background so the window stays responsive.
+The latest input or solved case can be exported in MATPOWER format.
+
+The `gui` feature is disabled by default, so normal library and CLI builds do
+not compile the graphical dependencies. See [`GUI_PLAN.md`](GUI_PLAN.md) for the
+design, scope, and deferred work.
 
 ## Import and export
 
