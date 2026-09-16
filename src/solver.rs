@@ -122,7 +122,7 @@ fn linear(
     Ok(out)
 }
 
-fn variables(kinds: &[BusType]) -> (Vec<usize>, Vec<usize>) {
+pub(crate) fn variables(kinds: &[BusType]) -> (Vec<usize>, Vec<usize>) {
     let angles = kinds
         .iter()
         .enumerate()
@@ -159,7 +159,7 @@ fn mismatch(
     Ok((f, norm))
 }
 
-fn jacobian(
+pub(crate) fn jacobian(
     net: &Network,
     v: &[C],
     angles: &[usize],
@@ -586,7 +586,7 @@ fn finish_ac(
     })
 }
 
-struct DcLineGenerators {
+pub(crate) struct DcLineGenerators {
     row: usize,
     from_generator: usize,
     to_generator: usize,
@@ -600,7 +600,7 @@ fn dc_bus(value: f64) -> Option<u32> {
     }
 }
 
-fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenerators>, Error> {
+pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenerators>, Error> {
     let Some(lines) = &case.dcline else {
         return Ok(Vec::new());
     };

@@ -3,6 +3,16 @@
 All notable changes to this project will be documented here. This project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- AC and DC state and branch-flow sensitivity calculation, including full DC
+  PTDF and LODF matrices, selected bus and explicit transfer columns,
+  distributed and per-column slack, topology-based bridge masking, full and
+  reduced AC Jacobians, and polar/Cartesian bus, branch power, current, and
+  squared-magnitude derivatives.
+
 ## 0.1.0 - 2026-09-14
 
 Initial release.

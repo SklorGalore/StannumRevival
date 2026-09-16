@@ -5,7 +5,8 @@ MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. AC flow u
 a sparse Newton–Raphson solver with optional generator reactive-limit enforcement.
 
 [Usage](#usage) · [Import and export](#import-and-export) ·
-[Solver results](#solver-results) · [Compatibility](#compatibility) ·
+[Solver results](#solver-results) ·
+[Sensitivity calculation](#sensitivity-calculation) · [Compatibility](#compatibility) ·
 [Verification](#verification)
 
 ## Usage
@@ -181,6 +182,76 @@ separate status. Invalid inputs, unsupported topology, and numerical failures
 return `Error`. No diagnostics are printed by the library. The reported residual
 is the infinity norm of the equations constrained by the final solve, not a
 measure of reactive-limit feasibility.
+
+## Sensitivity calculation
+
+`calculate_sensitivities` solves a case and linearizes the selected AC or DC
+model at the converged operating point. It returns the inverse reduced
+power-flow Jacobian and the resulting derivatives of all four branch-flow
+components:
+
+```rust
+use rs_power::{
+    InjectionVariable, PowerFlowOptions, StateVariable, calculate_sensitivities,
+    load_matpower,
+};
+
+let case = load_matpower("tests/fixtures/case9.m")?;
+let result = calculate_sensitivities(&case, &PowerFlowOptions::default())?;
+assert!(matches!(result.injection_variables[0], InjectionVariable::ActivePower(_)));
+assert!(matches!(result.state_variables[0], StateVariable::VoltageAngle(_)));
+println!("d(state 0)/d(injection 0) = {}", result.state_sensitivities[0][0]);
+# Ok::<(), rs_power::Error>(())
+```
+
+State rows and injection columns identify buses by their external IDs. Angles
+are in radians; voltage magnitudes and injections are in per unit. Divide MW or
+MVAr perturbations by `base_mva` before applying the state matrix. Branch-flow
+derivatives are in p.u./p.u., which is numerically MW/MW or MVAr/MVAr on the
+common system base. In DC mode, active branch-flow derivatives are PTDFs.
+
+For a full branch-by-bus DC PTDF matrix without first solving a power flow, use
+`make_ptdf`. Passing `None` uses each island's reference bus as slack; a slice
+of bus weights selects distributed slack. `make_lodf` converts that matrix to
+branch-by-branch line-outage factors:
+
+```rust
+use rs_power::{load_matpower, make_lodf, make_ptdf};
+
+let case = load_matpower("tests/fixtures/case9.m")?;
+let ptdf = make_ptdf(&case, None)?;
+let lodf = make_lodf(&case, &ptdf)?;
+assert_eq!(ptdf.len(), case.branches.len());
+assert_eq!(lodf.len(), case.branches.len());
+# Ok::<(), rs_power::Error>(())
+```
+
+Both matrices retain input row order; PTDF columns retain input bus order.
+LODF columns for islanding outages contain `NaN` because no connected-network
+outage factor exists for them. `make_ptdf_columns` computes requested external
+bus-ID columns, `make_ptdf_transfers` accepts explicit zero-sum transfer
+columns, and `make_ptdf_with_slack_matrix` selects a different slack
+distribution for every bus-injection column. These correspond to MATPOWER's
+`BUS_IDX`, `TXFR`, and matrix-valued `SLACK` forms. Transfer and slack matrices
+are indexed `[bus][column]` in input bus order. Selected columns are solved
+directly without constructing the full PTDF. `make_lodf_with_bridge_handling`
+can preserve MATPOWER's raw infinite/`NaN` bridge results when needed.
+
+`make_jacobian` constructs the reduced Newton or full AC Jacobian directly.
+`bus_power_derivatives` and `branch_flow_derivatives` expose the complex
+first-order derivatives corresponding to MATPOWER's `dSbus_dV`, `dSbr_dV`, and
+`dIbr_dV`, in polar or Cartesian voltage coordinates. Branch results also
+provide squared power- and current-magnitude derivatives corresponding to
+`dAbr_dV`. Active bus IDs accompany matrix rows and columns; branch rows retain
+input order, including zero rows for excluded branches.
+
+Reference-bus angle and injection columns, PV-bus voltage-magnitude and reactive
+injection columns, and isolated buses are omitted from the reduced matrices. A
+non-reference injection is balanced by the reference bus in its electrical
+island. Offline and isolated branches retain their input positions with zero
+derivatives. The calculation supports multiple islands and uses bus types after
+reactive-limit enforcement. A nonconverged operating point or singular reduced
+Jacobian returns `Error::Numerical`.
 
 ## Compatibility
 
