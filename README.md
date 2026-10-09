@@ -84,6 +84,28 @@ future solves; `options` shows this setting. Solver errors leave the working cas
 unchanged. Inspection and saving use the latest result. Loading another case clears results; a failed load preserves the session.
 Saving overwrites the destination in MATPOWER format.
 
+Read-only reports can be sent directly to a file by adding `to <path>` to the
+command. This is supported by `summary`, `sensitivities`, `jacobian`, `ptdf`,
+`lodf`, `buses`, `generators`, `flows`, and `options`. For example:
+
+```text
+rs-power> buses to bus_voltages.txt
+rs-power> ptdf 4 5 6 to "reports/case 9 ptdf.csv"
+rs-power> sensitivities dc to sensitivities.txt
+```
+
+Destinations ending in `.csv` use CSV for the 2D `jacobian`, `ptdf`, and `lodf`
+matrices and for `summary`, `buses`, `generators`, `flows`, and `options` tables.
+Headers use stable machine-oriented names with units such as `vm_pu` and
+`pf_mw`; rows and columns retain input order. Numeric values use round-trip
+precision, and undefined masked LODF values are written as `NaN`.
+
+Other extensions use UTF-8 text in the same labeled, unit-bearing format as the
+terminal. The combined `sensitivities` report requires text because its branch
+flow sensitivities form a 3D branch-by-injection-by-component tensor; attempting
+to write that report to one CSV returns an error. Existing destination files
+are overwritten only after the complete report has been generated successfully.
+
 The REPL also exposes the library's principal sensitivity matrices. Use
 `sensitivities [ac|dc]` to solve the working case and print labeled state and
 branch-flow sensitivities; like `solve`, it updates the latest result and honors
@@ -102,6 +124,27 @@ input row numbers in all CLI matrix output.
 Run `cargo install --path .` to install the `rs-power` command. Commands can also
 be piped into it; prompts are omitted and any command failure produces a nonzero
 exit status after processing the remaining commands. End-of-input exits the REPL.
+
+### Diagnostic logging
+
+The CLI and GUI provide diagnostic logging through `RUST_LOG`. Logs are written
+to standard error, leaving tables and other command output on standard output.
+Interactive REPL sessions automatically log commands, file operations, and
+solve/sensitivity lifecycles at `info`. Piped/batch CLI sessions and the GUI are
+quiet by default. `RUST_LOG` overrides these defaults; for example:
+
+```sh
+RUST_LOG=rs_power=info cargo run -- tests/fixtures/case9.m
+RUST_LOG=rs_power::solver=debug cargo run -- tests/fixtures/case9.m
+RUST_LOG=rs_power=trace cargo run -- tests/fixtures/case9.m
+```
+
+`info` reports REPL commands, file operations, and solve/sensitivity lifecycles;
+`debug` adds network dimensions, solver options, Newton residuals, and RAW
+conversion details; and `trace` adds lexer and sparse-linear-system activity.
+Standard `env_logger` directives can combine per-module filters, such as
+`RUST_LOG=rs_power=info,rs_power::solver=debug`. Library users receive the same
+events through the `log` facade and can install the logger of their choice.
 
 ## Desktop GUI
 
@@ -142,6 +185,8 @@ Revisions 23–33 and 35 are supported, including comma/whitespace delimiters, q
 names, mixed line endings, and revision detection from the header or its PSS/E
 comment. An unidentified revision defaults to 23. `Q` ends the input; it is
 optional after a section terminator. Trailing empty sections may be omitted.
+Sections are assigned in the revision's defined order using their `0`
+terminators; human-readable `@!` comments and section headers are ignored.
 Malformed required data still returns a source-located error.
 
 The default conversion follows **MATPOWER 8.1's RAW importer**, including its

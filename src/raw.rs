@@ -40,8 +40,10 @@ impl Context<'_> {
     fn warn(&mut self, line: usize, lossy: bool, message: impl Into<String>) -> Result<(), Error> {
         let message = message.into();
         if lossy && self.options.strict {
+            log::error!("strict RAW conversion rejected line {line}: {message}");
             return Err(Error::Unsupported(format!("RAW line {line}: {message}")));
         }
+        log::warn!("RAW conversion warning at line {line} (lossy={lossy}): {message}");
         self.warnings.push(RawWarning { line, message });
         Ok(())
     }
@@ -120,6 +122,12 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
             chars.next();
             continue;
         }
+        if c == '@' && chars.clone().nth(1) == Some('!') {
+            chars.next();
+            chars.next();
+            r.comment = chars.collect();
+            break;
+        }
         if c == '/' {
             chars.next();
             r.comment = chars.collect();
@@ -158,10 +166,13 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
                 return Err(r.error("expected separator after quoted RAW field"));
             }
         } else {
-            while chars
-                .peek()
-                .is_some_and(|ch| !ch.is_whitespace() && !matches!(ch, ',' | '/'))
-            {
+            while let Some(&ch) = chars.peek() {
+                if ch.is_whitespace()
+                    || matches!(ch, ',' | '/')
+                    || (ch == '@' && chars.clone().nth(1) == Some('!'))
+                {
+                    break;
+                }
                 let ch = chars.next().unwrap();
                 if matches!(ch, '\'' | '"') {
                     return Err(r.error("unexpected quote in RAW field"));
@@ -243,7 +254,14 @@ pub fn load_raw_with_options(
     path: impl AsRef<Path>,
     options: &RawOptions,
 ) -> Result<RawImport, Error> {
+    let path = path.as_ref();
+    log::info!(
+        "loading PSS/E RAW case from {} (strict={})",
+        path.display(),
+        options.strict
+    );
     let bytes = std::fs::read(path)?;
+    log::debug!("read {} bytes from {}", bytes.len(), path.display());
     parse_raw_with_options(&String::from_utf8_lossy(&bytes), options)
 }
 /// Parse RAW revisions 23–33 and 35 using MATPOWER-style conversions. Warnings are
@@ -260,6 +278,12 @@ pub fn parse_raw(input: &str) -> Result<Case, Error> {
 /// source-located [`Error::Parse`] errors. Unsupported revisions are rejected.
 /// The resulting case still needs network validation by [`crate::solve`].
 pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawImport, Error> {
+    log::debug!(
+        "parsing PSS/E RAW case ({} bytes, strict={}, revision override={:?})",
+        input.len(),
+        options.strict,
+        options.revision
+    );
     let normalized = input
         .trim_start_matches('\u{feff}')
         .replace("\r\n", "\n")
@@ -303,6 +327,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             "RAW revision {rev}; supported revisions are 23–33 and 35"
         )));
     }
+    log::debug!("selected RAW revision {rev} (detected={detected:?})");
     if options.revision.is_some() {
         ctx.warn(
             header_line,
@@ -350,17 +375,6 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 system_wide = false;
                 continue;
             }
-            if let Some((_, tail)) = r.comment.to_uppercase().split_once("END OF ")
-                && let Some((label, _)) = tail.split_once(" DATA")
-                && let Some(expected) = names.get(sections.len())
-                && !label.trim().eq_ignore_ascii_case(expected)
-            {
-                ctx.warn(
-                    r.line,
-                    false,
-                    format!("section label {label:?}; expected {expected}"),
-                )?;
-            }
             sections.push(std::mem::take(&mut current));
         } else if !system_wide {
             current.push(r);
@@ -373,6 +387,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     if sections.len() < required {
         return Err(header.error("missing required RAW sections through branch data"));
     }
+    log::debug!("parsed {} RAW sections", sections.len());
     let section = |name: &str| -> &[Record] {
         names
             .iter()
@@ -618,6 +633,13 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             )?;
         }
     }
+    log::info!(
+        "converted RAW revision {rev}: {} buses, {} generators, {} branches, {} warnings",
+        case.buses.len(),
+        case.generators.len(),
+        case.branches.len(),
+        ctx.warnings.len()
+    );
     Ok(RawImport {
         case,
         revision: rev,

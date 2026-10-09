@@ -90,6 +90,10 @@ fn linear(
     entries: &[Triplet<usize, usize, f64>],
     rhs: &[f64],
 ) -> Result<Vec<f64>, Error> {
+    log::trace!(
+        "solving sparse linear system (dimension={n}, entries={})",
+        entries.len()
+    );
     if n == 0 {
         return Ok(Vec::new());
     }
@@ -214,12 +218,23 @@ fn newton(
 ) -> Result<(SolveStatus, usize, f64), Error> {
     let (angles, pq) = variables(kinds);
     let s = net.injections(case);
+    log::debug!(
+        "starting Newton solve ({} angle variables, {} magnitude variables)",
+        angles.len(),
+        pq.len()
+    );
     for iteration in 0..=opt.max_iterations {
         let (f, residual) = mismatch(net, v, &s, &angles, &pq)?;
+        log::debug!(
+            "Newton iteration {iteration}: residual={residual:.6e} p.u., tolerance={:.6e}",
+            opt.tolerance
+        );
         if residual < opt.tolerance {
+            log::debug!("Newton solve converged at iteration {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::Converged, iteration, residual));
         }
         if iteration == opt.max_iterations {
+            log::warn!("Newton solve reached iteration limit {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
         let j = jacobian(net, v, &angles, &pq);
@@ -309,6 +324,11 @@ fn allocate(net: &Network, case: &mut Case, kinds: &[BusType], references: &[usi
 fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let n = net.external.len();
     let vars: Vec<_> = (0..n).filter(|i| !net.references.contains(i)).collect();
+    log::debug!(
+        "starting DC solve ({n} buses, {} variables, {} branches)",
+        vars.len(),
+        net.edges.len()
+    );
     let mut idx = vec![None; n];
     for (k, &i) in vars.iter().enumerate() {
         idx[i] = Some(k);
@@ -381,6 +401,7 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
             "DC solution failed power balance tolerance".into(),
         ));
     }
+    log::debug!("DC solve converged: residual={residual:.6e}");
     for &reference in &net.references {
         let gens = &net.gens[reference];
         let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
@@ -475,6 +496,11 @@ fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, E
         if violations.is_empty() {
             break (status, residual);
         }
+        log::warn!(
+            "reactive-limit pass {} is enforcing {} generator violations",
+            passes + 1,
+            violations.len()
+        );
         for island in &net.islands {
             let island_remaining: Vec<_> = remaining
                 .iter()
@@ -713,10 +739,26 @@ pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenera
 /// reactive-limit infeasibility return an `Ok` result with a non-converged
 /// [`SolveStatus`].
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
+    let started = std::time::Instant::now();
+    log::info!(
+        "starting {:?} power-flow solve: {} buses, {} generators, {} branches, initialization={:?}, tolerance={:.6e}, max_iterations={}, enforce_q_limits={}",
+        opt.model,
+        input.buses.len(),
+        input.generators.len(),
+        input.branches.len(),
+        opt.initialization,
+        opt.tolerance,
+        opt.max_iterations,
+        opt.enforce_q_limits
+    );
     let original_generators = input.generators.len();
     let mut working = input.clone();
-    let mappings = add_dc_line_generators(&mut working)?;
-    let mut result = solve_core(&working, opt)?;
+    let mappings = add_dc_line_generators(&mut working).inspect_err(|error| {
+        log::error!("power-flow setup failed while converting DC lines: {error}");
+    })?;
+    let mut result = solve_core(&working, opt).inspect_err(|error| {
+        log::error!("{:?} power-flow solve failed: {error}", opt.model);
+    })?;
     if let Some(lines) = &mut result.case.dcline {
         for mapping in mappings {
             let from = &result.case.generators[mapping.from_generator];
@@ -731,6 +773,15 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         }
     }
     result.case.generators.truncate(original_generators);
+    log::info!(
+        "finished {:?} power-flow solve: status={:?}, iterations={}, residual={:.6e}, q_limit_passes={}, elapsed={} ms",
+        opt.model,
+        result.status,
+        result.iterations,
+        result.residual,
+        result.q_limit_passes,
+        started.elapsed().as_millis()
+    );
     Ok(result)
 }
 

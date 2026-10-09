@@ -7,6 +7,11 @@ mod worker;
 use app::PowerApp;
 
 fn main() -> eframe::Result<()> {
+    let env = env_logger::Env::default().filter_or("RUST_LOG", "off");
+    let _ = env_logger::Builder::from_env(env)
+        .format_timestamp_millis()
+        .try_init();
+    log::info!("starting rs-power GUI");
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])

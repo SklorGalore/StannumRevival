@@ -25,6 +25,12 @@ pub(crate) struct Network {
 
 impl Network {
     pub fn new(case: &Case) -> Result<Self, Error> {
+        log::debug!(
+            "assembling active network from {} buses, {} generators, and {} branches",
+            case.buses.len(),
+            case.generators.len(),
+            case.branches.len()
+        );
         let invalid = |msg: &str| Error::InvalidCase(msg.into());
         if !case.base_mva.is_finite() || case.base_mva <= 0.0 {
             return Err(invalid("baseMVA must be finite and positive"));
@@ -182,6 +188,13 @@ impl Network {
             }
             references.push(refs[0]);
         }
+        log::debug!(
+            "assembled active network: {} buses, {} branches, {} islands, {} references",
+            external.len(),
+            edges.len(),
+            islands.len(),
+            references.len()
+        );
         Ok(Self {
             external,
             by_id,

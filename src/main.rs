@@ -38,7 +38,17 @@ const HELP: &str = "Commands:
   save <path.m>               Export latest result (or input); overwrites file
   help                        Show commands
   quit                        Exit (also exit or end-of-input)
-Paths may contain spaces; optionally wrap the whole path in quotes.";
+Paths may contain spaces; optionally wrap the whole path in quotes.
+Add `to <path>` to write a report; `.csv` selects CSV, otherwise UTF-8 text.
+Reports: summary, sensitivities, jacobian, ptdf, lodf, buses, generators, flows, options.";
+
+fn init_logging(interactive: bool) {
+    let default_filter = if interactive { "rs_power=info" } else { "off" };
+    let env = env_logger::Env::default().filter_or("RUST_LOG", default_filter);
+    let _ = env_logger::Builder::from_env(env)
+        .format_timestamp_millis()
+        .try_init();
+}
 
 #[derive(Clone, Copy)]
 enum ResidualUnits {
@@ -96,6 +106,230 @@ impl Session {
             .ok_or_else(|| "load a case first".into())
     }
 
+    fn csv_report(
+        &self,
+        command: &str,
+        args: &str,
+        out: &mut impl Write,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match (command, args) {
+            ("summary", "") => {
+                let case = self.case()?;
+                csv_row(out, ["metric", "value", "unit"])?;
+                csv_row(
+                    out,
+                    ["buses".into(), case.buses.len().to_string(), String::new()],
+                )?;
+                csv_row(
+                    out,
+                    [
+                        "generators".into(),
+                        case.generators.len().to_string(),
+                        String::new(),
+                    ],
+                )?;
+                csv_row(
+                    out,
+                    [
+                        "branches".into(),
+                        case.branches.len().to_string(),
+                        String::new(),
+                    ],
+                )?;
+                csv_row(
+                    out,
+                    ["base_mva".into(), case.base_mva.to_string(), "MVA".into()],
+                )?;
+                if let Some(result) = &self.result {
+                    csv_row(
+                        out,
+                        [
+                            "status".into(),
+                            format!("{:?}", result.status),
+                            String::new(),
+                        ],
+                    )?;
+                    csv_row(
+                        out,
+                        [
+                            "iterations".into(),
+                            result.iterations.to_string(),
+                            String::new(),
+                        ],
+                    )?;
+                    let (residual, unit) = match self.residual_units {
+                        ResidualUnits::Pu => (result.residual, "p.u."),
+                        ResidualUnits::Mva => (result.residual * result.case.base_mva, "MVA"),
+                    };
+                    csv_row(out, ["residual".into(), residual.to_string(), unit.into()])?;
+                }
+            }
+            ("buses", "") => {
+                csv_row(out, ["bus_id", "vm_pu", "va_degrees"])?;
+                for bus in &self.case()?.buses {
+                    csv_row(
+                        out,
+                        [bus.id.to_string(), bus.vm.to_string(), bus.va.to_string()],
+                    )?;
+                }
+            }
+            ("generators", "") => {
+                csv_row(out, ["generator", "bus_id", "pg_mw", "qg_mvar", "online"])?;
+                for (index, generator) in self.case()?.generators.iter().enumerate() {
+                    csv_row(
+                        out,
+                        [
+                            (index + 1).to_string(),
+                            generator.bus.to_string(),
+                            generator.pg.to_string(),
+                            generator.qg.to_string(),
+                            generator.online.to_string(),
+                        ],
+                    )?;
+                }
+            }
+            ("flows", "") => {
+                let result = self.result.as_ref().ok_or("solve a case first")?;
+                csv_row(
+                    out,
+                    [
+                        "branch", "from_bus", "to_bus", "pf_mw", "qf_mvar", "pt_mw", "qt_mvar",
+                    ],
+                )?;
+                for (index, (branch, flow)) in result
+                    .case
+                    .branches
+                    .iter()
+                    .zip(&result.branch_flows)
+                    .enumerate()
+                {
+                    csv_row(
+                        out,
+                        [
+                            (index + 1).to_string(),
+                            branch.from.to_string(),
+                            branch.to.to_string(),
+                            flow[0].to_string(),
+                            flow[1].to_string(),
+                            flow[2].to_string(),
+                            flow[3].to_string(),
+                        ],
+                    )?;
+                }
+            }
+            ("jacobian", "" | "reduced" | "full") => {
+                let jacobian = make_jacobian(self.case()?, args == "full")?;
+                let mut header = vec!["injection".into()];
+                header.extend(jacobian.column_variables.iter().copied().map(state_label));
+                csv_row(out, header)?;
+                for (injection, values) in jacobian.row_variables.iter().zip(&jacobian.values) {
+                    let mut row = vec![injection_label(*injection)];
+                    row.extend(values.iter().map(ToString::to_string));
+                    csv_row(out, row)?;
+                }
+            }
+            ("ptdf", _) => {
+                let case = self.case()?;
+                let bus_ids = parse_bus_ids(args)?;
+                let (columns, values) = if bus_ids.is_empty() {
+                    (
+                        case.buses.iter().map(|bus| bus.id).collect(),
+                        make_ptdf(case, None)?,
+                    )
+                } else {
+                    let values = make_ptdf_columns(case, None, &bus_ids)?;
+                    (bus_ids, values)
+                };
+                let mut header = vec!["branch".into(), "from_bus".into(), "to_bus".into()];
+                header.extend(columns.iter().map(|bus| format!("P({bus})")));
+                csv_row(out, header)?;
+                for (index, (branch, values)) in case.branches.iter().zip(&values).enumerate() {
+                    let mut row = vec![
+                        (index + 1).to_string(),
+                        branch.from.to_string(),
+                        branch.to.to_string(),
+                    ];
+                    row.extend(values.iter().map(ToString::to_string));
+                    csv_row(out, row)?;
+                }
+            }
+            ("lodf", "" | "mask" | "raw") => {
+                let case = self.case()?;
+                let ptdf = make_ptdf(case, None)?;
+                let handling = if args == "raw" {
+                    LodfBridgeHandling::Raw
+                } else {
+                    LodfBridgeHandling::Mask
+                };
+                let values = make_lodf_with_bridge_handling(case, &ptdf, handling)?;
+                let mut header = vec!["branch".into(), "from_bus".into(), "to_bus".into()];
+                header.extend((1..=case.branches.len()).map(|branch| format!("L({branch})")));
+                csv_row(out, header)?;
+                for (index, (branch, values)) in case.branches.iter().zip(&values).enumerate() {
+                    let mut row = vec![
+                        (index + 1).to_string(),
+                        branch.from.to_string(),
+                        branch.to.to_string(),
+                    ];
+                    row.extend(values.iter().map(ToString::to_string));
+                    csv_row(out, row)?;
+                }
+            }
+            ("options", "") => {
+                csv_row(out, ["setting", "value", "unit"])?;
+                for row in [
+                    [
+                        "model".into(),
+                        model_name(self.options.model).into(),
+                        "".into(),
+                    ],
+                    [
+                        "initialization".into(),
+                        format!("{:?}", self.options.initialization),
+                        "".into(),
+                    ],
+                    [
+                        "tolerance".into(),
+                        self.options.tolerance.to_string(),
+                        "p.u.".into(),
+                    ],
+                    [
+                        "max_iterations".into(),
+                        self.options.max_iterations.to_string(),
+                        "".into(),
+                    ],
+                    [
+                        "enforce_q_limits".into(),
+                        self.options.enforce_q_limits.to_string(),
+                        "".into(),
+                    ],
+                    [
+                        "q_limit_tolerance".into(),
+                        self.options.q_limit_tolerance.to_string(),
+                        "MVAr".into(),
+                    ],
+                    [
+                        "update_on_solve".into(),
+                        self.update_on_solve.to_string(),
+                        "".into(),
+                    ],
+                    [
+                        "residual_display".into(),
+                        self.residual_units.name().into(),
+                        "".into(),
+                    ],
+                ] {
+                    csv_row(out, row)?;
+                }
+            }
+            ("sensitivities" | "sensitivity", _) => {
+                return Err("sensitivity output includes a 3D branch-flow tensor; use a text destination instead of CSV".into());
+            }
+            _ => return Err("unknown command or invalid arguments; type help".into()),
+        }
+        Ok(())
+    }
+
     fn command(
         &mut self,
         line: &str,
@@ -107,6 +341,31 @@ impl Session {
         }
         let (command, args) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
         let args = args.trim();
+        log::info!("executing CLI command {command:?} with arguments {args:?}");
+        if is_report(command)
+            && let Some((report_args, destination)) = split_report_destination(args)?
+        {
+            let destination = path_argument(destination)?;
+            let report_command = if report_args.is_empty() {
+                command.to_owned()
+            } else {
+                format!("{command} {report_args}")
+            };
+            let mut report = Vec::new();
+            let keep_running = if is_csv_path(destination) {
+                self.csv_report(command, report_args, &mut report)?;
+                true
+            } else {
+                self.command(&report_command, &mut report)?
+            };
+            std::fs::write(destination, &report)?;
+            log::info!(
+                "wrote {command} report to {destination} ({} bytes)",
+                report.len()
+            );
+            writeln!(out, "Wrote {command} report to {destination}")?;
+            return Ok(keep_running);
+        }
         match (command, args) {
             ("quit" | "exit", "") => return Ok(false),
             ("help", "") => writeln!(out, "{HELP}")?,
@@ -502,8 +761,95 @@ fn path_argument(value: &str) -> Result<&str, Box<dyn std::error::Error>> {
     }
 }
 
+fn is_report(command: &str) -> bool {
+    matches!(
+        command,
+        "summary"
+            | "sensitivities"
+            | "sensitivity"
+            | "jacobian"
+            | "ptdf"
+            | "lodf"
+            | "buses"
+            | "generators"
+            | "flows"
+            | "options"
+    )
+}
+
+fn split_report_destination(
+    args: &str,
+) -> Result<Option<(&str, &str)>, Box<dyn std::error::Error>> {
+    let mut quote = None;
+    for (index, character) in args.char_indices() {
+        if matches!(character, '\'' | '"') {
+            if quote == Some(character) {
+                quote = None;
+            } else if quote.is_none() {
+                quote = Some(character);
+            }
+            continue;
+        }
+        if quote.is_some() || !args[index..].starts_with("to") {
+            continue;
+        }
+        let before_is_boundary = index == 0
+            || args[..index]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace);
+        let after = &args[index + 2..];
+        let after_is_boundary = after.chars().next().is_some_and(char::is_whitespace);
+        if before_is_boundary && after_is_boundary {
+            let destination = after.trim();
+            if destination.is_empty() {
+                return Err("report destination must be a nonempty path".into());
+            }
+            return Ok(Some((args[..index].trim(), destination)));
+        }
+    }
+    Ok(None)
+}
+
+fn is_csv_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+}
+
+fn csv_row<I, S>(out: &mut impl Write, fields: I) -> io::Result<()>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    for (index, field) in fields.into_iter().enumerate() {
+        if index > 0 {
+            write!(out, ",")?;
+        }
+        let field = field.as_ref();
+        if field.contains([',', '"', '\r', '\n']) {
+            write!(out, "\"")?;
+            for character in field.chars() {
+                if character == '"' {
+                    write!(out, "\"\"")?;
+                } else {
+                    write!(out, "{character}")?;
+                }
+            }
+            write!(out, "\"")?;
+        } else {
+            write!(out, "{field}")?;
+        }
+    }
+    writeln!(out)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = io::stdin();
+    let interactive = stdin.is_terminal() && io::stdout().is_terminal();
+    init_logging(interactive);
     let args: Vec<_> = std::env::args().skip(1).collect();
+    log::debug!("starting rs-power CLI with arguments {args:?}");
     if args == ["--help"] || args == ["-h"] {
         println!("Usage: rs-power [case.m|case.raw]\n\n{HELP}");
         return Ok(());
@@ -511,8 +857,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() > 1 {
         return Err("usage: rs-power [case.m|case.raw]".into());
     }
-    let stdin = io::stdin();
-    let interactive = stdin.is_terminal() && io::stdout().is_terminal();
     let mut out = io::stdout().lock();
     let mut session = Session::default();
     if interactive {
@@ -545,13 +889,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(false) => break,
             Ok(true) => {}
             Err(error) => {
+                log::error!("CLI command {:?} failed: {error}", line.trim());
                 writeln!(out, "Error: {error}")?;
                 failed = true;
             }
         }
     }
     if failed && !interactive {
+        log::error!("batch session completed with one or more command failures");
         return Err("one or more commands failed".into());
     }
+    log::debug!("rs-power CLI stopped");
     Ok(())
 }

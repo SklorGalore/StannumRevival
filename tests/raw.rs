@@ -40,6 +40,28 @@ fn loads_shunts_labels_and_solve() {
 }
 
 #[test]
+fn section_order_does_not_depend_on_comment_headers() {
+    let original = raw(&[BUSES, "20,1,1,1,1,30,10\n", "", GEN, LINE]);
+    let annotated = original
+        .replace(
+            "Test case\nSecond title\n",
+            "Test case\nSecond title\n@! END OF OWNER DATA, BEGIN LOAD DATA\n",
+        )
+        .replace(
+            "0 / section end",
+            "0 @! deliberately incorrect section header",
+        )
+        .replace("'Load'", "'Load @! retained'");
+
+    let expected = parse_raw(&original).unwrap();
+    let actual = parse_raw(&annotated).unwrap();
+    assert_eq!(actual.buses, expected.buses);
+    assert_eq!(actual.generators, expected.generators);
+    assert_eq!(actual.branches, expected.branches);
+    assert_eq!(actual.labels["bus_name"][1], "Load @! retained");
+}
+
+#[test]
 fn transformer_base_conversion_matches_equivalent_branch() {
     let transformer =
         "10,20,0,'1',2,2,1,0,0,2,'T',1\n.005,.05,50\n230,230,5,100,110,120,0\n115,115\n";
@@ -146,9 +168,8 @@ fn memphis_revision_35_real_world_case() {
     assert_eq!(imported.case.branches.len(), 1382);
     assert_eq!(imported.case.dcline.as_ref().map_or(0, Vec::len), 0);
     assert_eq!(imported.case.labels["bus_name"].len(), 993);
-    assert_eq!(imported.warnings.len(), 438);
+    assert_eq!(imported.warnings.len(), 435);
     for message in [
-        "section label \"VSC DC LINE\"",
         "switched shunt frozen at BINIT",
         "remote generator regulation ignored",
         "wind-machine control ignored",

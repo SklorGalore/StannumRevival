@@ -232,6 +232,7 @@ pub fn bus_power_derivatives(
     input: &Case,
     coordinates: VoltageCoordinates,
 ) -> Result<BusPowerDerivatives, Error> {
+    log::debug!("calculating bus-power derivatives ({coordinates:?} coordinates)");
     let net = Network::new(input)?;
     let voltage = case_voltage(input, &net, false);
     let currents: Vec<C> = net
@@ -296,6 +297,7 @@ pub fn branch_flow_derivatives(
     input: &Case,
     coordinates: VoltageCoordinates,
 ) -> Result<BranchFlowDerivatives, Error> {
+    log::debug!("calculating branch-flow derivatives ({coordinates:?} coordinates)");
     let net = Network::new(input)?;
     let voltage = case_voltage(input, &net, false);
     let n = voltage.len();
@@ -373,6 +375,11 @@ pub fn branch_flow_derivatives(
 /// Returns the same input and topology errors as network assembly, or
 /// [`Error::Numerical`] if the Jacobian contains non-finite values.
 pub fn make_jacobian(input: &Case, full: bool) -> Result<PowerFlowJacobian, Error> {
+    log::info!(
+        "building {} AC power-flow Jacobian for {} buses",
+        if full { "full" } else { "reduced" },
+        input.buses.len()
+    );
     let net = Network::new(input)?;
     let voltage = case_voltage(input, &net, true);
     let (angles, magnitudes) = if full {
@@ -452,6 +459,12 @@ fn reference_ptdf(input: &Case, net: &Network) -> Result<Vec<Vec<f64>>, Error> {
 /// Returns [`Error::InvalidCase`] for malformed slack weights or branch data,
 /// and the same topology and numerical errors as network assembly.
 pub fn make_ptdf(input: &Case, slack: Option<&[f64]>) -> Result<Vec<Vec<f64>>, Error> {
+    log::info!(
+        "building full PTDF matrix ({} buses, {} branches, distributed_slack={})",
+        input.buses.len(),
+        input.branches.len(),
+        slack.is_some()
+    );
     let net = Network::new(input)?;
     let mut ptdf = reference_ptdf(input, &net)?;
 
@@ -507,6 +520,11 @@ pub fn make_ptdf_columns(
     slack: Option<&[f64]>,
     bus_ids: &[u32],
 ) -> Result<Vec<Vec<f64>>, Error> {
+    log::debug!(
+        "building {} selected PTDF columns (distributed_slack={})",
+        bus_ids.len(),
+        slack.is_some()
+    );
     let net = Network::new(input)?;
     let by_id: std::collections::HashMap<_, _> = input
         .buses
@@ -608,6 +626,10 @@ pub fn make_ptdf_columns(
 /// Returns [`Error::InvalidCase`] for a malformed or unbalanced transfer
 /// matrix, and the same topology and numerical errors as [`make_ptdf`].
 pub fn make_ptdf_transfers(input: &Case, transfers: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
+    log::debug!(
+        "building PTDF transfer columns from {} bus rows",
+        transfers.len()
+    );
     let net = Network::new(input)?;
     if transfers.len() != input.buses.len() {
         return Err(Error::InvalidCase(format!(
@@ -685,6 +707,10 @@ pub fn make_ptdf_with_slack_matrix(
     input: &Case,
     slack: &[Vec<f64>],
 ) -> Result<Vec<Vec<f64>>, Error> {
+    log::debug!(
+        "building PTDF with {} per-column slack distributions",
+        slack.first().map_or(0, Vec::len)
+    );
     let net = Network::new(input)?;
     let buses = input.buses.len();
     if slack.len() != buses
@@ -777,6 +803,10 @@ pub fn make_lodf_with_bridge_handling(
     ptdf: &[Vec<f64>],
     bridge_handling: LodfBridgeHandling,
 ) -> Result<Vec<Vec<f64>>, Error> {
+    log::info!(
+        "building LODF matrix ({} branches, bridge handling={bridge_handling:?})",
+        input.branches.len()
+    );
     if ptdf.len() != input.branches.len() || ptdf.iter().any(|row| row.len() != input.buses.len()) {
         return Err(Error::InvalidCase(format!(
             "LODF requires a {} by {} PTDF matrix",
@@ -1104,8 +1134,25 @@ pub fn calculate_sensitivities(
     input: &Case,
     options: &PowerFlowOptions,
 ) -> Result<PowerFlowSensitivity, Error> {
-    let power_flow = solve(input, options)?;
+    let started = std::time::Instant::now();
+    log::info!(
+        "starting {:?} power-flow sensitivity calculation ({} buses, {} branches)",
+        options.model,
+        input.buses.len(),
+        input.branches.len()
+    );
+    let power_flow = solve(input, options).inspect_err(|error| {
+        log::error!(
+            "{:?} sensitivity calculation failed during its power-flow solve: {error}",
+            options.model
+        );
+    })?;
     if power_flow.status != SolveStatus::Converged {
+        log::error!(
+            "{:?} sensitivity calculation requires convergence, got {:?}",
+            options.model,
+            power_flow.status
+        );
         return Err(Error::Numerical(
             "power flow did not converge; sensitivities are unavailable".into(),
         ));
@@ -1131,14 +1178,14 @@ pub fn calculate_sensitivities(
                 })
                 .collect();
             let (angles, pq) = variables(&net.kinds);
-            let state_variables = angles
+            let state_variables: Vec<_> = angles
                 .iter()
                 .map(|&bus| StateVariable::VoltageAngle(working.buses[net.external[bus]].id))
                 .chain(pq.iter().map(|&bus| {
                     StateVariable::VoltageMagnitude(working.buses[net.external[bus]].id)
                 }))
                 .collect();
-            let injection_variables = angles
+            let injection_variables: Vec<_> = angles
                 .iter()
                 .map(|&bus| InjectionVariable::ActivePower(working.buses[net.external[bus]].id))
                 .chain(pq.iter().map(|&bus| {
@@ -1161,11 +1208,11 @@ pub fn calculate_sensitivities(
             let vars: Vec<_> = (0..net.external.len())
                 .filter(|bus| !net.references.contains(bus))
                 .collect();
-            let state_variables = vars
+            let state_variables: Vec<_> = vars
                 .iter()
                 .map(|&bus| StateVariable::VoltageAngle(working.buses[net.external[bus]].id))
                 .collect();
-            let injection_variables = vars
+            let injection_variables: Vec<_> = vars
                 .iter()
                 .map(|&bus| InjectionVariable::ActivePower(working.buses[net.external[bus]].id))
                 .collect();
@@ -1180,6 +1227,14 @@ pub fn calculate_sensitivities(
         }
     };
     let branch_flow_sensitivities = multiply_branch_derivatives(&derivatives, &state_sensitivities);
+    log::info!(
+        "finished {:?} sensitivity calculation: {} states, {} injections, {} branches, elapsed={} ms",
+        options.model,
+        state_variables.len(),
+        injection_variables.len(),
+        branch_flow_sensitivities.len(),
+        started.elapsed().as_millis()
+    );
     Ok(PowerFlowSensitivity {
         power_flow,
         state_variables,

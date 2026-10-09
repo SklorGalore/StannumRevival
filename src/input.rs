@@ -27,6 +27,7 @@ impl Token {
 }
 
 fn lex(input: &str) -> Result<Vec<Token>, Error> {
+    log::trace!("lexing MATPOWER input ({} bytes)", input.len());
     let chars: Vec<char> = input.chars().collect();
     let (mut i, mut line, mut col) = (0, 1, 1);
     let mut out = Vec::new();
@@ -155,6 +156,7 @@ fn lex(input: &str) -> Result<Vec<Token>, Error> {
         column: col,
         end_column: col,
     });
+    log::trace!("finished lexing MATPOWER input ({} tokens)", out.len());
     Ok(out)
 }
 
@@ -237,6 +239,7 @@ impl Parser {
 /// [`Error::Parse`] errors. This checks syntax and table shape; [`crate::solve`]
 /// validates physical inputs and topology.
 pub fn parse_matpower(input: &str) -> Result<Case, Error> {
+    log::debug!("parsing MATPOWER case ({} bytes)", input.len());
     let mut p = Parser {
         tokens: lex(input)?,
         pos: 0,
@@ -438,7 +441,7 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
             "dcline requires at least 17 columns".into(),
         ));
     }
-    Ok(Case {
+    let case = Case {
         base_mva: base.ok_or_else(|| missing("baseMVA"))?,
         buses,
         generators,
@@ -446,7 +449,15 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
         dcline,
         gencost: matrices.remove("gencost"),
         labels,
-    })
+    };
+    log::info!(
+        "parsed MATPOWER case: {} buses, {} generators, {} branches, base {} MVA",
+        case.buses.len(),
+        case.generators.len(),
+        case.branches.len(),
+        case.base_mva
+    );
+    Ok(case)
 }
 
 /// Read and parse a literal MATPOWER `.m` case.
@@ -454,5 +465,9 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
 /// Returns [`Error::Io`] on read failure (including invalid UTF-8), or errors
 /// from [`parse_matpower`].
 pub fn load_matpower(path: impl AsRef<Path>) -> Result<Case, Error> {
-    parse_matpower(&std::fs::read_to_string(path)?)
+    let path = path.as_ref();
+    log::info!("loading MATPOWER case from {}", path.display());
+    let input = std::fs::read_to_string(path)?;
+    log::debug!("read {} bytes from {}", input.len(), path.display());
+    parse_matpower(&input)
 }

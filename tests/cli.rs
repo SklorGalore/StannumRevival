@@ -2,7 +2,16 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn run(commands: &str) -> std::process::Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_rs-power"))
+    run_with_log(commands, None)
+}
+
+fn run_with_log(commands: &str, filter: Option<&str>) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rs-power"));
+    command.env_remove("RUST_LOG");
+    if let Some(filter) = filter {
+        command.env("RUST_LOG", filter);
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -15,6 +24,89 @@ fn run(commands: &str) -> std::process::Output {
         .write_all(commands.as_bytes())
         .unwrap();
     child.wait_with_output().unwrap()
+}
+
+#[test]
+fn batch_logging_is_opt_in_and_separate_from_command_output() {
+    let commands = "load tests/fixtures/case9.m\nsolve dc\n";
+    let quiet = run(commands);
+    assert!(quiet.status.success());
+    assert!(quiet.stderr.is_empty());
+
+    let logged = run_with_log(commands, Some("rs_power=debug"));
+    assert!(logged.status.success());
+    let stdout = String::from_utf8(logged.stdout).unwrap();
+    let stderr = String::from_utf8(logged.stderr).unwrap();
+    assert!(stdout.contains("Converged:"));
+    assert!(stderr.contains("loading MATPOWER case"), "{stderr}");
+    assert!(stderr.contains("starting Dc power-flow solve"), "{stderr}");
+    assert!(stderr.contains("DC solve converged"), "{stderr}");
+    assert!(stderr.contains("finished Dc power-flow solve"), "{stderr}");
+}
+
+#[test]
+fn reports_support_text_and_csv_destinations() {
+    let path = std::env::temp_dir().join(format!("rs-power-report-{}.txt", std::process::id()));
+    let matrix_path =
+        std::env::temp_dir().join(format!("rs-power PTDF report {}.csv", std::process::id()));
+    let table_path =
+        std::env::temp_dir().join(format!("rs-power bus report {}.csv", std::process::id()));
+    let path_text = path.to_string_lossy();
+    let matrix_path_text = matrix_path.to_string_lossy();
+    let table_path_text = table_path.to_string_lossy();
+    let output = run(&format!(
+        "load tests/fixtures/case9.m\nsolve dc\nsummary to \"{path_text}\"\nbuses to \"{table_path_text}\"\nptdf 2 3 to \"{matrix_path_text}\"\n"
+    ));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("Wrote summary report to"));
+    assert!(stdout.contains("Wrote buses report to"));
+    assert!(!stdout.contains("Va (degrees)"));
+
+    let report = std::fs::read_to_string(&path).unwrap();
+    assert!(report.starts_with("9 buses, 3 generators, 9 branches"));
+    let table_report = std::fs::read_to_string(&table_path).unwrap();
+    assert!(table_report.starts_with("bus_id,vm_pu,va_degrees\n"));
+    assert!(table_report.contains("1,1,0\n"));
+    let matrix_report = std::fs::read_to_string(&matrix_path).unwrap();
+    assert!(matrix_report.starts_with("branch,from_bus,to_bus,P(2),P(3)\n"));
+    assert_eq!(matrix_report.lines().count(), 10);
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(table_path).unwrap();
+    std::fs::remove_file(matrix_path).unwrap();
+}
+
+#[test]
+fn failed_reports_do_not_overwrite_the_destination() {
+    let path =
+        std::env::temp_dir().join(format!("rs-power-failed-report-{}.txt", std::process::id()));
+    std::fs::write(&path, "existing report\n").unwrap();
+    let output = run(&format!(
+        "load tests/fixtures/case9.m\nptdf 999 to \"{}\"\n",
+        path.to_string_lossy()
+    ));
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "existing report\n");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn csv_rejects_the_three_dimensional_sensitivity_report() {
+    let path = std::env::temp_dir().join(format!(
+        "rs-power-sensitivity-report-{}.csv",
+        std::process::id()
+    ));
+    let output = run(&format!(
+        "load tests/fixtures/case9.m\nsensitivities dc to \"{}\"\n",
+        path.to_string_lossy()
+    ));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(!output.status.success());
+    assert!(
+        stdout.contains("includes a 3D branch-flow tensor"),
+        "{stdout}"
+    );
+    assert!(!path.exists());
 }
 
 #[test]

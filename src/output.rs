@@ -8,6 +8,12 @@ use std::{fmt::Write, path::Path};
 /// Rejects ragged matrices, NaN and multiline labels. This checks format only;
 /// it does not validate network topology or physical inputs.
 pub fn format_matpower(case: &Case) -> Result<String, Error> {
+    log::debug!(
+        "formatting MATPOWER case with {} buses, {} generators, and {} branches",
+        case.buses.len(),
+        case.generators.len(),
+        case.branches.len()
+    );
     let mut out = String::from("mpc.version = '2';\nmpc.baseMVA = ");
     number(&mut out, case.base_mva)?;
     out.push_str(";\n");
@@ -111,6 +117,7 @@ pub fn format_matpower(case: &Case) -> Result<String, Error> {
         }
         out.push_str("};\n");
     }
+    log::debug!("formatted MATPOWER case ({} bytes)", out.len());
     Ok(out)
 }
 
@@ -164,6 +171,7 @@ fn matrix(out: &mut String, name: &str, rows: impl Iterator<Item = Vec<f64>>) ->
 /// underscores, have at most 63 characters, and not be a MATLAB keyword.
 pub fn save_matpower(path: impl AsRef<Path>, case: &Case) -> Result<(), Error> {
     let path = path.as_ref();
+    log::info!("saving MATPOWER case to {}", path.display());
     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     if !name.starts_with(|c: char| c.is_ascii_alphabetic())
         || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -198,5 +206,6 @@ pub fn save_matpower(path: impl AsRef<Path>, case: &Case) -> Result<(), Error> {
     }
     let body = format_matpower(case)?;
     std::fs::write(path, format!("function mpc = {name}\n{body}end\n"))?;
+    log::info!("saved MATPOWER case to {}", path.display());
     Ok(())
 }

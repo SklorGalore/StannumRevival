@@ -21,11 +21,21 @@ All notable changes to this project will be documented here. This project uses
   or full PTDF matrices, and masked or raw LODF matrices.
 - Sensitivity-run progress logging with model, case, solver, balancing, timing,
   convergence, matrix dimensions, and explicit failure reporting.
+- Diagnostic logging for MATPOWER and RAW I/O, conversion warnings, network
+  assembly, AC Newton iterations, DC solves, reactive-limit passes, sensitivity
+  matrices, CLI commands, and GUI startup. Interactive REPL sessions log at
+  `info` automatically; `RUST_LOG` controls verbosity and non-interactive logs.
+- UTF-8 text report output through a `to <path>` suffix on summary, result-table,
+  sensitivity, Jacobian, PTDF, LODF, and option commands.
+- CSV export selected by a `.csv` destination for 2D Jacobian, PTDF, and LODF
+  matrices and for summary, bus, generator, flow, and option tables.
 
 ### Changed
 
 - AC branch-flow sensitivity assembly now exploits the endpoint sparsity of
   branch derivatives instead of multiplying dense zero-filled rows.
+- RAW section parsing now follows the revision-defined section order and `0`
+  terminators without interpreting human-readable `@!` section headers.
 
 ## 0.1.0 - 2026-09-14
 
