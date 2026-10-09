@@ -1,4 +1,5 @@
 //! Interactive power-flow command line.
+mod sensitivity_view;
 use rs_power::{
     Case, Initialization, InjectionVariable, LodfBridgeHandling, Model, PowerFlowOptions,
     PowerFlowResult, RawOptions, SolveStatus, StateVariable, calculate_sensitivities,
@@ -21,6 +22,8 @@ const HELP: &str = "Commands:
   summary                     Show case size and latest solve status
   solve [ac|dc]               Solve the working case
   sensitivities [ac|dc]       Solve and show state and branch-flow sensitivities
+  sensitivities [ac|dc] bus <id> [p|q] [units engineering|raw] [top <n>|all]
+                              Investigate one injection (default p, engineering, top 20)
   jacobian [reduced|full]     Show the AC power-flow Jacobian
   ptdf [bus-id ...]           Show all or selected DC PTDF columns
   lodf [mask|raw]             Show the DC LODF matrix (default mask)
@@ -423,11 +426,15 @@ impl Session {
                     );
                 }
             }
-            ("sensitivities" | "sensitivity", "" | "ac" | "dc") => {
+            ("sensitivities" | "sensitivity", args) => {
                 let case = self.input.as_ref().ok_or("load a case first")?;
+                let request = SensitivityRequest::parse(args)?;
                 let mut options = self.options.clone();
-                if !args.is_empty() {
-                    options.model = model(args)?;
+                if let Some(model) = request.model {
+                    options.model = model;
+                }
+                if let Some(injection) = request.injection {
+                    validate_injection(case, options.model, injection)?;
                 }
                 writeln!(out, "Sensitivity analysis")?;
                 writeln!(out, "  model: {}", model_name(options.model))?;
@@ -497,7 +504,17 @@ impl Session {
                     sensitivity.branch_flow_sensitivities.len(),
                     sensitivity.injection_variables.len()
                 )?;
-                write_sensitivities(&sensitivity, out)?;
+                if let Some(injection) = request.injection {
+                    write_selected_sensitivities(
+                        &sensitivity,
+                        &request,
+                        injection,
+                        options.model,
+                        out,
+                    )?;
+                } else {
+                    write_sensitivities(&sensitivity, out)?;
+                }
                 if self.update_on_solve {
                     self.input = Some(sensitivity.power_flow.case.clone());
                 }
@@ -664,6 +681,165 @@ fn injection_label(variable: InjectionVariable) -> String {
         InjectionVariable::ActivePower(bus) => format!("P({bus})"),
         InjectionVariable::ReactivePower(bus) => format!("Q({bus})"),
     }
+}
+
+struct SensitivityRequest {
+    model: Option<Model>,
+    injection: Option<InjectionVariable>,
+    units: sensitivity_view::Units,
+    top: Option<usize>,
+}
+
+impl SensitivityRequest {
+    fn parse(args: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut tokens = args.split_whitespace().peekable();
+        let mut request = Self {
+            model: None,
+            injection: None,
+            units: sensitivity_view::Units::Engineering,
+            top: Some(20),
+        };
+        if let Some(&value @ ("ac" | "dc")) = tokens.peek() {
+            request.model = Some(model(value)?);
+            tokens.next();
+        }
+        let Some(first) = tokens.next() else {
+            return Ok(request);
+        };
+        if first != "bus" {
+            return Err("expected bus <id> after sensitivity model; type help".into());
+        }
+        let bus = tokens
+            .next()
+            .ok_or("bus requires an external bus ID")?
+            .parse::<u32>()
+            .map_err(|_| "bus requires an external bus ID")?;
+        request.injection = Some(match tokens.peek() {
+            Some(&"q") => {
+                tokens.next();
+                InjectionVariable::ReactivePower(bus)
+            }
+            _ => {
+                if tokens.peek() == Some(&"p") {
+                    tokens.next();
+                }
+                InjectionVariable::ActivePower(bus)
+            }
+        });
+        let mut has_units = false;
+        let mut has_limit = false;
+        while let Some(token) = tokens.next() {
+            match token {
+                "units" if !has_units => {
+                    has_units = true;
+                    request.units = match tokens.next() {
+                        Some("engineering") => sensitivity_view::Units::Engineering,
+                        Some("raw") => sensitivity_view::Units::Raw,
+                        _ => return Err("units must be engineering or raw".into()),
+                    };
+                }
+                "top" if !has_limit => {
+                    has_limit = true;
+                    let top = tokens
+                        .next()
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .filter(|&value| value > 0)
+                        .ok_or("top must be a positive integer")?;
+                    request.top = Some(top);
+                }
+                "all" if !has_limit => {
+                    has_limit = true;
+                    request.top = None;
+                }
+                _ => return Err("unknown or repeated sensitivity argument; type help".into()),
+            }
+        }
+        Ok(request)
+    }
+}
+
+fn validate_injection(
+    case: &Case,
+    model: Model,
+    injection: InjectionVariable,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let id = match injection {
+        InjectionVariable::ActivePower(id) | InjectionVariable::ReactivePower(id) => id,
+    };
+    let bus = case
+        .buses
+        .iter()
+        .find(|bus| bus.id == id)
+        .ok_or_else(|| format!("unknown sensitivity bus ID {id}"))?;
+    if matches!(injection, InjectionVariable::ReactivePower(_)) && model == Model::Dc {
+        return Err("reactive injections are unavailable in DC".into());
+    }
+    match bus.kind {
+        rs_power::BusType::Reference => {
+            return Err(
+                "reference-bus injection columns are omitted; choose a non-reference bus".into(),
+            );
+        }
+        rs_power::BusType::Isolated => {
+            return Err("isolated-bus injection columns are omitted".into());
+        }
+        _ => {}
+    }
+    if matches!(injection, InjectionVariable::ReactivePower(_)) && bus.kind != rs_power::BusType::Pq
+    {
+        return Err("reactive injection requires a PQ bus".into());
+    }
+    Ok(())
+}
+
+fn write_selected_sensitivities(
+    sensitivity: &rs_power::PowerFlowSensitivity,
+    request: &SensitivityRequest,
+    injection: InjectionVariable,
+    model: Model,
+    out: &mut impl Write,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use sensitivity_view::{ResponseOrder, format_value, quantities, responses, sort_responses};
+    let column = sensitivity
+        .injection_variables
+        .iter()
+        .position(|&variable| variable == injection)
+        .ok_or("selected injection is unavailable at the solved operating point; bus types may have changed during Q-limit enforcement")?;
+    writeln!(
+        out,
+        "Injection: {}",
+        sensitivity_view::injection_label(&sensitivity.power_flow.case, injection)
+    )?;
+    writeln!(out, "{}", sensitivity_view::EXPLANATION)?;
+    writeln!(out, "{}", sensitivity_view::COLUMN_EXPLANATION)?;
+    writeln!(
+        out,
+        "Ranked by absolute response within each quantity; signs retained."
+    )?;
+    for quantity in quantities(model) {
+        let mut rows = responses(sensitivity, column, quantity, request.units);
+        sort_responses(&mut rows, ResponseOrder::Magnitude);
+        let total = rows.len();
+        let shown = request.top.unwrap_or(total).min(total);
+        writeln!(
+            out,
+            "\n{} ({}; showing {shown} of {total})",
+            quantity.title(),
+            quantity.units(request.units, injection),
+        )?;
+        let width = rows
+            .iter()
+            .take(shown)
+            .map(|row| row.label.chars().count())
+            .max()
+            .unwrap_or(8)
+            .max(8);
+        writeln!(out, "{:<width$} {:>14}", "Response", "Derivative")?;
+        for row in rows.iter().take(shown) {
+            writeln!(out, "{:<width$} {:>14}", row.label, format_value(row.value))?;
+        }
+    }
+    Ok(())
 }
 
 fn write_sensitivities(

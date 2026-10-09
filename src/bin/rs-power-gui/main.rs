@@ -1,5 +1,8 @@
 mod app;
 mod overview;
+mod sensitivities;
+#[path = "../../sensitivity_view.rs"]
+mod sensitivity_view;
 mod tables;
 mod theme;
 mod worker;

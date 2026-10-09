@@ -1,10 +1,10 @@
 use eframe::egui;
-use rs_power::{Case, PowerFlowOptions, PowerFlowResult, PowerFlowSensitivity};
+use rs_power::{Case, Model, PowerFlowOptions, PowerFlowResult, PowerFlowSensitivity};
 use std::sync::mpsc::{self, Receiver};
 
 pub enum JobResult {
     Solve(Result<PowerFlowResult, String>),
-    Sensitivity(Result<PowerFlowSensitivity, String>),
+    Sensitivity(Model, Result<PowerFlowSensitivity, String>),
 }
 
 pub struct Job {
@@ -31,7 +31,7 @@ impl Job {
         std::thread::spawn(move || {
             let result = rs_power::calculate_sensitivities(&case, &options)
                 .map_err(|error| error.to_string());
-            let _ = sender.send(JobResult::Sensitivity(result));
+            let _ = sender.send(JobResult::Sensitivity(options.model, result));
             context.request_repaint();
         });
         Self {

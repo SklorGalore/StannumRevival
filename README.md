@@ -114,6 +114,37 @@ size, solver settings, balancing convention, and state variables, and flushes
 that progress message immediately. It then reports elapsed time, convergence,
 and result dimensions before printing the matrices. Debug builds also note that
 AC linear algebra is substantially faster under `cargo run --release`.
+
+To investigate one injection bus, use
+`sensitivities [ac|dc] bus <id> [p|q] [units engineering|raw] [top <n>|all]`:
+
+```text
+rs-power> sensitivities ac bus 5
+rs-power> sensitivities ac bus 5 q top 10
+rs-power> sensitivities dc bus 2 all to bus2.txt
+rs-power> sensitivities ac bus 5 q units raw all
+```
+
+The selected-bus view defaults to active injection (`p`), engineering units,
+and the 20 largest absolute responses **per quantity**, retaining their signs
+and reporting displayed/total counts. Angle derivatives are degrees/MW or
+degrees/MVAr; magnitude derivatives are p.u./MW or p.u./MVAr. Branch derivatives
+are MW or MVAr per MW or MVAr of injection. `units raw` displays radians and
+per-unit derivatives. Numbers display six significant digits, with scientific
+notation for small or large values. `all` includes every response; ties retain
+original row order. Branches show their input row, endpoints, names when
+available, and offline status. DC reports include angles and active flows only.
+
+Positive injection means added generation or reduced demand. Active injections
+are balanced at the reference bus in the same island. Branch-end flows are
+positive into the branch, so a negative derivative means increasing injection
+reduces that end's flow. These are first-order responses at the solved operating
+point. Reference and isolated bus columns are omitted; reactive (`q`) injection
+requires an AC PQ bus. Input bus classifications are checked before solving;
+Q-limit enforcement can change which columns exist at the final operating point.
+The original unselected report keeps its existing format and units. Both report
+styles support text destinations; combined sensitivity CSV export is unchanged.
+
 `jacobian [reduced|full]` evaluates the AC Jacobian at the latest case voltages.
 `ptdf` prints the full branch-by-bus DC matrix, while optional external bus IDs
 select and order columns (for example, `ptdf 4 5 6`).
@@ -156,7 +187,14 @@ cargo run --features gui --bin rs-power-gui
 
 Open or drag in a MATPOWER or PSS/E RAW case, configure an AC or DC solve, and
 inspect convergence, operating-limit checks, and searchable bus, generator, and
-branch-flow tables. Sensitivities are calculated on demand. Solves and
+branch-flow tables. Sensitivities are calculated on demand. Select an injection
+by bus ID or name to inspect separate angle, voltage-magnitude, and branch-flow
+tables. Switch between engineering and raw units, choose a branch-flow component,
+filter response labels, and sort by absolute response, signed response, or
+original row order. Every response is accessible through scrolling with fixed
+table headers. Hover over truncated labels for full names and over derivatives
+for full precision; expand "How to
+read these results" for units and sign conventions. Solves and
 sensitivity calculations run in the background so the window stays responsive.
 The latest input or solved case can be exported in MATPOWER format.
 

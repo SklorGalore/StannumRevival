@@ -27,6 +27,149 @@ fn run_with_log(commands: &str, filter: Option<&str>) -> std::process::Output {
 }
 
 #[test]
+fn selected_bus_report_uses_engineering_units_on_the_case_base() {
+    let mut case = rs_power::load_matpower("tests/fixtures/case9.m").unwrap();
+    case.base_mva = 50.0;
+    let path =
+        std::env::temp_dir().join(format!("rs_power_selected_base_{}.m", std::process::id()));
+    rs_power::save_matpower(&path, &case).unwrap();
+    let reference = rs_power::calculate_sensitivities(&case, &Default::default()).unwrap();
+    let output = run(&format!(
+        "load {}\nsensitivities ac bus 2 all\n",
+        path.display()
+    ));
+    std::fs::remove_file(path).unwrap();
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("Injection: Bus 2 active power"), "{text}");
+    assert!(text.contains("degrees/MW"), "{text}");
+    assert!(text.contains("p.u./MW"), "{text}");
+    assert!(text.contains("MW/MW"), "{text}");
+    assert!(text.contains("MVAr/MW"), "{text}");
+    let column = reference
+        .injection_variables
+        .iter()
+        .position(|v| *v == rs_power::InjectionVariable::ActivePower(2))
+        .unwrap();
+    for (state, raw) in reference
+        .state_variables
+        .iter()
+        .zip(&reference.state_sensitivities)
+    {
+        let (label, expected) = match state {
+            rs_power::StateVariable::VoltageAngle(bus) => (
+                format!("Bus {bus} voltage angle"),
+                raw[column].to_degrees() / 50.0,
+            ),
+            rs_power::StateVariable::VoltageMagnitude(bus) => {
+                (format!("Bus {bus} voltage magnitude"), raw[column] / 50.0)
+            }
+        };
+        let line = text
+            .lines()
+            .find(|line| line.trim_start().starts_with(&label))
+            .unwrap();
+        let actual: f64 = line.split_whitespace().last().unwrap().parse().unwrap();
+        assert!(
+            (actual - expected).abs() <= expected.abs() * 6e-6 + 1e-12,
+            "{line}: expected {expected}"
+        );
+    }
+}
+
+#[test]
+fn selected_bus_reports_limit_each_quantity_and_keep_signs() {
+    let output = run("load tests/fixtures/case9.m\nsensitivities dc bus 2 top 1\n");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{text}");
+    assert!(
+        text.contains("Voltage angle (degrees/MW; showing 1 of 8)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("From-end active flow (MW/MW; showing 1 of 9)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("To-end active flow (MW/MW; showing 1 of 9)"),
+        "{text}"
+    );
+    assert!(!text.contains("reactive flow"), "{text}");
+    assert!(!text.contains("Voltage magnitude ("), "{text}");
+    let values: Vec<f64> = text
+        .lines()
+        .filter(|l| l.trim_start().starts_with("Branch "))
+        .map(|l| l.split_whitespace().last().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(values.len(), 2, "{text}");
+    assert!(values[0] * values[1] < 0.0, "{text}");
+}
+
+#[test]
+fn selected_reactive_injection_supports_raw_units_and_text_export() {
+    let path = std::env::temp_dir().join(format!("rs-power-selected-q-{}.txt", std::process::id()));
+    let output = run(&format!(
+        "load tests/fixtures/case9.m\nsensitivities ac bus 5 q units raw all to \"{}\"\n",
+        path.display()
+    ));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success(), "{text}");
+    let report = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(
+        report.contains("Injection: Bus 5 reactive power"),
+        "{report}"
+    );
+    assert!(report.contains("rad/p.u."), "{report}");
+    assert!(report.contains("p.u./p.u."), "{report}");
+    assert!(report.contains("showing 6 of 6"), "{report}");
+}
+
+#[test]
+fn invalid_selected_injections_are_rejected_before_solving() {
+    for (command, message) in [
+        ("sensitivities dc bus 999", "unknown sensitivity bus ID 999"),
+        (
+            "sensitivities dc bus 1",
+            "reference-bus injection columns are omitted",
+        ),
+        (
+            "sensitivities dc bus 2 q",
+            "reactive injections are unavailable in DC",
+        ),
+        (
+            "sensitivities ac bus 2 q",
+            "reactive injection requires a PQ bus",
+        ),
+        (
+            "sensitivities ac bus 2 top 0",
+            "top must be a positive integer",
+        ),
+    ] {
+        let output = run(&format!(
+            "load tests/fixtures/case9.m\n{command}\nsummary\n"
+        ));
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!output.status.success(), "{command}: {text}");
+        assert!(text.contains(message), "{command}: {text}");
+        assert!(
+            !text.contains("Computing operating point"),
+            "{command}: {text}"
+        );
+    }
+}
+
+#[test]
+fn selected_sensitivity_failure_does_not_publish_a_report() {
+    let output =
+        run("load tests/fixtures/case9.m\nset max_iterations 0\nsensitivities ac bus 2\nsummary\n");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(!output.status.success(), "{text}");
+    assert!(text.contains("sensitivities are unavailable"), "{text}");
+    assert!(!text.contains("Injection: Bus 2"), "{text}");
+}
+
+#[test]
 fn batch_logging_is_opt_in_and_separate_from_command_output() {
     let commands = "load tests/fixtures/case9.m\nsolve dc\n";
     let quiet = run(commands);

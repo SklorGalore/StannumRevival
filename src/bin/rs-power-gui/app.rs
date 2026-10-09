@@ -1,8 +1,8 @@
-use crate::{overview, tables, theme, worker};
+use crate::{overview, sensitivities, tables, theme, worker};
 use eframe::egui;
 use rs_power::{
-    Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
-    PowerFlowSensitivity, RawOptions, RawWarning, StateVariable,
+    Case, Initialization, Model, PowerFlowOptions, PowerFlowResult, PowerFlowSensitivity,
+    RawOptions, RawWarning,
 };
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
@@ -22,6 +22,8 @@ pub struct PowerApp {
     input: Option<Case>,
     result: Option<PowerFlowResult>,
     sensitivity: Option<PowerFlowSensitivity>,
+    sensitivity_model: Model,
+    sensitivity_ui: sensitivities::SensitivityUi,
     warnings: Vec<RawWarning>,
     options: PowerFlowOptions,
     page: Page,
@@ -45,6 +47,8 @@ impl Default for PowerApp {
             input: None,
             result: None,
             sensitivity: None,
+            sensitivity_model: Model::Ac,
+            sensitivity_ui: sensitivities::SensitivityUi::default(),
             warnings: Vec::new(),
             options: PowerFlowOptions::default(),
             page: Page::Overview,
@@ -308,38 +312,14 @@ impl PowerApp {
                 self.start_sensitivity(context);
             }
         });
-        ui.label("State response to nodal injections at a converged operating point.");
+        ui.label("Investigate voltage and branch-flow responses to one nodal injection.");
         ui.add_space(10.0);
         let Some(sensitivity) = &self.sensitivity else {
             ui.label("Select Calculate to build the sensitivity matrices.");
             return;
         };
-        ui.label(format!(
-            "{} states × {} injections · {} branches",
-            sensitivity.state_variables.len(),
-            sensitivity.injection_variables.len(),
-            sensitivity.branch_flow_sensitivities.len()
-        ));
-        ui.small("Previewing up to 12 state rows and 8 injection columns.");
-        ui.add_space(6.0);
-        egui::ScrollArea::both().show(ui, |ui| {
-            egui::Grid::new("sensitivity_preview")
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.strong("State");
-                    for variable in sensitivity.injection_variables.iter().take(8) {
-                        ui.strong(injection_label(*variable));
-                    }
-                    ui.end_row();
-                    for (row, state) in sensitivity.state_variables.iter().take(12).enumerate() {
-                        ui.label(state_label(*state));
-                        for value in sensitivity.state_sensitivities[row].iter().take(8) {
-                            ui.monospace(format!("{value:.4e}"));
-                        }
-                        ui.end_row();
-                    }
-                });
-        });
+        self.sensitivity_ui
+            .show(ui, sensitivity, self.sensitivity_model);
     }
 
     fn warning_window(&mut self, context: &egui::Context) {
@@ -410,6 +390,7 @@ impl PowerApp {
                 self.result = None;
                 self.sensitivity = None;
                 self.job = None;
+                self.sensitivity_ui = sensitivities::SensitivityUi::default();
                 self.warnings = warnings;
                 self.messages.clear();
                 self.messages.push(message);
@@ -489,18 +470,20 @@ impl PowerApp {
                 self.job = None;
                 self.page = Page::Overview;
             }
-            Some(Ok(worker::JobResult::Sensitivity(Ok(sensitivity)))) => {
+            Some(Ok(worker::JobResult::Sensitivity(model, Ok(sensitivity)))) => {
                 self.messages.push(format!(
                     "Calculated {} × {} state sensitivity matrix.",
                     sensitivity.state_variables.len(),
                     sensitivity.injection_variables.len()
                 ));
                 self.result = Some(sensitivity.power_flow.clone());
+                self.sensitivity_model = model;
+                self.sensitivity_ui = sensitivities::SensitivityUi::default();
                 self.sensitivity = Some(sensitivity);
                 self.job = None;
             }
             Some(Ok(worker::JobResult::Solve(Err(error))))
-            | Some(Ok(worker::JobResult::Sensitivity(Err(error)))) => {
+            | Some(Ok(worker::JobResult::Sensitivity(_, Err(error)))) => {
                 self.error = Some(error);
                 self.job = None;
             }
@@ -540,16 +523,97 @@ fn initialization_name(initialization: Initialization) -> &'static str {
     }
 }
 
-fn state_label(variable: StateVariable) -> String {
-    match variable {
-        StateVariable::VoltageAngle(bus) => format!("Va({bus})"),
-        StateVariable::VoltageMagnitude(bus) => format!("Vm({bus})"),
-    }
-}
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
 
-fn injection_label(variable: InjectionVariable) -> String {
-    match variable {
-        InjectionVariable::ActivePower(bus) => format!("P({bus})"),
-        InjectionVariable::ReactivePower(bus) => format!("Q({bus})"),
+    pub(crate) fn rendered_text(draw: impl FnMut(&mut egui::Ui)) -> String {
+        fn text(shape: &egui::epaint::Shape, output: &mut String) {
+            match shape {
+                egui::epaint::Shape::Text(shape) => {
+                    output.push_str(&shape.galley.job.text);
+                    output.push('\n');
+                }
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        text(shape, output);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let output = rendered_output(draw);
+        let mut rendered = String::new();
+        for shape in output.shapes {
+            text(&shape.shape, &mut rendered);
+        }
+        rendered
+    }
+
+    pub(crate) fn rendered_output(mut draw: impl FnMut(&mut egui::Ui)) -> egui::FullOutput {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 1200.0),
+                )),
+                ..Default::default()
+            },
+            |root| {
+                egui::CentralPanel::default().show(root, |ui| draw(ui));
+            },
+        );
+        output.textures_delta.clear();
+        output
+    }
+
+    fn sensitivity_text(app: &mut PowerApp) -> String {
+        rendered_text(|ui| {
+            let context = ui.ctx().clone();
+            app.sensitivity_page(ui, &context);
+        })
+    }
+
+    #[test]
+    fn sensitivity_page_shows_selected_injection_and_branch_responses() {
+        let case = rs_power::load_matpower("tests/fixtures/case9.m").unwrap();
+        let mut app = PowerApp {
+            sensitivity: Some(
+                rs_power::calculate_sensitivities(&case, &PowerFlowOptions::default()).unwrap(),
+            ),
+            ..Default::default()
+        };
+        let text = sensitivity_text(&mut app);
+        assert!(text.contains("Bus 2 active power"), "{text}");
+        assert!(text.contains("degrees/MW"), "{text}");
+        assert!(text.contains("p.u./MW"), "{text}");
+        assert!(text.contains("From-end active flow"), "{text}");
+        assert!(text.contains("Branch "), "{text}");
+        assert!(!text.contains("Previewing"), "{text}");
+    }
+
+    #[test]
+    fn loading_a_case_resets_sensitivity_table_cache() {
+        let mut case = rs_power::load_matpower("tests/fixtures/case9.m").unwrap();
+        let mut app = PowerApp {
+            sensitivity: Some(
+                rs_power::calculate_sensitivities(&case, &PowerFlowOptions::default()).unwrap(),
+            ),
+            ..Default::default()
+        };
+        let before = sensitivity_text(&mut app);
+        app.load_path(PathBuf::from("tests/fixtures/case9.m"));
+        assert!(app.sensitivity.is_none());
+        case.base_mva = 50.0;
+        app.sensitivity =
+            Some(rs_power::calculate_sensitivities(&case, &PowerFlowOptions::default()).unwrap());
+        let after = sensitivity_text(&mut app);
+        let fresh = sensitivity_text(&mut PowerApp {
+            sensitivity: app.sensitivity.clone(),
+            ..Default::default()
+        });
+        assert_ne!(before, after);
+        assert_eq!(after, fresh);
     }
 }

@@ -54,7 +54,7 @@ data over decorative presentation.
 
 The central area switches between the overview and searchable, sortable bus,
 generator, and branch tables. A separate sensitivity workspace shows dimensions
-and a bounded matrix preview only after the user requests calculation.
+and searchable, bus-focused state and branch-flow results after calculation.
 
 ## Interaction and visual rules
 
@@ -97,7 +97,8 @@ presentation concerns out of the numerical library.
 - Voltage, generator reactive-power, and branch rating-A checks.
 - Searchable, sortable bus, generator, and branch-flow tables.
 - MATPOWER export of the loaded or latest solved case.
-- On-demand sensitivity calculation with dimensions and a bounded preview.
+- On-demand sensitivity calculation with dimensions, searchable injection
+  selection, engineering/raw units, and complete virtualized response tables.
 
 ## Deferred work
 
