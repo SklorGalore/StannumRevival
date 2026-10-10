@@ -27,6 +27,10 @@ app.innerHTML=`
 
 const workspace=document.querySelector<HTMLElement>('#workspace')!;
 const fileInput=document.querySelector<HTMLInputElement>('#raw-file')!;
+// Attach input listeners once
+workspace.addEventListener('input',event=>{const input=event.target as HTMLInputElement;if(input.id==='neighborhood-hops'&&input.validity.valid)neighborhoodHops=input.valueAsNumber;});
+workspace.addEventListener('change',event=>{const input=event.target as HTMLInputElement;if(input.type==='checkbox'&&input.getAttribute('aria-label')==='Treat zero-impedance branches as the same node')void changeTopology(input.checked);});
+fileInput.addEventListener('change',()=>{const file=fileInput.files?.[0];if(file) void openFile(file);fileInput.value='';});
 const engine=new BrowserEngine();
 const network=new NetworkGraph();
 let snapshot:Snapshot|null=null;
@@ -55,6 +59,7 @@ let path:Path|null=null;
 let pathText='Choose two bus numbers to find a path.';
 let pathError=false;
 let pathBusy=false;
+let pathFormListenerAdded=false;
 let fromBus='';
 let toBus='';
 let neighborhoodHops=2;
@@ -145,8 +150,19 @@ function render() {
     network.render(document.querySelector<HTMLElement>('#network-canvas')!,graphData,snapshot,path,(bus,eq)=>selectInspection({bus,equipment:eq}));
     network.setSelection(sourceRecordBus===null?{bus:selectedBus,equipment:selectedEquipment}:{bus:null,equipment:null});
   }
-  const pathForm=document.querySelector('#path-form')!;pathForm.addEventListener('submit',findPath);
+  if (snapshot) {
+  const pathForm=document.querySelector('#path-form')!;
+  if (!pathFormListenerAdded) { pathForm.addEventListener('submit',findPath); pathFormListenerAdded=true; }
   if(topologyBusy) (pathForm.querySelector('button') as HTMLButtonElement).disabled=true;
+  const pathResultEl=document.querySelector('[data-testid="path-result"]');
+  if(pathResultEl) {
+    pathResultEl.textContent=pathText;
+  } else {
+    const p=document.createElement('p');
+    p.dataset.testid='path-result';
+    pathForm.appendChild(p);
+  }
+}
   restoreFocus();
 }
 
@@ -347,9 +363,9 @@ app.addEventListener('click',event=>{
   else if(action==='json'&&snapshot&&!topologyBusy) download(JSON.stringify({format_version:1,filename,case:snapshot.case,graph:snapshot.graph,merge_zero_impedance:snapshot.graph.merge_zero_impedance,analysis:snapshot.analysis,path},null,2),'application/json','json');
 });
 app.addEventListener('input',event=>{if((event.target as HTMLElement).id==='result-search'){query=(event.target as HTMLInputElement).value;page=0;renderTable();}});
-workspace.addEventListener('input',event=>{const input=event.target as HTMLInputElement;if(input.id==='neighborhood-hops'&&input.validity.valid)neighborhoodHops=input.valueAsNumber;});
-workspace.addEventListener('change',event=>{const input=event.target as HTMLInputElement;if(input.type==='checkbox'&&input.getAttribute('aria-label')==='Treat zero-impedance branches as the same node')void changeTopology(input.checked);});
-fileInput.addEventListener('change',()=>{const file=fileInput.files?.[0];if(file) void openFile(file);fileInput.value='';});
+
+
+
 workspace.addEventListener('dragover',event=>{event.preventDefault();workspace.classList.add('dragging');});
 workspace.addEventListener('dragleave',event=>{if(!workspace.contains(event.relatedTarget as Node)) workspace.classList.remove('dragging');});
 workspace.addEventListener('drop',event=>{event.preventDefault();workspace.classList.remove('dragging');const file=event.dataTransfer?.files[0];if(file) void openFile(file);});
