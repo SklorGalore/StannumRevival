@@ -32,9 +32,15 @@ export class BrowserEngine {
     });
   }
 
-  async load(bytes:ArrayBuffer):Promise<Snapshot> {
+  async load(bytes:ArrayBuffer,mergeZeroImpedance=false):Promise<Snapshot> {
     this.reset();
-    const response=await this.send({id:++this.sequence,type:'load',bytes},[bytes]);
+    const response=await this.send({id:++this.sequence,type:'load',bytes,mergeZeroImpedance},[bytes]);
+    if (response.type!=='loaded') throw new Error('Unexpected worker response');
+    return response.snapshot;
+  }
+
+  async setMergeZeroImpedance(enabled:boolean):Promise<Snapshot> {
+    const response=await this.send({id:++this.sequence,type:'topology',mergeZeroImpedance:enabled});
     if (response.type!=='loaded') throw new Error('Unexpected worker response');
     return response.snapshot;
   }

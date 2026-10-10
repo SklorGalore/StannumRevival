@@ -15,6 +15,7 @@ fn case(n: i32, pairs: &[(i32, i32)]) -> Case {
         revision: 35,
         base_mva: 100.0,
         frequency_hz: 60.0,
+        zero_impedance_threshold: 0.0001,
         titles: vec![],
         encoding: "UTF-8".into(),
         buses: (1..=n)
@@ -92,6 +93,94 @@ fn parallel_circuits_are_not_bridges_but_contribute_to_degree() {
         a.degrees.iter().map(|d| d.degree).collect::<Vec<_>>(),
         [2, 3, 1]
     );
+}
+
+#[test]
+fn graph_data_groups_transitive_active_zero_impedance_lines_deterministically() {
+    let mut c = case(6, &[(1, 2), (2, 3), (3, 4), (4, 5)]);
+    c.zero_impedance_threshold = 0.1;
+    for (i, (r, x)) in [("0", "-.1"), ("0", ".08"), ("0", ".10001"), (".001", "0")]
+        .into_iter()
+        .enumerate()
+    {
+        c.equipment[i].source.fields.insert("R".into(), r.into());
+        c.equipment[i].source.fields.insert("X".into(), x.into());
+    }
+    c.equipment.push(Equipment {
+        id: "line:4".into(),
+        kind: EquipmentKind::Line,
+        name: String::new(),
+        circuit: "4".into(),
+        buses: vec![5, 6],
+        status: 0,
+        active_terminals: vec![false, false],
+        source: source(),
+    });
+    c.equipment[4].source.fields.insert("R".into(), "0".into());
+    c.equipment[4].source.fields.insert("X".into(), "0".into());
+    c.equipment.push(Equipment {
+        id: "transformer:1:6:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: String::new(),
+        circuit: "A".into(),
+        buses: vec![1, 6],
+        status: 1,
+        active_terminals: vec![true, true],
+        source: source(),
+    });
+    c.equipment[5].source.fields.insert("R".into(), "0".into());
+    c.equipment[5].source.fields.insert("X".into(), "0".into());
+
+    let graph = nodal::topology::Topology::new(&c).graph_data();
+    assert_eq!(graph.zero_impedance_groups, [vec![1, 2, 3]]);
+    assert_eq!(graph.nodes.len(), 6);
+}
+
+#[test]
+fn zero_threshold_disables_groups_and_excluded_buses_are_omitted() {
+    let mut c = case(2, &[(1, 2)]);
+    c.equipment[0].source.fields.insert("R".into(), "0".into());
+    c.equipment[0].source.fields.insert("X".into(), "0".into());
+    c.zero_impedance_threshold = 0.0;
+    assert!(
+        nodal::topology::Topology::new(&c)
+            .graph_data()
+            .zero_impedance_groups
+            .is_empty()
+    );
+
+    c.zero_impedance_threshold = 0.1;
+    c.buses[1].bus_type = 4;
+    assert!(
+        nodal::topology::Topology::new(&c)
+            .graph_data()
+            .zero_impedance_groups
+            .is_empty()
+    );
+}
+
+#[test]
+fn zero_impedance_line_uses_default_zero_resistance_when_field_is_missing_or_blank() {
+    for resistance in [None, Some("")] {
+        let mut c = case(2, &[(1, 2)]);
+        c.zero_impedance_threshold = 0.1;
+        if let Some(resistance) = resistance {
+            c.equipment[0]
+                .source
+                .fields
+                .insert("R".into(), resistance.into());
+        }
+        c.equipment[0]
+            .source
+            .fields
+            .insert("X".into(), "0.05".into());
+        assert_eq!(
+            nodal::topology::Topology::new(&c)
+                .graph_data()
+                .zero_impedance_groups,
+            [vec![1, 2]]
+        );
+    }
 }
 
 #[test]
@@ -183,4 +272,344 @@ fn supplied_cases_analyze_without_losing_equipment_identities() {
                 .all(|b| c.equipment.iter().any(|e| e.id == b.equipment_id))
         );
     }
+}
+
+#[test]
+fn merged_chain_contracts_zero_line_and_keeps_unmerged_default() {
+    let mut c = case(3, &[(1, 2), (2, 3)]);
+    c.equipment[0].source.fields.insert("R".into(), "0".into());
+    c.equipment[0]
+        .source
+        .fields
+        .insert("X".into(), "0.0001".into());
+    let unmerged = nodal::topology::Topology::new(&c);
+    assert_eq!(unmerged.graph_data().nodes.len(), 3);
+
+    let merged = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let graph = merged.graph_data();
+    assert_eq!(
+        graph.nodes.iter().filter_map(|n| n.bus).collect::<Vec<_>>(),
+        [1, 3]
+    );
+    assert_eq!(
+        graph
+            .nodes
+            .iter()
+            .map(|n| n.member_buses.clone())
+            .collect::<Vec<_>>(),
+        [vec![1, 2], vec![3]]
+    );
+    assert!(graph.merge_zero_impedance);
+    assert_eq!(graph.edges.len(), 1);
+    let analysis = merged.analyze(&c);
+    assert_eq!(analysis.original_active_buses, 3);
+    assert_eq!(analysis.active_buses, 2);
+    assert_eq!(analysis.absorbed_equipment, 1);
+    assert_eq!(analysis.active_equipment, 1);
+}
+
+#[test]
+fn merged_paths_resolve_any_group_member_and_return_representatives() {
+    let mut c = case(4, &[(1, 4), (4, 2), (2, 3)]);
+    for index in [0, 1] {
+        c.equipment[index]
+            .source
+            .fields
+            .insert("R".into(), "0".into());
+        c.equipment[index]
+            .source
+            .fields
+            .insert("X".into(), "0".into());
+    }
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    assert_eq!(topology.graph_data().nodes[0].member_buses, [1, 2, 4]);
+    let zero = topology.shortest_path(&c, 2, 4).unwrap().unwrap();
+    assert_eq!(zero.hops, 0);
+    assert_eq!(zero.buses, [1]);
+    assert_eq!(zero.node_ids, ["bus:1"]);
+    let external = topology.shortest_path(&c, 2, 3).unwrap().unwrap();
+    assert_eq!(external.buses, [1, 3]);
+    assert_eq!(external.equipment_ids, ["line:2"]);
+}
+
+#[test]
+fn merged_three_winding_collisions_contract_to_effective_terminals() {
+    let mut c = case(5, &[(1, 2), (3, 4)]);
+    c.equipment[0].source.fields.insert("R".into(), "0".into());
+    c.equipment[0].source.fields.insert("X".into(), "0".into());
+    c.equipment.push(Equipment {
+        id: "transformer:1:2:5:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: "Three".into(),
+        circuit: "A".into(),
+        buses: vec![1, 2, 5],
+        status: 1,
+        active_terminals: vec![true; 3],
+        source: source(),
+    });
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let graph = topology.graph_data();
+    assert_eq!(
+        graph
+            .nodes
+            .iter()
+            .filter(|n| n.equipment_id.is_some())
+            .count(),
+        0
+    );
+    assert_eq!(graph.edges.len(), 2);
+    let path = topology.shortest_path(&c, 2, 5).unwrap().unwrap();
+    assert_eq!(path.hops, 1);
+    assert_eq!(path.buses, [1, 5]);
+    assert_eq!(path.equipment_ids, ["transformer:1:2:5:A"]);
+}
+
+#[test]
+fn contractions_keep_parallel_external_circuits_and_update_cut_analysis() {
+    let mut c = case(4, &[(1, 2), (1, 3), (2, 3), (3, 4)]);
+    for index in [0] {
+        c.equipment[index]
+            .source
+            .fields
+            .insert("R".into(), "0".into());
+        c.equipment[index]
+            .source
+            .fields
+            .insert("X".into(), "0".into());
+    }
+    let merged = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let analysis = merged.analyze(&c);
+    assert_eq!(analysis.active_buses, 3);
+    assert_eq!(
+        analysis
+            .degrees
+            .iter()
+            .map(|degree| degree.degree)
+            .collect::<Vec<_>>(),
+        [2, 3, 1]
+    );
+    assert_eq!(analysis.articulation_buses, [3]);
+    assert_eq!(
+        analysis
+            .bridges
+            .iter()
+            .map(|edge| edge.equipment_id.as_str())
+            .collect::<Vec<_>>(),
+        ["line:3"]
+    );
+    let contracted_edge = merged
+        .graph_data()
+        .edges
+        .into_iter()
+        .filter(|edge| {
+            edge.source == "bus:1" && edge.target == "bus:3"
+                || edge.source == "bus:3" && edge.target == "bus:1"
+        })
+        .count();
+    assert_eq!(contracted_edge, 2);
+}
+
+#[test]
+fn merged_mode_absorbs_one_node_transformer_and_preserves_exclusions() {
+    let mut c = case(4, &[(1, 2), (2, 3), (3, 4)]);
+    for index in 0..2 {
+        c.equipment[index]
+            .source
+            .fields
+            .insert("R".into(), "0".into());
+        c.equipment[index]
+            .source
+            .fields
+            .insert("X".into(), "0".into());
+    }
+    c.buses[3].bus_type = 4;
+    c.equipment.push(Equipment {
+        id: "transformer:1:2:3:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: "Three".into(),
+        circuit: "A".into(),
+        buses: vec![1, 2, 3],
+        status: 1,
+        active_terminals: vec![true; 3],
+        source: source(),
+    });
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let analysis = topology.analyze(&c);
+    assert_eq!(analysis.original_active_buses, 3);
+    assert_eq!(analysis.active_buses, 1);
+    assert_eq!(analysis.excluded_buses, 1);
+    assert_eq!(analysis.absorbed_equipment, 3);
+    assert_eq!(analysis.excluded_equipment, 1);
+    assert_eq!(
+        topology.graph_data().absorbed_equipment_ids,
+        ["line:0", "line:1", "transformer:1:2:3:A"]
+    );
+    assert_eq!(topology.graph_data().nodes[0].member_buses, [1, 2, 3]);
+    assert!(
+        topology
+            .shortest_path(&c, 1, 2)
+            .unwrap()
+            .unwrap()
+            .equipment_ids
+            .is_empty()
+    );
+    assert!(topology.shortest_path(&c, 1, 4).is_err());
+}
+
+#[test]
+fn merged_three_winding_with_three_terminals_uses_junction_and_one_node_is_absorbed() {
+    let mut c = case(4, &[(1, 2)]);
+    c.equipment[0].source.fields.insert("R".into(), "0".into());
+    c.equipment[0].source.fields.insert("X".into(), "0".into());
+    c.equipment.push(Equipment {
+        id: "transformer:1:2:3:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: "Three".into(),
+        circuit: "A".into(),
+        buses: vec![1, 3, 4],
+        status: 1,
+        active_terminals: vec![true; 3],
+        source: source(),
+    });
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let graph = topology.graph_data();
+    assert_eq!(
+        graph
+            .nodes
+            .iter()
+            .filter(|node| node.equipment_id.is_some())
+            .count(),
+        1
+    );
+    let path = topology.shortest_path(&c, 1, 4).unwrap().unwrap();
+    assert_eq!(path.hops, 1);
+    assert_eq!(path.buses, [1, 4]);
+    assert_eq!(
+        path.node_ids,
+        ["bus:1", "junction:transformer:1:2:3:A", "bus:4"]
+    );
+}
+
+#[test]
+fn merged_option_respects_zero_threshold_and_all_excluded_cases() {
+    let mut c = case(2, &[(1, 2)]);
+    c.equipment[0].source.fields.insert("R".into(), "0".into());
+    c.equipment[0].source.fields.insert("X".into(), "0".into());
+    c.zero_impedance_threshold = 0.0;
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    assert_eq!(topology.graph_data().nodes.len(), 2);
+    assert!(topology.graph_data().zero_impedance_groups.is_empty());
+
+    c.buses.iter_mut().for_each(|bus| bus.bus_type = 4);
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let analysis = topology.analyze(&c);
+    assert_eq!(analysis.original_active_buses, 0);
+    assert_eq!(analysis.active_buses, 0);
+    assert_eq!(analysis.excluded_buses, 2);
+    assert!(analysis.islands.is_empty());
+    assert_eq!(analysis.excluded_equipment, 1);
+}
+
+#[test]
+fn unmerged_partial_three_winding_still_uses_star_in_paths() {
+    let mut c = case(3, &[]);
+    c.equipment.push(Equipment {
+        id: "transformer:1:2:3:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: "Three".into(),
+        circuit: "A".into(),
+        buses: vec![1, 2, 3],
+        status: 2,
+        active_terminals: vec![true, false, true],
+        source: source(),
+    });
+    let topology = nodal::topology::Topology::new(&c);
+    let path = topology.shortest_path(&c, 1, 3).unwrap().unwrap();
+    assert_eq!(
+        path.node_ids,
+        ["bus:1", "junction:transformer:1:2:3:A", "bus:3"]
+    );
+    assert_eq!(
+        path.connection_ids,
+        [
+            "connection:transformer:1:2:3:A:w1",
+            "connection:transformer:1:2:3:A:w3"
+        ]
+    );
+}
+
+#[test]
+fn merged_partial_three_winding_uses_one_direct_effective_connection() {
+    let mut c = case(3, &[]);
+    c.equipment.push(Equipment {
+        id: "transformer:1:2:3:A".into(),
+        kind: EquipmentKind::Transformer,
+        name: "Three".into(),
+        circuit: "A".into(),
+        buses: vec![1, 2, 3],
+        status: 2,
+        active_terminals: vec![true, false, true],
+        source: source(),
+    });
+    let topology = nodal::topology::Topology::with_options(
+        &c,
+        nodal::topology::TopologyOptions {
+            merge_zero_impedance: true,
+        },
+    );
+    let graph = topology.graph_data();
+    assert_eq!(
+        graph
+            .nodes
+            .iter()
+            .filter(|node| node.equipment_id.is_some())
+            .count(),
+        0
+    );
+    assert_eq!(graph.edges.len(), 1);
+    assert_eq!(graph.edges[0].id, "connection:transformer:1:2:3:A:w1");
+    let path = topology.shortest_path(&c, 1, 3).unwrap().unwrap();
+    assert_eq!(path.hops, 1);
+    assert_eq!(path.node_ids, ["bus:1", "bus:3"]);
+    assert_eq!(path.connection_ids, [graph.edges[0].id.as_str()]);
 }

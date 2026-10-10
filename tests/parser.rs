@@ -85,6 +85,32 @@ fn parses_without_annotations_and_preserves_quoted_delimiters_and_titles() {
 }
 
 #[test]
+fn system_wide_threshold_defaults_and_parses_case_insensitive_key_with_whitespace() {
+    let default = parse_raw(&raw(&[""])).unwrap();
+    assert_eq!(default.zero_impedance_threshold, 0.0001);
+
+    let configured = parse_raw(&raw(&["GENERAL,  thRsHz   =   .00025  "])).unwrap();
+    assert_eq!(configured.zero_impedance_threshold, 0.00025);
+
+    let disabled = parse_raw(&raw(&["GENERAL, THRSHZ = 0"])).unwrap();
+    assert_eq!(disabled.zero_impedance_threshold, 0.0);
+
+    let unrelated = parse_raw(&raw(&["OTHER, THRSHZ=.9"])).unwrap();
+    assert_eq!(unrelated.zero_impedance_threshold, 0.0001);
+    let positional = parse_raw(&raw(&["GENERAL, THRSHZ, .9"])).unwrap();
+    assert_eq!(positional.zero_impedance_threshold, 0.0001);
+}
+
+#[test]
+fn rejects_invalid_system_wide_zero_impedance_thresholds() {
+    for threshold in ["-0.1", "NaN", "inf"] {
+        let error = parse_raw(&raw(&[&format!("GENERAL, THRSHZ={threshold}")])).unwrap_err();
+        assert_eq!(error.section, "SYSTEM-WIDE");
+        assert!(error.message.contains("THRSHZ"));
+    }
+}
+
+#[test]
 fn rejects_bad_references_duplicates_and_malformed_numbers_with_source() {
     for (bus, branch, fragment) in [
         ("1,'One',138,1", "1,9,'1',0,.1", "bus 9"),

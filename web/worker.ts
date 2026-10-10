@@ -15,6 +15,11 @@ scope.onmessage=(event:MessageEvent<WorkerRequest>)=>{
       if (request.type==='load') {
         current?.free();current=null;
         current=parse_raw(new Uint8Array(request.bytes));
+        current.set_merge_zero_impedance(request.mergeZeroImpedance);
+        response={id:request.id,type:'loaded',snapshot:current.snapshot() as Snapshot};
+      } else if (request.type==='topology') {
+        if (!current) throw new Error('Open a RAW file before changing topology.');
+        current.set_merge_zero_impedance(request.mergeZeroImpedance);
         response={id:request.id,type:'loaded',snapshot:current.snapshot() as Snapshot};
       } else {
         if (!current) throw new Error('Open a RAW file before finding a path.');

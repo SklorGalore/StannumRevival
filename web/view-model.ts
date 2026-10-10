@@ -1,6 +1,10 @@
 import type { GraphData } from './types';
 export function focusedGraph(graph:GraphData,selected:Set<string>): GraphData {
-  return {nodes:graph.nodes.filter(n=>selected.has(n.id)),edges:graph.edges.filter(e=>selected.has(e.source)&&selected.has(e.target))};
+  return {...graph,nodes:graph.nodes.filter(n=>selected.has(n.id)),edges:graph.edges.filter(e=>selected.has(e.source)&&selected.has(e.target))};
+}
+
+export function nodeForBus(graph:GraphData,bus:number) {
+  return graph.nodes.find(node=>node.bus===bus||node.member_buses?.includes(bus));
 }
 
 export function neighborhood(graph:GraphData,bus:number,hops=2): GraphData {
@@ -13,9 +17,10 @@ export function neighborhood(graph:GraphData,bus:number,hops=2): GraphData {
       const ids=incident.get(node)??new Set<string>();ids.add(edge.equipment_id);incident.set(node,ids);
     }
   }
-  const selected=new Set([`bus:${bus}`]);
+  const origin=nodeForBus(graph,bus);
+  const selected=new Set(origin?[origin.id]:[`bus:${bus}`]);
   let frontier=new Set(selected);
-  for (let i=0;i<hops;i++) {
+  for (let i=0;i<hops&&frontier.size;i++) {
     const next=new Set<string>();
     for (const node of frontier) {
       for (const eq of incident.get(node)??[]) {

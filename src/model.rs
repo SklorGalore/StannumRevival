@@ -72,6 +72,7 @@ pub struct Case {
     pub revision: i32,
     pub base_mva: f64,
     pub frequency_hz: f64,
+    pub zero_impedance_threshold: f64,
     pub titles: Vec<String>,
     pub encoding: String,
     pub buses: Vec<Bus>,

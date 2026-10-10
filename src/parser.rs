@@ -210,6 +210,7 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
         revision: 35,
         base_mva,
         frequency_hz,
+        zero_impedance_threshold: 0.0001,
         titles: lines[header_index + 1..header_index + 3]
             .iter()
             .map(|s| s.to_string())
@@ -280,6 +281,11 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
         if tokens.len() == 1 && tokens[0] == "0" {
             section_index += 1;
             continue;
+        }
+        if section == "SYSTEM-WIDE" {
+            if let Some(value) = system_wide_threshold(&tokens, line)? {
+                case.zero_impedance_threshold = value;
+            }
         }
         if !matches!(
             section,
@@ -523,4 +529,37 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
         }
     }
     Ok(case)
+}
+
+fn system_wide_threshold(fields: &[String], line: usize) -> Result<Option<f64>, Diagnostic> {
+    if !fields
+        .first()
+        .is_some_and(|field| field.trim().eq_ignore_ascii_case("GENERAL"))
+    {
+        return Ok(None);
+    }
+    for field in fields.iter().skip(1) {
+        let trimmed = field.trim();
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim().eq_ignore_ascii_case("THRSHZ") {
+            return parse_threshold(value.trim(), line).map(Some);
+        }
+    }
+    Ok(None)
+}
+
+fn parse_threshold(value: &str, line: usize) -> Result<f64, Diagnostic> {
+    value
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .ok_or_else(|| {
+            diagnostic(
+                "SYSTEM-WIDE",
+                line,
+                "Invalid THRSHZ; expected a finite nonnegative number",
+            )
+        })
 }

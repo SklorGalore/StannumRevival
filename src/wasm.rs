@@ -43,6 +43,15 @@ impl NodalCase {
         js(&self.topology.analyze(&self.case))
     }
 
+    pub fn set_merge_zero_impedance(&mut self, enabled: bool) {
+        self.topology = Topology::with_options(
+            &self.case,
+            crate::topology::TopologyOptions {
+                merge_zero_impedance: enabled,
+            },
+        );
+    }
+
     pub fn shortest_path(&self, from_bus: i32, to_bus: i32) -> Result<JsValue, JsValue> {
         let path = self
             .topology
