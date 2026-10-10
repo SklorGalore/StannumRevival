@@ -1,0 +1,4041 @@
+{
+  "schema_version": 1,
+  "supported_revisions": [
+    33,
+    35
+  ],
+  "scope": "exported RAW files",
+  "syntax": {
+    "delimiter": ",",
+    "quote_characters": [
+      "'",
+      "\""
+    ],
+    "header_comment_prefix": "@!",
+    "inline_comment_delimiter": "/",
+    "section_terminator": "0",
+    "file_terminator": "Q",
+    "line_endings": [
+      "CRLF",
+      "LF"
+    ],
+    "example_encoding": "cp1252",
+    "notes": [
+      "Recognize comments, delimiters and terminators only outside quoted strings.",
+      "Trim surrounding whitespace on numeric values. Preserve string content and raw lines; trim identifier padding only for comparison keys.",
+      "Exactly two physical title lines follow case identification, including blank lines. Ignore @! headers elsewhere.",
+      "Sections occur in section_order[REV]. Each standalone zero terminator advances to the next section, including empty sections. Slash comments and @! headers are optional and are never required to identify sections or fields.",
+      "Integer fields are base-10; number fields allow decimal and scientific notation. No defaults or value bounds are inferred from examples."
+    ],
+    "comments_required": false,
+    "section_identification": {
+      "source": "section_order[REV]",
+      "initial_section": "first entry in section_order[REV] after case identification and two title lines",
+      "advance_on": "standalone section_terminator record",
+      "advance_by": 1,
+      "empty_sections": "retain a terminator for each empty section",
+      "comment_labels": "optional annotations; do not select sections or record layouts",
+      "field_headers": "optional annotations; field positions come from layouts[REV]"
+    }
+  },
+  "case_identification": {
+    "lines": [
+      {
+        "fields": [
+          {
+            "name": "IC",
+            "type": "integer"
+          },
+          {
+            "name": "SBASE",
+            "type": "number"
+          },
+          {
+            "name": "REV",
+            "type": "integer"
+          },
+          {
+            "name": "XFRRAT",
+            "type": "integer"
+          },
+          {
+            "name": "NXFRAT",
+            "type": "integer"
+          },
+          {
+            "name": "BASFRQ",
+            "type": "number"
+          }
+        ]
+      }
+    ],
+    "following_title_lines": 2,
+    "revision_field": "REV"
+  },
+  "section_order": {
+    "33": [
+      "BUS",
+      "LOAD",
+      "FIXED SHUNT",
+      "GENERATOR",
+      "BRANCH",
+      "TRANSFORMER",
+      "AREA",
+      "TWO-TERMINAL DC",
+      "VSC DC LINE",
+      "IMPEDANCE CORRECTION",
+      "MULTI-TERMINAL DC",
+      "MULTI-SECTION LINE",
+      "ZONE",
+      "INTER-AREA TRANSFER",
+      "OWNER",
+      "FACTS DEVICE",
+      "SWITCHED SHUNT",
+      "GEN DEVICE",
+      "INDUCTION MACHINE"
+    ],
+    "35": [
+      "SYSTEM-WIDE",
+      "BUS",
+      "LOAD",
+      "FIXED SHUNT",
+      "GENERATOR",
+      "BRANCH",
+      "SYSTEM SWITCHING DEVICE",
+      "TRANSFORMER",
+      "AREA",
+      "TWO-TERMINAL DC",
+      "VSC DC LINE",
+      "IMPEDANCE CORRECTION",
+      "MULTI-TERMINAL DC",
+      "MULTI-SECTION LINE",
+      "ZONE",
+      "INTER-AREA TRANSFER",
+      "OWNER",
+      "FACTS DEVICE",
+      "SWITCHED SHUNT",
+      "GEN DEVICE",
+      "INDUCTION MACHINE"
+    ]
+  },
+  "section_aliases": {
+    "VOLTAGE SOURCE CONVERTER": "VSC DC LINE",
+    "FACTS CONTROL DEVICE": "FACTS DEVICE",
+    "GNE DEVICE": "GEN DEVICE"
+  },
+  "system_wide": {
+    "revisions": [
+      35
+    ],
+    "evidence": "records_verified",
+    "records": {
+      "GENERAL": {
+        "positional_fields": [],
+        "parameters": {
+          "THRSHZ": "number",
+          "PQBRAK": "number",
+          "BLOWUP": "number"
+        }
+      },
+      "GAUSS": {
+        "positional_fields": [],
+        "parameters": {
+          "ITMX": "integer",
+          "ACCP": "number",
+          "ACCQ": "number",
+          "ACCM": "number",
+          "TOL": "number"
+        }
+      },
+      "NEWTON": {
+        "positional_fields": [],
+        "parameters": {
+          "ITMXN": "integer",
+          "ACCN": "number",
+          "TOLN": "number",
+          "VCTOLQ": "number",
+          "VCTOLV": "number",
+          "DVLIM": "number",
+          "NDVFCT": "number"
+        }
+      },
+      "ADJUST": {
+        "positional_fields": [],
+        "parameters": {
+          "ADJTHR": "number",
+          "ACCTAP": "number",
+          "TAPLIM": "number",
+          "SWVBND": "number",
+          "MXTPSS": "integer",
+          "MXSWIM": "integer"
+        }
+      },
+      "TYSL": {
+        "positional_fields": [],
+        "parameters": {
+          "ITMXTY": "integer",
+          "ACCTY": "number",
+          "TOLTY": "number"
+        }
+      },
+      "SOLVER": {
+        "positional_fields": [
+          "METHOD"
+        ],
+        "parameters": {
+          "ACTAPS": "integer",
+          "AREAIN": "integer",
+          "PHSHFT": "integer",
+          "DCTAPS": "integer",
+          "SWSHNT": "integer",
+          "FLATST": "integer",
+          "VARLIM": "integer",
+          "NONDIV": "integer"
+        }
+      },
+      "RATING": {
+        "fields": [
+          {
+            "name": "RATING_NUMBER",
+            "type": "integer"
+          },
+          {
+            "name": "RATING_LABEL",
+            "type": "string"
+          },
+          {
+            "name": "RATING_DESCRIPTION",
+            "type": "string"
+          }
+        ],
+        "key_fields": [
+          "RATING_NUMBER"
+        ]
+      }
+    },
+    "notes": [
+      "Appears after the two titles and before BUS. Preserve record order, especially repeated RATING entries."
+    ]
+  },
+  "sections": {
+    "BUS": {
+      "key_fields": [
+        "I"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "BASKV",
+                  "type": "number"
+                },
+                {
+                  "name": "IDE",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "VM",
+                  "type": "number"
+                },
+                {
+                  "name": "VA",
+                  "type": "number"
+                },
+                {
+                  "name": "NVHI",
+                  "type": "number"
+                },
+                {
+                  "name": "NVLO",
+                  "type": "number"
+                },
+                {
+                  "name": "EVHI",
+                  "type": "number"
+                },
+                {
+                  "name": "EVLO",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "BASKV",
+                  "type": "number"
+                },
+                {
+                  "name": "IDE",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "VM",
+                  "type": "number"
+                },
+                {
+                  "name": "VA",
+                  "type": "number"
+                },
+                {
+                  "name": "NVHI",
+                  "type": "number"
+                },
+                {
+                  "name": "NVLO",
+                  "type": "number"
+                },
+                {
+                  "name": "EVHI",
+                  "type": "number"
+                },
+                {
+                  "name": "EVLO",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "LOAD": {
+      "key_fields": [
+        "I",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "PL",
+                  "type": "number"
+                },
+                {
+                  "name": "QL",
+                  "type": "number"
+                },
+                {
+                  "name": "IP",
+                  "type": "number"
+                },
+                {
+                  "name": "IQ",
+                  "type": "number"
+                },
+                {
+                  "name": "YP",
+                  "type": "number"
+                },
+                {
+                  "name": "YQ",
+                  "type": "number"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "SCALE",
+                  "type": "integer"
+                },
+                {
+                  "name": "INTRPT",
+                  "type": "integer"
+                },
+                {
+                  "name": "DGENP",
+                  "type": "number"
+                },
+                {
+                  "name": "DGENQ",
+                  "type": "number"
+                },
+                {
+                  "name": "DGENM",
+                  "type": "integer"
+                },
+                {
+                  "name": "LOADTYPE",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "PL",
+                  "type": "number"
+                },
+                {
+                  "name": "QL",
+                  "type": "number"
+                },
+                {
+                  "name": "IP",
+                  "type": "number"
+                },
+                {
+                  "name": "IQ",
+                  "type": "number"
+                },
+                {
+                  "name": "YP",
+                  "type": "number"
+                },
+                {
+                  "name": "YQ",
+                  "type": "number"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "SCALE",
+                  "type": "integer"
+                },
+                {
+                  "name": "INTRPT",
+                  "type": "integer"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "FIXED SHUNT": {
+      "key_fields": [
+        "I",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "STATUS",
+                  "type": "integer"
+                },
+                {
+                  "name": "GL",
+                  "type": "number"
+                },
+                {
+                  "name": "BL",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "GENERATOR": {
+      "key_fields": [
+        "I",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "PG",
+                  "type": "number"
+                },
+                {
+                  "name": "QG",
+                  "type": "number"
+                },
+                {
+                  "name": "QT",
+                  "type": "number"
+                },
+                {
+                  "name": "QB",
+                  "type": "number"
+                },
+                {
+                  "name": "VS",
+                  "type": "number"
+                },
+                {
+                  "name": "IREG",
+                  "type": "integer"
+                },
+                {
+                  "name": "NREG",
+                  "type": "integer"
+                },
+                {
+                  "name": "MBASE",
+                  "type": "number"
+                },
+                {
+                  "name": "ZR",
+                  "type": "number"
+                },
+                {
+                  "name": "ZX",
+                  "type": "number"
+                },
+                {
+                  "name": "RT",
+                  "type": "number"
+                },
+                {
+                  "name": "XT",
+                  "type": "number"
+                },
+                {
+                  "name": "GTAP",
+                  "type": "number"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                },
+                {
+                  "name": "PT",
+                  "type": "number"
+                },
+                {
+                  "name": "PB",
+                  "type": "number"
+                },
+                {
+                  "name": "BASLOD",
+                  "type": "integer"
+                },
+                {
+                  "name": "O1",
+                  "type": "integer"
+                },
+                {
+                  "name": "F1",
+                  "type": "number"
+                },
+                {
+                  "name": "O2",
+                  "type": "integer"
+                },
+                {
+                  "name": "F2",
+                  "type": "number"
+                },
+                {
+                  "name": "O3",
+                  "type": "integer"
+                },
+                {
+                  "name": "F3",
+                  "type": "number"
+                },
+                {
+                  "name": "O4",
+                  "type": "integer"
+                },
+                {
+                  "name": "F4",
+                  "type": "number"
+                },
+                {
+                  "name": "WMOD",
+                  "type": "integer"
+                },
+                {
+                  "name": "WPF",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "PG",
+                  "type": "number"
+                },
+                {
+                  "name": "QG",
+                  "type": "number"
+                },
+                {
+                  "name": "QT",
+                  "type": "number"
+                },
+                {
+                  "name": "QB",
+                  "type": "number"
+                },
+                {
+                  "name": "VS",
+                  "type": "number"
+                },
+                {
+                  "name": "IREG",
+                  "type": "integer"
+                },
+                {
+                  "name": "MBASE",
+                  "type": "number"
+                },
+                {
+                  "name": "ZR",
+                  "type": "number"
+                },
+                {
+                  "name": "ZX",
+                  "type": "number"
+                },
+                {
+                  "name": "RT",
+                  "type": "number"
+                },
+                {
+                  "name": "XT",
+                  "type": "number"
+                },
+                {
+                  "name": "GTAP",
+                  "type": "number"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                },
+                {
+                  "name": "PT",
+                  "type": "number"
+                },
+                {
+                  "name": "PB",
+                  "type": "number"
+                },
+                {
+                  "name": "O1",
+                  "type": "integer"
+                },
+                {
+                  "name": "F1",
+                  "type": "number"
+                },
+                {
+                  "name": "O2",
+                  "type": "integer"
+                },
+                {
+                  "name": "F2",
+                  "type": "number"
+                },
+                {
+                  "name": "O3",
+                  "type": "integer"
+                },
+                {
+                  "name": "F3",
+                  "type": "number"
+                },
+                {
+                  "name": "O4",
+                  "type": "integer"
+                },
+                {
+                  "name": "F4",
+                  "type": "number"
+                },
+                {
+                  "name": "WMOD",
+                  "type": "integer"
+                },
+                {
+                  "name": "WPF",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "notes": [
+        "Revision 35 comment headers omit NREG after IREG and BASLOD after PB. Actual records have 30 fields."
+      ]
+    },
+    "BRANCH": {
+      "key_fields": [
+        "I",
+        "J",
+        "CKT"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "J",
+                  "type": "integer"
+                },
+                {
+                  "name": "CKT",
+                  "type": "string"
+                },
+                {
+                  "name": "R",
+                  "type": "number"
+                },
+                {
+                  "name": "X",
+                  "type": "number"
+                },
+                {
+                  "name": "B",
+                  "type": "number"
+                },
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "RATE1",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE2",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE3",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE4",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE5",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE6",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE7",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE8",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE9",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE10",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE11",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE12",
+                  "type": "number"
+                },
+                {
+                  "name": "GI",
+                  "type": "number"
+                },
+                {
+                  "name": "BI",
+                  "type": "number"
+                },
+                {
+                  "name": "GJ",
+                  "type": "number"
+                },
+                {
+                  "name": "BJ",
+                  "type": "number"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "MET",
+                  "type": "integer"
+                },
+                {
+                  "name": "LEN",
+                  "type": "number"
+                },
+                {
+                  "name": "O1",
+                  "type": "integer"
+                },
+                {
+                  "name": "F1",
+                  "type": "number"
+                },
+                {
+                  "name": "O2",
+                  "type": "integer"
+                },
+                {
+                  "name": "F2",
+                  "type": "number"
+                },
+                {
+                  "name": "O3",
+                  "type": "integer"
+                },
+                {
+                  "name": "F3",
+                  "type": "number"
+                },
+                {
+                  "name": "O4",
+                  "type": "integer"
+                },
+                {
+                  "name": "F4",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "J",
+                  "type": "integer"
+                },
+                {
+                  "name": "CKT",
+                  "type": "string"
+                },
+                {
+                  "name": "R",
+                  "type": "number"
+                },
+                {
+                  "name": "X",
+                  "type": "number"
+                },
+                {
+                  "name": "B",
+                  "type": "number"
+                },
+                {
+                  "name": "RATEA",
+                  "type": "number"
+                },
+                {
+                  "name": "RATEB",
+                  "type": "number"
+                },
+                {
+                  "name": "RATEC",
+                  "type": "number"
+                },
+                {
+                  "name": "GI",
+                  "type": "number"
+                },
+                {
+                  "name": "BI",
+                  "type": "number"
+                },
+                {
+                  "name": "GJ",
+                  "type": "number"
+                },
+                {
+                  "name": "BJ",
+                  "type": "number"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "MET",
+                  "type": "integer"
+                },
+                {
+                  "name": "LEN",
+                  "type": "number"
+                },
+                {
+                  "name": "O1",
+                  "type": "integer"
+                },
+                {
+                  "name": "F1",
+                  "type": "number"
+                },
+                {
+                  "name": "O2",
+                  "type": "integer"
+                },
+                {
+                  "name": "F2",
+                  "type": "number"
+                },
+                {
+                  "name": "O3",
+                  "type": "integer"
+                },
+                {
+                  "name": "F3",
+                  "type": "number"
+                },
+                {
+                  "name": "O4",
+                  "type": "integer"
+                },
+                {
+                  "name": "F4",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "SYSTEM SWITCHING DEVICE": {
+      "key_fields": [
+        "I",
+        "J",
+        "CKT"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "J",
+                  "type": "integer"
+                },
+                {
+                  "name": "CKT",
+                  "type": "string"
+                },
+                {
+                  "name": "X",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE1",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE2",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE3",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE4",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE5",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE6",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE7",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE8",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE9",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE10",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE11",
+                  "type": "number"
+                },
+                {
+                  "name": "RATE12",
+                  "type": "number"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "NSTAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "MET",
+                  "type": "integer"
+                },
+                {
+                  "name": "STYPE",
+                  "type": "integer"
+                },
+                {
+                  "name": "NAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "absent_in_revision",
+          "lines": null
+        }
+      }
+    },
+    "TRANSFORMER": {
+      "key_fields": [
+        "I",
+        "J",
+        "K",
+        "CKT"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "two_winding_records_verified",
+          "variants": [
+            {
+              "name": "two_winding",
+              "when": {
+                "K": 0
+              },
+              "lines": [
+                {
+                  "fields": [
+                    {
+                      "name": "I",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "J",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "K",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CKT",
+                      "type": "string"
+                    },
+                    {
+                      "name": "CW",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CZ",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CM",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "MAG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "MAG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NMETR",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NAME",
+                      "type": "string"
+                    },
+                    {
+                      "name": "STAT",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "O1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O4",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VECGRP",
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "R1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE1-2",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-5",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-6",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-7",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-8",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-9",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-10",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-11",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-12",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NOD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA1",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV2",
+                      "type": "number"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "three_winding",
+              "when": {
+                "K": {
+                  "not": 0
+                }
+              },
+              "evidence": "unverified_no_example_records",
+              "lines": [
+                {
+                  "fields": [
+                    {
+                      "name": "I",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "J",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "K",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CKT",
+                      "type": "string"
+                    },
+                    {
+                      "name": "CW",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CZ",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CM",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "MAG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "MAG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NMETR",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NAME",
+                      "type": "string"
+                    },
+                    {
+                      "name": "STAT",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "O1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O4",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VECGRP",
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "R1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "R2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "R3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMSTAR",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANSTAR",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-5",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-6",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-7",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-8",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-9",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-10",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-11",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE1-12",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NOD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA1",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-5",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-6",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-7",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-8",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-9",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-10",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-11",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE2-12",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NOD2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA2",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-5",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-6",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-7",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-8",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-9",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-10",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-11",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATE3-12",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NOD3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA3",
+                      "type": "number"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "two_winding_records_verified",
+          "variants": [
+            {
+              "name": "two_winding",
+              "when": {
+                "K": 0
+              },
+              "lines": [
+                {
+                  "fields": [
+                    {
+                      "name": "I",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "J",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "K",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CKT",
+                      "type": "string"
+                    },
+                    {
+                      "name": "CW",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CZ",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CM",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "MAG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "MAG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NMETR",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NAME",
+                      "type": "string"
+                    },
+                    {
+                      "name": "STAT",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "O1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O4",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VECGRP",
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "R1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE1-2",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATB1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATC1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA1",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV2",
+                      "type": "number"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "three_winding",
+              "when": {
+                "K": {
+                  "not": 0
+                }
+              },
+              "evidence": "unverified_no_example_records",
+              "lines": [
+                {
+                  "fields": [
+                    {
+                      "name": "I",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "J",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "K",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CKT",
+                      "type": "string"
+                    },
+                    {
+                      "name": "CW",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CZ",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CM",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "MAG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "MAG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NMETR",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "NAME",
+                      "type": "string"
+                    },
+                    {
+                      "name": "STAT",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "O1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "O4",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "F4",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VECGRP",
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "R1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE1-2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "R2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE2-3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "R3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "X3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "SBASE3-1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMSTAR",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANSTAR",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATB1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATC1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB1",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX1",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA1",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATA2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATB2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATC2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB2",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX2",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA2",
+                      "type": "number"
+                    }
+                  ]
+                },
+                {
+                  "fields": [
+                    {
+                      "name": "WINDV3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NOMV3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "ANG3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATA3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATB3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RATC3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "COD3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CONT3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "RMA3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "RMI3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMA3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "VMI3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "NTP3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "TAB3",
+                      "type": "integer"
+                    },
+                    {
+                      "name": "CR3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CX3",
+                      "type": "number"
+                    },
+                    {
+                      "name": "CNXA3",
+                      "type": "number"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "notes": [
+        "Revision 35 first-line headers include ZCOD, but every example record ends at VECGRP (21 fields). This profile excludes ZCOD.",
+        "For three-winding records, field names and line structure are extrapolated from headers; there are no populated examples.",
+        "CW, CZ, CM and COD determine the interpretation and units of winding/impedance fields; numeric types alone do not encode those semantics."
+      ]
+    },
+    "AREA": {
+      "key_fields": [
+        "I"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ISW",
+                  "type": "integer"
+                },
+                {
+                  "name": "PDES",
+                  "type": "number"
+                },
+                {
+                  "name": "PTOL",
+                  "type": "number"
+                },
+                {
+                  "name": "ARNAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ISW",
+                  "type": "integer"
+                },
+                {
+                  "name": "PDES",
+                  "type": "number"
+                },
+                {
+                  "name": "PTOL",
+                  "type": "number"
+                },
+                {
+                  "name": "ARNAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "TWO-TERMINAL DC": {
+      "key_fields": [
+        "NAME"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "MDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "RDC",
+                  "type": "number"
+                },
+                {
+                  "name": "SETVL",
+                  "type": "number"
+                },
+                {
+                  "name": "VSCHD",
+                  "type": "number"
+                },
+                {
+                  "name": "VCMOD",
+                  "type": "number"
+                },
+                {
+                  "name": "RCOMP",
+                  "type": "number"
+                },
+                {
+                  "name": "DELTI",
+                  "type": "number"
+                },
+                {
+                  "name": "METER",
+                  "type": "integer"
+                },
+                {
+                  "name": "DCVMIN",
+                  "type": "number"
+                },
+                {
+                  "name": "CCCITMX",
+                  "type": "integer"
+                },
+                {
+                  "name": "CCCACC",
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IPR",
+                  "type": "integer"
+                },
+                {
+                  "name": "NBR",
+                  "type": "integer"
+                },
+                {
+                  "name": "ANMXR",
+                  "type": "number"
+                },
+                {
+                  "name": "ANMNR",
+                  "type": "number"
+                },
+                {
+                  "name": "RCR",
+                  "type": "number"
+                },
+                {
+                  "name": "XCR",
+                  "type": "number"
+                },
+                {
+                  "name": "EBASR",
+                  "type": "number"
+                },
+                {
+                  "name": "TRR",
+                  "type": "number"
+                },
+                {
+                  "name": "TAPR",
+                  "type": "number"
+                },
+                {
+                  "name": "TMXR",
+                  "type": "number"
+                },
+                {
+                  "name": "TMNR",
+                  "type": "number"
+                },
+                {
+                  "name": "STPR",
+                  "type": "number"
+                },
+                {
+                  "name": "ICR",
+                  "type": "integer"
+                },
+                {
+                  "name": "NDR",
+                  "type": "integer"
+                },
+                {
+                  "name": "IFR",
+                  "type": "integer"
+                },
+                {
+                  "name": "ITR",
+                  "type": "integer"
+                },
+                {
+                  "name": "IDR",
+                  "type": "string"
+                },
+                {
+                  "name": "XCAPR",
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IPI",
+                  "type": "integer"
+                },
+                {
+                  "name": "NBI",
+                  "type": "integer"
+                },
+                {
+                  "name": "ANMXI",
+                  "type": "number"
+                },
+                {
+                  "name": "ANMNI",
+                  "type": "number"
+                },
+                {
+                  "name": "RCI",
+                  "type": "number"
+                },
+                {
+                  "name": "XCI",
+                  "type": "number"
+                },
+                {
+                  "name": "EBASI",
+                  "type": "number"
+                },
+                {
+                  "name": "TRI",
+                  "type": "number"
+                },
+                {
+                  "name": "TAPI",
+                  "type": "number"
+                },
+                {
+                  "name": "TMXI",
+                  "type": "number"
+                },
+                {
+                  "name": "TMNI",
+                  "type": "number"
+                },
+                {
+                  "name": "STPI",
+                  "type": "number"
+                },
+                {
+                  "name": "ICI",
+                  "type": "integer"
+                },
+                {
+                  "name": "NDI",
+                  "type": "integer"
+                },
+                {
+                  "name": "IFI",
+                  "type": "integer"
+                },
+                {
+                  "name": "ITI",
+                  "type": "integer"
+                },
+                {
+                  "name": "IDI",
+                  "type": "string"
+                },
+                {
+                  "name": "XCAPI",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      },
+      "notes": [
+        "Header lacks a comma between METER and DCVMIN; split into distinct fields. No populated records."
+      ]
+    },
+    "VSC DC LINE": {
+      "key_fields": [
+        "NAME"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "MDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "RDC",
+                  "type": "number"
+                },
+                {
+                  "name": "O1",
+                  "type": "integer"
+                },
+                {
+                  "name": "F1",
+                  "type": "number"
+                },
+                {
+                  "name": "O2",
+                  "type": "integer"
+                },
+                {
+                  "name": "F2",
+                  "type": "number"
+                },
+                {
+                  "name": "O3",
+                  "type": "integer"
+                },
+                {
+                  "name": "F3",
+                  "type": "number"
+                },
+                {
+                  "name": "O4",
+                  "type": "integer"
+                },
+                {
+                  "name": "F4",
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IBUS",
+                  "type": "integer"
+                },
+                {
+                  "name": "TYPE",
+                  "type": "integer"
+                },
+                {
+                  "name": "MODE",
+                  "type": "integer"
+                },
+                {
+                  "name": "DCSET",
+                  "type": "number"
+                },
+                {
+                  "name": "ACSET",
+                  "type": "number"
+                },
+                {
+                  "name": "ALOSS",
+                  "type": "number"
+                },
+                {
+                  "name": "BLOSS",
+                  "type": "number"
+                },
+                {
+                  "name": "MINLOSS",
+                  "type": "number"
+                },
+                {
+                  "name": "SMAX",
+                  "type": "number"
+                },
+                {
+                  "name": "IMAX",
+                  "type": "number"
+                },
+                {
+                  "name": "PWF",
+                  "type": "number"
+                },
+                {
+                  "name": "MAXQ",
+                  "type": "number"
+                },
+                {
+                  "name": "MINQ",
+                  "type": "number"
+                },
+                {
+                  "name": "REMOT",
+                  "type": "integer"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "repeat_line": {
+            "line_index": 1,
+            "count": 2
+          }
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "IMPEDANCE CORRECTION": {
+      "key_fields": [
+        "I"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "header_templates": [
+            [
+              "I",
+              "T1",
+              "RE(F1)",
+              "IM(F1)",
+              "T2",
+              "RE(F2)",
+              "IM(F2)",
+              "T3",
+              "RE(F3)",
+              "IM(F3)",
+              "T4",
+              "RE(F4)",
+              "IM(F4)",
+              "T5",
+              "RE(F5)",
+              "IM(F5)",
+              "T6",
+              "RE(F6)",
+              "IM(F6)"
+            ],
+            [
+              "T7",
+              "RE(F7)",
+              "IM(F7)",
+              "T8",
+              "RE(F8)",
+              "IM(F8)",
+              "T9",
+              "RE(F9)",
+              "IM(F9)",
+              "T10",
+              "RE(F10)",
+              "IM(F10)",
+              "T11",
+              "RE(F11)",
+              "IM(F11)",
+              "T12",
+              "RE(F12)",
+              "IM(F12)"
+            ],
+            [
+              "..."
+            ]
+          ],
+          "notes": [
+            "Variable-length header templates are not executable field layouts; no records available to verify grouping."
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "MULTI-TERMINAL DC": {
+      "key_fields": [
+        "NAME"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "NCONV",
+                  "type": "integer"
+                },
+                {
+                  "name": "NDCBS",
+                  "type": "integer"
+                },
+                {
+                  "name": "NDCLN",
+                  "type": "integer"
+                },
+                {
+                  "name": "MDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "VCONV",
+                  "type": "integer"
+                },
+                {
+                  "name": "VCMOD",
+                  "type": "number"
+                },
+                {
+                  "name": "VCONVN",
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IB",
+                  "type": "integer"
+                },
+                {
+                  "name": "N",
+                  "type": "integer"
+                },
+                {
+                  "name": "ANGMX",
+                  "type": "number"
+                },
+                {
+                  "name": "ANGMN",
+                  "type": "number"
+                },
+                {
+                  "name": "RC",
+                  "type": "number"
+                },
+                {
+                  "name": "XC",
+                  "type": "number"
+                },
+                {
+                  "name": "EBAS",
+                  "type": "number"
+                },
+                {
+                  "name": "TR",
+                  "type": "number"
+                },
+                {
+                  "name": "TAP",
+                  "type": "number"
+                },
+                {
+                  "name": "TPMX",
+                  "type": "number"
+                },
+                {
+                  "name": "TPMN",
+                  "type": "number"
+                },
+                {
+                  "name": "TSTP",
+                  "type": "number"
+                },
+                {
+                  "name": "SETVL",
+                  "type": "number"
+                },
+                {
+                  "name": "DCPF",
+                  "type": "number"
+                },
+                {
+                  "name": "MARG",
+                  "type": "number"
+                },
+                {
+                  "name": "CNVCOD",
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "IB",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "DCNAME",
+                  "type": "string"
+                },
+                {
+                  "name": "IDC2",
+                  "type": "integer"
+                },
+                {
+                  "name": "RGRND",
+                  "type": "number"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "JDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "DCCKT",
+                  "type": "string"
+                },
+                {
+                  "name": "MET",
+                  "type": "integer"
+                },
+                {
+                  "name": "RDC",
+                  "type": "number"
+                },
+                {
+                  "name": "LDC",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "repeat_lines": [
+            {
+              "line_index": 1,
+              "count_field": "NCONV"
+            },
+            {
+              "line_index": 2,
+              "count_field": "NDCBS"
+            },
+            {
+              "line_index": 3,
+              "count_field": "NDCLN"
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "MULTI-SECTION LINE": {
+      "key_fields": [
+        "I",
+        "J",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "J",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "MET",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM1",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM2",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM3",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM4",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM5",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM6",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM7",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM8",
+                  "type": "integer"
+                },
+                {
+                  "name": "DUM9",
+                  "type": "integer"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "ZONE": {
+      "key_fields": [
+        "I"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "INTER-AREA TRANSFER": {
+      "key_fields": [
+        "ARFROM",
+        "ARTO",
+        "TRID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "ARFROM",
+                  "type": "integer"
+                },
+                {
+                  "name": "ARTO",
+                  "type": "integer"
+                },
+                {
+                  "name": "TRID",
+                  "type": "string"
+                },
+                {
+                  "name": "PTRAN",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "OWNER": {
+      "key_fields": [
+        "I"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "OWNAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "OWNAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "FACTS DEVICE": {
+      "key_fields": [
+        "NAME"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "J",
+                  "type": "integer"
+                },
+                {
+                  "name": "MODE",
+                  "type": "integer"
+                },
+                {
+                  "name": "PDES",
+                  "type": "number"
+                },
+                {
+                  "name": "QDES",
+                  "type": "number"
+                },
+                {
+                  "name": "VSET",
+                  "type": "number"
+                },
+                {
+                  "name": "SHMX",
+                  "type": "number"
+                },
+                {
+                  "name": "TRMX",
+                  "type": "number"
+                },
+                {
+                  "name": "VTMN",
+                  "type": "number"
+                },
+                {
+                  "name": "VTMX",
+                  "type": "number"
+                },
+                {
+                  "name": "VSMX",
+                  "type": "number"
+                },
+                {
+                  "name": "IMX",
+                  "type": "number"
+                },
+                {
+                  "name": "LINX",
+                  "type": "number"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "SET1",
+                  "type": "number"
+                },
+                {
+                  "name": "SET2",
+                  "type": "number"
+                },
+                {
+                  "name": "VSREF",
+                  "type": "integer"
+                },
+                {
+                  "name": "REMOT",
+                  "type": "integer"
+                },
+                {
+                  "name": "MNAME",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "SWITCHED SHUNT": {
+      "key_fields": [
+        "I",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "records_verified",
+          "key_fields": [
+            "I",
+            "ID"
+          ],
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "MODSW",
+                  "type": "integer"
+                },
+                {
+                  "name": "ADJM",
+                  "type": "integer"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "VSWHI",
+                  "type": "number"
+                },
+                {
+                  "name": "VSWLO",
+                  "type": "number"
+                },
+                {
+                  "name": "SWREG",
+                  "type": "integer"
+                },
+                {
+                  "name": "NREG",
+                  "type": "integer"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                },
+                {
+                  "name": "RMIDNT",
+                  "type": "string"
+                },
+                {
+                  "name": "BINIT",
+                  "type": "number"
+                },
+                {
+                  "name": "S1",
+                  "type": "integer"
+                },
+                {
+                  "name": "N1",
+                  "type": "integer"
+                },
+                {
+                  "name": "B1",
+                  "type": "number"
+                },
+                {
+                  "name": "S2",
+                  "type": "integer"
+                },
+                {
+                  "name": "N2",
+                  "type": "integer"
+                },
+                {
+                  "name": "B2",
+                  "type": "number"
+                },
+                {
+                  "name": "S3",
+                  "type": "integer"
+                },
+                {
+                  "name": "N3",
+                  "type": "integer"
+                },
+                {
+                  "name": "B3",
+                  "type": "number"
+                },
+                {
+                  "name": "S4",
+                  "type": "integer"
+                },
+                {
+                  "name": "N4",
+                  "type": "integer"
+                },
+                {
+                  "name": "B4",
+                  "type": "number"
+                },
+                {
+                  "name": "S5",
+                  "type": "integer"
+                },
+                {
+                  "name": "N5",
+                  "type": "integer"
+                },
+                {
+                  "name": "B5",
+                  "type": "number"
+                },
+                {
+                  "name": "S6",
+                  "type": "integer"
+                },
+                {
+                  "name": "N6",
+                  "type": "integer"
+                },
+                {
+                  "name": "B6",
+                  "type": "number"
+                },
+                {
+                  "name": "S7",
+                  "type": "integer"
+                },
+                {
+                  "name": "N7",
+                  "type": "integer"
+                },
+                {
+                  "name": "B7",
+                  "type": "number"
+                },
+                {
+                  "name": "S8",
+                  "type": "integer"
+                },
+                {
+                  "name": "N8",
+                  "type": "integer"
+                },
+                {
+                  "name": "B8",
+                  "type": "number"
+                }
+              ],
+              "minimum_fields": 15,
+              "trailing_group": {
+                "start_index": 12,
+                "width": 3,
+                "maximum_groups": 8,
+                "minimum_groups": 1
+              }
+            }
+          ]
+        },
+        "33": {
+          "evidence": "records_verified",
+          "key_fields": [
+            "I"
+          ],
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "MODSW",
+                  "type": "integer"
+                },
+                {
+                  "name": "ADJM",
+                  "type": "integer"
+                },
+                {
+                  "name": "STAT",
+                  "type": "integer"
+                },
+                {
+                  "name": "VSWHI",
+                  "type": "number"
+                },
+                {
+                  "name": "VSWLO",
+                  "type": "number"
+                },
+                {
+                  "name": "SWREM",
+                  "type": "integer"
+                },
+                {
+                  "name": "RMPCT",
+                  "type": "number"
+                },
+                {
+                  "name": "RMIDNT",
+                  "type": "string"
+                },
+                {
+                  "name": "BINIT",
+                  "type": "number"
+                },
+                {
+                  "name": "N1",
+                  "type": "integer"
+                },
+                {
+                  "name": "B1",
+                  "type": "number"
+                },
+                {
+                  "name": "N2",
+                  "type": "integer"
+                },
+                {
+                  "name": "B2",
+                  "type": "number"
+                },
+                {
+                  "name": "N3",
+                  "type": "integer"
+                },
+                {
+                  "name": "B3",
+                  "type": "number"
+                },
+                {
+                  "name": "N4",
+                  "type": "integer"
+                },
+                {
+                  "name": "B4",
+                  "type": "number"
+                },
+                {
+                  "name": "N5",
+                  "type": "integer"
+                },
+                {
+                  "name": "B5",
+                  "type": "number"
+                },
+                {
+                  "name": "N6",
+                  "type": "integer"
+                },
+                {
+                  "name": "B6",
+                  "type": "number"
+                },
+                {
+                  "name": "N7",
+                  "type": "integer"
+                },
+                {
+                  "name": "B7",
+                  "type": "number"
+                },
+                {
+                  "name": "N8",
+                  "type": "integer"
+                },
+                {
+                  "name": "B8",
+                  "type": "number"
+                }
+              ],
+              "minimum_fields": 12,
+              "trailing_group": {
+                "start_index": 10,
+                "width": 2,
+                "maximum_groups": 8,
+                "minimum_groups": 1
+              }
+            }
+          ]
+        }
+      },
+      "notes": [
+        "Revision 35 comment headers describe an older layout; records include ID, NREG and S/N/B block triples.",
+        "Only complete trailing block groups may be omitted; preserve omitted blocks rather than inventing values."
+      ],
+      "key_fields_by_revision": {
+        "33": [
+          "I"
+        ],
+        "35": [
+          "I",
+          "ID"
+        ]
+      }
+    },
+    "GEN DEVICE": {
+      "key_fields": [
+        "NAME"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "header_templates": [
+            [
+              "NAME",
+              "MODEL",
+              "NTERM",
+              "BUS1...BUSNTERM",
+              "NREAL",
+              "NINTG",
+              "NCHAR"
+            ],
+            [
+              "ST",
+              "OWNER",
+              "NMETR"
+            ],
+            [
+              "REAL1...REAL(MIN(10",
+              "NREAL))"
+            ],
+            [
+              "INTG1...INTG(MIN(10",
+              "NINTG))"
+            ],
+            [
+              "CHAR1...CHAR(MIN(10",
+              "NCHAR))"
+            ]
+          ],
+          "notes": [
+            "Variable-length header templates are not executable field layouts; no records available to verify grouping."
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    },
+    "INDUCTION MACHINE": {
+      "key_fields": [
+        "I",
+        "ID"
+      ],
+      "layouts": {
+        "35": {
+          "evidence": "header_only",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "I",
+                  "type": "integer"
+                },
+                {
+                  "name": "ID",
+                  "type": "string"
+                },
+                {
+                  "name": "ST",
+                  "type": "integer"
+                },
+                {
+                  "name": "SC",
+                  "type": "integer"
+                },
+                {
+                  "name": "DC",
+                  "type": "integer"
+                },
+                {
+                  "name": "AREA",
+                  "type": "integer"
+                },
+                {
+                  "name": "ZONE",
+                  "type": "integer"
+                },
+                {
+                  "name": "OWNER",
+                  "type": "integer"
+                },
+                {
+                  "name": "TC",
+                  "type": "integer"
+                },
+                {
+                  "name": "BC",
+                  "type": "integer"
+                },
+                {
+                  "name": "MBASE",
+                  "type": "number"
+                },
+                {
+                  "name": "RATEKV",
+                  "type": "number"
+                },
+                {
+                  "name": "PC",
+                  "type": "number"
+                },
+                {
+                  "name": "PSET",
+                  "type": "number"
+                },
+                {
+                  "name": "H",
+                  "type": "number"
+                },
+                {
+                  "name": "A",
+                  "type": "number"
+                },
+                {
+                  "name": "B",
+                  "type": "number"
+                },
+                {
+                  "name": "D",
+                  "type": "number"
+                },
+                {
+                  "name": "E",
+                  "type": "number"
+                },
+                {
+                  "name": "RA",
+                  "type": "number"
+                },
+                {
+                  "name": "XA",
+                  "type": "number"
+                },
+                {
+                  "name": "XM",
+                  "type": "number"
+                },
+                {
+                  "name": "R1",
+                  "type": "number"
+                },
+                {
+                  "name": "X1",
+                  "type": "number"
+                },
+                {
+                  "name": "R2",
+                  "type": "number"
+                },
+                {
+                  "name": "X2",
+                  "type": "number"
+                },
+                {
+                  "name": "X3",
+                  "type": "number"
+                },
+                {
+                  "name": "E1",
+                  "type": "number"
+                },
+                {
+                  "name": "SE1",
+                  "type": "number"
+                },
+                {
+                  "name": "E2",
+                  "type": "number"
+                },
+                {
+                  "name": "SE2",
+                  "type": "number"
+                },
+                {
+                  "name": "IA1",
+                  "type": "number"
+                },
+                {
+                  "name": "IA2",
+                  "type": "number"
+                },
+                {
+                  "name": "XAMULT",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        },
+        "33": {
+          "evidence": "empty_section_no_field_headers",
+          "lines": null
+        }
+      }
+    }
+  },
+  "example_coverage": {
+    "Hawaii40_20231026.RAW": {
+      "revision": 33,
+      "record_counts": {
+        "BUS": 37,
+        "LOAD": 27,
+        "FIXED SHUNT": 0,
+        "GENERATOR": 45,
+        "BRANCH": 77,
+        "SYSTEM SWITCHING DEVICE": 0,
+        "TRANSFORMER": 12,
+        "AREA": 1,
+        "TWO-TERMINAL DC": 0,
+        "VSC DC LINE": 0,
+        "IMPEDANCE CORRECTION": 0,
+        "MULTI-TERMINAL DC": 0,
+        "MULTI-SECTION LINE": 0,
+        "ZONE": 1,
+        "INTER-AREA TRANSFER": 0,
+        "OWNER": 1,
+        "FACTS DEVICE": 0,
+        "SWITCHED SHUNT": 1,
+        "GEN DEVICE": 0,
+        "INDUCTION MACHINE": 0
+      }
+    },
+    "MemphisCase2026_Mar7.RAW": {
+      "revision": 35,
+      "record_counts": {
+        "BUS": 993,
+        "LOAD": 530,
+        "FIXED SHUNT": 0,
+        "GENERATOR": 188,
+        "BRANCH": 975,
+        "SYSTEM SWITCHING DEVICE": 0,
+        "TRANSFORMER": 407,
+        "AREA": 4,
+        "TWO-TERMINAL DC": 0,
+        "VSC DC LINE": 0,
+        "IMPEDANCE CORRECTION": 0,
+        "MULTI-TERMINAL DC": 0,
+        "MULTI-SECTION LINE": 0,
+        "ZONE": 1,
+        "INTER-AREA TRANSFER": 0,
+        "OWNER": 1,
+        "FACTS DEVICE": 0,
+        "SWITCHED SHUNT": 61,
+        "GEN DEVICE": 0,
+        "INDUCTION MACHINE": 0
+      }
+    },
+    "Texas2k_series25_case1_summerpeak.RAW": {
+      "revision": 35,
+      "record_counts": {
+        "BUS": 2751,
+        "LOAD": 1410,
+        "FIXED SHUNT": 0,
+        "GENERATOR": 1099,
+        "BRANCH": 3993,
+        "SYSTEM SWITCHING DEVICE": 0,
+        "TRANSFORMER": 1351,
+        "AREA": 8,
+        "TWO-TERMINAL DC": 0,
+        "VSC DC LINE": 0,
+        "IMPEDANCE CORRECTION": 0,
+        "MULTI-TERMINAL DC": 0,
+        "MULTI-SECTION LINE": 0,
+        "ZONE": 1,
+        "INTER-AREA TRANSFER": 0,
+        "OWNER": 1,
+        "FACTS DEVICE": 0,
+        "SWITCHED SHUNT": 202,
+        "GEN DEVICE": 0,
+        "INDUCTION MACHINE": 0
+      }
+    }
+  }
+}
