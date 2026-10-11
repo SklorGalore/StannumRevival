@@ -15,6 +15,10 @@ export class NetworkGraph {
     this.graph=null;
   }
 
+  updateTheme():void {
+    this.cy?.style(graphStyles(typeof document!=='undefined'&&document.documentElement.dataset.theme==='dark'));
+  }
+
   fit() {this.cy?.fit(undefined,35);}
 
   setSelection(selection:GraphSelection):void {
@@ -49,7 +53,7 @@ export class NetworkGraph {
         ...graph.nodes.map(n=>({data:{id:n.id,label:n.bus===null?'T':n.member_buses.length>1?`${n.bus} · ${n.member_buses.length}`:String(n.bus),bus:n.bus,equipment:n.equipment_id},classes:[n.bus===null?'junction':'bus',n.bus!==null&&cuts.has(n.bus)||syntheticCuts.has(n.id)?'articulation':'',pathNodes.has(n.id)?'path':''].filter(Boolean).join(' ')})),
         ...graph.edges.map(e=>({data:{id:e.id,source:e.source,target:e.target,equipment:e.equipment_id},classes:[equipment.get(e.equipment_id)?.kind??'line',bridges.has(e.id)?'bridge':'',pathEdges.has(e.id)?'path':''].filter(Boolean).join(' ')})),
       ],
-      style:graphStyles(),
+      style:graphStyles(typeof document!=='undefined'&&document.documentElement.dataset.theme==='dark'),
       layout:container?{name:graph.nodes.length>180?'circle':'cose',animate:false,padding:40,randomize:false}:{name:'preset'},
       minZoom:.08,maxZoom:4,wheelSensitivity:.25,
     });

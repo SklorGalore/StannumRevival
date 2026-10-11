@@ -1,4 +1,5 @@
 import './style.css';
+import {initializeTheme} from './theme';
 import {BrowserEngine} from './engine';
 import {NetworkGraph} from './graph';
 import {icon} from './icons';
@@ -23,7 +24,7 @@ app.innerHTML=`
     <div class="rail-bottom"><span class="local-dot"></span> Local browser workspace<p>Files stay on your device.<br>Powered by Rust + WebAssembly.</p><span class="version">NODAL / 0.1</span></div>
   </aside>
   <main>
-    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="view-title">Overview</strong></div><div class="top-actions"><span class="privacy"><span class="local-dot"></span> LOCAL ONLY</span><label class="button primary file-button" for="raw-file">${icon('open')} Open case</label><input id="raw-file" type="file" accept=".raw,.RAW" aria-label="Open RAW file" class="file-input" /></div></header>
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="view-title">Overview</strong></div><div class="top-actions"><div class="theme-control" role="group" aria-label="Color theme"><button class="theme-button" type="button" data-theme-preference="light" aria-label="Light theme" title="Light theme" aria-pressed="false">${icon('sun')}</button><button class="theme-button" type="button" data-theme-preference="dark" aria-label="Dark theme" title="Dark theme" aria-pressed="false">${icon('moon')}</button><button class="theme-button" type="button" data-theme-preference="system" aria-label="System theme" title="System theme" aria-pressed="false">${icon('monitor')}</button></div><span class="privacy"><span class="local-dot"></span> LOCAL ONLY</span><label class="button primary file-button" for="raw-file">${icon('open')} Open case</label><input id="raw-file" type="file" accept=".raw,.RAW" aria-label="Open RAW file" class="file-input" /></div></header>
     <section id="workspace" aria-busy="false"></section>
   </main>`;
 initializeTitlebar(app);
@@ -37,6 +38,8 @@ workspace.addEventListener('submit',event=>{const form=event.target as HTMLFormE
 fileInput.addEventListener('change',()=>{const file=fileInput.files?.[0];if(file) void openFile(file);fileInput.value='';});
 const engine=new BrowserEngine();
 const network=new NetworkGraph();
+initializeTheme(document.querySelector<HTMLElement>('.theme-control')!);
+document.addEventListener('themechange',()=>network.updateTheme());
 let snapshot:Snapshot|null=null;
 let filename='';
 let generation=0;
@@ -112,7 +115,7 @@ function render() {
   network.destroy();
   workspace.setAttribute('aria-busy',String(busy||topologyBusy));
   document.querySelector('#view-title')!.textContent=tabs.find(t=>t[0]===tab)![1];
-  for(const [id] of tabs) {const navItem=document.querySelector<HTMLButtonElement>(`[data-tab="${id}"]`)!;navItem.classList.toggle('active',id===tab);if(id===tab)navItem.setAttribute('aria-current','page');else navItem.removeAttribute('aria-current');}
+  for(const [id] of tabs) {const navItem=document.querySelector<HTMLButtonElement>(`[data-tab="${id}"]`)!;navItem.disabled=!snapshot;navItem.classList.toggle('active',id===tab);if(id===tab)navItem.setAttribute('aria-current','page');else navItem.removeAttribute('aria-current');}
   for(const [id] of tabs) document.querySelector(`#nav-${id}`)!.textContent='';
   if (!snapshot) {
     workspace.innerHTML=`<div class="page-heading"><div><p class="eyebrow">POWER SYSTEM TOPOLOGY</p><h1>A clearer view of your network.</h1><p class="muted">From a RAW case to the connections that matter.</p></div><span class="tag">PSS/E RAW · v35</span></div>
@@ -357,7 +360,7 @@ app.addEventListener('click',event=>{
   const action=element.dataset.action;
   if(topologyBusy&&action!=='choose') return;
   if(action==='choose') fileInput.click();
-  else if(action==='tab') {tab=element.dataset.tab as Tab;query='';page=0;render();}
+  else if(action==='tab') {if(!snapshot||element.matches('.nav-item:disabled')) return;tab=element.dataset.tab as Tab;query='';page=0;render();}
   else if(action==='fit') network.fit();
   else if(action==='inspect-bus') selectInspection({bus:nodeForBus(snapshot!.graph,Number(element.dataset.bus))?.bus??Number(element.dataset.bus),equipment:null});
   else if(action==='source-bus') {const source=snapshot!.case.buses.find(b=>b.number===Number(element.dataset.bus));if(source){selectedBus=source.number;selectedEquipment=null;sourceRecordBus=source.number;network.setSelection({bus:null,equipment:null});const legend=document.querySelector<HTMLElement>('.legend');if(legend&&graphData)legend.innerHTML=graphLegend(graphData,snapshot!,path,{bus:null,equipment:null}).map(entry=>`<span class="legend-${entry.key}"><i aria-hidden="true"></i>${entry.label}</span>`).join('');document.querySelector<HTMLElement>('#inspector .inspector-content')!.innerHTML=inspectorHtml();document.querySelector<HTMLElement>('#inspector h2')?.focus();renderSelection();}}

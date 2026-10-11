@@ -34,6 +34,24 @@ async function captureScreenshot(page: Page, path: string) {
   await page.screenshot({ path, fullPage: true });
 }
 
+test('analysis views stay disabled until a case loads successfully', async ({ page }) => {
+  await page.goto('/');
+  const views = page.getByRole('navigation', { name: 'Analysis views' }).getByRole('button');
+  await expect(views).toHaveCount(6);
+  for (const view of await views.all()) await expect(view).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Choose RAW file' })).toBeEnabled();
+  await expect(page.getByLabel('Treat zero-impedance branches as the same node')).toBeEnabled();
+  await page.locator('[data-tab="buses"]').dispatchEvent('click');
+  await expect(page.locator('#view-title')).toHaveText('Overview');
+  await page.getByLabel('Open RAW file').setInputFiles({ name: 'invalid.raw', mimeType: 'text/plain', buffer: Buffer.from('invalid') });
+  await expect(page.getByRole('alert')).toBeVisible();
+  for (const view of await views.all()) await expect(view).toBeDisabled();
+  await importRaw(page);
+  for (const view of await views.all()) await expect(view).toBeEnabled();
+  await page.locator('[data-tab="buses"]').click();
+  await expect(page.locator('#view-title')).toHaveText('Buses');
+});
+
 test('workbench uses readable typography, navigation semantics, and the light palette', async ({ page }) => {
   await page.goto('/');
   await importRaw(page);
