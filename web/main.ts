@@ -2,6 +2,7 @@ import './style.css';
 import {BrowserEngine} from './engine';
 import {NetworkGraph} from './graph';
 import {icon} from './icons';
+import {saveExport} from './export';
 import {graphLegend} from './graph-presentation';
 import type {GraphSelection} from './graph-presentation';
 import {focusedGraph,neighborhood,nodeForBus,toCsv} from './view-model';
@@ -30,6 +31,7 @@ const fileInput=document.querySelector<HTMLInputElement>('#raw-file')!;
 // Attach input listeners once
 workspace.addEventListener('input',event=>{const input=event.target as HTMLInputElement;if(input.id==='neighborhood-hops'&&input.validity.valid)neighborhoodHops=input.valueAsNumber;});
 workspace.addEventListener('change',event=>{const input=event.target as HTMLInputElement;if(input.type==='checkbox'&&input.getAttribute('aria-label')==='Treat zero-impedance branches as the same node')void changeTopology(input.checked);});
+workspace.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id==='path-form')void findPath(event,form);});
 fileInput.addEventListener('change',()=>{const file=fileInput.files?.[0];if(file) void openFile(file);fileInput.value='';});
 const engine=new BrowserEngine();
 const network=new NetworkGraph();
@@ -59,7 +61,6 @@ let path:Path|null=null;
 let pathText='Choose two bus numbers to find a path.';
 let pathError=false;
 let pathBusy=false;
-let pathFormListenerAdded=false;
 let fromBus='';
 let toBus='';
 let neighborhoodHops=2;
@@ -152,7 +153,6 @@ function render() {
   }
   if (snapshot) {
   const pathForm=document.querySelector('#path-form')!;
-  if (!pathFormListenerAdded) { pathForm.addEventListener('submit',findPath); pathFormListenerAdded=true; }
   if(topologyBusy) (pathForm.querySelector('button') as HTMLButtonElement).disabled=true;
   const pathResultEl=document.querySelector('[data-testid="path-result"]');
   if(pathResultEl) {
@@ -319,9 +319,8 @@ async function changeTopology(enabled:boolean) {
   }
 }
 
-async function findPath(event:Event) {
+async function findPath(event:Event,form:HTMLFormElement) {
   event.preventDefault();if(!snapshot) return;
-  const form=event.currentTarget as HTMLFormElement;
   fromBus=(form.elements.namedItem('from') as HTMLInputElement).value;toBus=(form.elements.namedItem('to') as HTMLInputElement).value;
   if(topologyBusy) return;
   const ownGeneration=generation,ownPath=++pathGeneration;
@@ -339,9 +338,16 @@ async function findPath(event:Event) {
   }
 }
 
-function download(data:string,type:string,extension:string,kind='topology') {
-  const url=URL.createObjectURL(new Blob([data],{type}));
-  const link=document.createElement('a');link.href=url;link.download=`${filename.replace(/\.raw$/i,'')}-${kind}.${extension}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+async function download(data:string,type:string,extension:string,kind='topology'):Promise<void> {
+  const ownGeneration=generation;
+  const exportFilename=`${filename.replace(/\.raw$/i,'')}-${kind}.${extension}`;
+  try {
+    await saveExport(data,type,exportFilename);
+  } catch(e) {
+    if(ownGeneration!==generation) return;
+    error={severity:'error',section:'EXPORT',line:0,message:e instanceof Error?e.message:String(e)};
+    render();
+  }
 }
 
 app.addEventListener('click',event=>{
@@ -356,11 +362,11 @@ app.addEventListener('click',event=>{
   else if(action==='inspect-equipment') selectInspection({bus:null,equipment:element.dataset.equipment!});
   else if(action==='full'&&snapshot&&!topologyBusy) {clearPathSelection();selectedIsland=null;selectedNeighborhoodBus=null;setView('full');selectGraph(snapshot.graph,'Full network');render();}
   else if(action==='neighborhood'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;clearPathSelection();selectedNeighborhoodBus=Number(element.dataset.bus);selectedBus=nodeForBus(snapshot.graph,selectedNeighborhoodBus)?.bus??selectedNeighborhoodBus;selectedEquipment=null;selectedIsland=null;setView('neighborhood');selectGraph(neighborhood(snapshot.graph,selectedNeighborhoodBus,neighborhoodHops),`Bus ${selectedNeighborhoodBus} · ${neighborhoodHops}-hop neighborhood`);render();}
-  else if(action==='neighborhood-csv'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;const bus=Number(element.dataset.bus);const selected=neighborhood(snapshot.graph,bus,neighborhoodHops);const ids=new Set(selected.nodes.map(node=>node.id));const rows=busRows().filter(row=>ids.has(`bus:${row.bus}`));download(toCsv(rows),'text/csv;charset=utf-8','csv',`bus-${bus}-${neighborhoodHops}-hops`);}
+  else if(action==='neighborhood-csv'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;const bus=Number(element.dataset.bus);const selected=neighborhood(snapshot.graph,bus,neighborhoodHops);const ids=new Set(selected.nodes.map(node=>node.id));const rows=busRows().filter(row=>ids.has(`bus:${row.bus}`));void download(toCsv(rows),'text/csv;charset=utf-8','csv',`bus-${bus}-${neighborhoodHops}-hops`);}
   else if(action==='island'&&snapshot&&!topologyBusy) {const island=snapshot.analysis.islands.find(i=>i.id===Number(element.dataset.island))!;clearPathSelection();selectedIsland=island.id;selectedIslandAnchor=island.buses[0]??null;selectedNeighborhoodBus=null;setView('island');selectGraph(focusedGraph(snapshot.graph,new Set([...island.buses.map(b=>nodeForBus(snapshot!.graph,b)?.id??`bus:${b}`),...island.synthetic_nodes])),`Island ${island.id}`);render();}
   else if(action==='previous'||action==='next') {page+=action==='next'?1:-1;renderTable();}
-  else if(action==='csv'&&snapshot) download(toCsv(filteredRows()),'text/csv;charset=utf-8','csv');
-  else if(action==='json'&&snapshot&&!topologyBusy) download(JSON.stringify({format_version:1,filename,case:snapshot.case,graph:snapshot.graph,merge_zero_impedance:snapshot.graph.merge_zero_impedance,analysis:snapshot.analysis,path},null,2),'application/json','json');
+  else if(action==='csv'&&snapshot) void download(toCsv(filteredRows()),'text/csv;charset=utf-8','csv');
+  else if(action==='json'&&snapshot&&!topologyBusy) void download(JSON.stringify({format_version:1,filename,case:snapshot.case,graph:snapshot.graph,merge_zero_impedance:snapshot.graph.merge_zero_impedance,analysis:snapshot.analysis,path},null,2),'application/json','json');
 });
 app.addEventListener('input',event=>{if((event.target as HTMLElement).id==='result-search'){query=(event.target as HTMLInputElement).value;page=0;renderTable();}});
 

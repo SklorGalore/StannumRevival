@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nodal",
+  "version": "0.1.0",
+  "identifier": "com.nodal.desktop",
+  "build": {
+    "beforeDevCommand": "npm run wasm && npm run dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'",
+      "devCsp": "default-src 'self' http://127.0.0.1:5173; script-src 'self' 'wasm-unsafe-eval' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173; img-src 'self' asset: http://asset.localhost data: blob: http://127.0.0.1:5173; font-src 'self' data: http://127.0.0.1:5173; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost http://127.0.0.1:5173 ws://127.0.0.1:5173; worker-src 'self' blob: http://127.0.0.1:5173; object-src 'none'; base-uri 'self'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Nodal",
+        "width": 1440,
+        "height": 1000,
+        "minWidth": 900,
+        "minHeight": 640,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity"
+  }
+}

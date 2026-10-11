@@ -40,6 +40,46 @@ test('imports supplied cases privately and exports consistent topology results',
   expect(errors).toEqual([]);
 });
 
+test('reports desktop save failures without losing the case and ignores stale failures after replacement', async ({page})=>{
+  await page.addInitScript(()=>{
+    let saves=0;
+    Object.assign(window,{
+      isTauri:true,
+      __TAURI_INTERNALS__:{
+        invoke:(command:string)=>{
+          if(command!=='save_export') throw new Error(`Unexpected native command: ${command}`);
+          saves++;
+          if(saves===1) return Promise.reject('Permission denied while saving');
+          window.dispatchEvent(new Event('desktop-save-export-started'));
+          return new Promise((_,reject)=>setTimeout(()=>reject('Stale save failure'),1000));
+        },
+      },
+    });
+  });
+  const rawSections=['',"1,'Origin',138,1\n2,'North',138,1",'','','',"1,2,'1',1,.1",'','','\'DC\',1,0'];
+  const raw='0,100,35,0,0,60\nDesktop save test\n\n'+rawSections.map(section=>section+(section?'\n':'')+'0\n').join('')+'0\n'.repeat(21-rawSections.length)+'Q\n';
+  await page.goto('/');
+  await page.getByLabel('Open RAW file').setInputFiles({name:'tiny.raw',mimeType:'text/plain',buffer:Buffer.from(raw)});
+  await expect(page.getByTestId('bus-count')).toHaveText('2');
+
+  await page.getByRole('button',{name:'Export JSON'}).click();
+  await expect(page.locator('#workspace .error-banner strong')).toHaveText('EXPORT');
+  await expect(page.locator('#workspace .error-banner')).toContainText('Permission denied while saving');
+  await expect(page.getByTestId('bus-count')).toHaveText('2');
+  await page.getByLabel('From bus').fill('1');
+  await page.getByLabel('To bus').fill('2');
+  await page.getByRole('button',{name:'Find path'}).click();
+  await expect(page.getByTestId('path-result')).toContainText('1 equipment hop');
+
+  const saveStarted=page.evaluate(()=>new Promise<void>(resolve=>window.addEventListener('desktop-save-export-started',()=>resolve(),{once:true})));
+  await page.getByRole('button',{name:'Export JSON'}).click();
+  await saveStarted;
+  await page.getByLabel('Open RAW file').setInputFiles('Texas2k_series25_case1_summerpeak.RAW');
+  await expect(page.getByTestId('bus-count')).toHaveText('2,751');
+  await page.waitForTimeout(1100);
+  await expect(page.locator('#workspace .error-banner')).toHaveCount(0);
+});
+
 test('reports topology omissions and exports filtered CSV including quotes', async ({page})=>{
   const sections=['',"1,'<img src=x onerror=alert(1)>',138,1\n2,'A, B',138,1",'','','',"1,2,'1',0,.1",'','','',"'DC',1,0"];
   const raw='0,100,35,0,0,60\nTest\n\n'+sections.map(s=>s+(s?'\n':'')+'0\n').join('')+'0\n'.repeat(21-sections.length)+'Q\n';

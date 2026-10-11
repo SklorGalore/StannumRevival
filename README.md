@@ -1,8 +1,8 @@
 # Nodal
 
-A local browser application for AC topology analysis of PSS/E RAW v35 files. Rust parses and analyzes the case inside a WebAssembly worker; TypeScript and Cytoscape display the results. File contents are never uploaded.
+A local application for AC topology analysis of PSS/E RAW v35 files, available in a browser or as a desktop app. Rust parses and analyzes the case inside a WebAssembly worker; TypeScript and Cytoscape display the results. File contents are never uploaded.
 
-## Run locally
+## Run in a browser
 
 Requires Rust 1.85 or newer and Node.js 22.12 or newer.
 
@@ -23,6 +23,25 @@ npm run preview
 ```
 
 `dist/` contains the application, including its WASM module. It needs a static HTTP server; opening `index.html` directly with `file://` does not support module workers. Run `npm run wasm` after changing Rust code; Vite handles TypeScript/CSS changes automatically.
+
+## Desktop app
+
+The Tauri desktop wrapper packages the same local interface and WebAssembly worker. Browser development and static builds remain available as described above. Desktop development and packaging use these commands:
+
+```sh
+npm install
+rustup target add wasm32-unknown-unknown
+npm run desktop:dev
+npm run desktop:build
+```
+
+The desktop wrapper uses the native save dialog for CSV and JSON exports. Imported case contents stay on the device and in memory; only files explicitly saved through an export are written to disk. RAW acceptance fixtures are not included in the app bundle.
+
+The root parser and analysis library require Rust 1.85 or newer. The desktop save-dialog dependency currently requires Rust 1.90 or newer, so use Rust 1.90+ for desktop commands. Node.js 22.12 or newer and the `wasm32-unknown-unknown` Rust target are required on both platforms. Tauri's platform setup also requires [Xcode Command Line Tools on macOS](https://v2.tauri.app/start/prerequisites/#macos) and, on Windows, the [MSVC Rust toolchain, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2](https://v2.tauri.app/start/prerequisites/#windows). WebView2 is included with current Windows 10 and Windows 11 releases; install its Evergreen Runtime if it is missing.
+
+Build on the platform you want to package. A macOS build produces the native executable in `src-tauri/target/release/`, the `.app` under `src-tauri/target/release/bundle/macos/`, and a DMG under `src-tauri/target/release/bundle/dmg/`. A Windows build produces the native `.exe` in `src-tauri/target/release/` and an NSIS setup executable under `src-tauri/target/release/bundle/nsis/`. Windows artifacts must be built and smoke-tested on Windows; macOS does not verify Windows packaging. Builds are unsigned and are not automatically notarized.
+
+The macOS native executable, `.app` bundle, and DMG were generated successfully with `npm run desktop:build`. A native Tauri WKWebView harness loaded the bundled production frontend under its configured CSP with zero CSP violations. Using synthetic file input, it analyzed both RAW fixtures (993 buses, then 2,751 buses) and passed case replacement. The 73 automated tests also pass: 30 root Rust, 3 desktop Rust, 20 frontend unit, and 20 browser tests. Manual file chooser, drag-and-drop, save-dialog cancellation/error behavior, and Windows build/runtime checks remain unverified.
 
 ## Explore a case
 
