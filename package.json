@@ -13,7 +13,7 @@
     "test:all": "cargo test && npm run test",
     "test:browser": "playwright test",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
+    "desktop:build": "node scripts/desktop-build.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.4",

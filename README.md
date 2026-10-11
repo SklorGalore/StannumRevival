@@ -35,6 +35,8 @@ npm run desktop:dev
 npm run desktop:build
 ```
 
+`npm run desktop:build` defaults `CI=true` on macOS to build the `.app` and DMG without opening Finder. App and volume icons remain included, but the DMG's custom Finder layout is skipped. Run `CI=false npm run desktop:build` to enable that layout. Windows environment settings are preserved. This default applies only to the npm wrapper; running `cargo tauri build` directly is unaffected.
+
 The desktop wrapper uses the native save dialog for CSV and JSON exports. Imported case contents stay on the device and in memory; only files explicitly saved through an export are written to disk. RAW acceptance fixtures are not included in the app bundle.
 
 The root parser and analysis library require Rust 1.85 or newer. The desktop save-dialog dependency currently requires Rust 1.90 or newer, so use Rust 1.90+ for desktop commands. Node.js 22.12 or newer and the `wasm32-unknown-unknown` Rust target are required on both platforms. Tauri's platform setup also requires [Xcode Command Line Tools on macOS](https://v2.tauri.app/start/prerequisites/#macos) and, on Windows, the [MSVC Rust toolchain, Microsoft C++ Build Tools with the Desktop development with C++ workload, and WebView2](https://v2.tauri.app/start/prerequisites/#windows). WebView2 is included with current Windows 10 and Windows 11 releases; install its Evergreen Runtime if it is missing.
