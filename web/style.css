@@ -342,6 +342,39 @@ main { min-height: 100vh; margin-left: 200px; }
 .legend-path i { height: 3px; background: var(--path); }
 .legend-bridge i { height: 3px; border-top: 1px dashed var(--graph-surface); background: var(--finding); }
 .legend-articulation i { width: 9px; height: 9px; border: 2px solid var(--finding); border-radius: 50%; background: var(--graph-surface); }
+
+.field-controls { margin: 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); }
+.field-controls > summary { min-height: 36px; padding: 9px 16px; color: var(--text-strong); cursor: pointer; font-size: 14px; font-weight: 600; }
+.field-controls__body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.field-controls__section:first-of-type { grid-column: 1 / -1; }
+.field-controls__section { display: flex; min-width: 0; flex-direction: column; align-items: stretch; gap: 9px; padding: 12px 16px; border-top: 1px solid var(--divider); }
+.field-controls__section h3 { margin: 0; color: var(--text-strong); font-size: 14px; }
+.field-controls label { display: flex; min-width: 0; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 12px; }
+.field-controls input, .field-controls select { width: 100%; min-width: 0; min-height: 34px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); background: var(--input-surface); font: inherit; font-size: 14px; }
+.field-controls input[type="color"] { padding: 3px 5px; cursor: pointer; }
+.field-controls button { min-height: 34px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); background: var(--surface); font-size: 14px; cursor: pointer; }
+.field-controls button:hover { background: var(--surface-hover); }
+.field-controls button:disabled, .field-controls select:disabled { opacity: .5; cursor: default; }
+.field-controls__filter-form { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 8px; }
+.field-controls__filter-value, .field-controls__filter-upper { min-width: 0; }
+.field-controls__filter-value:empty, .field-controls__filter-upper:empty, .field-controls__validation:empty { display: none; }
+.field-controls__validation { grid-column: 1 / -1; margin: 0; color: var(--error); font-size: 12px; overflow-wrap: anywhere; }
+.field-controls__active-filters { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+.field-controls__filter-count { flex: 1 1 100%; margin: 0; color: var(--text-secondary); font-size: 12px; }
+.field-controls__filter-chip { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 3px 6px 3px 9px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.field-controls__filter-chip button { flex: none; min-height: 26px; padding: 2px 6px; font-size: 12px; }
+.field-controls__gradient { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.field-controls__category-editor { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 90px; align-items: end; gap: 8px; }
+.field-controls__category-editor button { grid-column: 1 / -1; }
+.field-view-note, .field-table-note { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.field-view-note:empty { display: none; }
+.field-color-legend { display: flex; max-height: 150px; flex-direction: column; gap: 8px; overflow: auto; padding: 10px 16px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 12px; }
+.field-color-legend:empty { display: none; }
+.field-legend-group { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.field-legend-values { display: flex; min-width: 0; flex-wrap: wrap; gap: 7px 12px; }
+.field-legend-values > span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; overflow-wrap: anywhere; }
+.field-legend-values i { display: inline-block; width: 11px; height: 11px; flex: none; border: 1px solid var(--border); border-radius: 2px; }
+.field-legend-values .field-gradient i { width: 100px; height: 11px; }
 .topology-explanation { padding: 7px 14px 10px; border-top: 1px solid var(--divider-subtle); color: var(--graph-text); font-size: 12px; }
 
 .inspector .eyebrow { margin-bottom: 7px; }
@@ -473,6 +506,9 @@ tr[data-selected="true"] td:first-child { box-shadow: inset 3px 0 var(--selectio
 }
 
 @media (max-width: 540px) {
+  .field-controls__body { grid-template-columns: minmax(0, 1fr); }
+  .field-controls > summary, .field-controls__section { padding-right: 10px; padding-left: 10px; }
+  .field-controls__filter-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { height: auto; min-height: 54px; padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
   .privacy { display: none; }
   .top-actions { gap: 8px; }

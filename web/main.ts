@@ -9,6 +9,9 @@ import {graphLegend} from './graph-presentation';
 import type {GraphSelection} from './graph-presentation';
 import {focusedGraph,neighborhood,nodeForBus,toCsv} from './view-model';
 import {busRows as mergedBusRows,memberSearchText} from './topology-view';
+import {FieldControls} from './field-controls';
+import {filterGraph,matchesBus,matchesEquipment,fieldValues} from './field-view';
+import {createColorPresentation,type ColorPresentation} from './field-colors';
 import type {Snapshot,GraphData,Path,Diagnostic,SourceRecord} from './types';
 
 const logo=`<svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M10 11L29 10L21 29L10 11M10 11L7 30L21 29" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="11" r="4" fill="currentColor"/><circle cx="29" cy="10" r="3" fill="currentColor"/><circle cx="21" cy="29" r="4" fill="currentColor"/><circle cx="7" cy="30" r="2" fill="currentColor"/></svg>`;
@@ -38,6 +41,8 @@ workspace.addEventListener('submit',event=>{const form=event.target as HTMLFormE
 fileInput.addEventListener('change',()=>{const file=fileInput.files?.[0];if(file) void openFile(file);fileInput.value='';});
 const engine=new BrowserEngine();
 const network=new NetworkGraph();
+const fieldControls=new FieldControls();
+let colorPresentation:ColorPresentation={nodeColors:{},edgeColors:{},legends:[]};
 initializeTheme(document.querySelector<HTMLElement>('.theme-control')!);
 document.addEventListener('themechange',()=>network.updateTheme());
 let snapshot:Snapshot|null=null;
@@ -55,6 +60,7 @@ let sourceRecordBus:number|null=null;
 type FocusDescriptor={id?:string;action?:string;tab?:string;bus?:string;island?:string;equipment?:string;name?:string;type?:string;formSubmit?:boolean;ariaLabel?:string;owner?:string};
 let pendingFocus:FocusDescriptor|null=null;
 let graphData:GraphData|null=null;
+let scopedGraph:GraphData|null=null;
 let graphTitle='Focused network';
 let graphMessage='';
 let graphView:'full'|'island'|'neighborhood'|'path'='neighborhood';
@@ -76,6 +82,43 @@ const PAGE_SIZE=25;
 const fmt=(n:number)=>n.toLocaleString('en-US');
 const esc=(s:unknown)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const button=(label:string,action:string,extra='')=>`<button class="button" data-action="${action}" ${topologyBusy&&action!=='choose'?'disabled':''} ${extra}>${label}</button>`;
+
+function fieldViewNote():string {
+  if(!fieldControls.filters.length) return '';
+  const count=fieldControls.filters.length;
+  let note=`${count} field filter${count===1?'':'s'} applied within this view. Islands and paths use the full active topology.`;
+  if(path&&graphView==='path') {
+    const nodes=new Set(graphData?.nodes.map(node=>node.id));
+    const edges=new Set(graphData?.edges.map(edge=>edge.id));
+    if(path.node_ids.some(id=>!nodes.has(id))||path.connection_ids.some(id=>!edges.has(id))) note+=' Filters hide part of this path.';
+  }
+  return note;
+}
+
+function fieldColorLegendHtml():string {
+  if(!snapshot||!graphData) return '';
+  return colorPresentation.legends.map(legend=>{
+    const scheme=fieldControls.colors[legend.target];
+    const ids=legend.target==='bus'
+      ?graphData!.nodes.filter(node=>node.bus!==null).map(node=>node.bus!)
+      :[...new Set(graphData!.edges.map(edge=>edge.equipment_id))];
+    if(!ids.length) return '';
+    const visible=new Set<string>();
+    let mixed=false,missing=false;
+    for(const id of ids) {
+      const values=fieldValues(snapshot!,legend.target,id,scheme.field);
+      if(values.length>1) {mixed=true;continue;}
+      if(!values.length||values[0]===null) missing=true;
+      else visible.add(String(values[0]));
+    }
+    const entries=legend.entries.filter(entry=>visible.has(entry.label));
+    if(missing) entries.push({label:'Missing',color:scheme.missing});
+    if(mixed) entries.push({label:'Mixed',color:scheme.mixed});
+    const swatches=entries.map(entry=>`<span data-color-value="${esc(entry.label)}"><i style="background-color:${entry.color}" aria-hidden="true"></i>${esc(entry.label)}</span>`).join('');
+    const ramp=legend.gradient?`<span class="field-gradient"><span>${esc(legend.gradient.min)}</span><i style="background:linear-gradient(to right,${legend.gradient.low},${legend.gradient.high})" aria-hidden="true"></i><span>${esc(legend.gradient.max)}</span></span>`:'';
+    return `<div class="field-legend-group"><strong>${legend.target==='bus'?'Buses':'Equipment'} · ${esc(legend.label)}</strong><div class="field-legend-values">${ramp}${swatches}</div></div>`;
+  }).join('');
+}
 
 function rememberFocus():void {
   const active=document.activeElement;
@@ -132,6 +175,7 @@ function render() {
     return;
   }
   const c=snapshot.case,a=snapshot.analysis;
+  colorPresentation=createColorPresentation(snapshot,fieldControls.colors);
   appliedMerge=snapshot.graph.merge_zero_impedance;
   const lines=c.equipment.filter(e=>e.kind==='line').length;
   const transformers=c.equipment.filter(e=>e.kind==='transformer').length;
@@ -145,15 +189,24 @@ function render() {
     ${firstTitle?`<details class="case-title"><summary>Case notes</summary>${c.titles.map(t=>`<p>${esc(t)}</p>`).join('')}</details>`:''}
     ${warnings.length?`<div class="warning-banner" role="status"><strong>Topology coverage is limited</strong><span>${warnings.map(d=>esc(d.message)+' '+esc(d.section)).join(' · ')}</span>${button('Review diagnostics','tab','data-tab="diagnostics"')}</div>`:''}
     <div class="metrics"><article><span>RAW BUSES</span><strong data-testid="bus-count">${fmt(c.buses.length)}</strong><p>${fmt(a.original_active_buses)} active source · ${fmt(a.excluded_buses)} excluded</p></article><article><span>TRANSMISSION LINES</span><strong data-testid="line-count">${fmt(lines)}</strong><p>Parallel circuits preserved</p></article><article><span>TRANSFORMERS</span><strong data-testid="transformer-count">${fmt(transformers)}</strong><p>${fmt(a.synthetic_junctions)} synthetic junctions</p></article><article class="metric-accent"><span>ANALYSIS TOPOLOGY</span><strong>${fmt(a.active_buses)}</strong><p>${fmt(a.islands.length)} islands · ${fmt(a.bridges.length)} bridges · ${fmt(a.articulation_buses.length)} cut buses</p></article></div>
-    <div class="analysis-workspace"><section class="panel network-panel"><div class="panel-heading"><div><p class="eyebrow">NETWORK VIEW</p><h2>${esc(graphTitle)}</h2></div><div>${button('Show full network','full',`${topologyBusy?'disabled':''}`)} ${button('Fit view','fit',topologyBusy?'disabled':'')}</div></div><div class="graph-wrap"><div id="network-canvas" aria-label="Focused network graph" role="img"></div>${topologyBusy?`<div class="graph-empty"><span>◌</span><h3>Rebuilding topology…</h3><p>Graph, table, path, and inspection actions are paused until the new topology is ready.</p></div>`:!graphData?`<div class="graph-empty"><span>◌</span><h3>Select a smaller network view</h3><p>${esc(graphMessage||'Inspect a bus, open an island, or find a path to explore its connections.')}</p></div>`:''}</div><div class="graph-footer"><span data-testid="graph-status">${topologyBusy?'Rebuilding topology':graphData?`${fmt(graphData.nodes.length)} nodes · ${fmt(graphData.edges.length)} connections`:'No graph selected'}</span><div class="legend">${snapshot&&graphData?graphLegend(graphData,snapshot,path,sourceRecordBus===null?{bus:selectedBus,equipment:selectedEquipment}:{bus:null,equipment:null}).map(entry=>`<span class="legend-${entry.key}"><i aria-hidden="true"></i>${entry.label}</span>`).join(''):''}</div></div><p class="topology-explanation">Topology bridges indicate connectivity, not outage consequences. Three-winding transformer junctions are synthetic; a transformer counts as one equipment hop.</p></section>
+    <div class="analysis-workspace"><section class="panel network-panel"><div class="panel-heading"><div><p class="eyebrow">NETWORK VIEW</p><h2>${esc(graphTitle)}</h2></div><div>${button('Show full network','full',`${topologyBusy?'disabled':''}`)} ${button('Fit view','fit',topologyBusy?'disabled':'')}</div></div><div id="field-controls-host" ${topologyBusy?'inert':''}></div><p class="field-view-note" data-testid="field-view-note" aria-live="polite">${esc(fieldViewNote())}</p><div class="graph-wrap"><div id="network-canvas" aria-label="Focused network graph" role="img"></div>${topologyBusy?`<div class="graph-empty"><span>◌</span><h3>Rebuilding topology…</h3><p>Graph, table, path, and inspection actions are paused until the new topology is ready.</p></div>`:!graphData?`<div class="graph-empty"><span>◌</span><h3>Select a smaller network view</h3><p>${esc(graphMessage||'Inspect a bus, open an island, or find a path to explore its connections.')}</p></div>`:graphData.nodes.length===0?'<div class="graph-empty"><span>◌</span><h3>No elements match these filters</h3><p>Adjust or clear the field filters to restore this view.</p></div>':''}</div><div class="graph-footer"><span data-testid="graph-status">${topologyBusy?'Rebuilding topology':graphData?`${fmt(graphData.nodes.length)} nodes · ${fmt(graphData.edges.length)} connections`:'No graph selected'}</span><div class="legend">${snapshot&&graphData?graphLegend(graphData,snapshot,path,sourceRecordBus===null?{bus:selectedBus,equipment:selectedEquipment}:{bus:null,equipment:null}).map(entry=>`<span class="legend-${entry.key}"><i aria-hidden="true"></i>${entry.label}</span>`).join(''):''}</div></div><div class="field-color-legend">${fieldColorLegendHtml()}</div><p class="topology-explanation">Topology bridges indicate connectivity, not outage consequences. Three-winding transformer junctions are synthetic; a transformer counts as one equipment hop.</p></section>
     <aside class="panel inspector" id="inspector"><div class="inspector-content">${inspectorHtml()}</div></aside>
     <section class="panel results-panel"><div class="panel-heading"><div><p class="eyebrow">TOPOLOGY RESULTS</p><h2>${tabs.find(t=>t[0]===tab)![1]}</h2></div><label class="search">${icon('search')}<input id="result-search" aria-label="${tab==='overview'||tab==='buses'?'Search buses':'Search results'}" placeholder="${tab==='overview'||tab==='buses'?'Search bus number or name…':'Search results…'}" value="${esc(query)}" /></label></div><div id="table-container"></div></section></div>
     <section class="panel path-panel"><div><p class="eyebrow">SHORTEST PATH</p><h2>Trace a connection</h2></div><form id="path-form"><label>From bus<input name="from" aria-label="From bus" type="number" min="1" max="2147483647" step="1" required placeholder="Bus number" value="${esc(fromBus)}" ${topologyBusy?'disabled':''} /></label><span class="path-arrow" aria-hidden="true">→</span><label>To bus<input name="to" aria-label="To bus" type="number" min="1" max="2147483647" step="1" required placeholder="Bus number" value="${esc(toBus)}" ${topologyBusy?'disabled':''} /></label><button class="button primary" type="submit" ${pathBusy||topologyBusy?'disabled':''}>${pathBusy?'Finding…':'Find path'}</button></form><div data-testid="path-result" class="path-result ${pathError?'text-error':''}" ${pathError?'role="alert"':''} aria-live="polite">${esc(pathText)}</div></section>
 
     <div class="workspace-footer">ACTIVE AC TOPOLOGY <span>${fmt(a.active_equipment)} equipment in graph · ${fmt(a.absorbed_equipment)} absorbed · ${fmt(a.excluded_equipment)} excluded · Files remain in memory</span></div>`;
   renderTable();
+  fieldControls.mount(document.querySelector<HTMLElement>('#field-controls-host')!,snapshot,kind=>{
+    if(!snapshot||topologyBusy) return;
+    if(kind==='filters') {page=0;refreshGraph();render();}
+    else {
+      colorPresentation=createColorPresentation(snapshot,fieldControls.colors);
+      network.setColors(colorPresentation);
+      document.querySelector<HTMLElement>('.field-color-legend')!.innerHTML=fieldColorLegendHtml();
+    }
+  });
   if (graphData&&!topologyBusy) {
-    network.render(document.querySelector<HTMLElement>('#network-canvas')!,graphData,snapshot,path,(bus,eq)=>selectInspection({bus,equipment:eq}));
+    network.render(document.querySelector<HTMLElement>('#network-canvas')!,graphData,snapshot,path,(bus,eq)=>selectInspection({bus,equipment:eq}),colorPresentation);
     network.setSelection(sourceRecordBus===null?{bus:selectedBus,equipment:selectedEquipment}:{bus:null,equipment:null});
   }
   if (snapshot) {
@@ -248,7 +301,16 @@ function tableRows():Record<string,unknown>[] {
 
 function busRows():Record<string,unknown>[] {return snapshot?mergedBusRows(snapshot):[];}
 
-function filteredRows() {const q=query.toLowerCase().trim();return tableRows().filter(row=>!q||Object.values(row).some(value=>String(value).toLowerCase().includes(q))||(!!snapshot&&typeof row.bus==='number'&&(()=>{const node=nodeForBus(snapshot!.graph,row.bus as number);return !!node&&memberSearchText(snapshot!.graph,snapshot!.case.buses,node).includes(q);})()));}
+function filteredRows() {
+  const q=query.toLowerCase().trim();
+  return tableRows().filter(row=>{
+    if(snapshot&&fieldControls.filters.length) {
+      if((tab==='overview'||tab==='buses')&&!matchesBus(snapshot,Number(row.bus),fieldControls.filters)) return false;
+      if(tab==='equipment'&&!matchesEquipment(snapshot,String(row.id),fieldControls.filters)) return false;
+    }
+    return !q||Object.values(row).some(value=>String(value).toLowerCase().includes(q))||(!!snapshot&&typeof row.bus==='number'&&(()=>{const node=nodeForBus(snapshot!.graph,row.bus as number);return !!node&&memberSearchText(snapshot!.graph,snapshot!.case.buses,node).includes(q);})());
+  });
+}
 
 function renderTable() {
   const container=document.querySelector('#table-container');if(!container||!snapshot) return;
@@ -256,13 +318,20 @@ function renderTable() {
   const rows=all.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
   const columns=Object.keys(tableRows()[0]??{});
   const labels:Record<string,string>={bus:'Bus',name:'Name',member_buses:'Member buses',base_kv:'Base kV',degree:'Degree',island:'Island',status:'Status',articulation:'Cut bus',buses:'Buses',junctions:'Junctions',bus_numbers:'Bus numbers',id:'Equipment / bus',kind:'Type',circuit:'Circuit',active:'In graph',topology:'Topology status',line:'RAW line',type:'Critical type',from:'From',to:'To',winding:'Winding',severity:'Level',section:'Section',message:'Diagnostic'};
-  container.innerHTML=rows.length?`<div class="table-scroll"><table><thead><tr>${columns.map(k=>`<th scope="col">${labels[k]??esc(k)}</th>`).join('')}<th scope="col"><span class="sr-only">Action</span></th></tr></thead><tbody>${rows.map(row=>`<tr>${columns.map(k=>`<td ${k==='name'||k==='message'?'class="wide-cell"':''}>${Array.isArray(row[k])?esc((row[k] as number[]).slice(0,8).join(', '))+((row[k] as number[]).length>8?' …':''):typeof row[k]==='boolean'?(row[k]?'Yes':'—'):esc(row[k])||'—'}</td>`).join('')}<td>${tab==='overview'||tab==='buses'?`<button class="text-button" aria-label="Inspect bus ${row.bus}" data-action="inspect-bus" data-bus="${row.bus}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:tab==='islands'?`<button class="text-button" data-action="island" data-island="${row.island}" ${topologyBusy?'disabled':''}>View island ↗</button>`:tab==='equipment'||(tab==='critical'&&row.type==='Bridge')?`<button class="text-button" data-action="inspect-equipment" data-equipment="${esc(row.id)}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:tab==='critical'?`<button class="text-button" data-action="inspect-bus" data-bus="${esc(row.id)}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:''}</td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>${fmt(page*PAGE_SIZE+1)}–${fmt(Math.min((page+1)*PAGE_SIZE,all.length))} of ${fmt(all.length)} results</span><div>${button('Previous','previous',page===0?'disabled':'')}<span>${page+1} / ${Math.ceil(all.length/PAGE_SIZE)}</span>${button('Next','next',(page+1)*PAGE_SIZE>=all.length?'disabled':'')}</div></div>`:`<div class="table-empty">${query?'No results match your search.':tab==='critical'?'No bridges or articulation buses found.':tab==='diagnostics'?'No parsing diagnostics.':'No results in this view.'}</div>`;
+  container.innerHTML=rows.length?`<div class="table-scroll"><table><thead><tr>${columns.map(k=>`<th scope="col">${labels[k]??esc(k)}</th>`).join('')}<th scope="col"><span class="sr-only">Action</span></th></tr></thead><tbody>${rows.map(row=>`<tr>${columns.map(k=>`<td ${k==='name'||k==='message'?'class="wide-cell"':''}>${Array.isArray(row[k])?esc((row[k] as number[]).slice(0,8).join(', '))+((row[k] as number[]).length>8?' …':''):typeof row[k]==='boolean'?(row[k]?'Yes':'—'):esc(row[k])||'—'}</td>`).join('')}<td>${tab==='overview'||tab==='buses'?`<button class="text-button" aria-label="Inspect bus ${row.bus}" data-action="inspect-bus" data-bus="${row.bus}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:tab==='islands'?`<button class="text-button" data-action="island" data-island="${row.island}" ${topologyBusy?'disabled':''}>View island ↗</button>`:tab==='equipment'||(tab==='critical'&&row.type==='Bridge')?`<button class="text-button" data-action="inspect-equipment" data-equipment="${esc(row.id)}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:tab==='critical'?`<button class="text-button" data-action="inspect-bus" data-bus="${esc(row.id)}" ${topologyBusy?'disabled':''}>Inspect ↗</button>`:''}</td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>${fmt(page*PAGE_SIZE+1)}–${fmt(Math.min((page+1)*PAGE_SIZE,all.length))} of ${fmt(all.length)} results</span><div>${button('Previous','previous',page===0?'disabled':'')}<span>${page+1} / ${Math.ceil(all.length/PAGE_SIZE)}</span>${button('Next','next',(page+1)*PAGE_SIZE>=all.length?'disabled':'')}</div></div>`:`<div class="table-empty">${fieldControls.filters.length?'No results match your search and field filters.':query?'No results match your search.':tab==='critical'?'No bridges or articulation buses found.':tab==='diagnostics'?'No parsing diagnostics.':'No results in this view.'}</div>`;
+  if(fieldControls.filters.length&&tab!=='overview'&&tab!=='buses'&&tab!=='equipment') container.insertAdjacentHTML('afterbegin','<p class="field-table-note">Field filters apply to bus and equipment rows. This table shows whole-case topology results and diagnostics.</p>');
   renderSelection();
 }
 
 function selectGraph(data:GraphData,title:string) {
   graphTitle=title;
-  if(data.nodes.length>500) {graphData=null;graphMessage=`This selection has ${fmt(data.nodes.length)} nodes. Choose a bus neighborhood or path to stay within the 500-node display limit.`;}
+  scopedGraph=data;
+  refreshGraph();
+}
+
+function refreshGraph():void {
+  const data=snapshot&&scopedGraph?filterGraph(snapshot,scopedGraph,fieldControls.filters):null;
+  if(data&&data.nodes.length>500) {graphData=null;graphMessage=`This selection has ${fmt(data.nodes.length)} nodes. Choose a bus neighborhood or path to stay within the 500-node display limit. Field filters can also reduce the displayed selection.`;}
   else {graphData=data;graphMessage='';}
 }
 
@@ -280,7 +349,7 @@ function restoreView(next:Snapshot) {
     const origin=selectedNeighborhoodBus??next.analysis.degrees[0]?.bus??null;
     selectedNeighborhoodBus=origin;
     if(origin!==null) selectGraph(neighborhood(next.graph,origin,neighborhoodHops),`Bus ${origin} · ${neighborhoodHops}-hop neighborhood`);
-    else {graphData=null;graphTitle='Focused network';}
+    else {scopedGraph=null;graphData=null;graphTitle='Focused network';}
   }
 }
 
@@ -291,7 +360,8 @@ function clearPathSelection() {
 
 async function openFile(file:File) {
   const ownGeneration=++generation;++pathGeneration;
-  ++topologyGeneration;engine.dispose();filename=file.name;busy=true;topologyBusy=false;error=null;snapshot=null;path=null;selectedBus=null;selectedEquipment=null;sourceRecordBus=null;graphData=null;
+  fieldControls.resetFilters();
+  ++topologyGeneration;engine.dispose();filename=file.name;busy=true;topologyBusy=false;error=null;snapshot=null;path=null;selectedBus=null;selectedEquipment=null;sourceRecordBus=null;scopedGraph=null;graphData=null;
   pathText='Choose two bus numbers to find a path.';pathError=false;pathBusy=false;fromBus='';toBus='';neighborhoodHops=2;query='';page=0;tab='overview';graphView='neighborhood';selectedIsland=null;selectedIslandAnchor=null;selectedNeighborhoodBus=null;render();
   try {
     const bytes=await file.arrayBuffer();
@@ -367,11 +437,11 @@ app.addEventListener('click',event=>{
   else if(action==='inspect-equipment') selectInspection({bus:null,equipment:element.dataset.equipment!});
   else if(action==='full'&&snapshot&&!topologyBusy) {clearPathSelection();selectedIsland=null;selectedNeighborhoodBus=null;setView('full');selectGraph(snapshot.graph,'Full network');render();}
   else if(action==='neighborhood'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;clearPathSelection();selectedNeighborhoodBus=Number(element.dataset.bus);selectedBus=nodeForBus(snapshot.graph,selectedNeighborhoodBus)?.bus??selectedNeighborhoodBus;selectedEquipment=null;selectedIsland=null;setView('neighborhood');selectGraph(neighborhood(snapshot.graph,selectedNeighborhoodBus,neighborhoodHops),`Bus ${selectedNeighborhoodBus} · ${neighborhoodHops}-hop neighborhood`);render();}
-  else if(action==='neighborhood-csv'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;const bus=Number(element.dataset.bus);const selected=neighborhood(snapshot.graph,bus,neighborhoodHops);const ids=new Set(selected.nodes.map(node=>node.id));const rows=busRows().filter(row=>ids.has(`bus:${row.bus}`));void download(toCsv(rows),'text/csv;charset=utf-8','csv',`bus-${bus}-${neighborhoodHops}-hops`);}
+  else if(action==='neighborhood-csv'&&snapshot&&!topologyBusy) {const input=document.querySelector<HTMLInputElement>('#neighborhood-hops')!;if(!input.checkValidity()){input.reportValidity();return;}neighborhoodHops=input.valueAsNumber;const bus=Number(element.dataset.bus);const selected=neighborhood(snapshot.graph,bus,neighborhoodHops);const ids=new Set(selected.nodes.map(node=>node.id));const rows=busRows().filter(row=>ids.has(`bus:${row.bus}`)&&matchesBus(snapshot!,Number(row.bus),fieldControls.filters));void download(toCsv(rows),'text/csv;charset=utf-8','csv',`bus-${bus}-${neighborhoodHops}-hops`);}
   else if(action==='island'&&snapshot&&!topologyBusy) {const island=snapshot.analysis.islands.find(i=>i.id===Number(element.dataset.island))!;clearPathSelection();selectedIsland=island.id;selectedIslandAnchor=island.buses[0]??null;selectedNeighborhoodBus=null;setView('island');selectGraph(focusedGraph(snapshot.graph,new Set([...island.buses.map(b=>nodeForBus(snapshot!.graph,b)?.id??`bus:${b}`),...island.synthetic_nodes])),`Island ${island.id}`);render();}
   else if(action==='previous'||action==='next') {page+=action==='next'?1:-1;renderTable();}
   else if(action==='csv'&&snapshot) void download(toCsv(filteredRows()),'text/csv;charset=utf-8','csv');
-  else if(action==='json'&&snapshot&&!topologyBusy) void download(JSON.stringify({format_version:1,filename,case:snapshot.case,graph:snapshot.graph,merge_zero_impedance:snapshot.graph.merge_zero_impedance,analysis:snapshot.analysis,path},null,2),'application/json','json');
+  else if(action==='json'&&snapshot&&!topologyBusy) void download(JSON.stringify({format_version:1,filename,case:snapshot.case,graph:snapshot.graph,merge_zero_impedance:snapshot.graph.merge_zero_impedance,analysis:snapshot.analysis,path,view:{scope:graphView,title:graphTitle,filters:fieldControls.filters,colors:fieldControls.colors,displayed_graph:graphData}},null,2),'application/json','json');
 });
 app.addEventListener('input',event=>{if((event.target as HTMLElement).id==='result-search'){query=(event.target as HTMLInputElement).value;page=0;renderTable();}});
 

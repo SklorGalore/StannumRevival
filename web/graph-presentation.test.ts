@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {graphLegend} from './graph-presentation';
 import {NetworkGraph} from './graph';
+import type {ColorPresentation} from './field-colors';
 import type {GraphData,Snapshot} from './types';
 
 const graph:GraphData={
@@ -76,6 +77,39 @@ describe('graph presentation',()=>{
     expect(cy.elements('.selected')).toHaveLength(0);
     expect(cy.zoom()).toBe(lowZoom);
     expect(cy.pan()).toEqual(lowZoomPan);
+    network.destroy();
+  });
+
+  it('applies field colors beneath path, finding, and selection styles',()=>{
+    const network=new NetworkGraph();
+    const presentation:ColorPresentation={nodeColors:{'bus:1':'#ff0000'},edgeColors:{'connection:T1:1':'#00aa00'},legends:[]};
+    network.render(undefined,graph,snapshot,{buses:[1],equipment_ids:['T1'],node_ids:['bus:1'],connection_ids:['connection:T1:1'],hops:1},()=>{},presentation);
+    network.setSelection({bus:1,equipment:'T1'});
+    const cy=(network as unknown as {cy:import('cytoscape').Core}).cy;
+    expect(cy.getElementById('bus:1').data('fieldColor')).toBe('#ff0000');
+    expect(cy.getElementById('bus:1').style('background-color')).toBe('rgb(37,99,235)');
+    expect(cy.getElementById('bus:1').style('border-color')).toBe('rgb(15,118,110)');
+    expect(cy.getElementById('bus:1').style('underlay-color')).toBe('rgb(152,99,21)');
+    expect(cy.getElementById('connection:T1:1').data('fieldColor')).toBe('#00aa00');
+    expect(cy.getElementById('connection:T1:1').style('line-color')).toBe('rgb(37,99,235)');
+    expect(cy.getElementById('junction:T1').style('background-color')).toBe('rgb(255,255,255)');
+    network.destroy();
+  });
+
+  it('recolors an existing graph without resetting viewport and preserves colors on theme changes',()=>{
+    const network=new NetworkGraph();
+    network.render(undefined,graph,snapshot,null,()=>{}, {nodeColors:{'bus:1':'#ff0000'},edgeColors:{},legends:[]} as ColorPresentation);
+    const cy=(network as unknown as {cy:import('cytoscape').Core}).cy;
+    cy.zoom(1.3);
+    cy.pan({x:23,y:41});
+    network.setColors({nodeColors:{'bus:1':'#00ff00'},edgeColors:{'connection:T1:1':'#0000ff'},legends:[]});
+    expect(cy.getElementById('bus:1').style('background-color')).toBe('rgb(0,255,0)');
+    expect(cy.getElementById('connection:T1:1').style('line-color')).toBe('rgb(0,0,255)');
+    expect(cy.zoom()).toBe(1.3);
+    expect(cy.pan()).toEqual({x:23,y:41});
+    network.updateTheme();
+    expect(cy.getElementById('bus:1').style('background-color')).toBe('rgb(0,255,0)');
+    expect(cy.getElementById('connection:T1:1').style('line-color')).toBe('rgb(0,0,255)');
     network.destroy();
   });
 });

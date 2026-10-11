@@ -41,8 +41,10 @@ export function graphStyles(dark=false):StylesheetJson {
     : {node:'#5b7f91',text:'#233c50',surface:'#ffffff',junction:'#78909f',edge:'#94a8b5',finding:'#986315',selection:'#0f766e',path:'#2563eb'};
   return [
     {selector:'node',style:{'background-color':colors.node,'width':25,'height':25,'label':'data(label)','color':colors.text,'font-size':11,'text-valign':'bottom','text-margin-y':6,'border-width':2,'border-color':colors.surface,'min-zoomed-font-size':9}},
+    {selector:'node.bus.field-colored',style:{'background-color':'data(fieldColor)'}},
     {selector:'node.junction',style:{'shape':'diamond','background-color':colors.surface,'border-color':colors.junction,'width':18,'height':18}},
     {selector:'edge',style:{'width':1.7,'line-color':colors.edge,'curve-style':'bezier'}},
+    {selector:'edge.field-colored',style:{'line-color':'data(fieldColor)'}},
     {selector:'edge.transformer',style:{'line-style':'dashed'}},
     {selector:'edge.switch',style:{'line-style':'dotted'}},
     {selector:'node.bridge, node.articulation',style:{'underlay-color':colors.finding,'underlay-opacity':0.48,'underlay-padding':5}},

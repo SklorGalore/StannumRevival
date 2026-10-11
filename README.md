@@ -53,7 +53,12 @@ The macOS native executable, `.app` bundle, and DMG were generated successfully 
 - **Equipment:** inspect active and excluded lines, transformers, and system switching devices, including original RAW fields and source lines.
 - **Diagnostics:** review encoding information and sections not used for topology. Nonempty unsupported DC/FACTS/substation connectivity produces a coverage warning.
 - **Shortest path:** find the fewest equipment hops between active buses. Traversing a three-winding transformer counts as one hop; synthetic junctions appear separately in the graph.
+- **Filters & colors:** expand the panel above the graph to combine bus or equipment field rules and choose separate color fields. Numeric fields support comparisons, inclusive ranges, and configurable gradients; categorical fields support exact matches and editable palette colors. Missing values and merged nodes with mixed member values have separate colors.
 - **Export CSV:** download every filtered row in the current results view, including rows beyond the current page. **Export JSON:** download the parsed case, analysis, and current path.
+
+Field filters narrow the selected graph scope and the corresponding bus or equipment table; search combines with those rules. Filtering can bring a full-network or island view below the 500-node display limit. Islands, critical connections, and shortest paths continue to describe the full active topology; a notice identifies paths partly hidden by filters. Neighborhood CSV exports honor bus filters, and JSON reports include the current view, rules, color settings, and displayed graph alongside the full case and analysis.
+
+Color fields and schemes are remembered locally, and edits update graph colors without resetting its viewport. Custom colors for names and circuit identifiers last only for the session so those source strings are not saved in browser storage. Case-specific filters clear when another file is opened. In merged mode, source-field rules must match together on at least one original member bus; mixed color values are shown explicitly.
 
 The graph uses buses with `IDE != 4` and active equipment terminals. Open switches and out-of-service connections do not connect buses. Two-winding transformers are edges; three-winding transformers use a synthetic star junction. A reported bridge on a three-winding transformer is a specific winding connection, not an equipment outage study. Synthetic articulation junctions are included separately in JSON results, not counted as articulation buses.
 

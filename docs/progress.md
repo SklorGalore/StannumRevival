@@ -13,6 +13,15 @@
 - Final verification passed: 16 native Rust tests; 3 frontend unit tests; full WASM/TypeScript/Vite production build; 5 actual Chrome acceptance tests against the production static build (both supplied cases, graph limit, CSV/JSON exports, topology warnings, mobile layout, delayed path delivery, and file replacement). No upload requests observed.
 - Formatting and tracked diff whitespace checks passed. No hosting, commits, branch changes, or fixture edits performed.
 
+## Field filters and configurable colors — 2026-10-10
+
+- Implemented the approved in-chat design as a frontend extension: AND rules over bus/equipment fields, numeric comparisons and inclusive ranges, text matching, categories, and explicit missing-value checks. Graph filters apply within the selected scope before the 500-node display limit; topology calculations retain the full active case.
+- Bus/equipment tables and CSV exports honor their corresponding rules, including every matching row beyond pagination. Neighborhood CSV exports honor bus filters. JSON includes view scope, rules, schemes, and displayed graph alongside original source data and full analysis.
+- Added separate bus/equipment palettes, editable category colors, configurable numeric gradients and bounds, and live legends for visible categories, missing values, and mixed merged-member fields. Selection, paths, and critical findings retain their markers. Color edits preserve graph positions and viewport.
+- Color preferences persist locally; custom overrides keyed by names or circuits remain in memory to avoid saving those source strings. Case-specific rules clear on replacement, and merged source rules must match together on one original member.
+- Regression checks cover filters, exports, capped views, merged members, preferences, editor state, both themes, and narrow layouts. Independent read-only review found no remaining issues after fixes for select restoration, disclosure state, numeric category operators, large numeric domains, and preference privacy.
+- Final verification passed: 30 Rust tests, 39 frontend unit tests, and 32 production browser tests; TypeScript checking, production build, Rust formatting, and whitespace checks passed. Desktop/light and narrow/dark screenshots were inspected. No commits, branch changes, publication, or fixture edits were performed.
+
 ## Tauri packaging — 2026-10-10
 
 - Approved design: `docs/superpowers/specs/2026-10-10-tauri-packaging-design.md`; implementation plan: `docs/superpowers/plans/2026-10-10-tauri-packaging.md`.
