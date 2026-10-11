@@ -3,6 +3,7 @@ import {BrowserEngine} from './engine';
 import {NetworkGraph} from './graph';
 import {icon} from './icons';
 import {saveExport} from './export';
+import {initializeTitlebar} from './titlebar';
 import {graphLegend} from './graph-presentation';
 import type {GraphSelection} from './graph-presentation';
 import {focusedGraph,neighborhood,nodeForBus,toCsv} from './view-model';
@@ -25,6 +26,7 @@ app.innerHTML=`
     <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="view-title">Overview</strong></div><div class="top-actions"><span class="privacy"><span class="local-dot"></span> LOCAL ONLY</span><label class="button primary file-button" for="raw-file">${icon('open')} Open case</label><input id="raw-file" type="file" accept=".raw,.RAW" aria-label="Open RAW file" class="file-input" /></div></header>
     <section id="workspace" aria-busy="false"></section>
   </main>`;
+initializeTitlebar(app);
 
 const workspace=document.querySelector<HTMLElement>('#workspace')!;
 const fileInput=document.querySelector<HTMLInputElement>('#raw-file')!;

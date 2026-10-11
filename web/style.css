@@ -20,6 +20,16 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; }
+.windows-titlebar-enabled body { --desktop-titlebar-height: 36px; padding-top: var(--desktop-titlebar-height); }
+.desktop-titlebar { position: fixed; z-index: 3; top: 0; right: 0; left: 0; display: flex; height: 36px; align-items: stretch; color: #e4ebf0; background: var(--navigation); user-select: none; }
+.desktop-titlebar-drag { display: flex; flex: 1; align-items: center; padding-left: 14px; color: #d7e2e9; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.desktop-titlebar-controls { display: flex; }
+.desktop-titlebar-button { display: flex; width: 46px; align-items: center; justify-content: center; border: 0; color: inherit; background: transparent; }
+.desktop-titlebar-button:hover { background: #294357; }
+.desktop-titlebar-button.close:hover { color: #fff; background: #c42b1c; }
+.desktop-titlebar-button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1; }
+.windows-titlebar-enabled .rail { top: var(--desktop-titlebar-height); }
+.windows-titlebar-enabled main { min-height: calc(100vh - var(--desktop-titlebar-height)); }
 button, input { font: inherit; }
 button, a, label { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
