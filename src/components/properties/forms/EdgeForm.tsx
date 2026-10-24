@@ -41,6 +41,21 @@ export function EdgeForm({ edge }: { edge: SLDEdge }) {
           <option value="buswork">Buswork</option>
         </Select>
       </Field>
+      <Field label="Route">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+            title="Find a new path around the symbols"
+            onClick={() => update({ route: undefined, pinnedRoute: undefined, labelAt: undefined })}
+          >
+            Reroute
+          </button>
+          <span className="text-[11px] text-slate-500">
+            {d.pinnedRoute ? "Adjusted by hand" : "Drag a segment to adjust"}
+          </span>
+        </div>
+      </Field>
       <Field label="Resistance R (pu)">
         <Input
           type="number"

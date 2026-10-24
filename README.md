@@ -88,6 +88,10 @@ A saved diagram keeps the link and shows results again when the same case is ope
 The editor also draws by hand: drag symbols from the palette, then drag from a
 terminal to wire it. Releasing a wire anywhere along a bus bar adds a tap
 there. Symbols sit on a 20 px grid with one stroke weight, so wires line up.
+Wires take right-angle paths around symbols and their labels: a new wire is
+routed when you draw it, and the wires of a moved symbol are rerouted when you
+drop it. Select a wire and drag one of its segments to move it by hand; it then
+keeps that shape until you press **Reroute** in its properties.
 Breakers and disconnectors open and close on double-click. A selected bus has a
 grip on its right end for changing its length.
 
@@ -127,6 +131,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test -p stannum-core
 npm run build          # type-check and bundle the frontend
+npm test               # frontend unit tests (Vitest), e.g. the wire router
 ```
 
 ### Browser smoke test

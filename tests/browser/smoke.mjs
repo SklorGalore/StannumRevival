@@ -144,6 +144,80 @@ await shot("diagram-drawn");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
 
+// Wire routing: a wire drawn past a symbol goes around it and its label.
+await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: 330, y: 300 } });
+await load.hover();
+const loadTerminal = await load.locator(".react-flow__handle").boundingBox();
+await page.mouse.move(loadTerminal.x + loadTerminal.width / 2, loadTerminal.y + loadTerminal.height / 2);
+await page.mouse.down();
+await page.mouse.move(bar.x + 161, bar.y + bar.height + 4, { steps: 10 });
+await page.mouse.up();
+await page.locator(".react-flow__edge").first().waitFor();
+/** Screen rectangles a wire's path passes through, and the generator's outline with its text. */
+const wireVsSymbol = () =>
+  page.evaluate(() => {
+    const vp = document.querySelector(".react-flow__viewport");
+    const m = new DOMMatrix(getComputedStyle(vp).transform);
+    const origin = vp.parentElement.getBoundingClientRect();
+    const d = document.querySelector(".react-flow__edge-path").getAttribute("d");
+    const nums = d.match(/-?\d+(\.\d+)?/g).map(Number);
+    const pts = [];
+    for (let i = 0; i < nums.length; i += 2)
+      pts.push({ x: origin.left + m.a * nums[i] + m.e, y: origin.top + m.d * nums[i + 1] + m.f });
+    const gen = document.querySelector(".react-flow__node-generator");
+    let box = gen.getBoundingClientRect();
+    let [x0, y0, x1, y1] = [box.left, box.top, box.right, box.bottom];
+    for (const el of gen.querySelectorAll("svg *")) {
+      const r = el.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      [x0, y0, x1, y1] = [Math.min(x0, r.left), Math.min(y0, r.top), Math.max(x1, r.right), Math.max(y1, r.bottom)];
+    }
+    let crosses = false;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [p, q] = [pts[i], pts[i + 1]];
+      if (Math.max(p.x, q.x) > x0 && Math.min(p.x, q.x) < x1 && Math.max(p.y, q.y) > y0 && Math.min(p.y, q.y) < y1) crosses = true;
+    }
+    return { points: pts, crosses };
+  });
+await page.waitForFunction(() => document.querySelector(".react-flow__edge-path")?.getAttribute("d")?.split("L").length > 3);
+assert.equal((await wireVsSymbol()).crosses, false, "routed wire avoids the generator");
+await shot("diagram-routed");
+// Moving the load reroutes its wire on release, still clear of the generator.
+const loadBox = await load.boundingBox();
+const path = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+await page.mouse.move(loadBox.x + loadBox.width / 2, loadBox.y + loadBox.height - 10);
+await page.mouse.down();
+await page.mouse.move(loadBox.x + loadBox.width / 2 - 80, loadBox.y + loadBox.height + 30, { steps: 8 });
+await page.mouse.up();
+await page.waitForFunction((before) => document.querySelector(".react-flow__edge-path").getAttribute("d") !== before, path);
+await page.waitForTimeout(200);
+assert.equal((await wireVsSymbol()).crosses, false, "rerouted wire avoids the moved generator");
+// Drag a segment of the selected wire, then undo it.
+{
+  const { points } = await wireVsSymbol();
+  // Click the middle of the longest segment to select the wire.
+  let best = [points[0], points[1]];
+  for (let i = 0; i < points.length - 1; i++) {
+    const len = (p, q) => Math.abs(p.x - q.x) + Math.abs(p.y - q.y);
+    if (len(points[i], points[i + 1]) > len(...best)) best = [points[i], points[i + 1]];
+  }
+  await page.mouse.click((best[0].x + best[1].x) / 2, (best[0].y + best[1].y) / 2);
+}
+const grip = page.locator(".segment-grips [data-segment] rect").nth(1);
+await grip.waitFor();
+const before = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+const g = await grip.boundingBox();
+await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+await page.mouse.down();
+await page.mouse.move(g.x + g.width / 2 + 40, g.y + g.height / 2 + 40, { steps: 6 });
+await page.mouse.up();
+const after = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+assert.notEqual(after, before, "dragging a segment moves it");
+await shot("diagram-segment-drag");
+await page.getByText("Adjusted by hand").waitFor();
+await page.keyboard.press("Control+z");
+assert.equal(await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d")), before);
+
 // Inactive modules must not show the diagram through them.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 const showing = await page.evaluate(
