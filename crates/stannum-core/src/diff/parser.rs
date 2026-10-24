@@ -258,8 +258,7 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         let mut fields = vec![("TAG".to_string(), Value::Text(tag.clone()))];
-        let key: Key;
-        if definition.get("fields").is_some() {
+        let key: Key = if definition.get("fields").is_some() {
             fields.extend(self.decode(&items[1..], definition, "SYSTEM-WIDE", index)?);
             let mut k = vec![Value::Text(tag.clone())];
             for name in definition["key_fields"].as_array().into_iter().flatten() {
@@ -268,7 +267,7 @@ impl<'a> Parser<'a> {
                     k.push(v.clone());
                 }
             }
-            key = k;
+            k
         } else {
             let positional: Vec<&str> = definition["positional_fields"]
                 .as_array()
@@ -322,8 +321,8 @@ impl<'a> Parser<'a> {
                 });
                 return Ok(());
             }
-            key = vec![Value::Text(tag)];
-        }
+            vec![Value::Text(tag)]
+        };
         let raw = vec![self.lines[index].clone()];
         self.add(CASE_DETAILS, key, fields, raw, index, Some("SYSTEM-WIDE"))
     }
