@@ -36,6 +36,11 @@ const style: StylesheetJson = [
   { selector: "node.hovered", style: { "border-style": "dashed", "border-width": 3 } },
   { selector: "edge.hovered", style: { width: 5 } },
   { selector: "node.label-hidden", style: { label: "" } },
+  // Colour rules from the Filters & colours panel. Path and selection still win.
+  { selector: "node[fill]", style: { "background-color": "data(fill)" } },
+  { selector: "edge[stroke]", style: { "line-color": "data(stroke)" } },
+  { selector: "node.path", style: { "background-color": colors.path } },
+  { selector: "edge.path", style: { "line-color": colors.path } },
 ];
 
 function refreshLabels(cy: Core) {
@@ -54,6 +59,7 @@ export function NetworkGraph({
   onInspect,
   visible,
   fitSignal,
+  colors,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
@@ -62,6 +68,7 @@ export function NetworkGraph({
   onInspect: (s: GraphSelection) => void;
   visible: boolean;
   fitSignal: number;
+  colors?: { nodeColors: Record<string, string>; edgeColors: Record<string, string> };
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -133,6 +140,24 @@ export function NetworkGraph({
     }
     refreshLabels(cy);
   }, [selection, graph, snapshot, path]);
+
+  // Colour rules recolour in place, without a new layout.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const c = colors?.nodeColors[n.id()];
+        if (c) n.data("fill", c);
+        else n.removeData("fill");
+      });
+      cy.edges().forEach((e) => {
+        const c = colors?.edgeColors[e.id()];
+        if (c) e.data("stroke", c);
+        else e.removeData("stroke");
+      });
+    });
+  }, [colors, graph, snapshot, path]);
 
   // The pane may have been laid out while hidden; refit when it is shown.
   useEffect(() => {

@@ -17,6 +17,9 @@ import {
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { NetworkGraph, type GraphSelection } from "./NetworkGraph";
+import { FieldPanel, GraphLegend } from "./FieldPanel";
+import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
+import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
 import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
 
 type Tab = "buses" | "islands" | "critical" | "equipment" | "diagnostics";
@@ -215,6 +218,9 @@ export function TopologyModule({ active }: { active: boolean }) {
   const [tab, setTab] = useState<Tab>("buses");
   const [search, setSearch] = useState("");
   const [fitSignal, setFitSignal] = useState(0);
+  const [side, setSide] = useState<"selection" | "fields">("selection");
+  const [rules, setRules] = useState<FilterRule[]>([]);
+  const [colors, setColors] = useState<ColorSettings>(defaultColorSettings);
 
   const available = !!summary?.topology.available;
 
@@ -236,6 +242,9 @@ export function TopologyModule({ active }: { active: boolean }) {
         if (version !== useWorkspace.getState().caseVersion) return;
         setSnapshot(s);
         setLoadedVersion(version);
+        const saved = loadFieldSettings(useWorkspace.getState().caseSummary?.path);
+        setRules(saved.rules);
+        setColors(saved.colors);
         setScope(defaultScope(s));
         setSelection({ bus: s.analysis.degrees[0]?.bus ?? null, equipment: null });
         setPath(null);
@@ -321,6 +330,28 @@ export function TopologyModule({ active }: { active: boolean }) {
     };
   }, [snapshot]);
 
+  // Rules still being filled in (no value yet) are ignored rather than hiding everything.
+  const activeRules = useMemo(() => rules.filter(isComplete), [rules]);
+  const shownRows = useMemo(() => {
+    if (!rows || !snapshot || !activeRules.length) return rows;
+    return {
+      ...rows,
+      buses: rows.buses.filter((r) => matchesBus(snapshot, r.bus, activeRules)),
+      equipment: rows.equipment.filter((r) => matchesEquipment(snapshot, r.id, activeRules)),
+    };
+  }, [rows, snapshot, activeRules]);
+  const shownGraph = useMemo(
+    () => (scope && snapshot ? filterGraph(snapshot, scope.data, activeRules) : null),
+    [scope, snapshot, activeRules]
+  );
+  const presentation = useMemo(
+    () => (snapshot ? createColorPresentation(snapshot, colors) : { nodeColors: {}, edgeColors: {}, legends: [] }),
+    [snapshot, colors]
+  );
+  useEffect(() => {
+    if (snapshot) saveFieldSettings(summary?.path, rules, colors);
+  }, [snapshot, summary?.path, rules, colors]);
+
   if (!summary) {
     return (
       <EmptyState
@@ -346,7 +377,7 @@ export function TopologyModule({ active }: { active: boolean }) {
       </div>
     );
   }
-  if (!snapshot || !rows) {
+  if (!snapshot || !rows || !shownRows) {
     return error ? (
       <div className="p-6 max-w-2xl">
         <ErrorBanner>{error}</ErrorBanner>
@@ -360,13 +391,13 @@ export function TopologyModule({ active }: { active: boolean }) {
   const lines = c.equipment.filter((e) => e.kind === "line").length;
   const transformers = c.equipment.filter((e) => e.kind === "transformer").length;
   const warnings = c.diagnostics.filter((d) => d.severity === "warning");
-  const tooLarge = scope && scope.data.nodes.length > DISPLAY_LIMIT;
+  const tooLarge = shownGraph && shownGraph.nodes.length > DISPLAY_LIMIT;
 
   const tabDefs = [
-    { id: "buses" as const, label: "Buses", count: rows.buses.length },
+    { id: "buses" as const, label: "Buses", count: shownRows.buses.length },
     { id: "islands" as const, label: "Islands", count: rows.islands.length },
     { id: "critical" as const, label: "Critical connections", count: rows.critical.length },
-    { id: "equipment" as const, label: "Equipment", count: rows.equipment.length },
+    { id: "equipment" as const, label: "Equipment", count: shownRows.equipment.length },
     { id: "diagnostics" as const, label: "Diagnostics", count: rows.diagnostics.length },
   ];
 
@@ -387,7 +418,7 @@ export function TopologyModule({ active }: { active: boolean }) {
   }
 
   async function exportCsv() {
-    const table = { buses: [rows!.buses, busColumns], islands: [rows!.islands, islandColumns], critical: [rows!.critical, criticalColumns], equipment: [rows!.equipment, equipmentColumns], diagnostics: [rows!.diagnostics, diagnosticColumns] }[tab] as [unknown[], Column<unknown>[]];
+    const table = { buses: [shownRows!.buses, busColumns], islands: [rows!.islands, islandColumns], critical: [rows!.critical, criticalColumns], equipment: [shownRows!.equipment, equipmentColumns], diagnostics: [rows!.diagnostics, diagnosticColumns] }[tab] as [unknown[], Column<unknown>[]];
     const [data, columns] = table;
     const filtered = filterRows(data, columns, search);
     const csv = toCsv(filtered.map((r) => Object.fromEntries(columns.map((col) => [col.key, col.value(r)]))));
@@ -466,9 +497,10 @@ export function TopologyModule({ active }: { active: boolean }) {
           }
           bodyClassName="relative"
         >
-          {scope && !tooLarge ? (
+          {shownGraph && shownGraph.nodes.length > 0 && !tooLarge ? (
             <NetworkGraph
-              graph={scope.data}
+              graph={shownGraph}
+              colors={presentation}
               snapshot={snapshot}
               path={path}
               selection={selection}
@@ -479,15 +511,43 @@ export function TopologyModule({ active }: { active: boolean }) {
           ) : (
             <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-500">
               {tooLarge
-                ? `This selection has ${count(scope!.data.nodes.length)} nodes. Pick a bus neighborhood, island or path to stay within the ${DISPLAY_LIMIT}-node display limit.`
-                : "No active buses to display."}
+                ? `This selection has ${count(shownGraph!.nodes.length)} nodes. Pick a bus neighborhood, island or path to stay within the ${DISPLAY_LIMIT}-node display limit.`
+                : activeRules.length && scope?.data.nodes.length
+                  ? "Nothing in this view matches the filters."
+                  : "No active buses to display."}
             </div>
           )}
+          <GraphLegend presentation={presentation} />
           <p className="absolute left-2 bottom-1.5 right-2 text-[11px] text-slate-600 bg-white/80 rounded px-1.5 py-0.5 truncate" data-testid="path-result">
             {pathText}
           </p>
         </Panel>
-        <Panel eyebrow="Inspector" title="Selection" className="row-span-2" bodyClassName="overflow-y-auto">
+        <section className="row-span-2 bg-white border border-slate-200 rounded-lg flex flex-col min-h-0 overflow-hidden">
+          <Tabs
+            tabs={[
+              { id: "selection" as const, label: "Selection" },
+              { id: "fields" as const, label: "Filters & colours", count: activeRules.length || undefined },
+            ]}
+            value={side}
+            onChange={setSide}
+          />
+          <div className="flex-1 min-h-0 overflow-y-auto">
+          {side === "fields" ? (
+            <FieldPanel
+              snapshot={snapshot}
+              rules={rules}
+              onRules={setRules}
+              colors={colors}
+              onColors={setColors}
+              presentation={presentation}
+              counts={{
+                buses: shownRows.buses.length,
+                totalBuses: rows.buses.length,
+                equipment: shownRows.equipment.length,
+                totalEquipment: rows.equipment.length,
+              }}
+            />
+          ) : (
           <Inspector
             snapshot={snapshot}
             selection={selection}
@@ -497,7 +557,9 @@ export function TopologyModule({ active }: { active: boolean }) {
               setScope({ kind: "neighborhood", title: `Bus ${bus} · ${hops}-hop neighborhood`, data: neighborhood(snapshot.graph, bus, hops) });
             }}
           />
-        </Panel>
+          )}
+          </div>
+        </section>
         <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-0 overflow-hidden">
           <Tabs tabs={tabDefs} value={tab} onChange={(t) => { setTab(t); setSearch(""); }} />
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200">
@@ -508,14 +570,49 @@ export function TopologyModule({ active }: { active: boolean }) {
             </Button>
           </div>
           <div className="flex-1 min-h-0">
-            {tab === "buses" && <DataTable key="b" rows={rows.buses} columns={busColumns} rowKey={(r) => r.bus} search={search} onRowClick={onRowClick} selectedKey={selectedKey} />}
+            {tab === "buses" && <DataTable key="b" rows={shownRows.buses} columns={busColumns} rowKey={(r) => r.bus} search={search} onRowClick={onRowClick} selectedKey={selectedKey} />}
             {tab === "islands" && <DataTable key="i" rows={rows.islands} columns={islandColumns} rowKey={(r) => r.island} search={search} onRowClick={onRowClick} />}
             {tab === "critical" && <DataTable key="c" rows={rows.critical} columns={criticalColumns} rowKey={(r) => `${r.type}:${r.id}:${r.winding}`} search={search} onRowClick={onRowClick} />}
-            {tab === "equipment" && <DataTable key="e" rows={rows.equipment} columns={equipmentColumns} rowKey={(r) => r.id} search={search} onRowClick={onRowClick} selectedKey={selectedKey} />}
+            {tab === "equipment" && <DataTable key="e" rows={shownRows.equipment} columns={equipmentColumns} rowKey={(r) => r.id} search={search} onRowClick={onRowClick} selectedKey={selectedKey} />}
             {tab === "diagnostics" && <DataTable key="d" rows={rows.diagnostics} columns={diagnosticColumns} rowKey={(r) => r.i} search={search} />}
           </div>
         </section>
       </div>
     </div>
   );
+}
+
+// Filters and colour rules are kept per case file, so reopening restores them.
+const FIELD_STORAGE = "stannum-topology-fields:";
+
+function isComplete(rule: FilterRule): boolean {
+  if (rule.operator === "missing" || rule.operator === "present") return true;
+  if (rule.value.trim() === "") return false;
+  return rule.operator !== "between" || (rule.upper ?? "").trim() !== "";
+}
+
+function loadFieldSettings(path: string | undefined): { rules: FilterRule[]; colors: ColorSettings } {
+  try {
+    const stored = path ? localStorage.getItem(FIELD_STORAGE + path) : null;
+    if (!stored) return { rules: [], colors: defaultColorSettings() };
+    const parsed = JSON.parse(stored) as { rules?: unknown; colors?: unknown };
+    const rules = Array.isArray(parsed.rules)
+      ? (parsed.rules as FilterRule[]).filter((r) => r && typeof r.id === "string" && typeof r.field === "string")
+      : [];
+    const colors = loadColorSettings({ getItem: () => JSON.stringify(parsed.colors ?? null) });
+    return { rules, colors };
+  } catch {
+    return { rules: [], colors: defaultColorSettings() };
+  }
+}
+
+function saveFieldSettings(path: string | undefined, rules: FilterRule[], colors: ColorSettings) {
+  if (!path) return;
+  let safeColors: unknown = null;
+  saveColorSettings(colors, { setItem: (_k: string, v: string) => (safeColors = JSON.parse(v)) });
+  try {
+    localStorage.setItem(FIELD_STORAGE + path, JSON.stringify({ rules, colors: safeColors }));
+  } catch {
+    // Storage may be unavailable; the rules still apply for this session.
+  }
 }
