@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* React Flow base styles */
+@import "@xyflow/react/dist/style.css";
+
+/* Custom handle styling */
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #94a3b8;
+  border: 2px solid #1e293b;
+  border-radius: 50%;
+}
+
+.react-flow__handle:hover {
+  background: #3b82f6;
+}
+
+.react-flow__handle.connectingto {
+  background: #22c55e;
+}
+
+/* Node selection ring */
+.react-flow__node.selected .node-wrapper {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Canvas background */
+.react-flow__background {
+  background-color: #f8fafc;
+}
+
+/* Minimap */
+.react-flow__minimap {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+/* Edge path */
+.react-flow__edge-path {
+  stroke: #475569;
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #3b82f6;
+}
+
+/* Drag overlay for palette items */
+.palette-item-drag-preview {
+  opacity: 0.7;
+  pointer-events: none;
+}
