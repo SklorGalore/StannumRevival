@@ -1,0 +1,38 @@
+{
+  "name": "nodal-browser",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wasm": "wasm-pack build --target web --out-dir web/wasm --release --no-opt",
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run wasm && npm run build:web",
+    "build:web": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:all": "cargo test && npm run test",
+    "test:browser": "playwright test",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "node scripts/desktop-build.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.4",
+    "@playwright/test": "^1.58.2",
+    "@types/cytoscape": "^3.31.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18",
+    "wasm-pack": "0.15.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.1",
+    "cytoscape": "^3.33.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "allowScripts": {
+    "wasm-pack@0.15.0": true,
+    "esbuild@0.28.2": true
+  }
+}
