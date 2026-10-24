@@ -1,0 +1,67 @@
+# Changelog
+
+All notable changes to this project will be documented here. This project uses
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+
+### Added
+
+- Optional `rs-power-gui` desktop application for loading MATPOWER and RAW
+  cases, configuring and running background AC/DC solves, reviewing convergence
+  and operating-limit checks, browsing searchable result tables, calculating a
+  bus-focused sensitivity view, and exporting MATPOWER results.
+- GUI design and scope document in `GUI_PLAN.md`.
+- AC and DC state and branch-flow sensitivity calculation, including full DC
+  PTDF and LODF matrices, selected bus and explicit transfer columns,
+  distributed and per-column slack, topology-based bridge masking, full and
+  reduced AC Jacobians, and polar/Cartesian bus, branch power, current, and
+  squared-magnitude derivatives.
+- Interactive CLI commands for labeled AC/DC sensitivities, Jacobians, selected
+  or full PTDF matrices, and masked or raw LODF matrices.
+- Sensitivity-run progress logging with model, case, solver, balancing, timing,
+  convergence, matrix dimensions, and explicit failure reporting.
+- Selected-bus CLI sensitivity reports with active/reactive injection selection,
+  engineering or raw units, signed rankings per quantity, and bounded or full
+  text output; existing unselected reports retain their format.
+- Diagnostic logging for MATPOWER and RAW I/O, conversion warnings, network
+  assembly, AC Newton iterations, DC solves, reactive-limit passes, sensitivity
+  matrices, CLI commands, and GUI startup. Interactive REPL sessions log at
+  `info` automatically; `RUST_LOG` controls verbosity and non-interactive logs.
+- UTF-8 text report output through a `to <path>` suffix on summary, result-table,
+  sensitivity, Jacobian, PTDF, LODF, and option commands.
+- CSV export selected by a `.csv` destination for 2D Jacobian, PTDF, and LODF
+  matrices and for summary, bus, generator, flow, and option tables.
+
+### Changed
+
+- GUI sensitivities now provide searchable injection selection and complete,
+  virtualized angle, magnitude, and branch-flow tables with filtering, sorting,
+  unit selection, operating-point context, and sign explanations.
+- AC branch-flow sensitivity assembly now exploits the endpoint sparsity of
+  branch derivatives instead of multiplying dense zero-filled rows.
+- RAW section parsing now follows the revision-defined section order and `0`
+  terminators without interpreting human-readable `@!` section headers.
+
+## 0.1.0 - 2026-09-14
+
+Initial release.
+
+### Added
+
+- Sparse Newton–Raphson AC and linear DC power flow.
+- Multiple active-island solving with independent reference buses.
+- Optional generator reactive-limit enforcement and reference reassignment.
+- Case-supplied and flat-start voltage initialization.
+- Literal MATPOWER version-2 parsing, formatting, and file I/O.
+- PSS/E RAW revision 23–33 and 35 import with strict and warning modes.
+- MATPOWER two-terminal DC line support in AC and DC power flow.
+- MATPOWER 8.1 numerical and conversion reference tests.
+- Optimized parsing and solver benchmark harness.
+
+### Known limitations
+
+- RAW export, OPF, continuation power flow, ZIP iteration, and three-phase
+  models are not implemented.
+- Each active island must provide exactly one reference bus with an online
+  generator.
