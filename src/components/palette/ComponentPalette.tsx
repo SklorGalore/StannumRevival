@@ -66,6 +66,22 @@ function MotorSymbol() {
   );
 }
 
+function CapacitorSymbol() {
+  return (
+    <Preview w={40} h={60}>
+      <path d="M20,0 V22 M9,22 H31 M9,28 H31 M20,28 V48 M12,48 H28 M15,52 H25 M18,56 H22" />
+    </Preview>
+  );
+}
+
+function ReactorSymbol() {
+  return (
+    <Preview w={40} h={60}>
+      <path d="M20,0 V16 a5,4 0 1,1 0,8 a5,4 0 1,1 0,8 a5,4 0 1,1 0,8 V48 M12,48 H28 M15,52 H25 M18,56 H22" />
+    </Preview>
+  );
+}
+
 function TransformerSymbol() {
   return (
     <Preview w={40} h={100}>
@@ -123,6 +139,13 @@ const CATEGORIES: PaletteCategory[] = [
     ],
   },
   {
+    title: "Compensation",
+    items: [
+      { type: "shunt", label: "Capacitor", symbol: <CapacitorSymbol /> },
+      { type: "shunt", label: "Reactor", symbol: <ReactorSymbol /> },
+    ],
+  },
+  {
     title: "Protection",
     items: [
       { type: "circuitBreaker", label: "Circuit Breaker", symbol: <CBSymbol /> },
@@ -149,6 +172,9 @@ function PaletteItem({ entry }: { entry: PaletteEntry }) {
     // Motor loads get loadType override
     if (entry.type === "load" && entry.label.includes("Motor")) {
       (data as { loadType?: string }).loadType = "motor";
+    }
+    if (entry.label === "Reactor") {
+      Object.assign(data, { label: "Reactor", nominalMVAR: -25 });
     }
     event.dataTransfer.setData("application/sld-node-type", entry.type);
     event.dataTransfer.setData(

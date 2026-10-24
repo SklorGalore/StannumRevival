@@ -1,6 +1,7 @@
 import { useDiagramStore } from "../../store/diagramStore";
 import { BusForm } from "./forms/BusForm";
 import { GeneratorForm } from "./forms/GeneratorForm";
+import { ShuntForm } from "./forms/ShuntForm";
 import { LoadForm } from "./forms/LoadForm";
 import { TransformerForm } from "./forms/TransformerForm";
 import { CircuitBreakerForm } from "./forms/CircuitBreakerForm";
@@ -55,6 +56,8 @@ function NodeForm({ node }: { node: SLDNode }) {
       return <GeneratorForm node={node} />;
     case "load":
       return <LoadForm node={node} />;
+    case "shunt":
+      return <ShuntForm node={node} />;
     case "transformer":
       return <TransformerForm node={node} />;
     case "circuitBreaker":

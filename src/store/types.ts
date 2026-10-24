@@ -4,8 +4,8 @@ import type { Node, Edge } from "@xyflow/react";
 
 /** Links a symbol to a record of the open case, so results can be shown on it. */
 export interface CaseRef {
-  kind: "bus" | "gen" | "branch" | "load";
-  /** Bus number for buses and loads; table index for generators and branches. */
+  kind: "bus" | "gen" | "branch" | "load" | "shunt";
+  /** Bus number for buses, loads and shunts; table index for generators and branches. */
   id: number;
 }
 
@@ -44,6 +44,15 @@ export interface LoadData extends Record<string, unknown> {
   nominalMW: number;
   nominalMVAR: number;
   loadType: "static" | "motor" | "composite";
+  caseRef?: CaseRef;
+}
+
+/** Fixed shunt at a bus, in MW / Mvar at 1 pu voltage. Positive Mvar is a
+ *  capacitor (supplies reactive power), negative a reactor. */
+export interface ShuntData extends Record<string, unknown> {
+  label: string;
+  nominalMVAR: number;
+  nominalMW: number;
   caseRef?: CaseRef;
 }
 
@@ -122,6 +131,7 @@ export type SLDNodeType =
   | "bus"
   | "generator"
   | "load"
+  | "shunt"
   | "transformer"
   | "circuitBreaker"
   | "disconnector"
@@ -131,6 +141,7 @@ export type SLDNodeType =
 export type BusNode = Node<BusData, "bus">;
 export type GeneratorNode = Node<GeneratorData, "generator">;
 export type LoadNode = Node<LoadData, "load">;
+export type ShuntNode = Node<ShuntData, "shunt">;
 export type TransformerNode = Node<TransformerData, "transformer">;
 export type CircuitBreakerNode = Node<CircuitBreakerData, "circuitBreaker">;
 export type DisconnectorNode = Node<DisconnectorData, "disconnector">;
@@ -141,6 +152,7 @@ export type SLDNode =
   | BusNode
   | GeneratorNode
   | LoadNode
+  | ShuntNode
   | TransformerNode
   | CircuitBreakerNode
   | DisconnectorNode

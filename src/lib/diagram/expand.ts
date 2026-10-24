@@ -19,6 +19,7 @@ const SIZE: Record<string, { w: number; h: number }> = {
   load: { w: 40, h: 60 },
   transformer: { w: 40, h: 100 },
   offPage: { w: 40, h: 40 },
+  shunt: { w: 40, h: 60 },
   circuitBreaker: { w: 40, h: 60 },
   disconnector: { w: 40, h: 60 },
   fuse: { w: 40, h: 60 },
@@ -100,6 +101,15 @@ export async function expandDrawing(
   const dy = anchorNode.position.y - proxy.position.y;
   const block = piece.nodes.filter((n) => n.id !== proxyId);
   const existing = nodes.filter((n) => n.id !== anchorNode.id).map(boxOf);
+  // Keep clear of laid-out wires and their results too.
+  for (const e of edges) {
+    const { route, labelAt } = (e.data ?? {}) as ConductorData;
+    if (labelAt) existing.push({ x: labelAt.x, y: labelAt.y, w: labelAt.width, h: labelAt.height });
+    route?.slice(1).forEach((p, i) => {
+      const q = route[i];
+      existing.push({ x: Math.min(p.x, q.x), y: Math.min(p.y, q.y), w: Math.abs(p.x - q.x), h: Math.abs(p.y - q.y) });
+    });
+  }
   // Push the block down until nothing overlaps; wires from the anchor stretch.
   let extra = 0;
   const clear = (shift: number) =>

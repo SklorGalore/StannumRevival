@@ -78,6 +78,9 @@ generators, loads, lines and transformers are laid out top to bottom with
 right-angle wiring (ELK layered layout, run in a worker). Branches that leave
 the selection end in off-page markers naming the far bus. Three-winding
 transformers appear as their star point with a two-winding symbol per winding.
+Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
+solved voltage) sit directly on their bus bar; the bus's wires leave from the
+rest of the bar.
 
 Cases with more than 20 buses default to drawing around a bus, which is how a
 one-line is usually used: to look into a local problem. The studied bus sits at
@@ -96,6 +99,8 @@ A saved diagram keeps the link and shows results again when the same case is ope
 The editor also draws by hand: drag symbols from the palette, then drag from a
 terminal to wire it. Releasing a wire anywhere along a bus bar adds a tap
 there. Symbols sit on a 20 px grid with one stroke weight, so wires line up.
+A generator, load or shunt dropped onto a bus bar, or dragged up until it
+touches one, hangs from the bar and is connected there.
 Breakers and disconnectors open and close on double-click. A selected bus has a
 grip on its right end for changing its length.
 

@@ -171,6 +171,28 @@ await shot("diagram-drawn");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
 
+// A generator dropped on the bar, and the load dragged up to it, sit on the
+// bus and are wired to it with no visible line.
+const paneBox = await pane.boundingBox();
+const barNow = await page.locator(".react-flow__node-bus").boundingBox();
+await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, {
+  targetPosition: { x: barNow.x - paneBox.x + 40, y: barNow.y - paneBox.y + 20 },
+});
+// The wire has no length, so it counts as hidden: wait on the count.
+
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 1);
+const gen = await page.locator(".react-flow__node-generator").boundingBox();
+assert(Math.abs(gen.y - (barNow.y + barNow.height)) < 3, `generator hangs from the bar (${gen.y} vs ${barNow.y + barNow.height})`);
+const loadBox = await load.boundingBox();
+await page.mouse.move(loadBox.x + loadBox.width / 2, loadBox.y + 40);
+await page.mouse.down();
+await page.mouse.move(barNow.x + 160, barNow.y + barNow.height + 40, { steps: 10 });
+await page.mouse.up();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 2);
+const onBus = await load.boundingBox();
+assert(Math.abs(onBus.y - (barNow.y + barNow.height)) < 3, "dragged load snaps onto the bar");
+await shot("diagram-on-bus");
+
 // Inactive modules must not show the diagram through them.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 const showing = await page.evaluate(

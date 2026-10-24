@@ -55,6 +55,23 @@ function busAt(nodes: SLDNode[], p: { x: number; y: number }): SLDNode | null {
   return best?.node ?? null;
 }
 
+/** Terminal of each symbol that can sit straight on a bus bar. */
+const ON_BUS: Partial<Record<string, string>> = { generator: "gen-top", load: "load-top", shunt: "shunt-top" };
+
+/** Bus whose bar a symbol's terminal at `p` touches, from just above the bar
+ *  to a little below it. */
+function barUnder(nodes: SLDNode[], p: { x: number; y: number }, reach: number): SLDNode | null {
+  for (const n of nodes) {
+    if (n.type !== "bus") continue;
+    const data = n.data as BusData;
+    if (data.star || data.orientation === "vertical") continue;
+    const len = data.length ?? 200;
+    if (p.x < n.position.x || p.x > n.position.x + len) continue;
+    if (p.y >= n.position.y - 8 && p.y <= n.position.y + 6 + reach) return n;
+  }
+  return null;
+}
+
 function pointerPoint(e: MouseEvent | TouchEvent) {
   const t = "changedTouches" in e ? e.changedTouches[0] : (e as MouseEvent);
   return { x: t.clientX, y: t.clientY };
@@ -149,6 +166,31 @@ export function DiagramCanvas() {
       });
     },
     [updateNodeInternals]
+  );
+
+  /** A generator, load or shunt whose terminal touches a bus bar snaps onto
+   *  it and is wired there. Returns false when it isn't on a bus. */
+  const attachToBus = useCallback(
+    (nodeId: string, reach: number) => {
+      const { nodes: all, edges: wires, gridSize } = useDiagramStore.getState();
+      const node = all.find((n) => n.id === nodeId);
+      const handle = node && ON_BUS[node.type ?? ""];
+      if (!node || !handle) return false;
+      if (wires.some((e) => (e.target === nodeId && e.targetHandle === handle) || (e.source === nodeId && e.sourceHandle === handle)))
+        return false;
+      const width = node.measured?.width ?? 40;
+      const terminal = { x: node.position.x + width / 2, y: node.position.y };
+      const bus = barUnder(all, terminal, reach);
+      if (!bus) return false;
+      const len = (bus.data as BusData).length ?? 200;
+      const x = Math.min(len, Math.max(0, Math.round((terminal.x - bus.position.x) / gridSize) * gridSize));
+      // Hang the symbol from the underside of the bar.
+      const position = { x: bus.position.x + x - width / 2, y: bus.position.y + 6 };
+      useDiagramStore.getState().setNodes(all.map((n) => (n.id === nodeId ? ({ ...n, position } as SLDNode) : n)));
+      wireToBus(useDiagramStore.getState().nodes.find((n) => n.id === bus.id)!, x, "bottom", nodeId, handle);
+      return true;
+    },
+    [wireToBus]
   );
 
   const onConnect = useCallback(
@@ -277,8 +319,16 @@ export function DiagramCanvas() {
       } as SLDNode;
 
       addNode(newNode);
+      // Dropped onto a bus bar: it goes straight on the bus.
+      const bus = ON_BUS[type] ? barUnder(useDiagramStore.getState().nodes, position, 30) : null;
+      if (bus) {
+        const { nodes: all, setNodes: put } = useDiagramStore.getState();
+        const onBar = { x: position.x - 20, y: bus.position.y + 6 };
+        put(all.map((n) => (n.id === newNode.id ? ({ ...n, position: onBar } as SLDNode) : n)));
+        attachToBus(newNode.id, 30);
+      }
     },
-    [screenToFlowPosition, snapToGrid, gridSize, addNode]
+    [screenToFlowPosition, snapToGrid, gridSize, addNode, attachToBus]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -300,6 +350,7 @@ export function DiagramCanvas() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onNodeDragStart={() => checkpoint()}
+        onNodeDragStop={(_, node) => attachToBus(node.id, 20)}
         onNodeContextMenu={(e, node) => {
           if (!linked) return;
           e.preventDefault();
