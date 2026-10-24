@@ -5,6 +5,13 @@ All notable changes to this project will be documented here. This project uses
 
 ## Unreleased
 
+### Changed
+
+- Moved into the Stannum repository as the `crates/rs-power` workspace crate.
+  The optional egui desktop GUI (`rs-power-gui`, the `gui` feature and
+  `GUI_PLAN.md`) was removed; Stannum's Power flow module replaces it. The
+  entries below describe the GUI as it was before the move.
+
 ### Added
 
 - Optional `rs-power-gui` desktop application for loading MATPOWER and RAW

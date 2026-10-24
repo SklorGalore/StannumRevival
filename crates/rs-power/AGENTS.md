@@ -14,7 +14,7 @@ for usage, `benches/` for timings, and `scripts/` for fixture generators.
 
 ## Build, Test, and Development Commands
 
-Run from the repository root with a Rust toolchain supporting edition 2024:
+Run from `crates/rs-power` with a Rust toolchain supporting edition 2024:
 
 - `cargo build --locked`: build the library and CLI.
 - `cargo run -- tests/fixtures/case9.m`: start an interactive session.

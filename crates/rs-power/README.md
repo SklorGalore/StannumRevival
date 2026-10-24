@@ -4,19 +4,19 @@ A Rust library for balanced, steady-state AC and DC power flow, with literal
 MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. AC flow uses
 a sparse Newton–Raphson solver with optional generator reactive-limit enforcement.
 
-[Usage](#usage) · [Desktop GUI](#desktop-gui) · [Import and export](#import-and-export) ·
+[Usage](#usage) · [Import and export](#import-and-export) ·
 [Solver results](#solver-results) ·
 [Sensitivity calculation](#sensitivity-calculation) · [Compatibility](#compatibility) ·
 [Verification](#verification)
 
 ## Usage
 
-Use a Rust toolchain that supports edition 2024. Add this repository as a Git
-dependency in your project’s `Cargo.toml`:
+rs-power is a crate in the Stannum workspace. Other workspace crates depend on
+it by path:
 
 ```toml
 [dependencies]
-rs-power = { git = "https://github.com/SklorGalore/rs-power" }
+rs-power = { path = "../rs-power" }
 ```
 
 The paths below refer to fixtures in a local checkout; replace them with your
@@ -158,10 +158,10 @@ exit status after processing the remaining commands. End-of-input exits the REPL
 
 ### Diagnostic logging
 
-The CLI and GUI provide diagnostic logging through `RUST_LOG`. Logs are written
+The CLI provides diagnostic logging through `RUST_LOG`. Logs are written
 to standard error, leaving tables and other command output on standard output.
 Interactive REPL sessions automatically log commands, file operations, and
-solve/sensitivity lifecycles at `info`. Piped/batch CLI sessions and the GUI are
+solve/sensitivity lifecycles at `info`. Piped/batch CLI sessions are
 quiet by default. `RUST_LOG` overrides these defaults; for example:
 
 ```sh
@@ -176,31 +176,6 @@ conversion details; and `trace` adds lexer and sparse-linear-system activity.
 Standard `env_logger` directives can combine per-module filters, such as
 `RUST_LOG=rs_power=info,rs_power::solver=debug`. Library users receive the same
 events through the `log` facade and can install the logger of their choice.
-
-## Desktop GUI
-
-Build and run the optional native desktop interface with:
-
-```sh
-cargo run --features gui --bin rs-power-gui
-```
-
-Open or drag in a MATPOWER or PSS/E RAW case, configure an AC or DC solve, and
-inspect convergence, operating-limit checks, and searchable bus, generator, and
-branch-flow tables. Sensitivities are calculated on demand. Select an injection
-by bus ID or name to inspect separate angle, voltage-magnitude, and branch-flow
-tables. Switch between engineering and raw units, choose a branch-flow component,
-filter response labels, and sort by absolute response, signed response, or
-original row order. Every response is accessible through scrolling with fixed
-table headers. Hover over truncated labels for full names and over derivatives
-for full precision; expand "How to
-read these results" for units and sign conventions. Solves and
-sensitivity calculations run in the background so the window stays responsive.
-The latest input or solved case can be exported in MATPOWER format.
-
-The `gui` feature is disabled by default, so normal library and CLI builds do
-not compile the graphical dependencies. See [`GUI_PLAN.md`](GUI_PLAN.md) for the
-design, scope, and deferred work.
 
 ## Import and export
 
@@ -423,8 +398,8 @@ compatibility with every MATPOWER case or numerical condition.
 
 ## Verification
 
-See the [contributor guide](https://github.com/SklorGalore/rs-power/blob/main/CONTRIBUTING.md)
-for the repository layout and fixture workflow. Run these checks from the repository root:
+See the [contributor guide](CONTRIBUTING.md)
+for the repository layout and fixture workflow. Run these checks from this crate's directory:
 
 ```sh
 cargo fmt --all -- --check
@@ -471,6 +446,6 @@ runtime dependency. Network construction, sparse factorization and Newton
 iteration are separate internal components for future extensions; the current implementation does not
 cache factorizations across calls.
 
-Software is BSD-3-Clause. See [NOTICE](https://github.com/SklorGalore/rs-power/blob/main/NOTICE) for MATPOWER attribution and its
+Software is BSD-3-Clause. See [NOTICE](NOTICE) for MATPOWER attribution and its
 retained license. MATPOWER explicitly excludes case data from its software BSD
 license; the bundled cases retain their original source and citation notices.

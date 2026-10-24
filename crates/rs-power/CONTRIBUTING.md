@@ -1,7 +1,6 @@
 # Contributing
 
-Use a Rust toolchain with edition 2024 support and run commands from the repository
-root. Ordinary builds and tests need no MATLAB, Octave, or MATPOWER installation.
+Use a Rust toolchain with edition 2024 support and run commands from `crates/rs-power`. Ordinary builds and tests need no MATLAB, Octave, or MATPOWER installation.
 
 ## Repository layout
 
