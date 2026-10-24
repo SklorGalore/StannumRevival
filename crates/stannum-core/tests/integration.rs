@@ -176,3 +176,42 @@ fn failed_comparison_clears_previous_results() {
     );
     assert!(ws.comparison().is_err());
 }
+
+#[test]
+fn diagram_network_describes_the_case() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus.raw")).unwrap();
+    let net = ws.current().unwrap().diagram_network().unwrap();
+    assert_eq!(net.buses.len(), 5);
+    assert_eq!(net.generators.len(), 2);
+    assert_eq!(net.branches.len(), 5);
+    // The 138/69 kV transformer is the only branch drawn as one.
+    let xf: Vec<_> = net.branches.iter().filter(|b| b.transformer).collect();
+    assert_eq!(xf.len(), 1);
+    assert_eq!((xf[0].from, xf[0].to), (2, 4));
+    let bus2 = net.buses.iter().find(|b| b.id == 2).unwrap();
+    assert_eq!(bus2.name, "Central_138");
+    assert!((bus2.pd - 90.0).abs() < 1e-9);
+    assert!(net.buses.iter().all(|b| !b.star));
+
+    // Branch and generator indices line up with the power flow report.
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(SolveSettings::default())
+        .unwrap();
+    for b in &net.branches {
+        let row = &report.branches[b.index];
+        assert_eq!((row.from, row.to), (b.from, b.to));
+    }
+    for g in &net.generators {
+        assert_eq!(report.generators[g.index].bus, g.bus);
+    }
+
+    ws.open(&fixture("case9.m")).unwrap();
+    let net = ws.current().unwrap().diagram_network().unwrap();
+    assert_eq!(net.buses.len(), 9);
+    // MATPOWER case9 gives every branch tap 0 and every bus 345 kV, so nothing
+    // marks its generator step-ups as transformers: all branches draw as lines.
+    assert!(net.branches.iter().all(|b| !b.transformer));
+}

@@ -1,11 +1,14 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { LoadNode as LoadNodeType } from "../../store/types";
+import { mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
 
 const W = 40;
 const H = 56;
 
 export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
   const isMotor = data.loadType === "motor";
+  const results = useResults();
+  const row = data.caseRef?.kind === "load" ? results?.buses.get(data.caseRef.id) : undefined;
 
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
@@ -41,9 +44,9 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
             </text>
           </>
         ) : (
-          /* Static load: downward triangle */
+          /* Static load: arrow pointing down, away from the bus */
           <polygon
-            points={`${W / 2},12 4,${H - 4} ${W - 4},${H - 4}`}
+            points={`4,12 ${W - 4},12 ${W / 2},${H - 4}`}
             fill={selected ? "#dbeafe" : "#f1f5f9"}
             stroke={selected ? "#3b82f6" : "#1e293b"}
             strokeWidth={2}
@@ -56,10 +59,19 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
           y={isMotor ? 40 : 36}
           fontSize={10}
           fill="#475569"
-          fontFamily="monospace"
         >
           {data.label}
         </text>
+        {row && (
+          <text x={W + 4} y={(isMotor ? 40 : 36) + 12} fontSize={9} fill={RESULT_TEXT}>
+            <tspan>{mw(row.pd)}</tspan>
+            {results?.ac && (
+              <tspan x={W + 4} dy={11}>
+                {mvar(row.qd)}
+              </tspan>
+            )}
+          </text>
+        )}
       </svg>
 
       <Handle

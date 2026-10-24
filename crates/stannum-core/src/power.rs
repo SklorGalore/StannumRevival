@@ -213,7 +213,7 @@ pub fn bus_names(case: &Case) -> Vec<String> {
         .collect()
 }
 
-fn kind_label(kind: BusType) -> &'static str {
+pub(crate) fn kind_label(kind: BusType) -> &'static str {
     match kind {
         BusType::Pq => "PQ",
         BusType::Pv => "PV",

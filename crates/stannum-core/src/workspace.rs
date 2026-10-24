@@ -228,6 +228,11 @@ impl OpenCase {
         rs_power::save_matpower(path, case).map_err(|e| e.to_string())
     }
 
+    /// The case as buses, generators and branches for the one-line diagram.
+    pub fn diagram_network(&self) -> Result<crate::diagram::CaseNetwork, String> {
+        Ok(crate::diagram::network(self.power_case()?))
+    }
+
     fn topology_state(&self) -> Result<&TopologyState, String> {
         self.topology.as_ref().map_err(|e| e.clone())
     }

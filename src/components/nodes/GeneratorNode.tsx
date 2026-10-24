@@ -1,11 +1,14 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { GeneratorNode as GeneratorNodeType } from "../../store/types";
+import { mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
 
 const W = 48;
 const H = 80;
 
 export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) {
   const isGrounded = data.groundingType === "solidly" || data.groundingType === "resistance";
+  const results = useResults();
+  const row = data.caseRef?.kind === "gen" ? results?.generators.get(data.caseRef.id) : undefined;
 
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
@@ -57,10 +60,25 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
           y={34}
           fontSize={10}
           fill="#475569"
-          fontFamily="monospace"
         >
           {data.label}
         </text>
+        {row && (
+          <text x={W + 4} y={48} fontSize={9} fill={row.online ? RESULT_TEXT : "#94a3b8"}>
+            {row.online ? (
+              <>
+                <tspan>{mw(row.pg)}</tspan>
+                {results?.ac && (
+                  <tspan x={W + 4} dy={11} fill={row.q_violation > 0 ? "#dc2626" : undefined}>
+                    {mvar(row.qg)}
+                  </tspan>
+                )}
+              </>
+            ) : (
+              "Offline"
+            )}
+          </text>
+        )}
       </svg>
 
       {/* Top connection handle */}

@@ -5,6 +5,7 @@ import { TransformerNode } from "./TransformerNode";
 import { CircuitBreakerNode } from "./CircuitBreakerNode";
 import { DisconnectorNode } from "./DisconnectorNode";
 import { FuseNode } from "./FuseNode";
+import { OffPageNode } from "./OffPageNode";
 
 // Module-level constant — NEVER move inside a component or this breaks React Flow
 export const nodeTypes = {
@@ -15,6 +16,7 @@ export const nodeTypes = {
   circuitBreaker: CircuitBreakerNode,
   disconnector: DisconnectorNode,
   fuse: FuseNode,
+  offPage: OffPageNode,
 } as const;
 
 export {
@@ -25,4 +27,5 @@ export {
   CircuitBreakerNode,
   DisconnectorNode,
   FuseNode,
+  OffPageNode,
 };

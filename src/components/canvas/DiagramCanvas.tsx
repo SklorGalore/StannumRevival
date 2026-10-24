@@ -1,10 +1,11 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   BackgroundVariant,
+  ConnectionMode,
   type Connection,
   type Edge,
   type OnNodesChange,
@@ -23,7 +24,7 @@ import type { SLDNode, SLDEdge, SLDNodeType } from "../../store/types";
 
 export function DiagramCanvas() {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   const nodes = useDiagramStore((s) => s.nodes);
   const edges = useDiagramStore((s) => s.edges);
@@ -36,6 +37,18 @@ export function DiagramCanvas() {
   const setSelection = useDiagramStore((s) => s.setSelection);
   const addNode = useDiagramStore((s) => s.addNode);
   const setViewport = useDiagramStore((s) => s.setViewport);
+  const fitRequest = useDiagramStore((s) => s.fitRequest);
+
+  // Fit when a drawing is opened or generated, not when the first symbol is
+  // dropped (React Flow's `fitView` prop zoomed a lone symbol to 400%).
+  useEffect(() => {
+    if (!fitRequest) return;
+    // Wait a frame so new nodes are measured before fitting.
+    const id = requestAnimationFrame(() => {
+      void fitView({ padding: 0.08, maxZoom: 1.25, duration: 200 });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [fitRequest, fitView]);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
@@ -73,8 +86,6 @@ export function DiagramCanvas() {
       if (!sourceNode || !targetNode) return false;
       // Bus-to-bus direct connections forbidden
       if (sourceNode.type === "bus" && targetNode.type === "bus") return false;
-      // Loads are terminal — no outgoing edges
-      if (sourceNode.type === "load") return false;
       return true;
     },
     [nodes]
@@ -147,8 +158,11 @@ export function DiagramCanvas() {
           );
         }}
         onMoveEnd={(_, vp) => setViewport(vp)}
-        fitView
-        minZoom={0.1}
+        // Any terminal can join any other: a generator's terminal and a bus
+        // tap are both "sources", which strict mode refused to connect.
+        connectionMode={ConnectionMode.Loose}
+        proOptions={{ hideAttribution: true }}
+        minZoom={0.05}
         maxZoom={4}
         deleteKeyCode={["Backspace", "Delete"]}
         multiSelectionKeyCode="Shift"
@@ -164,14 +178,11 @@ export function DiagramCanvas() {
         )}
         <Controls />
         <MiniMap
-          nodeColor={(n) => {
-            if (n.type === "bus") return "#64748b";
-            if (n.type === "generator") return "#16a34a";
-            if (n.type === "load") return "#2563eb";
-            if (n.type === "transformer") return "#ca8a04";
-            return "#94a3b8";
-          }}
-          style={{ border: "1px solid #e2e8f0", borderRadius: 6 }}
+          pannable
+          zoomable
+          nodeColor={(n) => (n.type === "bus" ? "#334155" : "#94a3b8")}
+          maskColor="rgba(241, 245, 249, 0.7)"
+          style={{ width: 160, height: 110, border: "1px solid #e2e8f0", borderRadius: 6 }}
         />
       </ReactFlow>
     </div>

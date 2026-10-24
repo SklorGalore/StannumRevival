@@ -38,6 +38,7 @@ pub fn run() {
             analysis::calculate_sensitivities,
             analysis::sensitivity_responses,
             analysis::export_matpower,
+            analysis::diagram_network,
             analysis::topology_snapshot,
             analysis::topology_set_merge,
             analysis::topology_shortest_path,

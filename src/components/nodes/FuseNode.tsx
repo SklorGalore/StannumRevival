@@ -73,7 +73,7 @@ export function FuseNode({ data, selected }: NodeProps<FuseNodeType>) {
         />
 
         {/* Label */}
-        <text x={W + 4} y={28} fontSize={9} fill="#475569" fontFamily="monospace">
+        <text x={W + 4} y={28} fontSize={9} fill="#475569">
           {data.label}
         </text>
       </svg>

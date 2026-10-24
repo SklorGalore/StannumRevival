@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, CASE_FILTERS, pickFile } from "../lib/analysis/api";
-import type { CaseSummary } from "../lib/analysis/types";
+import type { CaseSummary, SolveReport } from "../lib/analysis/types";
 
 export type ModuleId = "diagram" | "power" | "topology" | "diff";
 
@@ -12,6 +12,9 @@ interface WorkspaceState {
   caseVersion: number;
   opening: boolean;
   openError: string | null;
+  /** Latest power flow solve of the open case, shared by Power flow and Diagram. */
+  solveReport: SolveReport | null;
+  setSolveReport: (r: SolveReport | null) => void;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
 }
@@ -23,6 +26,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   caseVersion: 0,
   opening: false,
   openError: null,
+  solveReport: null,
+  setSolveReport: (solveReport) => set({ solveReport }),
 
   openCase: async (path) => {
     if (get().opening) return;
@@ -34,6 +39,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set((s) => ({
         caseSummary: summary,
         caseVersion: s.caseVersion + 1,
+        solveReport: null,
         opening: false,
         // A MATPOWER file has no topology, and a RAW file outside rs-power's
         // support may still have one: move to a module that can use it.
@@ -49,6 +55,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closeCase: async () => {
     await api.closeCase();
-    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null }));
+    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null }));
   },
 }));

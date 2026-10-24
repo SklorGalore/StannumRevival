@@ -93,6 +93,13 @@ pub async fn export_matpower(
     .await
 }
 
+#[tauri::command]
+pub async fn diagram_network(
+    state: State<'_, SharedWorkspace>,
+) -> Result<stannum_core::diagram::CaseNetwork, String> {
+    with(state, |ws| ws.current()?.diagram_network()).await
+}
+
 /// Serialized inside the lock: the snapshot borrows the parsed case.
 #[tauri::command]
 pub async fn topology_snapshot(

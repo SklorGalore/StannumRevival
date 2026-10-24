@@ -71,7 +71,7 @@ export const defaultConductorData: ConductorData = {
   conductorType: "transmission",
 };
 
-export const defaultsByType: Record<SLDNodeType, object> = {
+export const defaultsByType: Partial<Record<SLDNodeType, object>> = {
   bus: defaultBusData,
   generator: defaultGeneratorData,
   load: defaultLoadData,

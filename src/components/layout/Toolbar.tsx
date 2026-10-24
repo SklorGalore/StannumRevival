@@ -6,7 +6,13 @@ import {
   Grid,
   Magnet,
   Trash2,
+  Wand2,
+  Activity,
+  Play,
 } from "lucide-react";
+import { useWorkspace } from "../../store/workspaceStore";
+import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
+import { GenerateDialog } from "../dialogs/GenerateDialog";
 import { useDiagramStore } from "../../store/diagramStore";
 import { openDiagram, saveDiagram, saveAsDialog } from "../../lib/tauri/fileOps";
 import { useState } from "react";
@@ -19,6 +25,7 @@ interface ToolbarButtonProps {
   active?: boolean;
   danger?: boolean;
   disabled?: boolean;
+  title?: string;
 }
 
 function ToolbarButton({
@@ -28,12 +35,13 @@ function ToolbarButton({
   active,
   danger,
   disabled,
+  title,
 }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      title={label}
+      title={title ?? label}
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium
                   transition-colors select-none
                   ${danger
@@ -56,6 +64,30 @@ function Divider() {
 
 export function Toolbar() {
   const [exportOpen, setExportOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [solving, setSolving] = useState(false);
+
+  const caseSummary = useWorkspace((s) => s.caseSummary);
+  const solveReport = useWorkspace((s) => s.solveReport);
+  const setSolveReport = useWorkspace((s) => s.setSolveReport);
+  const caseName = useDiagramStore((s) => s.metadata.caseName);
+  const showResults = useDiagramStore((s) => s.showResults);
+  const toggleResults = useDiagramStore((s) => s.toggleResults);
+  const canGenerate = !!caseSummary?.power.available;
+  const linked = !!caseName && caseName === caseSummary?.name;
+
+  async function solve() {
+    const version = useWorkspace.getState().caseVersion;
+    setSolving(true);
+    try {
+      const report = await api.solve(DEFAULT_SOLVE_SETTINGS);
+      if (version === useWorkspace.getState().caseVersion) setSolveReport(report);
+    } catch (e) {
+      window.alert(`Power flow failed: ${(e as Error).message}`);
+    } finally {
+      setSolving(false);
+    }
+  }
 
   const isDirty = useDiagramStore((s) => s.isDirty);
   const gridVisible = useDiagramStore((s) => s.gridVisible);
@@ -117,6 +149,40 @@ export function Toolbar() {
       <Divider />
 
       <ToolbarButton
+        icon={<Wand2 size={14} />}
+        label="From case"
+        onClick={() => setGenerateOpen(true)}
+        disabled={!canGenerate}
+        title={
+          canGenerate
+            ? "Generate a one-line from the open case"
+            : caseSummary
+              ? "This case can't be read for power flow, so it can't be drawn"
+              : "Open a case first"
+        }
+      />
+      {linked &&
+        (solveReport ? (
+          <ToolbarButton
+            icon={<Activity size={14} />}
+            label="Results"
+            onClick={toggleResults}
+            active={showResults}
+            title="Show power flow results on the diagram"
+          />
+        ) : (
+          <ToolbarButton
+            icon={<Play size={14} />}
+            label={solving ? "Solving…" : "Solve"}
+            onClick={solve}
+            disabled={solving}
+            title="Run AC power flow and show results on the diagram"
+          />
+        ))}
+
+      <Divider />
+
+      <ToolbarButton
         icon={<Grid size={14} />}
         label="Grid"
         onClick={toggleGrid}
@@ -140,6 +206,7 @@ export function Toolbar() {
       />
 
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
+      {generateOpen && <GenerateDialog onClose={() => setGenerateOpen(false)} />}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, FolderOpen, Play, Sigma, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
-import { api, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
   BranchRow,
   BusRow,
@@ -27,13 +27,7 @@ import { SensitivityView } from "./SensitivityView";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "sensitivities" | "warnings";
 
-const DEFAULT_SETTINGS: SolveSettings = {
-  model: "ac",
-  start: "case",
-  tolerance: 1e-8,
-  max_iterations: 10,
-  enforce_q_limits: false,
-};
+const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
 const busColumns: Column<BusRow>[] = [
   { key: "id", header: "Bus", value: (r) => r.id, align: "right" },
@@ -321,7 +315,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
 
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [tab, setTab] = useState<Tab>("overview");
-  const [report, setReport] = useState<SolveReport | null>(null);
+  // Shared so the diagram can overlay the same results.
+  const report = useWorkspace((s) => s.solveReport);
+  const setReport = useWorkspace((s) => s.setSolveReport);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sensitivityVersion, setSensitivityVersion] = useState(0);
@@ -329,7 +325,6 @@ export function PowerFlowModule({ active }: { active: boolean }) {
 
   // A new case invalidates every result.
   useEffect(() => {
-    setReport(null);
     setSensitivity(null);
     setError(null);
     setTab("overview");
