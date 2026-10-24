@@ -40,6 +40,8 @@ function wireEnds(e: SLDEdge, lookup: Map<string, InternalNode>, loose: boolean)
 const near = (p: Pt, q: Pt) => Math.abs(p.x - q.x) <= ROUTE_TOLERANCE && Math.abs(p.y - q.y) <= ROUTE_TOLERANCE;
 
 type Area = Box;
+/** Wires this short (end to end) are left unrouted. */
+const STUB = 8;
 /** How far the router may search past a wire's ends (its widest retry). */
 const SEARCH_REACH = 600;
 /** How far text may hang outside a symbol or wire. */
@@ -143,6 +145,16 @@ export function useWireRouting(root: RefObject<HTMLElement>) {
         const ends = wireEnds(e, nodeLookup, loose);
         if (!ends) return;
         const route = e.data?.route;
+        // A symbol sitting on its bus bar is joined by a wire of next to no
+        // length: drawn straight, never routed.
+        if (Math.abs(ends[0].x - ends[1].x) + Math.abs(ends[0].y - ends[1].y) <= STUB) {
+          if (route) {
+            const { route: _, labelAt: __, pinnedRoute: ___, ...rest } = e.data!;
+            next[i] = { ...e, data: rest as SLDEdge["data"] };
+            changed = true;
+          }
+          return;
+        }
         if (route && route.length >= 2 && near(route[0], ends[0]) && near(route[route.length - 1], ends[1])) return;
         if (route && route.length >= 2 && e.data?.pinnedRoute) {
           const pinned = pinEnds(route, ends[0], ends[1]);
