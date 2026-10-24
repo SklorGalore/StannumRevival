@@ -1,128 +1,145 @@
-# StannumSLD
+# Stannum
 
-A desktop application for creating, editing, and exporting power system single-line diagrams (SLDs). Built with Tauri 2, React, and TypeScript.
+A desktop workbench for power system engineers, built with Tauri 2, Rust and
+React. Stannum brings four tools into one app that shares a single open case:
 
-![StannumSLD layout: component palette on the left, diagram canvas in the center, properties panel on the right]
+| Module | What it does | Engine |
+|---|---|---|
+| **Diagram** | Draw, edit and export single-line diagrams (the original StannumSLD editor) | React Flow |
+| **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](https://github.com/SklorGalore/rs-power) |
+| **Topology** | Islands, bridges, articulation buses, shortest paths and a network graph | [nodal](https://github.com/SklorGalore/nodal) |
+| **Case diff** | Exact record-by-record comparison of two RAW cases | Rust port of [case-diff](https://github.com/SklorGalore/case-diff) |
 
-## Features
+All analysis runs locally in native Rust. Case files never leave your machine.
 
-- **Drag-and-drop diagram editor** — place and connect power system components on an infinite canvas with pan, zoom, and snap-to-grid
-- **IEEE 315 / ANSI Y32.2 symbols** — industry-standard SVG symbols for all component types
-- **Interactive components** — click circuit breakers and disconnectors to toggle their state directly on the canvas
-- **Properties panel** — select any component or conductor to edit its electrical parameters
-- **Export** — save diagrams as SVG, PNG (96/150/300 DPI), or PDF with an engineering title block
-- **Save / Load** — persist diagrams to `.sld` JSON files and reopen them later
+![Topology module: metrics, network graph with a traced path, inspector and bus table](docs/screenshots/topology.png)
 
-## Component Library
-
-| Category | Components |
+| Power flow | Case diff |
 |---|---|
-| Generation | Generator (synchronous, with grounding options) |
-| Network | Bus (voltage-level color-coded) |
-| Transformation | Two-winding Transformer (Wye/Delta connection symbols) |
-| Protection | Circuit Breaker, Disconnector / Isolator, Fuse |
-| Load | Static Load, Motor Load |
+| ![Power flow overview](docs/screenshots/power-overview.png) | ![Case diff with a changed bus record](docs/screenshots/case-diff.png) |
 
-### Bus voltage color coding
+## Using it
 
-| Voltage | Color |
-|---|---|
-| ≥ 765 kV | Red |
-| 345–500 kV | Orange |
-| 115–230 kV | Yellow |
-| 34.5–69 kV | Green |
-| < 34.5 kV | Blue |
+Open a case with **Open case…** or drop a `.raw` / `.m` file on the window. The
+case bar shows what loaded, and each module uses the case if it can:
 
-## Connection Rules
+- **MATPOWER** (`.m`, version 2) works in Power flow.
+- **PSS/E RAW** revisions 23–35 work in Power flow; revision 35 also works in
+  Topology; revisions 33 and 35 work in Case diff.
 
-- **Bus → Bus** connections are forbidden (route through a breaker or switch)
-- **Load** nodes are terminals — they cannot be the source of a connection
-- All conductors carry configurable voltage, type (transmission / distribution / buswork), and impedance values
+If a module can't use the open case it says why, and the other modules keep
+working.
 
-## Getting Started
+### Power flow
 
-### Prerequisites
+Choose AC or DC, the starting voltages, tolerance, Newton iterations and
+whether to enforce generator reactive limits, then **Solve**. The overview shows
+convergence, residual (MVA and p.u.), totals and operating-limit checks
+(voltage limits, generator Q limits, branch loading against rate A). The bus,
+generator and branch tables are searchable, sortable and export to CSV; rows
+outside limits are highlighted. A nonconverged result is kept and labelled so
+you can inspect the final iterate.
 
-- [Node.js](https://nodejs.org/) 18+
-- [Rust](https://www.rust-lang.org/tools/install) (stable)
-- [Tauri CLI](https://tauri.app/start/prerequisites/) v2
+**Calculate sensitivities** linearizes the solved case. Pick an injection bus
+and P or Q, then a response (voltage angle, voltage magnitude or one of the four
+branch-end flows), in engineering or raw units, ordered by magnitude, signed
+value or input order. "How to read these results" explains the sign conventions.
 
-### Install dependencies
+**Export MATPOWER** writes the input case or the latest solved case.
 
-```bash
+### Topology
+
+Shows RAW bus, line, transformer, island, bridge and articulation-bus counts, a
+Cytoscape network graph and an inspector. Start from a bus's 2-hop
+neighborhood, widen it, show a whole island, or show the full network (up to
+500 nodes). **Path** finds the fewest equipment hops between two buses.
+Tables cover buses, islands, critical connections, equipment and parser
+diagnostics; all export to CSV, and **Export JSON** saves the parsed case,
+analysis and current path. **Merge zero-impedance branches** treats
+zero-impedance lines as a single node.
+
+### Case diff
+
+Choose a baseline and a comparison RAW file (the open case is offered as the
+baseline) and **Compare files**. Sections list added, removed, changed and
+unchanged counts; select a record to see its fields side by side with the
+original lines. Numbers compare exactly (`1.0` equals `1.000`, any other change
+counts), string padding is shown in quotes, and formatting, comments and line
+endings are ignored. Content in layouts that are not verified is listed as
+unsupported and the result is marked incomplete rather than guessed at.
+
+### Diagram
+
+The StannumSLD single-line diagram editor: IEEE 315 / ANSI Y32.2 symbols,
+drag-and-drop placement, interactive breakers and disconnectors, a properties
+panel, `.sld` save/load, and SVG/PNG/PDF export with a title block.
+`Delete` and `Ctrl+S` act on the diagram only while it is showing.
+
+## Development
+
+Prerequisites: Node.js 22+, Rust (stable, edition 2024), and the
+[Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your
+platform (on Linux: `libwebkit2gtk-4.1-dev` and friends).
+
+```sh
 npm install
+npm run tauri dev      # run the desktop app
+npm run tauri build    # package it
 ```
 
-### Run in development
+Checks:
 
-```bash
-npm run tauri dev
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test -p stannum-core
+npm run build          # type-check and bundle the frontend
 ```
 
-### Build for production
+### Browser smoke test
 
-```bash
-npm run tauri build
+`tests/browser/smoke.mjs` drives the real UI in Chromium against the real Rust
+core. `dev_bridge` serves the same commands as the desktop app over local HTTP,
+and the test swaps Tauri's IPC for a shim that calls it:
+
+```sh
+cargo run --release -p stannum-core --example dev_bridge &
+npm run build && npx vite preview --port 1420 &
+F=crates/stannum-core/tests/fixtures
+STANNUM_MATPOWER=$F/case9.m STANNUM_RAW=$F/five_bus.raw STANNUM_RAW_B=$F/five_bus_modified.raw \
+  node tests/browser/smoke.mjs   # needs Playwright; set STANNUM_SHOTS=dir for screenshots
 ```
 
-## Keyboard Shortcuts
+### Checking the case-diff port
 
-| Shortcut | Action |
-|---|---|
-| `Delete` / `Backspace` | Delete selected components |
-| `Ctrl+S` | Save diagram |
-| `Shift+click` | Multi-select |
-| `Scroll` | Zoom in / out |
-| `Middle-click drag` | Pan canvas |
+`cargo run -p stannum-core --example diff_dump -- a.raw b.raw` prints a full
+comparison as JSON in the same shape as a small script over the Python
+case-diff, which makes it easy to confirm the two agree on new files.
 
-## File Format
-
-Diagrams are saved as `.sld` files (JSON). The format is stable and human-readable:
-
-```json
-{
-  "metadata": {
-    "title": "Example Substation",
-    "revision": "A",
-    "company": "Acme Power",
-    "schemaVersion": "1.0"
-  },
-  "nodes": [...],
-  "edges": [...],
-  "viewport": { "x": 0, "y": 0, "zoom": 1 }
-}
-```
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Desktop shell | [Tauri 2](https://tauri.app/) (Rust) |
-| Frontend | [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) |
-| Diagram canvas | [React Flow 12](https://reactflow.dev/) (`@xyflow/react`) |
-| State management | [Zustand 5](https://zustand-demo.pmnd.rs/) + Immer |
-| Styling | [Tailwind CSS 4](https://tailwindcss.com/) |
-| PDF export | [jsPDF](https://github.com/parallax/jsPDF) |
-| Build tool | [Vite](https://vitejs.dev/) |
-
-## Project Structure
+## Layout
 
 ```
+crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
+  src/workspace.rs        The shared open case; parses once per engine
+  src/power.rs            rs-power solve/sensitivity results shaped for the UI
+  src/diff/               case-diff port: tokenizer, exact values, parser, comparison
+  schemas/raw.schema.json RAW field layouts (shared with nodal and case-diff)
+  tests/                  Integration tests and fixtures
+src-tauri/                Desktop shell; src/analysis.rs exposes the core as commands
 src/
-├── components/
-│   ├── canvas/       # React Flow host, drop target
-│   ├── dialogs/      # Export and metadata dialogs
-│   ├── edges/        # Conductor edge renderer
-│   ├── layout/       # AppShell, Toolbar, StatusBar
-│   ├── nodes/        # One file per IEEE symbol component
-│   ├── palette/      # Draggable component palette
-│   └── properties/   # Per-type property forms
-├── hooks/            # Keyboard shortcuts
-├── lib/
-│   ├── export/       # SVG → PNG → PDF pipeline
-│   ├── serialization/
-│   └── tauri/        # Native file dialog wrappers
-└── store/            # Zustand store, types, defaults
-src-tauri/
-└── src/lib.rs        # save_diagram, load_diagram, save_binary commands
+  shell/                  Module rail, case bar, drag-and-drop
+  modules/                diagram/, power/, topology/, diff/
+  lib/analysis/           Typed command wrappers and result types
+  ui/                     Shared table and form components
+  components/, store/     The diagram editor (from StannumSLD)
+tests/browser/            Browser smoke test
 ```
+
+rs-power and nodal are pinned git dependencies in
+`crates/stannum-core/Cargo.toml`; bump the `rev` to pick up upstream changes.
+
+## Licensing
+
+rs-power is BSD-3-Clause with MATPOWER attribution (see its NOTICE). The
+`case9.m` test fixture is MATPOWER case data; see
+`crates/stannum-core/tests/fixtures/README.md`.

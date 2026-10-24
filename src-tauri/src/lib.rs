@@ -1,3 +1,5 @@
+mod analysis;
+
 use base64::{engine::general_purpose, Engine as _};
 
 #[tauri::command]
@@ -24,10 +26,24 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(analysis::SharedWorkspace::default())
         .invoke_handler(tauri::generate_handler![
             save_diagram,
             load_diagram,
             save_binary,
+            analysis::open_case,
+            analysis::close_case,
+            analysis::case_summary,
+            analysis::solve_power_flow,
+            analysis::calculate_sensitivities,
+            analysis::sensitivity_responses,
+            analysis::export_matpower,
+            analysis::topology_snapshot,
+            analysis::topology_set_merge,
+            analysis::topology_shortest_path,
+            analysis::diff_compare,
+            analysis::diff_section_records,
+            analysis::diff_record_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
