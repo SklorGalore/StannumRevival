@@ -6,8 +6,8 @@ React. Stannum brings four tools into one app that shares a single open case:
 | Module | What it does | Engine |
 |---|---|---|
 | **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own | React Flow + [ELK](https://eclipse.dev/elk/) |
-| **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](https://github.com/SklorGalore/rs-power) |
-| **Topology** | Islands, bridges, articulation buses, shortest paths and a network graph | [nodal](https://github.com/SklorGalore/nodal) |
+| **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](crates/rs-power) |
+| **Topology** | Islands, bridges, articulation buses, shortest paths and a network graph | [nodal](crates/nodal) |
 | **Case diff** | Exact record-by-record comparison of two RAW cases | Rust port of [case-diff](https://github.com/SklorGalore/case-diff) |
 
 All analysis runs locally in native Rust. Case files never leave your machine.
@@ -129,7 +129,7 @@ Checks:
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-cargo test -p stannum-core
+cargo test -p stannum-core -p rs-power -p nodal
 npm run build          # type-check and bundle the frontend
 npm test               # frontend unit tests (Vitest), e.g. the wire router
 ```
@@ -157,6 +157,8 @@ case-diff, which makes it easy to confirm the two agree on new files.
 ## Layout
 
 ```
+crates/rs-power/          AC/DC power flow, sensitivities, MATPOWER and RAW loading, CLI
+crates/nodal/             RAW v35 parser and topology (islands, bridges, paths)
 crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
   src/workspace.rs        The shared open case; parses once per engine
   src/power.rs            rs-power solve/sensitivity results shaped for the UI
@@ -173,11 +175,13 @@ src/
 tests/browser/            Browser smoke test
 ```
 
-rs-power and nodal are pinned git dependencies in
-`crates/stannum-core/Cargo.toml`; bump the `rev` to pick up upstream changes.
+rs-power and nodal used to be separate repositories. They now live here as
+workspace crates, imported with their full git history, and are developed in
+this repository only. Each crate has its own README with its API and checks.
 
 ## Licensing
 
-rs-power is BSD-3-Clause with MATPOWER attribution (see its NOTICE). The
+rs-power is BSD-3-Clause with MATPOWER attribution (see
+`crates/rs-power/NOTICE`). The
 `case9.m` test fixture is MATPOWER case data; see
 `crates/stannum-core/tests/fixtures/README.md`.

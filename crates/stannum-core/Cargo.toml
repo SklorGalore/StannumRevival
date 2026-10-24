@@ -6,9 +6,8 @@ description = "Analysis core for Stannum: power flow, topology and RAW case comp
 publish = false
 
 [dependencies]
-# Pinned so builds are reproducible; bump the rev to pick up upstream changes.
-rs-power = { git = "https://github.com/SklorGalore/rs-power", rev = "860ee93958996f2fa38a2ea7731ca435c0455742" }
-nodal = { git = "https://github.com/SklorGalore/nodal", rev = "05ad9da9a3bb11ad87bb389a6f50f557a6bfb715" }
+rs-power = { path = "../rs-power" }
+nodal = { path = "../nodal" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 encoding_rs = "0.8"
