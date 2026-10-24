@@ -7,7 +7,8 @@ import { CircuitBreakerForm } from "./forms/CircuitBreakerForm";
 import { DisconnectorForm } from "./forms/DisconnectorForm";
 import { FuseForm } from "./forms/FuseForm";
 import { EdgeForm } from "./forms/EdgeForm";
-import type { SLDNode, SLDEdge } from "../../store/types";
+import type { SLDNode, SLDEdge, CaseRef } from "../../store/types";
+import { elementLabel } from "../../lib/elements";
 
 export function PropertiesPanel() {
   const nodes = useDiagramStore((s) => s.nodes);
@@ -33,6 +34,7 @@ export function PropertiesPanel() {
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
+        <CaseElement caseRef={(selectedNode ?? selectedEdge)?.data?.caseRef as CaseRef | undefined} />
         {selectedNode ? (
           <NodeForm node={selectedNode} />
         ) : selectedEdge ? (
@@ -66,4 +68,16 @@ function NodeForm({ node }: { node: SLDNode }) {
     default:
       return null;
   }
+}
+
+/** Which record of the open case the selected symbol stands for. */
+function CaseElement({ caseRef }: { caseRef?: CaseRef }) {
+  if (!caseRef?.element) return null;
+  return (
+    <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" title="Shared id used by every module">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">In the open case</p>
+      <p className="text-xs font-medium text-slate-700">{elementLabel(caseRef.element)}</p>
+      <p className="font-mono text-[10px] text-slate-500 break-all">{caseRef.element}</p>
+    </div>
+  );
 }

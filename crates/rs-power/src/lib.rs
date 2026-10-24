@@ -11,8 +11,8 @@ pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use input::{load_matpower, parse_matpower};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
-    RawImport, RawOptions, RawWarning, load_raw, load_raw_with_options, parse_raw,
-    parse_raw_with_options,
+    BranchKind, BranchSource, GeneratorSource, RawImport, RawOptions, RawWarning, load_raw,
+    load_raw_with_options, parse_raw, parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,

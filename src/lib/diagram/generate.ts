@@ -17,6 +17,7 @@ import type {
   TransformerData,
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
+import { busElement } from "../elements";
 
 export type Scope =
   | { kind: "all" }
@@ -205,7 +206,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       label: genCount.get(g.bus)! > 1 ? `G ${g.bus}.${n}` : `G ${g.bus}`,
       nominalMW: g.pmax,
       voltageKV: kv(g.bus),
-      caseRef: { kind: "gen", id: g.index },
+      caseRef: { kind: "gen", id: g.index, element: g.element },
     };
     rfNodes.set(id, { id, type: "generator", position: { x: 0, y: 0 }, data } as SLDNode);
     specs.push({
@@ -232,7 +233,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       label: "Load",
       nominalMW: b.pd,
       nominalMVAR: b.qd,
-      caseRef: { kind: "load", id: b.id },
+      caseRef: { kind: "load", id: b.id, element: busElement(b.id) },
     };
     rfNodes.set(id, { id, type: "load", position: { x: 0, y: 0 }, data } as SLDNode);
     specs.push({
@@ -250,7 +251,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
     const [upper, lower] = reversed ? [br.to, br.from] : [br.from, br.to];
     bump(upper);
     bump(lower);
-    const ref = { kind: "branch" as const, id: br.index };
+    const ref = { kind: "branch" as const, id: br.index, element: br.element };
     const outOfService = !br.online || undefined;
     if (br.transformer) {
       const id = `t${br.index}`;
@@ -317,7 +318,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       bus: far,
       busName: farBus ? busLabel(farBus) : "",
       voltageKV: kv(inside),
-      caseRef: { kind: "branch", id: br.index },
+      caseRef: { kind: "branch", id: br.index, element: br.element },
       // Flow is read at the inside end, so "reversed" means inside is "to".
       reversed: inside === br.to || undefined,
       outOfService: !br.online || undefined,
@@ -328,7 +329,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       source: { node: `b${inside}` },
       target: { node: id, port: `${id}:p`, handle: "op-top" },
       data: conductor(kv(inside), {
-        caseRef: { kind: "branch", id: br.index },
+        caseRef: { kind: "branch", id: br.index, element: br.element },
         reversed: inside === br.to || undefined,
         outOfService: !br.online || undefined,
       }),
@@ -443,7 +444,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       length: n.width!,
       taps: taps.get(`b${b.id}`) ?? [],
       star: b.star || undefined,
-      caseRef: { kind: "bus", id: b.id },
+      caseRef: { kind: "bus", id: b.id, element: busElement(b.id) },
     };
     out.push({ id: `b${b.id}`, type: "bus", position: { x: n.x!, y: n.y! }, data } as SLDNode);
   }

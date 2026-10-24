@@ -30,6 +30,54 @@ pub struct RawImport {
     pub revision: u32,
     /// Diagnostics; strict mode may still return non-lossy warnings.
     pub warnings: Vec<RawWarning>,
+    /// The RAW record behind each entry of `case.branches`, in the same order.
+    pub branch_sources: Vec<BranchSource>,
+    /// The RAW record behind each entry of `case.generators`, in the same order.
+    pub generator_sources: Vec<GeneratorSource>,
+}
+
+/// Which RAW section a branch came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BranchKind {
+    /// A non-transformer branch record.
+    Line,
+    /// A two- or three-winding transformer record.
+    Transformer,
+}
+
+/// The RAW record a converted branch came from. MATPOWER rows have none.
+///
+/// A three-winding transformer becomes three branches to a star bus; each
+/// keeps the transformer's buses and circuit, with `winding` set to 1, 2 or 3.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BranchSource {
+    pub kind: BranchKind,
+    /// Terminal buses as written (I, J, and K for three-winding transformers).
+    pub buses: Vec<u32>,
+    /// Circuit identifier, trimmed; `"1"` when the field is blank.
+    pub circuit: String,
+    /// Winding of a three-winding transformer; 0 otherwise.
+    pub winding: u8,
+    /// One-based line of the record's first row.
+    pub line: usize,
+}
+
+/// The RAW record a converted generator came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GeneratorSource {
+    pub bus: u32,
+    /// Machine identifier, trimmed; `"1"` when the field is blank.
+    pub id: String,
+    /// One-based source line.
+    pub line: usize,
+}
+
+/// A RAW identifier field: trimmed, with PSS/E's default of "1" when blank.
+fn identifier(r: &Record, i: usize) -> String {
+    match r.fields.get(i).map(|s| s.trim()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => "1".to_string(),
+    }
 }
 
 struct Context<'a> {
@@ -405,6 +453,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         gencost: None,
         labels: Default::default(),
     };
+    let mut branch_sources = Vec::new();
+    let mut generator_sources = Vec::new();
     let bus_rows = section("bus");
     let have_limits = rev >= 31
         && bus_rows.iter().all(|r| {
@@ -544,6 +594,11 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 "wind-machine control ignored; supplied generator limits retained",
             )?;
         }
+        generator_sources.push(GeneratorSource {
+            bus: r.id(0)?,
+            id: identifier(r, 1),
+            line: r.line,
+        });
         case.generators.push(Generator {
             bus: r.id(0)?,
             pg: r.num(2)?,
@@ -589,6 +644,13 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 )?;
             }
         }
+        branch_sources.push(BranchSource {
+            kind: BranchKind::Line,
+            buses: vec![from, to],
+            circuit: identifier(r, 2),
+            winding: 0,
+            line: r.line,
+        });
         case.branches.push(Branch {
             from,
             to,
@@ -606,7 +668,13 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             extra: vec![],
         });
     }
-    convert_transformers(section("transformer"), &mut case, &indices, &mut ctx)?;
+    convert_transformers(
+        section("transformer"),
+        &mut case,
+        &mut branch_sources,
+        &indices,
+        &mut ctx,
+    )?;
     convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
     for (i, rows) in sections.iter().enumerate() {
         let name = names.get(i).copied().unwrap_or("additional section");
@@ -644,6 +712,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         case,
         revision: rev,
         warnings: ctx.warnings,
+        branch_sources,
+        generator_sources,
     })
 }
 
@@ -730,6 +800,7 @@ fn transformer_branch(
 fn convert_transformers(
     rows: &[Record],
     case: &mut Case,
+    sources: &mut Vec<BranchSource>,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
 ) -> Result<(), Error> {
@@ -801,7 +872,19 @@ fn convert_transformers(
                 )?;
                 continue;
             }
+            let source = |winding: u8| -> Result<BranchSource, Error> {
+                Ok(BranchSource {
+                    kind: BranchKind::Transformer,
+                    buses: (0..if kind == 0 { 2 } else { 3 })
+                        .map(|i| r.id(i))
+                        .collect::<Result<_, _>>()?,
+                    circuit: identifier(r, 3),
+                    winding,
+                    line: r.line,
+                })
+            };
             if kind == 0 {
+                sources.push(source(0)?);
                 let f = &case.buses[buses[0]];
                 let t = &case.buses[buses[1]];
                 let zi = impedance(z, 0, cz, ws[0].num(1)?, f, case.base_mva)?;
@@ -844,6 +927,7 @@ fn convert_transformers(
                     ),
                 ];
                 for i in 0..3 {
+                    sources.push(source(i as u8 + 1)?);
                     let b = &case.buses[buses[i]];
                     let online = status != 0 && status != [4, 2, 3][i];
                     case.branches.push(transformer_branch(

@@ -353,3 +353,44 @@ fn q_termination_and_truncation() {
         assert!(parse_raw(&good.replacen("10,'Slack", &format!("{value},'Slack"), 1)).is_err());
     }
 }
+
+#[test]
+fn branch_and_generator_sources_follow_converted_rows() {
+    use rs_power::BranchKind;
+    let buses = format!("{BUSES}30,'Tertiary',13.8,1,1,1,1,1,0,1.1,.9\n");
+    let lines = "10,20,'1',.01,.1,.02,100,110,120,0,0,0,0,1\n10,20,' 2 ',.01,.1,.02,100,110,120,0,0,0,0,1\n";
+    // A three-winding transformer written before a two-winding one: rs-power
+    // converts two-winding transformers first, and the sources must follow.
+    let transformers = concat!(
+        "10,20,30,'T3',1,1,1,0,0,2,'X',1\n",
+        ".001,.1,100,.001,.1,100,.001,.1,100,1,0\n",
+        "1,230,0,100,100,100\n1,115,0,100,100,100\n1,13.8,0,100,100,100\n",
+        "20,10,0,'',1,1,1,0,0,2,'Y',1\n.001,.1,100\n1,115,0,100,100,100\n1,230\n",
+    );
+    let import = parse_raw_with_options(
+        &raw(&[&buses, "", "", GEN, lines, transformers]),
+        &RawOptions::default(),
+    )
+    .unwrap();
+    let s = &import.branch_sources;
+    assert_eq!(s.len(), import.case.branches.len());
+    assert_eq!(s.len(), 6);
+    assert_eq!((s[0].kind, s[0].circuit.as_str()), (BranchKind::Line, "1"));
+    assert_eq!(s[1].circuit, "2", "circuit ids are trimmed");
+    assert_eq!(
+        (s[2].kind, s[2].buses.clone()),
+        (BranchKind::Transformer, vec![20, 10])
+    );
+    assert_eq!(
+        (s[2].circuit.as_str(), s[2].winding),
+        ("1", 0),
+        "blank circuit defaults to 1"
+    );
+    for (i, leg) in s[3..].iter().enumerate() {
+        assert_eq!((leg.circuit.as_str(), leg.winding), ("T3", i as u8 + 1));
+        assert_eq!(leg.buses, vec![10, 20, 30]);
+        assert_eq!(import.case.branches[3 + i].from, [10, 20, 30][i]);
+    }
+    assert_eq!(import.generator_sources.len(), 1);
+    assert_eq!(import.generator_sources[0].id, "1");
+}
