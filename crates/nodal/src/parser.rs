@@ -282,10 +282,10 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
             section_index += 1;
             continue;
         }
-        if section == "SYSTEM-WIDE" {
-            if let Some(value) = system_wide_threshold(&tokens, line)? {
-                case.zero_impedance_threshold = value;
-            }
+        if section == "SYSTEM-WIDE"
+            && let Some(value) = system_wide_threshold(&tokens, line)?
+        {
+            case.zero_impedance_threshold = value;
         }
         if !matches!(
             section,

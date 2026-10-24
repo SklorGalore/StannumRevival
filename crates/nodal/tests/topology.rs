@@ -382,7 +382,8 @@ fn merged_three_winding_collisions_contract_to_effective_terminals() {
 #[test]
 fn contractions_keep_parallel_external_circuits_and_update_cut_analysis() {
     let mut c = case(4, &[(1, 2), (1, 3), (2, 3), (3, 4)]);
-    for index in [0] {
+    {
+        let index = 0;
         c.equipment[index]
             .source
             .fields

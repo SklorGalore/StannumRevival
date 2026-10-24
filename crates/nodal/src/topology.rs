@@ -494,7 +494,7 @@ fn zero_impedance_groups(case: &Case) -> Vec<Vec<i32>> {
             continue;
         }
         let [from, to] = [eq.buses[0], eq.buses[1]];
-        if eq.active_terminals.get(0) != Some(&true)
+        if eq.active_terminals.first() != Some(&true)
             || eq.active_terminals.get(1) != Some(&true)
             || !active_buses.contains(&from)
             || !active_buses.contains(&to)
