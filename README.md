@@ -99,7 +99,7 @@ grip on its right end for changing its length.
 | Copy, cut, paste, duplicate | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D |
 | Select all / clear | Ctrl+A / Esc |
 | Nudge | Arrow keys (one grid step; Shift for 1 px) |
-| Align and space evenly | Toolbar buttons, shown with two or more symbols selected |
+| Align and space evenly | Bar over the canvas, shown with two or more symbols selected |
 
 **Print style** draws everything in black for printing and export. Diagrams
 save as `.sld` and export to SVG, PNG or PDF with a title block. Keyboard
