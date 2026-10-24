@@ -2,11 +2,30 @@ import type { Node, Edge } from "@xyflow/react";
 
 // ── Node data interfaces ─────────────────────────────────────────────────────
 
+/** Links a symbol to a record of the open case, so results can be shown on it. */
+export interface CaseRef {
+  kind: "bus" | "gen" | "branch" | "load";
+  /** Bus number for buses and loads; table index for generators and branches. */
+  id: number;
+}
+
+/** A connection point on a bus, at `x` px from its left end. */
+export interface BusTap {
+  id: string;
+  x: number;
+  side: "top" | "bottom";
+}
+
 export interface BusData extends Record<string, unknown> {
   label: string;
   voltageKV: number;
   orientation: "horizontal" | "vertical";
   length: number;
+  /** Generated buses carry one tap per connection; hand-drawn ones use defaults. */
+  taps?: BusTap[];
+  /** Star point of a three-winding transformer: drawn as a small junction. */
+  star?: boolean;
+  caseRef?: CaseRef;
 }
 
 export interface GeneratorData extends Record<string, unknown> {
@@ -15,6 +34,7 @@ export interface GeneratorData extends Record<string, unknown> {
   voltageKV: number;
   powerFactor: number;
   groundingType: "solidly" | "resistance" | "reactance" | "ungrounded";
+  caseRef?: CaseRef;
 }
 
 export interface LoadData extends Record<string, unknown> {
@@ -22,6 +42,7 @@ export interface LoadData extends Record<string, unknown> {
   nominalMW: number;
   nominalMVAR: number;
   loadType: "static" | "motor" | "composite";
+  caseRef?: CaseRef;
 }
 
 export interface TransformerData extends Record<string, unknown> {
@@ -33,6 +54,12 @@ export interface TransformerData extends Record<string, unknown> {
   groundingPrimary: "solidly" | "resistance" | "none";
   groundingSecondary: "solidly" | "resistance" | "none";
   impedancePct: number;
+  caseRef?: CaseRef;
+  /** Winding connections are not in the case data: draw plain circles. */
+  windingsUnknown?: boolean;
+  /** The case's "to" bus is on the primary (top) side. */
+  reversed?: boolean;
+  outOfService?: boolean;
 }
 
 export interface CircuitBreakerData extends Record<string, unknown> {
@@ -64,6 +91,27 @@ export interface ConductorData extends Record<string, unknown> {
   conductorType: "transmission" | "distribution" | "buswork";
   impedanceR?: number;
   impedanceX?: number;
+  /** Orthogonal route from layout, endpoints included, in flow coordinates.
+   *  Ignored once either end moves away from where it was routed. */
+  route?: { x: number; y: number }[];
+  /** Box reserved by the layout for this wire's results, used with `route`. */
+  labelAt?: { x: number; y: number; width: number; height: number };
+  caseRef?: CaseRef;
+  /** The edge's source is the branch's "to" bus. */
+  reversed?: boolean;
+  outOfService?: boolean;
+}
+
+/** Marks a branch that leaves the drawn part of the case. */
+export interface OffPageData extends Record<string, unknown> {
+  label: string;
+  /** Bus at the far end, outside the drawing. */
+  bus: number;
+  busName: string;
+  voltageKV: number;
+  caseRef?: CaseRef;
+  reversed?: boolean;
+  outOfService?: boolean;
 }
 
 // ── Typed React Flow unions ──────────────────────────────────────────────────
@@ -75,7 +123,8 @@ export type SLDNodeType =
   | "transformer"
   | "circuitBreaker"
   | "disconnector"
-  | "fuse";
+  | "fuse"
+  | "offPage";
 
 export type BusNode = Node<BusData, "bus">;
 export type GeneratorNode = Node<GeneratorData, "generator">;
@@ -84,6 +133,7 @@ export type TransformerNode = Node<TransformerData, "transformer">;
 export type CircuitBreakerNode = Node<CircuitBreakerData, "circuitBreaker">;
 export type DisconnectorNode = Node<DisconnectorData, "disconnector">;
 export type FuseNode = Node<FuseData, "fuse">;
+export type OffPageNode = Node<OffPageData, "offPage">;
 
 export type SLDNode =
   | BusNode
@@ -92,7 +142,8 @@ export type SLDNode =
   | TransformerNode
   | CircuitBreakerNode
   | DisconnectorNode
-  | FuseNode;
+  | FuseNode
+  | OffPageNode;
 
 export type SLDEdge = Edge<ConductorData>;
 
@@ -106,6 +157,8 @@ export interface DiagramMetadata {
   createdAt: string;
   modifiedAt: string;
   schemaVersion: "1.0";
+  /** File name of the case this diagram was generated from, if any. */
+  caseName?: string;
 }
 
 export interface SLDDiagram {
@@ -133,6 +186,10 @@ export interface DiagramStore {
   gridVisible: boolean;
   snapToGrid: boolean;
   gridSize: number;
+  /** Show the latest power flow results on symbols linked to the case. */
+  showResults: boolean;
+  /** Bumped to ask the canvas to fit the drawing on screen. */
+  fitRequest: number;
 
   setNodes: (nodes: SLDNode[]) => void;
   setEdges: (edges: SLDEdge[]) => void;
@@ -144,6 +201,10 @@ export interface DiagramStore {
 
   newDiagram: () => void;
   loadDiagramFromJSON: (diagram: SLDDiagram) => void;
+  /** Replace the drawing with a generated one (unsaved, new file). */
+  replaceWithGenerated: (nodes: SLDNode[], edges: SLDEdge[], caseName: string) => void;
+  toggleResults: () => void;
+  requestFit: () => void;
   setFilePath: (path: string | null) => void;
   markDirty: () => void;
   markClean: () => void;

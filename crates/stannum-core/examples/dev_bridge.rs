@@ -46,6 +46,7 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             &PathBuf::from(arg::<String>(args, "path")?),
             arg(args, "solved")?,
         )?),
+        "diagram_network" => to_json(ws.current()?.diagram_network()?),
         "topology_snapshot" => to_json(ws.current()?.topology_snapshot()?),
         "topology_set_merge" => to_json(
             ws.current_mut()?

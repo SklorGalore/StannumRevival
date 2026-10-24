@@ -1,11 +1,61 @@
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  getStraightPath,
-  type EdgeProps,
-} from "@xyflow/react";
+import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import type { ConductorData } from "../../store/types";
 import { getVoltageColor } from "../nodes/shared/voltageColor";
+import { branchFlow, loadingColor, mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
+
+type Pt = { x: number; y: number };
+
+/** How far an end may drift from its routed position before the route is dropped. */
+const ROUTE_TOLERANCE = 6;
+
+/** The stored layout route, with its ends pinned to where the handles are now.
+ *  Returns null once a symbol has been moved, so the wire falls back to an
+ *  automatic right-angle path. */
+function liveRoute(route: Pt[] | undefined, s: Pt, t: Pt): Pt[] | null {
+  if (!route || route.length < 2) return null;
+  const a = route[0];
+  const b = route[route.length - 1];
+  const near = (p: Pt, q: Pt) => Math.abs(p.x - q.x) <= ROUTE_TOLERANCE && Math.abs(p.y - q.y) <= ROUTE_TOLERANCE;
+  if (!near(a, s) || !near(b, t)) return null;
+  const pts = route.map((p) => ({ ...p }));
+  // Move the end points and keep their first/last segment straight.
+  const pin = (i: number, j: number, to: Pt) => {
+    const vertical = Math.abs(pts[i].x - pts[j].x) < 0.5;
+    pts[i] = { ...to };
+    if (pts.length > 2) {
+      if (vertical) pts[j].x = to.x;
+      else pts[j].y = to.y;
+    }
+  };
+  pin(0, 1, s);
+  pin(pts.length - 1, pts.length - 2, t);
+  return pts;
+}
+
+/** The segment passing closest to a point, and the point's projection on it. */
+function nearestOnRoute(pts: Pt[], c: Pt) {
+  let best = { a: pts[0], b: pts[1], at: pts[0], d: Infinity };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [a, b] = [pts[i], pts[i + 1]];
+    const at = {
+      x: Math.min(Math.max(c.x, Math.min(a.x, b.x)), Math.max(a.x, b.x)),
+      y: Math.min(Math.max(c.y, Math.min(a.y, b.y)), Math.max(a.y, b.y)),
+    };
+    const d = Math.hypot(at.x - c.x, at.y - c.y);
+    if (d < best.d) best = { a, b, at, d };
+  }
+  return best;
+}
+
+/** Middle of the longest segment: where flow labels and the arrow go. */
+function longestSegment(pts: Pt[]) {
+  let best = { a: pts[0], b: pts[1], len: -1 };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+    if (len > best.len) best = { a: pts[i], b: pts[i + 1], len };
+  }
+  return best;
+}
 
 export function ConductorEdge({
   id,
@@ -13,49 +63,103 @@ export function ConductorEdge({
   sourceY,
   targetX,
   targetY,
+  sourcePosition,
+  targetPosition,
   data,
   selected,
-  label,
 }: EdgeProps & { data?: ConductorData }) {
-  const [edgePath, labelX, labelY] = getStraightPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-  });
+  const results = useResults();
+  const s = { x: sourceX, y: sourceY };
+  const t = { x: targetX, y: targetY };
+  const pts = liveRoute(data?.route, s, t);
+
+  let path: string;
+  let seg: { a: Pt; b: Pt };
+  let mid: Pt;
+  // Where the text goes: the layout's reserved box, else beside the arrow.
+  let textAt: { x: number; y: number; anchor: "start" | "middle" } | null = null;
+  const box = pts ? data?.labelAt : undefined;
+  if (pts) {
+    path = pts.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+    if (box) {
+      const near = nearestOnRoute(pts, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+      seg = near;
+      mid = near.at;
+      textAt = { x: box.x + box.width / 2, y: box.y + 8, anchor: "middle" };
+    } else {
+      seg = longestSegment(pts);
+      mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
+    }
+  } else {
+    [path] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+      borderRadius: 0,
+    });
+    seg = { a: s, b: t };
+    mid = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+  }
 
   const kv = data?.voltageKV ?? 0;
-  const color = kv > 0 ? getVoltageColor(kv) : "#475569";
-  const strokeW = data?.conductorType === "transmission" ? 2.5 : 1.5;
+  const row = data?.caseRef?.kind === "branch" ? results?.branches.get(data.caseRef.id) : undefined;
+  const flow = row ? branchFlow(row, data?.reversed) : null;
+  const overload = loadingColor(row?.loading_pct);
+  const offline = data?.outOfService;
+
+  // With results on, wires go neutral so only loading stands out.
+  const base = results ? "#334155" : kv > 0 ? getVoltageColor(kv) : "#475569";
+  const stroke = selected ? "#3b82f6" : offline ? "#94a3b8" : (overload ?? base);
+  const width = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
+
+  const vertical = Math.abs(seg.a.x - seg.b.x) < 0.5;
+  // Unit vector of the flow, along the labelled segment.
+  const dx = Math.sign(seg.b.x - seg.a.x) * (flow && flow.p < 0 ? -1 : 1);
+  const dy = Math.sign(seg.b.y - seg.a.y) * (flow && flow.p < 0 ? -1 : 1);
+  const arrow =
+    flow && Math.abs(flow.p) > 0.05
+      ? `M${mid.x + dx * 5},${mid.y + dy * 5} L${mid.x - dx * 4 - dy * 4},${mid.y - dy * 4 + dx * 4} L${mid.x - dx * 4 + dy * 4},${mid.y - dy * 4 - dx * 4} Z`
+      : null;
+  const lines = flow
+    ? [
+        mw(Math.abs(flow.p)),
+        ...(results?.ac ? [mvar(flow.q)] : []),
+        ...(row?.loading_pct != null ? [`${row.loading_pct.toFixed(0)}%`] : []),
+      ]
+    : data?.label
+      ? [data.label]
+      : [];
+  textAt ??= vertical
+    ? { x: mid.x + 7, y: mid.y - (lines.length - 1) * 5.5 + 3, anchor: "start" }
+    : { x: mid.x, y: mid.y - 6 - (lines.length - 1) * 11, anchor: "middle" };
 
   return (
     <>
       <BaseEdge
         id={id}
-        path={edgePath}
-        style={{
-          stroke: selected ? "#3b82f6" : color,
-          strokeWidth: strokeW,
-        }}
+        path={path}
+        style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : undefined }}
       />
-      {label && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              fontSize: 9,
-              color: "#475569",
-              background: "white",
-              padding: "1px 3px",
-              borderRadius: 2,
-              pointerEvents: "all",
-            }}
-            className="nodrag nopan"
-          >
-            {label}
-          </div>
-        </EdgeLabelRenderer>
+      {arrow && !offline && <path d={arrow} fill={overload ?? RESULT_TEXT} />}
+      {lines.length > 0 && (
+        <text
+          x={textAt.x}
+          y={textAt.y}
+          textAnchor={textAt.anchor}
+          fontSize={9}
+          fill={overload ?? (flow ? RESULT_TEXT : "#475569")}
+          fontWeight={overload ? 600 : 400}
+          className="edge-label"
+        >
+          {lines.map((l, i) => (
+            <tspan key={i} x={textAt.x} dy={i ? 11 : 0}>
+              {l}
+            </tspan>
+          ))}
+        </text>
       )}
     </>
   );

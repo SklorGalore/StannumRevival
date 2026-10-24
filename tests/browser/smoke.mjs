@@ -99,10 +99,24 @@ if (await firstRecord.count()) {
 }
 await shot("case-diff");
 
-// The original diagram editor is still there.
+// A one-line generated from the open case, with the power flow results
+// solved above drawn on it.
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
-await page.getByText("Export").first().waitFor();
+await page.getByRole("button", { name: "From case" }).click();
+await page.getByRole("button", { name: "Generate", exact: true }).click();
+await page.getByRole("dialog").waitFor({ state: "detached" });
+await page.locator(".react-flow__node-bus").first().waitFor();
+assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
+await page.getByText(/\d\.\d{3} pu/).first().waitFor();
+await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
+
+// Inactive modules must not show the diagram through them.
+await page.getByRole("button", { name: "Power flow", exact: true }).click();
+const showing = await page.evaluate(
+  () => [...document.querySelectorAll(".react-flow__node")].filter((n) => getComputedStyle(n).visibility === "visible").length
+);
+assert.equal(showing, 0, "diagram symbols visible on another module");
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();

@@ -5,7 +5,7 @@ React. Stannum brings four tools into one app that shares a single open case:
 
 | Module | What it does | Engine |
 |---|---|---|
-| **Diagram** | Draw, edit and export single-line diagrams (the original StannumSLD editor) | React Flow |
+| **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own | React Flow + [ELK](https://eclipse.dev/elk/) |
 | **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](https://github.com/SklorGalore/rs-power) |
 | **Topology** | Islands, bridges, articulation buses, shortest paths and a network graph | [nodal](https://github.com/SklorGalore/nodal) |
 | **Case diff** | Exact record-by-record comparison of two RAW cases | Rust port of [case-diff](https://github.com/SklorGalore/case-diff) |
@@ -17,6 +17,8 @@ All analysis runs locally in native Rust. Case files never leave your machine.
 | Power flow | Case diff |
 |---|---|
 | ![Power flow overview](docs/screenshots/power-overview.png) | ![Case diff with a changed bus record](docs/screenshots/case-diff.png) |
+
+![Diagram module: a one-line generated from a five-bus RAW case with power flow results](docs/screenshots/diagram.png)
 
 ## Using it
 
@@ -70,10 +72,26 @@ unsupported and the result is marked incomplete rather than guessed at.
 
 ### Diagram
 
-The StannumSLD single-line diagram editor: IEEE 315 / ANSI Y32.2 symbols,
-drag-and-drop placement, interactive breakers and disconnectors, a properties
-panel, `.sld` save/load, and SVG/PNG/PDF export with a title block.
+**From case** draws a one-line of the open case (MATPOWER or RAW): the whole
+case, one area, or the buses within a few hops of a chosen bus. Buses,
+generators, loads, lines and transformers are laid out top to bottom with
+right-angle wiring (ELK layered layout, run in a worker). Branches that leave
+the selection end in off-page markers naming the far bus. Three-winding
+transformers appear as their star point with a two-winding symbol per winding.
+
+Generated symbols stay linked to case records. After a solve (in Power flow, or
+**Solve** on the diagram toolbar) the diagram shows bus voltage and angle,
+generator and load MW/Mvar, and branch flows with direction arrows and loading;
+branches at 80% or more turn amber, overloads red. **Results** toggles them.
+A saved diagram keeps the link and shows results again when the same case is open.
+
+The editor also draws by hand: IEEE 315 / ANSI Y32.2 symbols, drag-and-drop
+placement, interactive breakers and disconnectors, a properties panel, `.sld`
+save/load, and SVG/PNG/PDF export of the whole drawing with a title block.
 `Delete` and `Ctrl+S` act on the diagram only while it is showing.
+
+Not yet: shunts, switched devices and HVDC from the case, undo/redo, and
+selection shared with the other modules.
 
 ## Development
 

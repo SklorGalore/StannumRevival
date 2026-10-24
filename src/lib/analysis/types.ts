@@ -307,3 +307,41 @@ export interface DiffRecordDetail {
   before_lines: string[] | null;
   after_lines: string[] | null;
 }
+
+// ---- Diagram --------------------------------------------------------------
+
+export interface NetworkBus {
+  id: number;
+  name: string;
+  base_kv: number;
+  area: number;
+  kind: "PQ" | "PV" | "Ref" | "Isolated";
+  pd: number;
+  qd: number;
+  gs: number;
+  bs: number;
+  /** Internal star point of a three-winding transformer. */
+  star: boolean;
+}
+export interface NetworkGenerator {
+  index: number;
+  bus: number;
+  online: boolean;
+  pmax: number;
+}
+export interface NetworkBranch {
+  index: number;
+  from: number;
+  to: number;
+  online: boolean;
+  transformer: boolean;
+  rate_a: number;
+  tap: number;
+  shift: number;
+}
+export interface CaseNetwork {
+  base_mva: number;
+  buses: NetworkBus[];
+  generators: NetworkGenerator[];
+  branches: NetworkBranch[];
+}

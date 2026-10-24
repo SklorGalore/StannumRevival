@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
+  CaseNetwork,
   CaseSummary,
   DiffRecordDetail,
   DiffRecordRow,
@@ -23,6 +24,14 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
     throw new Error(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
   }
 }
+
+export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
+  model: "ac",
+  start: "case",
+  tolerance: 1e-8,
+  max_iterations: 10,
+  enforce_q_limits: false,
+};
 
 export const CASE_FILTERS = [
   { name: "Power system case", extensions: ["raw", "RAW", "m"] },
@@ -70,6 +79,8 @@ export const api = {
     call<ResponseTable>("sensitivity_responses", { column, quantity, engineering }),
   exportMatpower: (path: string, solved: boolean) =>
     call<void>("export_matpower", { path, solved }),
+
+  diagramNetwork: () => call<CaseNetwork>("diagram_network"),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>

@@ -15,15 +15,12 @@ export function exportPDF(
   const margin = 5;
   const drawH = ph - titleBlockH - margin * 2;
 
-  // Diagram image
-  doc.addImage(
-    `data:image/png;base64,${pngBase64}`,
-    "PNG",
-    margin,
-    margin,
-    pw - margin * 2,
-    drawH
-  );
+  // Diagram image, scaled to fit the drawing area without stretching.
+  const image = `data:image/png;base64,${pngBase64}`;
+  const { width: iw, height: ih } = doc.getImageProperties(image);
+  const drawW = pw - margin * 2;
+  const k = Math.min(drawW / iw, drawH / ih);
+  doc.addImage(image, "PNG", margin + (drawW - iw * k) / 2, margin + (drawH - ih * k) / 2, iw * k, ih * k);
 
   // Title block
   const tbY = ph - titleBlockH - margin;
@@ -53,7 +50,7 @@ export function exportPDF(
     pw - 57,
     tbY + 13
   );
-  doc.text("StannumSLD", pw - 57, tbY + 19);
+  doc.text("Stannum", pw - 57, tbY + 19);
 
   return doc.output("arraybuffer") as unknown as Uint8Array;
 }

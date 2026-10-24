@@ -20,6 +20,8 @@ export const useDiagramStore = create<DiagramStore>()(
     gridVisible: true,
     snapToGrid: true,
     gridSize: 20,
+    showResults: true,
+    fitRequest: 0,
 
     setNodes: (nodes) =>
       set((s) => {
@@ -100,7 +102,31 @@ export const useDiagramStore = create<DiagramStore>()(
         s.isDirty = false;
         s.selectedNodeIds = [];
         s.selectedEdgeIds = [];
+        s.fitRequest += 1;
       }),
+
+    replaceWithGenerated: (nodes, edges, caseName) =>
+      set((s) => {
+        const now = new Date().toISOString();
+        s.nodes = nodes as typeof s.nodes;
+        s.edges = edges as typeof s.edges;
+        s.metadata = {
+          ...defaultMetadata,
+          title: caseName.replace(/\.[^.]+$/, ""),
+          description: `One-line generated from ${caseName}`,
+          caseName,
+          createdAt: now,
+          modifiedAt: now,
+        };
+        s.currentFilePath = null;
+        s.isDirty = true;
+        s.selectedNodeIds = [];
+        s.selectedEdgeIds = [];
+        s.fitRequest += 1;
+      }),
+
+    toggleResults: () => set((s) => { s.showResults = !s.showResults; }),
+    requestFit: () => set((s) => { s.fitRequest += 1; }),
 
     setFilePath: (path) =>
       set((s) => {

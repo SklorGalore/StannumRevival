@@ -3,13 +3,42 @@
 /* React Flow base styles */
 @import "@xyflow/react/dist/style.css";
 
-/* Custom handle styling */
+/* Inactive modules stay mounted; hide every descendant, including React
+   Flow nodes, which set their own `visibility: visible`. */
+.module-hidden,
+.module-hidden * {
+  visibility: hidden !important;
+}
+
+/* Connection points: hidden until a symbol is hovered or a wire is drawn. */
 .react-flow__handle {
   width: 8px;
   height: 8px;
   background: #94a3b8;
   border: 2px solid #1e293b;
   border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle,
+.react-flow:has(.react-flow__connectionline) .react-flow__handle {
+  opacity: 1;
+}
+
+/* Handles sit just inside the symbol so a wire ends exactly on its terminal
+   (React Flow anchors a wire at the handle's outer edge). */
+.react-flow__handle.react-flow__handle-top,
+.react-flow__handle.react-flow__handle-bottom {
+  transform: translate(-50%, 0);
+}
+.react-flow__handle.react-flow__handle-left,
+.react-flow__handle.react-flow__handle-right {
+  transform: translate(0, -50%);
+}
+
+.edge-label {
+  pointer-events: none;
 }
 
 .react-flow__handle:hover {

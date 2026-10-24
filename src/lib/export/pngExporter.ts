@@ -12,11 +12,13 @@ export function exportPNG(
     const img = new Image();
 
     img.onload = () => {
+      // Browsers refuse canvases much past 16k px a side.
+      const s = Math.min(scale, 12000 / Math.max(img.width, img.height));
       const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+      canvas.width = Math.round(img.width * s);
+      canvas.height = Math.round(img.height * s);
       const ctx = canvas.getContext("2d")!;
-      ctx.scale(scale, scale);
+      ctx.scale(s, s);
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);

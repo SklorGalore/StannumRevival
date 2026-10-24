@@ -1,4 +1,5 @@
 import { useDiagramStore } from "../../store/diagramStore";
+import { useWorkspace } from "../../store/workspaceStore";
 
 export function StatusBar() {
   const isDirty = useDiagramStore((s) => s.isDirty);
@@ -6,6 +7,8 @@ export function StatusBar() {
   const viewport = useDiagramStore((s) => s.viewport);
   const nodes = useDiagramStore((s) => s.nodes);
   const edges = useDiagramStore((s) => s.edges);
+  const caseName = useDiagramStore((s) => s.metadata.caseName);
+  const openName = useWorkspace((s) => s.caseSummary?.name);
 
   const fileName = currentFilePath
     ? currentFilePath.split("/").pop()
@@ -27,6 +30,14 @@ export function StatusBar() {
         {" · "}
         {edges.length} connection{edges.length !== 1 ? "s" : ""}
       </span>
+      {caseName && (
+        <>
+          <span className="text-slate-300">|</span>
+          <span className={caseName === openName ? "" : "text-amber-700"}>
+            {caseName === openName ? `Linked to ${caseName}` : `Drawn from ${caseName}; open it to see results`}
+          </span>
+        </>
+      )}
     </div>
   );
 }
