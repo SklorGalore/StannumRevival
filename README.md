@@ -79,6 +79,14 @@ right-angle wiring (ELK layered layout, run in a worker). Branches that leave
 the selection end in off-page markers naming the far bus. Three-winding
 transformers appear as their star point with a two-winding symbol per winding.
 
+Cases with more than 20 buses default to drawing around a bus, which is how a
+one-line is usually used: to look into a local problem. The studied bus sits at
+the top, highlighted, and each row below is one more hop out. The bar at the
+bottom of the canvas changes the hop count. On a drawing linked to the open
+case, double-click an off-page marker to bring its bus in, or right-click a bus
+for **Show neighbours** and **Draw N hops around** it. Brought-in buses are
+placed below what is already drawn and nothing that is there moves.
+
 Generated symbols stay linked to case records. After a solve (in Power flow, or
 **Solve** on the diagram toolbar) the diagram shows bus voltage and angle,
 generator and load MW/Mvar, and branch flows with direction arrows and loading;

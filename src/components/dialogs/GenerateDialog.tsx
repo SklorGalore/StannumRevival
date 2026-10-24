@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Wand2 } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
-import { api } from "../../lib/analysis/api";
+import { caseNetwork } from "../../lib/diagram/network";
 import type { CaseNetwork } from "../../lib/analysis/types";
 import { busLabel, generateDiagram, READABLE_BUSES, selectBuses, type Scope } from "../../lib/diagram/generate";
 import { Button, ErrorBanner, Field, inputClass } from "../../ui/primitives";
@@ -27,14 +27,14 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
     let live = true;
     setNet(null);
     setError(null);
-    api
-      .diagramNetwork()
+    caseNetwork()
       .then((n) => {
         if (!live) return;
         setNet(n);
         const real = n.buses.filter((b) => !b.star);
         const big = real.length > READABLE_BUSES;
-        setKind(big ? "around" : "all");
+        // One-lines are mostly drawn a few hops around the bus under study.
+        setKind(real.length > 20 || big ? "around" : "all");
         setArea(real[0]?.area ?? 0);
         const ref = real.find((b) => b.kind === "Ref") ?? real[0];
         setCenter(ref ? String(ref.id) : "");
@@ -77,7 +77,12 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const out = await generateDiagram(net, scope);
-      replaceWithGenerated(out.nodes, out.edges, summary.name);
+      replaceWithGenerated(
+        out.nodes,
+        out.edges,
+        summary.name,
+        scope.kind === "around" ? { bus: scope.bus, depth: scope.depth } : undefined
+      );
       onClose();
     } catch (e) {
       setError((e as Error).message);

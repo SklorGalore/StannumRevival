@@ -25,6 +25,8 @@ export interface BusData extends Record<string, unknown> {
   taps?: BusTap[];
   /** Star point of a three-winding transformer: drawn as a small junction. */
   star?: boolean;
+  /** The bus a local drawing is centred on. */
+  focus?: boolean;
   caseRef?: CaseRef;
 }
 
@@ -159,6 +161,8 @@ export interface DiagramMetadata {
   schemaVersion: "1.0";
   /** File name of the case this diagram was generated from, if any. */
   caseName?: string;
+  /** For a local drawing: the studied bus and how many hops out it reaches. */
+  around?: { bus: number; depth: number };
 }
 
 export interface SLDDiagram {
@@ -237,7 +241,12 @@ export interface DiagramStore {
   newDiagram: () => void;
   loadDiagramFromJSON: (diagram: SLDDiagram) => void;
   /** Replace the drawing with a generated one (unsaved, new file). */
-  replaceWithGenerated: (nodes: SLDNode[], edges: SLDEdge[], caseName: string) => void;
+  replaceWithGenerated: (
+    nodes: SLDNode[],
+    edges: SLDEdge[],
+    caseName: string,
+    around?: { bus: number; depth: number }
+  ) => void;
   toggleResults: () => void;
   requestFit: () => void;
   setFilePath: (path: string | null) => void;

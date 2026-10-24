@@ -125,6 +125,33 @@ assert.equal(await page.locator(".react-flow__node").count(), 0);
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node").count(), nodeCount);
 
+// A local drawing one hop around bus 4: the studied bus is highlighted and
+// branches leaving the drawing end in markers. Double-clicking a marker brings
+// that bus in without moving what is already drawn.
+await page.getByRole("button", { name: "From case" }).click();
+await page.getByLabel(/Around a bus/).check();
+await page.getByRole("combobox", { name: "Bus number" }).fill("4");
+await page.getByLabel("Hops out").selectOption("1");
+page.once("dialog", (d) => d.accept()); // replace the edited drawing
+await page.getByRole("button", { name: "Generate", exact: true }).click();
+await page.getByRole("dialog").waitFor({ state: "detached" });
+await page.getByText("Around").waitFor();
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
+const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
+assert.equal(await studied.count(), 1, "studied bus highlighted");
+const markers = page.locator(".react-flow__node-offPage");
+assert.equal(await markers.count(), 2, "markers toward buses 1 and 3");
+await page.waitForTimeout(400);
+const studiedAt = await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform);
+await markers.first().dblclick();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+assert.equal(await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform), studiedAt, "expand moved bus 4");
+await page.waitForTimeout(500); // wires go in a frame after the taps
+await shot("diagram-local");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "undo removes the expansion");
+
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 page.once("dialog", (d) => d.accept());
 await page.getByRole("button", { name: "New", exact: true }).click();

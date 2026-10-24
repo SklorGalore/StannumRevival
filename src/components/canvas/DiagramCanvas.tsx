@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,6 +9,7 @@ import {
   SelectionMode,
   ConnectionLineType,
   useUpdateNodeInternals,
+  useNodesInitialized,
   type Connection,
   type FinalConnectionState,
   type NodeChange,
@@ -29,6 +30,8 @@ import { defaultsByType, defaultConductorData } from "../../store/defaults";
 import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
 import { AlignBar } from "./AlignBar";
+import { LocalScopeBar, NodeMenu, useCaseActions } from "./CaseActions";
+import { warmLayout } from "../../lib/diagram/generate";
 
 /** Changes that don't alter the drawing itself. */
 const VIEW_ONLY = new Set(["select", "dimensions"]);
@@ -75,17 +78,29 @@ export function DiagramCanvas() {
   const addNode = useDiagramStore((s) => s.addNode);
   const setViewport = useDiagramStore((s) => s.setViewport);
   const fitRequest = useDiagramStore((s) => s.fitRequest);
+  const [menu, setMenu] = useState<{ x: number; y: number; node: SLDNode } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const { linked, expand } = useCaseActions();
+
+  // The first layout of a session pays to start the layout worker; do it now.
+  useEffect(() => {
+    const id = window.setTimeout(warmLayout, 300);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // Fit when a drawing is opened or generated, not when the first symbol is
-  // dropped (React Flow's `fitView` prop zoomed a lone symbol to 400%).
+  // dropped (React Flow's `fitView` prop zoomed a lone symbol to 400%). The
+  // fit waits until every new symbol has been measured.
+  const nodesReady = useNodesInitialized();
+  const fitted = useRef(0);
   useEffect(() => {
-    if (!fitRequest) return;
-    // Wait a frame so new nodes are measured before fitting.
+    if (!fitRequest || fitted.current === fitRequest || !nodesReady) return;
+    fitted.current = fitRequest;
     const id = requestAnimationFrame(() => {
       void fitView({ padding: 0.08, maxZoom: 1.25, duration: 200 });
     });
     return () => cancelAnimationFrame(id);
-  }, [fitRequest, fitView]);
+  }, [fitRequest, fitView, nodesReady]);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
@@ -274,6 +289,8 @@ export function DiagramCanvas() {
   return (
     <div ref={wrapperRef} className="w-full h-full relative">
       <AlignBar />
+      <LocalScopeBar />
+      <NodeMenu menu={menu} onClose={closeMenu} />
       <ReactFlow
         nodes={nodes as never[]}
         edges={edges as never[]}
@@ -283,6 +300,19 @@ export function DiagramCanvas() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onNodeDragStart={() => checkpoint()}
+        onNodeContextMenu={(e, node) => {
+          if (!linked) return;
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, node: node as unknown as SLDNode });
+        }}
+        onNodeDoubleClick={(_, node) => {
+          // Double-clicking an off-page marker brings its far bus into the drawing.
+          if (!linked || node.type !== "offPage") return;
+          const wire = edges.find((e) => e.source === node.id || e.target === node.id);
+          const busNode = wire && nodes.find((n) => n.id === (wire.source === node.id ? wire.target : wire.source));
+          const ref = (busNode?.data as BusData | undefined)?.caseRef;
+          if (ref?.kind === "bus") void expand(ref.id, [(node.data as { bus: number }).bus]);
+        }}
         onSelectionDragStart={() => checkpoint()}
         isValidConnection={isValidConnection}
         onDrop={onDrop}
