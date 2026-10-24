@@ -152,7 +152,7 @@ case-diff, which makes it easy to confirm the two agree on new files.
 ## Layout
 
 ```
-crates/rs-power/          AC/DC power flow, sensitivities, MATPOWER and RAW loading, CLI
+crates/rs-power/          AC/DC power flow, sensitivities, MATPOWER and RAW loading
 crates/nodal/             RAW v35 parser and topology (islands, bridges, paths)
 crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
   src/workspace.rs        The shared open case; parses once per engine
