@@ -9,7 +9,19 @@ import {
   Wand2,
   Activity,
   Play,
+  Undo2,
+  Redo2,
+  Printer,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
 } from "lucide-react";
+import type { AlignMode } from "../../store/types";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
 import { GenerateDialog } from "../dialogs/GenerateDialog";
@@ -58,6 +70,32 @@ function ToolbarButton({
   );
 }
 
+const ALIGN: { how: AlignMode; icon: React.ReactNode; title: string; min: number }[] = [
+  { how: "left", icon: <AlignStartVertical size={14} />, title: "Align left edges", min: 2 },
+  { how: "center", icon: <AlignCenterVertical size={14} />, title: "Align centres vertically", min: 2 },
+  { how: "right", icon: <AlignEndVertical size={14} />, title: "Align right edges", min: 2 },
+  { how: "top", icon: <AlignStartHorizontal size={14} />, title: "Align tops", min: 2 },
+  { how: "middle", icon: <AlignCenterHorizontal size={14} />, title: "Align middles", min: 2 },
+  { how: "bottom", icon: <AlignEndHorizontal size={14} />, title: "Align bottoms", min: 2 },
+  { how: "distribute-x", icon: <AlignHorizontalDistributeCenter size={14} />, title: "Space evenly across", min: 3 },
+  { how: "distribute-y", icon: <AlignVerticalDistributeCenter size={14} />, title: "Space evenly down", min: 3 },
+];
+
+/** Icon-only button for the align group. */
+function IconButton({ icon, title, onClick, disabled }: { icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`p-1.5 rounded text-slate-600 transition-colors ${disabled ? "opacity-30 cursor-not-allowed" : "hover:bg-slate-100 cursor-pointer"}`}
+    >
+      {icon}
+    </button>
+  );
+}
+
 function Divider() {
   return <div className="w-px h-5 bg-slate-200 mx-1" />;
 }
@@ -99,6 +137,13 @@ export function Toolbar() {
   const deleteSelected = useDiagramStore((s) => s.deleteSelected);
   const toggleGrid = useDiagramStore((s) => s.toggleGrid);
   const toggleSnap = useDiagramStore((s) => s.toggleSnap);
+  const canUndo = useDiagramStore((s) => s.past.length > 0);
+  const canRedo = useDiagramStore((s) => s.future.length > 0);
+  const undo = useDiagramStore((s) => s.undo);
+  const redo = useDiagramStore((s) => s.redo);
+  const align = useDiagramStore((s) => s.align);
+  const mono = useDiagramStore((s) => s.colorMode === "mono");
+  const toggleColorMode = useDiagramStore((s) => s.toggleColorMode);
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
 
@@ -137,6 +182,11 @@ export function Toolbar() {
         label="Save As"
         onClick={saveAsDialog}
       />
+
+      <Divider />
+
+      <IconButton icon={<Undo2 size={14} />} title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
+      <IconButton icon={<Redo2 size={14} />} title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} />
 
       <Divider />
 
@@ -194,6 +244,28 @@ export function Toolbar() {
         onClick={toggleSnap}
         active={snapToGrid}
       />
+      <ToolbarButton
+        icon={<Printer size={14} />}
+        label="Print style"
+        onClick={toggleColorMode}
+        active={mono}
+        title="Black and white, for printing and export"
+      />
+
+      {selectedNodeIds.length >= 2 && (
+        <>
+          <Divider />
+          {ALIGN.map((a) => (
+            <IconButton
+              key={a.how}
+              icon={a.icon}
+              title={a.title}
+              onClick={() => align(a.how)}
+              disabled={selectedNodeIds.length < a.min}
+            />
+          ))}
+        </>
+      )}
 
       <Divider />
 

@@ -1,7 +1,30 @@
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import type { ConductorData } from "../../store/types";
-import { getVoltageColor } from "../nodes/shared/voltageColor";
-import { branchFlow, loadingColor, mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
+import { branchFlow, loadingColor, mvar, mw, useResults } from "../../lib/diagram/results";
+import { useInk, SELECTED } from "../../lib/diagram/ink";
+import { useDiagramStore } from "../../store/diagramStore";
+import type { SLDEdge } from "../../store/types";
+
+/** Wires meeting at each terminal, keyed "node/handle". */
+const degrees = new WeakMap<SLDEdge[], Map<string, number>>();
+function degreeMap(edges: SLDEdge[]) {
+  let m = degrees.get(edges);
+  if (!m) {
+    m = new Map();
+    for (const e of edges)
+      for (const k of [`${e.source}/${e.sourceHandle}`, `${e.target}/${e.targetHandle}`]) m.set(k, (m.get(k) ?? 0) + 1);
+    degrees.set(edges, m);
+  }
+  return m;
+}
+
+/** True where three or more conductors meet at a symbol's terminal, which
+ *  the drawing shows with a junction dot. Bus bars are junctions already. */
+function useJunction(node: string, handle: string | null | undefined) {
+  return useDiagramStore((s) =>
+    !!handle && !handle.startsWith("bus-") && (degreeMap(s.edges).get(`${node}/${handle}`) ?? 0) >= 2
+  );
+}
 
 type Pt = { x: number; y: number };
 
@@ -59,6 +82,10 @@ function longestSegment(pts: Pt[]) {
 
 export function ConductorEdge({
   id,
+  source,
+  target,
+  sourceHandleId,
+  targetHandleId,
   sourceX,
   sourceY,
   targetX,
@@ -69,6 +96,9 @@ export function ConductorEdge({
   selected,
 }: EdgeProps & { data?: ConductorData }) {
   const results = useResults();
+  const ink = useInk();
+  const dotAtSource = useJunction(source, sourceHandleId);
+  const dotAtTarget = useJunction(target, targetHandleId);
   const s = { x: sourceX, y: sourceY };
   const t = { x: targetX, y: targetY };
   const pts = liveRoute(data?.route, s, t);
@@ -107,12 +137,13 @@ export function ConductorEdge({
   const kv = data?.voltageKV ?? 0;
   const row = data?.caseRef?.kind === "branch" ? results?.branches.get(data.caseRef.id) : undefined;
   const flow = row ? branchFlow(row, data?.reversed) : null;
-  const overload = loadingColor(row?.loading_pct);
+  const loading = loadingColor(row?.loading_pct);
+  const overload = loading ? ink.alert(loading) : null;
   const offline = data?.outOfService;
 
   // With results on, wires go neutral so only loading stands out.
-  const base = results ? "#334155" : kv > 0 ? getVoltageColor(kv) : "#475569";
-  const stroke = selected ? "#3b82f6" : offline ? "#94a3b8" : (overload ?? base);
+  const base = results ? (ink.mono ? ink.line : "#334155") : ink.voltage(kv);
+  const stroke = selected ? SELECTED : offline ? ink.off : (overload ?? base);
   const width = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
 
   const vertical = Math.abs(seg.a.x - seg.b.x) < 0.5;
@@ -143,14 +174,16 @@ export function ConductorEdge({
         path={path}
         style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : undefined }}
       />
-      {arrow && !offline && <path d={arrow} fill={overload ?? RESULT_TEXT} />}
+      {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
+      {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}
+      {arrow && !offline && <path d={arrow} fill={overload ?? ink.result} />}
       {lines.length > 0 && (
         <text
           x={textAt.x}
           y={textAt.y}
           textAnchor={textAt.anchor}
           fontSize={9}
-          fill={overload ?? (flow ? RESULT_TEXT : "#475569")}
+          fill={overload ?? (flow ? ink.result : ink.text)}
           fontWeight={overload ? 600 : 400}
           className="edge-label"
         >

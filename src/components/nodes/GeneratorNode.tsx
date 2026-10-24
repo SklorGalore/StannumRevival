@@ -1,75 +1,50 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { GeneratorNode as GeneratorNodeType } from "../../store/types";
-import { mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
+import { mvar, mw, useResults } from "../../lib/diagram/results";
+import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { Ground } from "./shared/Ground";
 
-const W = 48;
+const W = 40;
 const H = 80;
+const CX = W / 2;
+const CY = 36;
+const R = 16;
 
 export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) {
   const isGrounded = data.groundingType === "solidly" || data.groundingType === "resistance";
   const results = useResults();
+  const ink = useInk();
   const row = data.caseRef?.kind === "gen" ? results?.generators.get(data.caseRef.id) : undefined;
+  const textX = W + 2;
 
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
-      <svg
-        width={W}
-        height={H}
-        overflow="visible"
-        style={{ display: "block" }}
-      >
-        {/* Stem from top */}
-        <line x1={W / 2} y1={0} x2={W / 2} y2={10} stroke="#1e293b" strokeWidth={2} />
-
-        {/* Generator circle */}
-        <circle
-          cx={W / 2}
-          cy={30}
-          r={20}
-          fill="white"
-          stroke={selected ? "#3b82f6" : "#1e293b"}
-          strokeWidth={2}
+      <svg width={W} height={H} overflow="visible" style={{ display: "block" }}>
+        <line x1={CX} y1={0} x2={CX} y2={CY - R} stroke={ink.line} strokeWidth={STROKE} />
+        <circle cx={CX} cy={CY} r={R} fill="white" stroke={selected ? SELECTED : ink.line} strokeWidth={STROKE} />
+        {/* Sine wave: the IEC mark for an AC machine. */}
+        <path
+          d={`M${CX - 9},${CY} q4.5,-9 9,0 t9,0`}
+          fill="none"
+          stroke={ink.line}
+          strokeWidth={STROKE}
         />
-        <text
-          x={W / 2}
-          y={35}
-          textAnchor="middle"
-          fontSize={18}
-          fontWeight="bold"
-          fill="#1e293b"
-          fontFamily="sans-serif"
-        >
-          G
-        </text>
-
-        {/* Stem to bottom */}
-        <line x1={W / 2} y1={50} x2={W / 2} y2={60} stroke="#1e293b" strokeWidth={2} />
-
-        {/* Ground symbol */}
         {isGrounded && (
           <>
-            <line x1={W / 2 - 8} y1={63} x2={W / 2 + 8} y2={63} stroke="#1e293b" strokeWidth={2} />
-            <line x1={W / 2 - 5} y1={67} x2={W / 2 + 5} y2={67} stroke="#1e293b" strokeWidth={1.5} />
-            <line x1={W / 2 - 2} y1={71} x2={W / 2 + 2} y2={71} stroke="#1e293b" strokeWidth={1} />
+            <line x1={CX} y1={CY + R} x2={CX} y2={62} stroke={ink.line} strokeWidth={STROKE} />
+            <Ground x={CX} y={62} color={ink.line} />
           </>
         )}
-
-        {/* Label */}
-        <text
-          x={W + 4}
-          y={34}
-          fontSize={10}
-          fill="#475569"
-        >
+        <text x={textX} y={CY - 2} fontSize={10} fill={ink.text}>
           {data.label}
         </text>
         {row && (
-          <text x={W + 4} y={48} fontSize={9} fill={row.online ? RESULT_TEXT : "#94a3b8"}>
+          <text x={textX} y={CY + 10} fontSize={9} fill={row.online ? ink.result : ink.off}>
             {row.online ? (
               <>
                 <tspan>{mw(row.pg)}</tspan>
                 {results?.ac && (
-                  <tspan x={W + 4} dy={11} fill={row.q_violation > 0 ? "#dc2626" : undefined}>
+                  <tspan x={textX} dy={11} fill={row.q_violation > 0 ? ink.alert("#dc2626") : undefined}>
                     {mvar(row.qg)}
                   </tspan>
                 )}
@@ -80,14 +55,7 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
           </text>
         )}
       </svg>
-
-      {/* Top connection handle */}
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="gen-top"
-        style={{ top: 0, left: W / 2 }}
-      />
+      <Handle type="source" position={Position.Top} id="gen-top" style={{ top: 0, left: CX }} />
     </div>
   );
 }

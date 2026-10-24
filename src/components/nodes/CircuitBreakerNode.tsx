@@ -1,30 +1,20 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { CircuitBreakerNode as CBNodeType } from "../../store/types";
 import { useDiagramStore } from "../../store/diagramStore";
+import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
 
-const W = 24;
-const H = 48;
-const BOX_SIZE = 20;
-const BOX_X = (W - BOX_SIZE) / 2;
-const BOX_Y = 14;
+const W = 40;
+const H = 60;
+const CX = W / 2;
+const BOX = 20;
+const BOX_Y = (H - BOX) / 2;
 
-function boxFill(state: "open" | "closed" | "fault"): string {
-  if (state === "closed") return "#1e293b";
-  if (state === "fault") return "#dc2626";
-  return "white";
-}
-
-export function CircuitBreakerNode({
-  id,
-  data,
-  selected,
-}: NodeProps<CBNodeType>) {
+/** Breaker: a square, filled when closed. Double-click to open or close. */
+export function CircuitBreakerNode({ id, data, selected }: NodeProps<CBNodeType>) {
   const updateNodeData = useDiagramStore((s) => s.updateNodeData);
-
-  function handleClick() {
-    const next = data.state === "closed" ? "open" : "closed";
-    updateNodeData(id, { state: next });
-  }
+  const ink = useInk();
+  const stroke = selected ? SELECTED : ink.line;
+  const fill = data.state === "closed" ? ink.line : data.state === "fault" ? ink.alert("#dc2626") : "white";
 
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
@@ -32,73 +22,19 @@ export function CircuitBreakerNode({
         width={W}
         height={H}
         overflow="visible"
-        style={{ display: "block", cursor: "pointer" }}
-        onClick={handleClick}
+        style={{ display: "block" }}
+        onDoubleClick={() => updateNodeData(id, { state: data.state === "closed" ? "open" : "closed" })}
       >
-        {/* Top stem */}
-        <line x1={W / 2} y1={0} x2={W / 2} y2={BOX_Y} stroke="#1e293b" strokeWidth={2} />
-
-        {/* Box */}
-        <rect
-          x={BOX_X}
-          y={BOX_Y}
-          width={BOX_SIZE}
-          height={BOX_SIZE}
-          fill={boxFill(data.state)}
-          stroke={selected ? "#3b82f6" : "#1e293b"}
-          strokeWidth={selected ? 2 : 1.5}
-        />
-
-        {/* Open state: X mark */}
-        {data.state === "open" && (
-          <>
-            <line
-              x1={BOX_X + 4}
-              y1={BOX_Y + 4}
-              x2={BOX_X + BOX_SIZE - 4}
-              y2={BOX_Y + BOX_SIZE - 4}
-              stroke="#1e293b"
-              strokeWidth={1.5}
-            />
-            <line
-              x1={BOX_X + BOX_SIZE - 4}
-              y1={BOX_Y + 4}
-              x2={BOX_X + 4}
-              y2={BOX_Y + BOX_SIZE - 4}
-              stroke="#1e293b"
-              strokeWidth={1.5}
-            />
-          </>
-        )}
-
-        {/* Bottom stem */}
-        <line
-          x1={W / 2}
-          y1={BOX_Y + BOX_SIZE}
-          x2={W / 2}
-          y2={H}
-          stroke="#1e293b"
-          strokeWidth={2}
-        />
-
-        {/* Label */}
-        <text x={W + 4} y={28} fontSize={9} fill="#475569">
+        <title>Double-click to {data.state === "closed" ? "open" : "close"}</title>
+        <line x1={CX} y1={0} x2={CX} y2={BOX_Y} stroke={ink.line} strokeWidth={STROKE} />
+        <rect x={CX - BOX / 2} y={BOX_Y} width={BOX} height={BOX} fill={fill} stroke={stroke} strokeWidth={STROKE} />
+        <line x1={CX} y1={BOX_Y + BOX} x2={CX} y2={H} stroke={ink.line} strokeWidth={STROKE} />
+        <text x={W + 2} y={H / 2 + 3} fontSize={10} fill={ink.text}>
           {data.label}
         </text>
       </svg>
-
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="cb-top"
-        style={{ top: 0, left: W / 2 }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="cb-bottom"
-        style={{ bottom: 0, left: W / 2 }}
-      />
+      <Handle type="target" position={Position.Top} id="cb-top" style={{ top: 0, left: CX }} />
+      <Handle type="source" position={Position.Bottom} id="cb-bottom" style={{ bottom: 0, left: CX }} />
     </div>
   );
 }

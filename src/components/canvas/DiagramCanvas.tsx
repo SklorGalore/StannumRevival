@@ -6,7 +6,13 @@ import {
   MiniMap,
   BackgroundVariant,
   ConnectionMode,
+  SelectionMode,
+  ConnectionLineType,
+  useUpdateNodeInternals,
   type Connection,
+  type FinalConnectionState,
+  type NodeChange,
+  type EdgeChange,
   type Edge,
   type OnNodesChange,
   type OnEdgesChange,
@@ -20,11 +26,41 @@ import { nodeTypes } from "../nodes";
 import { edgeTypes } from "../edges";
 import { useDiagramStore } from "../../store/diagramStore";
 import { defaultsByType, defaultConductorData } from "../../store/defaults";
-import type { SLDNode, SLDEdge, SLDNodeType } from "../../store/types";
+import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
+import { busTaps } from "../nodes/shared/busTaps";
+
+/** Changes that don't alter the drawing itself. */
+const VIEW_ONLY = new Set(["select", "dimensions"]);
+const changesDrawing = (changes: (NodeChange | EdgeChange)[]) => changes.some((c) => !VIEW_ONLY.has(c.type));
+
+/** How far above or below a bus bar a wire may be released and still land on it. */
+const BUS_REACH = 14;
+
+/** The bus bar under a point in diagram coordinates, if any. */
+function busAt(nodes: SLDNode[], p: { x: number; y: number }): SLDNode | null {
+  let best: { node: SLDNode; d: number } | null = null;
+  for (const n of nodes) {
+    if (n.type !== "bus") continue;
+    const data = n.data as BusData;
+    if (data.star) continue;
+    const len = data.length ?? 200;
+    if (p.x < n.position.x - 4 || p.x > n.position.x + len + 4) continue;
+    const d = Math.abs(p.y - (n.position.y + 3));
+    if (d <= BUS_REACH && (!best || d < best.d)) best = { node: n, d };
+  }
+  return best?.node ?? null;
+}
+
+function pointerPoint(e: MouseEvent | TouchEvent) {
+  const t = "changedTouches" in e ? e.changedTouches[0] : (e as MouseEvent);
+  return { x: t.clientX, y: t.clientY };
+}
 
 export function DiagramCanvas() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const checkpoint = useDiagramStore((s) => s.checkpoint);
 
   const nodes = useDiagramStore((s) => s.nodes);
   const edges = useDiagramStore((s) => s.edges);
@@ -52,14 +88,14 @@ export function DiagramCanvas() {
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
-      setNodes(applyNodeChanges(changes, nodes as never[]) as unknown as SLDNode[]);
+      setNodes(applyNodeChanges(changes, nodes as never[]) as unknown as SLDNode[], changesDrawing(changes));
     },
     [nodes, setNodes]
   );
 
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
-      setEdges(applyEdgeChanges(changes, edges as never[]) as unknown as SLDEdge[]);
+      setEdges(applyEdgeChanges(changes, edges as never[]) as unknown as SLDEdge[], changesDrawing(changes));
     },
     [edges, setEdges]
   );
@@ -72,9 +108,86 @@ export function DiagramCanvas() {
         type: "conductor",
         data: { ...defaultConductorData },
       } as unknown as SLDEdge;
+      checkpoint();
       setEdges(addEdge(newEdge as Edge, edges as Edge[]) as unknown as SLDEdge[]);
     },
-    [edges, setEdges]
+    [edges, setEdges, checkpoint]
+  );
+
+  // Highlight the bus a wire would land on while it's being drawn.
+  const dropTarget = useRef<string | null>(null);
+  const markDropTarget = useCallback((id: string | null) => {
+    if (dropTarget.current === id) return;
+    const el = (nid: string) => wrapperRef.current?.querySelector(`.react-flow__node[data-id="${CSS.escape(nid)}"]`);
+    if (dropTarget.current) el(dropTarget.current)?.classList.remove("bus-drop-target");
+    if (id) el(id)?.classList.add("bus-drop-target");
+    dropTarget.current = id;
+  }, []);
+
+  const onConnectStart = useCallback(
+    (_: unknown, { nodeId }: { nodeId: string | null }) => {
+      const fromBus = useDiagramStore.getState().nodes.find((n) => n.id === nodeId)?.type === "bus";
+      if (fromBus) return;
+      const move = (e: PointerEvent) => {
+        // Over a terminal, React Flow connects to that instead.
+        const overHandle = (e.target as Element | null)?.closest?.(".react-flow__handle");
+        const bus = overHandle ? null : busAt(useDiagramStore.getState().nodes, screenToFlowPosition({ x: e.clientX, y: e.clientY }, { snapToGrid: false }));
+        markDropTarget(bus?.id ?? null);
+      };
+      const stop = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", stop);
+        // Leave the class until onConnectEnd has read it.
+        requestAnimationFrame(() => markDropTarget(null));
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", stop);
+    },
+    [screenToFlowPosition, markDropTarget]
+  );
+
+  // Released on a bus bar rather than a terminal: add a tap there and connect to it.
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.isValid || !state.fromNode || !state.fromHandle) return;
+      const { nodes: all, edges: wires, gridSize } = useDiagramStore.getState();
+      const from = all.find((n) => n.id === state.fromNode!.id);
+      if (!from || from.type === "bus") return;
+      const p = screenToFlowPosition(pointerPoint(event), { snapToGrid: false });
+      const bus = busAt(all, p);
+      if (!bus) return;
+      const data = bus.data as BusData;
+      const len = data.length ?? 200;
+      const x = Math.min(len, Math.max(0, Math.round((p.x - bus.position.x) / gridSize) * gridSize));
+      const side: BusTap["side"] = p.y < bus.position.y + 3 ? "top" : "bottom";
+      const taps = busTaps(data);
+      let tap = taps.find((t) => t.side === side && Math.abs(t.x - x) < 1);
+      checkpoint();
+      if (!tap) {
+        tap = { id: `bus-tap-${nanoid(6)}`, x, side };
+        const next = [...taps, tap];
+        useDiagramStore.getState().setNodes(
+          all.map((n) => (n.id === bus.id ? ({ ...n, data: { ...n.data, taps: next } } as SLDNode) : n))
+        );
+      }
+      const edge = {
+        id: nanoid(),
+        type: "conductor",
+        // Bus taps are source handles. React Flow only looks a wire's
+        // source up among source handles, so the bus end goes first.
+        source: bus.id,
+        sourceHandle: tap.id,
+        target: from.id,
+        targetHandle: state.fromHandle.id ?? null,
+        data: { ...defaultConductorData, voltageKV: data.voltageKV },
+      } as unknown as SLDEdge;
+      // The new tap must be measured before a wire can attach to it.
+      requestAnimationFrame(() => {
+        updateNodeInternals(bus.id);
+        requestAnimationFrame(() => useDiagramStore.getState().setEdges([...wires, edge]));
+      });
+    },
+    [screenToFlowPosition, checkpoint, updateNodeInternals]
   );
 
   const isValidConnection = useCallback(
@@ -140,6 +253,10 @@ export function DiagramCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
+        onNodeDragStart={() => checkpoint()}
+        onSelectionDragStart={() => checkpoint()}
         isValidConnection={isValidConnection}
         onDrop={onDrop}
         onDragOver={onDragOver}
@@ -161,12 +278,24 @@ export function DiagramCanvas() {
         // Any terminal can join any other: a generator's terminal and a bus
         // tap are both "sources", which strict mode refused to connect.
         connectionMode={ConnectionMode.Loose}
+        connectionLineType={ConnectionLineType.Step}
+        // Snap to a terminal only when close, so a wire released between
+        // taps lands on the bus there instead.
+        connectionRadius={10}
         proOptions={{ hideAttribution: true }}
         minZoom={0.05}
         maxZoom={4}
-        deleteKeyCode={["Backspace", "Delete"]}
-        multiSelectionKeyCode="Shift"
-        selectionKeyCode="Shift"
+        // Deleting, nudging and the other edit keys go through the store
+        // (useKeyboardShortcuts) so each one can be undone.
+        deleteKeyCode={null}
+        disableKeyboardA11y
+        // Drag on empty canvas draws a selection box; pan with the middle or
+        // right button, or hold Space.
+        selectionOnDrag
+        selectionMode={SelectionMode.Partial}
+        panOnDrag={[1, 2]}
+        panActivationKeyCode="Space"
+        multiSelectionKeyCode={["Shift", "Meta", "Control"]}
       >
         {gridVisible && (
           <Background

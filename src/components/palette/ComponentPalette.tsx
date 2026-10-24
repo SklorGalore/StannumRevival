@@ -14,85 +14,92 @@ interface PaletteCategory {
   items: PaletteEntry[];
 }
 
+// Previews drawn with the same geometry as the canvas symbols, scaled down.
+const INK = "#1e293b";
+const SW = 1.5;
+
+function Preview({ w, h, children }: { w: number; h: number; children: React.ReactNode }) {
+  const scale = 0.62;
+  return (
+    <svg width={w * scale} height={h * scale} viewBox={`-1 -1 ${w + 2} ${h + 2}`} fill="none" stroke={INK} strokeWidth={SW}>
+      {children}
+    </svg>
+  );
+}
+
 function BusSymbol() {
   return (
     <svg width={44} height={20}>
-      <rect x={2} y={8} width={40} height={6} fill="#ca8a04" stroke="#1e293b" strokeWidth={1} rx={1} />
+      <rect x={2} y={7} width={40} height={6} fill="#ca8a04" rx={1} />
     </svg>
   );
 }
 
 function GeneratorSymbol() {
   return (
-    <svg width={30} height={36}>
-      <line x1={15} y1={0} x2={15} y2={6} stroke="#1e293b" strokeWidth={1.5} />
-      <circle cx={15} cy={18} r={12} fill="white" stroke="#1e293b" strokeWidth={1.5} />
-      <text x={15} y={23} textAnchor="middle" fontSize={12} fontWeight="bold" fill="#1e293b">G</text>
-      <line x1={15} y1={30} x2={15} y2={36} stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={56}>
+      <path d="M20,0 V20" />
+      <circle cx={20} cy={36} r={16} fill="white" />
+      <path d="M11,36 q4.5,-9 9,0 t9,0" />
+    </Preview>
   );
 }
 
 function LoadSymbol() {
   return (
-    <svg width={28} height={32}>
-      <line x1={14} y1={0} x2={14} y2={8} stroke="#1e293b" strokeWidth={1.5} />
-      <polygon points="14,8 2,28 26,28" fill="#f1f5f9" stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={60}>
+      <path d="M20,0 V24" />
+      <polygon points="11,24 29,24 20,60" fill={INK} strokeLinejoin="round" />
+    </Preview>
   );
 }
 
 function MotorSymbol() {
   return (
-    <svg width={30} height={36}>
-      <line x1={15} y1={0} x2={15} y2={6} stroke="#1e293b" strokeWidth={1.5} />
-      <circle cx={15} cy={20} r={14} fill="white" stroke="#1e293b" strokeWidth={1.5} />
-      <text x={15} y={25} textAnchor="middle" fontSize={13} fontWeight="bold" fill="#1e293b">M</text>
-    </svg>
+    <Preview w={40} h={56}>
+      <path d="M20,0 V22" />
+      <circle cx={20} cy={38} r={16} fill="white" />
+      <text x={20} y={42.5} textAnchor="middle" fontSize={13} fontWeight={600} fill={INK} stroke="none">
+        M
+      </text>
+    </Preview>
   );
 }
 
 function TransformerSymbol() {
   return (
-    <svg width={30} height={52}>
-      <line x1={15} y1={0} x2={15} y2={6} stroke="#1e293b" strokeWidth={1.5} />
-      <circle cx={15} cy={18} r={12} fill="white" stroke="#1e293b" strokeWidth={1.5} />
-      <circle cx={15} cy={38} r={12} fill="white" stroke="#1e293b" strokeWidth={1.5} />
-      <line x1={15} y1={50} x2={15} y2={52} stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={100}>
+      <path d="M20,0 V22 M20,78 V100" />
+      <circle cx={20} cy={38} r={16} />
+      <circle cx={20} cy={62} r={16} />
+    </Preview>
   );
 }
 
 function CBSymbol() {
   return (
-    <svg width={16} height={30}>
-      <line x1={8} y1={0} x2={8} y2={8} stroke="#1e293b" strokeWidth={1.5} />
-      <rect x={1} y={8} width={14} height={14} fill="#1e293b" stroke="#1e293b" strokeWidth={1} />
-      <line x1={8} y1={22} x2={8} y2={30} stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={60}>
+      <path d="M20,0 V20 M20,40 V60" />
+      <rect x={10} y={20} width={20} height={20} fill={INK} />
+    </Preview>
   );
 }
 
 function DisconnectorSymbol() {
   return (
-    <svg width={16} height={30}>
-      <line x1={8} y1={0} x2={8} y2={10} stroke="#1e293b" strokeWidth={1.5} strokeDasharray="3,2" />
-      <circle cx={8} cy={10} r={2} fill="#1e293b" />
-      <circle cx={8} cy={20} r={2} fill="#1e293b" />
-      <line x1={8} y1={20} x2={16} y2={12} stroke="#1e293b" strokeWidth={1.5} />
-      <line x1={8} y1={20} x2={8} y2={30} stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={60}>
+      <path d="M20,0 V18 M15,18 H25 M20,42 L32,21 M20,42 V60" />
+      <circle cx={20} cy={42} r={2} fill={INK} />
+    </Preview>
   );
 }
 
 function FuseSymbol() {
   return (
-    <svg width={16} height={30}>
-      <line x1={8} y1={0} x2={8} y2={8} stroke="#1e293b" strokeWidth={1.5} />
-      <rect x={1} y={8} width={14} height={14} fill="white" stroke="#1e293b" strokeWidth={1.5} rx={2} />
-      <circle cx={8} cy={15} r={2} fill="#1e293b" />
-      <line x1={8} y1={22} x2={8} y2={30} stroke="#1e293b" strokeWidth={1.5} />
-    </svg>
+    <Preview w={40} h={60}>
+      <path d="M20,0 V60" />
+      <rect x={14} y={18} width={12} height={24} />
+    </Preview>
   );
 }
 
