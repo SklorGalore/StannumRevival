@@ -83,7 +83,7 @@ export function Toolbar() {
   return (
     <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none">
       {/* App name */}
-      <span className="font-bold text-slate-700 text-sm mr-3">StannumSLD</span>
+      <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
 
       <ToolbarButton
         icon={<FilePlus size={14} />}

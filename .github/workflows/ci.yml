@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  core:
+    name: Rust core and desktop shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      # Tauri embeds ../dist at compile time; an empty folder is enough for checks.
+      - name: Placeholder frontend
+        run: mkdir -p dist
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --locked -p stannum-core
+
+  frontend:
+    name: Frontend build and browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Type-check and build
+        run: npm run build
+      - name: Browser smoke test against the real Rust core
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+          cargo build --locked --release -p stannum-core --example dev_bridge
+          ./target/release/examples/dev_bridge &
+          npx vite preview --port 1420 --strictPort &
+          npx wait-on -t 60000 http://localhost:1420
+          F=crates/stannum-core/tests/fixtures
+          STANNUM_MATPOWER=$PWD/$F/case9.m STANNUM_RAW=$PWD/$F/five_bus.raw STANNUM_RAW_B=$PWD/$F/five_bus_modified.raw \
+            node tests/browser/smoke.mjs
