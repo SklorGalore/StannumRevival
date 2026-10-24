@@ -12,16 +12,7 @@ import {
   Undo2,
   Redo2,
   Printer,
-  AlignStartVertical,
-  AlignCenterVertical,
-  AlignEndVertical,
-  AlignStartHorizontal,
-  AlignCenterHorizontal,
-  AlignEndHorizontal,
-  AlignHorizontalDistributeCenter,
-  AlignVerticalDistributeCenter,
 } from "lucide-react";
-import type { AlignMode } from "../../store/types";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
 import { GenerateDialog } from "../dialogs/GenerateDialog";
@@ -38,6 +29,8 @@ interface ToolbarButtonProps {
   danger?: boolean;
   disabled?: boolean;
   title?: string;
+  /** Show the label only on wide screens. */
+  compact?: boolean;
 }
 
 function ToolbarButton({
@@ -48,12 +41,14 @@ function ToolbarButton({
   danger,
   disabled,
   title,
+  compact,
 }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
+      aria-label={label}
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium
                   transition-colors select-none
                   ${danger
@@ -65,23 +60,12 @@ function ToolbarButton({
                   ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
+      <span className={compact ? "hidden 2xl:inline" : "hidden sm:inline"}>{label}</span>
     </button>
   );
 }
 
-const ALIGN: { how: AlignMode; icon: React.ReactNode; title: string; min: number }[] = [
-  { how: "left", icon: <AlignStartVertical size={14} />, title: "Align left edges", min: 2 },
-  { how: "center", icon: <AlignCenterVertical size={14} />, title: "Align centres vertically", min: 2 },
-  { how: "right", icon: <AlignEndVertical size={14} />, title: "Align right edges", min: 2 },
-  { how: "top", icon: <AlignStartHorizontal size={14} />, title: "Align tops", min: 2 },
-  { how: "middle", icon: <AlignCenterHorizontal size={14} />, title: "Align middles", min: 2 },
-  { how: "bottom", icon: <AlignEndHorizontal size={14} />, title: "Align bottoms", min: 2 },
-  { how: "distribute-x", icon: <AlignHorizontalDistributeCenter size={14} />, title: "Space evenly across", min: 3 },
-  { how: "distribute-y", icon: <AlignVerticalDistributeCenter size={14} />, title: "Space evenly down", min: 3 },
-];
-
-/** Icon-only button for the align group. */
+/** Icon-only toolbar button. */
 function IconButton({ icon, title, onClick, disabled }: { icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
@@ -141,7 +125,6 @@ export function Toolbar() {
   const canRedo = useDiagramStore((s) => s.future.length > 0);
   const undo = useDiagramStore((s) => s.undo);
   const redo = useDiagramStore((s) => s.redo);
-  const align = useDiagramStore((s) => s.align);
   const mono = useDiagramStore((s) => s.colorMode === "mono");
   const toggleColorMode = useDiagramStore((s) => s.toggleColorMode);
 
@@ -158,28 +141,32 @@ export function Toolbar() {
   }
 
   return (
-    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none">
+    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto">
       {/* App name */}
       <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
 
       <ToolbarButton
         icon={<FilePlus size={14} />}
         label="New"
+        compact
         onClick={handleNew}
       />
       <ToolbarButton
         icon={<FolderOpen size={14} />}
         label="Open"
+        compact
         onClick={openDiagram}
       />
       <ToolbarButton
         icon={<Save size={14} />}
         label="Save"
+        compact
         onClick={saveDiagram}
       />
       <ToolbarButton
         icon={<Save size={14} />}
         label="Save As"
+        compact
         onClick={saveAsDialog}
       />
 
@@ -193,6 +180,7 @@ export function Toolbar() {
       <ToolbarButton
         icon={<Download size={14} />}
         label="Export"
+        compact
         onClick={() => setExportOpen(true)}
       />
 
@@ -251,21 +239,6 @@ export function Toolbar() {
         active={mono}
         title="Black and white, for printing and export"
       />
-
-      {selectedNodeIds.length >= 2 && (
-        <>
-          <Divider />
-          {ALIGN.map((a) => (
-            <IconButton
-              key={a.how}
-              icon={a.icon}
-              title={a.title}
-              onClick={() => align(a.how)}
-              disabled={selectedNodeIds.length < a.min}
-            />
-          ))}
-        </>
-      )}
 
       <Divider />
 

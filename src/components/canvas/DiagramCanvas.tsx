@@ -28,6 +28,7 @@ import { useDiagramStore } from "../../store/diagramStore";
 import { defaultsByType, defaultConductorData } from "../../store/defaults";
 import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
+import { AlignBar } from "./AlignBar";
 
 /** Changes that don't alter the drawing itself. */
 const VIEW_ONLY = new Set(["select", "dimensions"]);
@@ -100,18 +101,67 @@ export function DiagramCanvas() {
     [edges, setEdges]
   );
 
+  /** Wire a symbol's terminal to a bus at `x` along the bar, on the side
+   *  facing the symbol, adding a tap there if the bus has none. */
+  const wireToBus = useCallback(
+    (bus: SLDNode, x: number, side: BusTap["side"], node: string, handle: string | null) => {
+      const { nodes: all, edges: wires } = useDiagramStore.getState();
+      const data = bus.data as BusData;
+      const taps = busTaps(data);
+      let tap = taps.find((t) => t.side === side && Math.abs(t.x - x) < 1);
+      if (!tap) {
+        tap = { id: `bus-tap-${nanoid(6)}`, x, side };
+        const next = [...taps, tap];
+        useDiagramStore.getState().setNodes(
+          all.map((n) => (n.id === bus.id ? ({ ...n, data: { ...n.data, taps: next } } as SLDNode) : n))
+        );
+      }
+      const edge = {
+        id: nanoid(),
+        type: "conductor",
+        // Bus taps are source handles. React Flow only looks a wire's
+        // source up among source handles, so the bus end goes first.
+        source: bus.id,
+        sourceHandle: tap.id,
+        target: node,
+        targetHandle: handle,
+        data: { ...defaultConductorData, voltageKV: data.voltageKV },
+      } as unknown as SLDEdge;
+      // The new tap must be measured before a wire can attach to it.
+      requestAnimationFrame(() => {
+        updateNodeInternals(bus.id);
+        requestAnimationFrame(() => useDiagramStore.getState().setEdges([...wires, edge]));
+      });
+    },
+    [updateNodeInternals]
+  );
+
   const onConnect = useCallback(
     (params: Connection) => {
+      checkpoint();
+      // A wire from below that snapped to a tap on top of the bus (or the
+      // reverse) would loop through the bar: use the facing side instead.
+      for (const [end, other, otherHandle] of [
+        ["source", params.target, params.targetHandle],
+        ["target", params.source, params.sourceHandle],
+      ] as const) {
+        const bus = nodes.find((n) => n.id === params[end]);
+        const otherNode = nodes.find((n) => n.id === other);
+        if (bus?.type !== "bus" || !otherNode || (bus.data as BusData).star) continue;
+        const tap = busTaps(bus.data as BusData).find((t) => t.id === params[`${end}Handle`]);
+        if (!tap) continue;
+        const facing: BusTap["side"] = otherNode.position.y > bus.position.y ? "bottom" : "top";
+        if (tap.side !== facing) return wireToBus(bus, tap.x, facing, other, otherHandle ?? null);
+      }
       const newEdge: SLDEdge = {
         ...params,
         id: nanoid(),
         type: "conductor",
         data: { ...defaultConductorData },
       } as unknown as SLDEdge;
-      checkpoint();
       setEdges(addEdge(newEdge as Edge, edges as Edge[]) as unknown as SLDEdge[]);
     },
-    [edges, setEdges, checkpoint]
+    [nodes, edges, setEdges, checkpoint, wireToBus]
   );
 
   // Highlight the bus a wire would land on while it's being drawn.
@@ -150,44 +200,20 @@ export function DiagramCanvas() {
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
       if (state.isValid || !state.fromNode || !state.fromHandle) return;
-      const { nodes: all, edges: wires, gridSize } = useDiagramStore.getState();
+      const { nodes: all, gridSize } = useDiagramStore.getState();
       const from = all.find((n) => n.id === state.fromNode!.id);
       if (!from || from.type === "bus") return;
       const p = screenToFlowPosition(pointerPoint(event), { snapToGrid: false });
       const bus = busAt(all, p);
       if (!bus) return;
-      const data = bus.data as BusData;
-      const len = data.length ?? 200;
+      const len = (bus.data as BusData).length ?? 200;
       const x = Math.min(len, Math.max(0, Math.round((p.x - bus.position.x) / gridSize) * gridSize));
-      const side: BusTap["side"] = p.y < bus.position.y + 3 ? "top" : "bottom";
-      const taps = busTaps(data);
-      let tap = taps.find((t) => t.side === side && Math.abs(t.x - x) < 1);
+      // The tap goes on the side facing the symbol, so the wire never crosses the bar.
+      const side: BusTap["side"] = from.position.y > bus.position.y ? "bottom" : "top";
       checkpoint();
-      if (!tap) {
-        tap = { id: `bus-tap-${nanoid(6)}`, x, side };
-        const next = [...taps, tap];
-        useDiagramStore.getState().setNodes(
-          all.map((n) => (n.id === bus.id ? ({ ...n, data: { ...n.data, taps: next } } as SLDNode) : n))
-        );
-      }
-      const edge = {
-        id: nanoid(),
-        type: "conductor",
-        // Bus taps are source handles. React Flow only looks a wire's
-        // source up among source handles, so the bus end goes first.
-        source: bus.id,
-        sourceHandle: tap.id,
-        target: from.id,
-        targetHandle: state.fromHandle.id ?? null,
-        data: { ...defaultConductorData, voltageKV: data.voltageKV },
-      } as unknown as SLDEdge;
-      // The new tap must be measured before a wire can attach to it.
-      requestAnimationFrame(() => {
-        updateNodeInternals(bus.id);
-        requestAnimationFrame(() => useDiagramStore.getState().setEdges([...wires, edge]));
-      });
+      wireToBus(bus, x, side, from.id, state.fromHandle.id ?? null);
     },
-    [screenToFlowPosition, checkpoint, updateNodeInternals]
+    [screenToFlowPosition, checkpoint, wireToBus]
   );
 
   const isValidConnection = useCallback(
@@ -246,7 +272,8 @@ export function DiagramCanvas() {
   }, []);
 
   return (
-    <div ref={wrapperRef} className="w-full h-full">
+    <div ref={wrapperRef} className="w-full h-full relative">
+      <AlignBar />
       <ReactFlow
         nodes={nodes as never[]}
         edges={edges as never[]}
