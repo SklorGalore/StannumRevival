@@ -9,6 +9,9 @@ import {
   Wand2,
   Activity,
   Play,
+  Undo2,
+  Redo2,
+  Printer,
 } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
@@ -26,6 +29,8 @@ interface ToolbarButtonProps {
   danger?: boolean;
   disabled?: boolean;
   title?: string;
+  /** Show the label only on wide screens. */
+  compact?: boolean;
 }
 
 function ToolbarButton({
@@ -36,12 +41,14 @@ function ToolbarButton({
   danger,
   disabled,
   title,
+  compact,
 }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
+      aria-label={label}
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium
                   transition-colors select-none
                   ${danger
@@ -53,7 +60,22 @@ function ToolbarButton({
                   ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
+      <span className={compact ? "hidden 2xl:inline" : "hidden sm:inline"}>{label}</span>
+    </button>
+  );
+}
+
+/** Icon-only toolbar button. */
+function IconButton({ icon, title, onClick, disabled }: { icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`p-1.5 rounded text-slate-600 transition-colors ${disabled ? "opacity-30 cursor-not-allowed" : "hover:bg-slate-100 cursor-pointer"}`}
+    >
+      {icon}
     </button>
   );
 }
@@ -99,6 +121,12 @@ export function Toolbar() {
   const deleteSelected = useDiagramStore((s) => s.deleteSelected);
   const toggleGrid = useDiagramStore((s) => s.toggleGrid);
   const toggleSnap = useDiagramStore((s) => s.toggleSnap);
+  const canUndo = useDiagramStore((s) => s.past.length > 0);
+  const canRedo = useDiagramStore((s) => s.future.length > 0);
+  const undo = useDiagramStore((s) => s.undo);
+  const redo = useDiagramStore((s) => s.redo);
+  const mono = useDiagramStore((s) => s.colorMode === "mono");
+  const toggleColorMode = useDiagramStore((s) => s.toggleColorMode);
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
 
@@ -113,36 +141,46 @@ export function Toolbar() {
   }
 
   return (
-    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none">
+    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto">
       {/* App name */}
       <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
 
       <ToolbarButton
         icon={<FilePlus size={14} />}
         label="New"
+        compact
         onClick={handleNew}
       />
       <ToolbarButton
         icon={<FolderOpen size={14} />}
         label="Open"
+        compact
         onClick={openDiagram}
       />
       <ToolbarButton
         icon={<Save size={14} />}
         label="Save"
+        compact
         onClick={saveDiagram}
       />
       <ToolbarButton
         icon={<Save size={14} />}
         label="Save As"
+        compact
         onClick={saveAsDialog}
       />
+
+      <Divider />
+
+      <IconButton icon={<Undo2 size={14} />} title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
+      <IconButton icon={<Redo2 size={14} />} title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} />
 
       <Divider />
 
       <ToolbarButton
         icon={<Download size={14} />}
         label="Export"
+        compact
         onClick={() => setExportOpen(true)}
       />
 
@@ -193,6 +231,13 @@ export function Toolbar() {
         label="Snap"
         onClick={toggleSnap}
         active={snapToGrid}
+      />
+      <ToolbarButton
+        icon={<Printer size={14} />}
+        label="Print style"
+        onClick={toggleColorMode}
+        active={mono}
+        title="Black and white, for printing and export"
       />
 
       <Divider />

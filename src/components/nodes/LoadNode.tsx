@@ -1,85 +1,60 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { LoadNode as LoadNodeType } from "../../store/types";
-import { mvar, mw, useResults, RESULT_TEXT } from "../../lib/diagram/results";
+import { mvar, mw, useResults } from "../../lib/diagram/results";
+import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
 
 const W = 40;
-const H = 56;
+const H = 60;
+const CX = W / 2;
 
 export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
   const isMotor = data.loadType === "motor";
   const results = useResults();
+  const ink = useInk();
   const row = data.caseRef?.kind === "load" ? results?.buses.get(data.caseRef.id) : undefined;
+  const outline = selected ? SELECTED : ink.line;
+  const textX = W + 2;
+  const textY = 34;
 
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
-      <svg
-        width={W}
-        height={H}
-        overflow="visible"
-        style={{ display: "block" }}
-      >
-        {/* Stem from top */}
-        <line x1={W / 2} y1={0} x2={W / 2} y2={12} stroke="#1e293b" strokeWidth={2} />
-
+      <svg width={W} height={H} overflow="visible" style={{ display: "block" }}>
         {isMotor ? (
           <>
-            <circle
-              cx={W / 2}
-              cy={36}
-              r={20}
-              fill="white"
-              stroke={selected ? "#3b82f6" : "#1e293b"}
-              strokeWidth={2}
-            />
-            <text
-              x={W / 2}
-              y={41}
-              textAnchor="middle"
-              fontSize={16}
-              fontWeight="bold"
-              fill="#1e293b"
-              fontFamily="sans-serif"
-            >
+            <line x1={CX} y1={0} x2={CX} y2={22} stroke={ink.line} strokeWidth={STROKE} />
+            <circle cx={CX} cy={38} r={16} fill="white" stroke={outline} strokeWidth={STROKE} />
+            <text x={CX} y={42.5} textAnchor="middle" fontSize={13} fontWeight={600} fill={ink.line}>
               M
             </text>
           </>
         ) : (
-          /* Static load: arrow pointing down, away from the bus */
-          <polygon
-            points={`4,12 ${W - 4},12 ${W / 2},${H - 4}`}
-            fill={selected ? "#dbeafe" : "#f1f5f9"}
-            stroke={selected ? "#3b82f6" : "#1e293b"}
-            strokeWidth={2}
-          />
+          <>
+            <line x1={CX} y1={0} x2={CX} y2={24} stroke={ink.line} strokeWidth={STROKE} />
+            {/* Static load: an arrow pointing away from the bus. */}
+            <polygon
+              points={`${CX - 9},24 ${CX + 9},24 ${CX},${H}`}
+              fill={ink.line}
+              stroke={outline}
+              strokeWidth={STROKE}
+              strokeLinejoin="round"
+            />
+          </>
         )}
-
-        {/* Label */}
-        <text
-          x={W + 4}
-          y={isMotor ? 40 : 36}
-          fontSize={10}
-          fill="#475569"
-        >
+        <text x={textX} y={textY} fontSize={10} fill={ink.text}>
           {data.label}
         </text>
         {row && (
-          <text x={W + 4} y={(isMotor ? 40 : 36) + 12} fontSize={9} fill={RESULT_TEXT}>
+          <text x={textX} y={textY + 12} fontSize={9} fill={ink.result}>
             <tspan>{mw(row.pd)}</tspan>
             {results?.ac && (
-              <tspan x={W + 4} dy={11}>
+              <tspan x={textX} dy={11}>
                 {mvar(row.qd)}
               </tspan>
             )}
           </text>
         )}
       </svg>
-
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="load-top"
-        style={{ top: 0, left: W / 2 }}
-      />
+      <Handle type="target" position={Position.Top} id="load-top" style={{ top: 0, left: CX }} />
     </div>
   );
 }

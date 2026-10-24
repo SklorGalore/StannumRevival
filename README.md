@@ -85,13 +85,28 @@ generator and load MW/Mvar, and branch flows with direction arrows and loading;
 branches at 80% or more turn amber, overloads red. **Results** toggles them.
 A saved diagram keeps the link and shows results again when the same case is open.
 
-The editor also draws by hand: IEEE 315 / ANSI Y32.2 symbols, drag-and-drop
-placement, interactive breakers and disconnectors, a properties panel, `.sld`
-save/load, and SVG/PNG/PDF export of the whole drawing with a title block.
-`Delete` and `Ctrl+S` act on the diagram only while it is showing.
+The editor also draws by hand: drag symbols from the palette, then drag from a
+terminal to wire it. Releasing a wire anywhere along a bus bar adds a tap
+there. Symbols sit on a 20 px grid with one stroke weight, so wires line up.
+Breakers and disconnectors open and close on double-click. A selected bus has a
+grip on its right end for changing its length.
 
-Not yet: shunts, switched devices and HVDC from the case, undo/redo, and
-selection shared with the other modules.
+| Action | How |
+| --- | --- |
+| Select several | Drag a box on empty canvas, or Shift/Ctrl-click |
+| Pan | Middle or right drag, or hold Space |
+| Undo / redo | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) |
+| Copy, cut, paste, duplicate | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D |
+| Select all / clear | Ctrl+A / Esc |
+| Nudge | Arrow keys (one grid step; Shift for 1 px) |
+| Align and space evenly | Bar over the canvas, shown with two or more symbols selected |
+
+**Print style** draws everything in black for printing and export. Diagrams
+save as `.sld` and export to SVG, PNG or PDF with a title block. Keyboard
+shortcuts act on the diagram only while it is showing.
+
+Not yet: shunts, switched devices and HVDC from the case, rotating symbols,
+movable labels, and selection shared with the other modules.
 
 ## Development
 

@@ -170,6 +170,21 @@ export interface SLDDiagram {
 
 // ── Store shape ──────────────────────────────────────────────────────────────
 
+export interface DiagramSnapshot {
+  nodes: SLDNode[];
+  edges: SLDEdge[];
+}
+
+export type AlignMode =
+  | "left"
+  | "center"
+  | "right"
+  | "top"
+  | "middle"
+  | "bottom"
+  | "distribute-x"
+  | "distribute-y";
+
 export interface DiagramStore {
   nodes: SLDNode[];
   edges: SLDEdge[];
@@ -190,9 +205,29 @@ export interface DiagramStore {
   showResults: boolean;
   /** Bumped to ask the canvas to fit the drawing on screen. */
   fitRequest: number;
+  /** "mono" draws everything black, for printing. */
+  colorMode: "voltage" | "mono";
+  /** Undo/redo history of the drawing (nodes and edges only). */
+  past: DiagramSnapshot[];
+  future: DiagramSnapshot[];
 
-  setNodes: (nodes: SLDNode[]) => void;
-  setEdges: (edges: SLDEdge[]) => void;
+  /** `dirty` is false for changes that don't alter the drawing (selection, measuring). */
+  setNodes: (nodes: SLDNode[], dirty?: boolean) => void;
+  setEdges: (edges: SLDEdge[], dirty?: boolean) => void;
+  /** Record the drawing before an edit so it can be undone. Edits sharing a
+   *  `key` within a moment (typing in one field) collapse into one step. */
+  checkpoint: (key?: string) => void;
+  undo: () => void;
+  redo: () => void;
+  copySelection: () => void;
+  paste: () => void;
+  duplicateSelection: () => void;
+  selectAll: () => void;
+  clearSelection: () => void;
+  /** Move the selected symbols; arrow keys nudge by one grid step. */
+  nudge: (dx: number, dy: number) => void;
+  align: (how: AlignMode) => void;
+  toggleColorMode: () => void;
   updateNodeData: (id: string, data: Partial<SLDNode["data"]>) => void;
   updateEdgeData: (id: string, data: Partial<ConductorData>) => void;
   addNode: (node: SLDNode) => void;

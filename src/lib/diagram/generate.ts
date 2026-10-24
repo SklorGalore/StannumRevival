@@ -28,10 +28,10 @@ export const READABLE_BUSES = 150;
 
 // Symbol sizes must match the node components.
 export const BUS_BAR = 6;
-const GEN = { w: 48, h: 80 };
-const LOAD = { w: 40, h: 56 };
-const XFMR = { w: 56, h: 104 };
-const OFF_PAGE = { w: 20, h: 28 };
+const GEN = { w: 40, h: 80 };
+const LOAD = { w: 40, h: 60 };
+const XFMR = { w: 40, h: 100 };
+const OFF_PAGE = { w: 40, h: 40 };
 /** Space kept to the right of symbols for their name and results. */
 const SIDE_LABEL = 96;
 /** Room for a branch's flow results: three lines of small text. */

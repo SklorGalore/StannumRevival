@@ -17,6 +17,8 @@ assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, 
 
 const shim = () => {
   window.__dialogQueue = [];
+  // Event listeners are never registered here, so unlisten is a no-op.
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
     transformCallback: (cb) => {
@@ -110,6 +112,37 @@ assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
 await page.getByText(/\d\.\d{3} pu/).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
+
+// Print style, then undo after deleting everything.
+await page.getByRole("button", { name: "Print style" }).click();
+await shot("diagram-print");
+await page.getByRole("button", { name: "Print style" }).click();
+const nodeCount = await page.locator(".react-flow__node").count();
+await page.locator(".react-flow__pane").click({ position: { x: 5, y: 5 } });
+await page.keyboard.press("Control+a");
+await page.keyboard.press("Delete");
+assert.equal(await page.locator(".react-flow__node").count(), 0);
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node").count(), nodeCount);
+
+// Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
+page.once("dialog", (d) => d.accept());
+await page.getByRole("button", { name: "New", exact: true }).click();
+const pane = page.locator(".react-flow__pane");
+await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
+const load = page.locator(".react-flow__node-load");
+await load.hover();
+const terminal = await load.locator(".react-flow__handle").boundingBox();
+const bar = await page.locator(".react-flow__node-bus").boundingBox();
+await page.mouse.move(terminal.x + terminal.width / 2, terminal.y + terminal.height / 2);
+await page.mouse.down();
+await page.mouse.move(bar.x + 61, bar.y + bar.height + 4, { steps: 10 });
+await page.mouse.up();
+await page.locator(".react-flow__edge").first().waitFor();
+await shot("diagram-drawn");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
 
 // Inactive modules must not show the diagram through them.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();

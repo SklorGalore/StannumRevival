@@ -1,42 +1,78 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { BusNode as BusNodeType, BusTap } from "../../store/types";
-import { getVoltageColor } from "./shared/voltageColor";
-import { useResults, RESULT_TEXT } from "../../lib/diagram/results";
+import { useRef } from "react";
+import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
+import type { BusNode as BusNodeType } from "../../store/types";
+import { useResults } from "../../lib/diagram/results";
+import { useInk, SELECTED } from "../../lib/diagram/ink";
+import { useDiagramStore } from "../../store/diagramStore";
+import { busTaps } from "./shared/busTaps";
 
 const BAR = 6;
+const MIN_LENGTH = 40;
 
-/** Taps for hand-drawn buses: one on top, four below, one at each end. */
-function defaultTaps(width: number): BusTap[] {
-  return [
-    { id: "bus-top", x: width / 2, side: "top" },
-    ...[0.2, 0.4, 0.6, 0.8].map((f, i) => ({ id: `bus-tap-${i}`, x: width * f, side: "bottom" as const })),
-  ];
+/** Grip on the right end of a selected bus: drag to lengthen or shorten it. */
+function ResizeGrip({ id, length, minLength }: { id: string; length: number; minLength: number }) {
+  const { getZoom } = useReactFlow();
+  const updateInternals = useUpdateNodeInternals();
+  const start = useRef<{ x: number; length: number } | null>(null);
+
+  return (
+    <div
+      className="bus-grip nodrag nopan"
+      title="Drag to resize the bus"
+      style={{ left: length + 6 }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, length };
+        useDiagramStore.getState().checkpoint();
+      }}
+      onPointerMove={(e) => {
+        if (!start.current) return;
+        const { gridSize } = useDiagramStore.getState();
+        const raw = start.current.length + (e.clientX - start.current.x) / getZoom();
+        const next = Math.max(minLength, Math.round(raw / gridSize) * gridSize);
+        if (next === length) return;
+        // Write straight to the store: the checkpoint above covers the drag.
+        const { nodes, setNodes } = useDiagramStore.getState();
+        setNodes(nodes.map((n) => (n.id === id ? ({ ...n, data: { ...n.data, length: next } } as typeof n) : n)));
+        requestAnimationFrame(() => updateInternals(id));
+      }}
+      onPointerUp={() => {
+        start.current = null;
+      }}
+    />
+  );
 }
 
-export function BusNode({ data, selected }: NodeProps<BusNodeType>) {
+export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const width = data.length ?? 200;
-  const color = getVoltageColor(data.voltageKV);
+  const ink = useInk();
+  const color = selected ? SELECTED : ink.voltage(data.voltageKV);
   const results = useResults();
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
-  const taps = data.taps ?? defaultTaps(width);
+  const taps = busTaps(data);
+  // Fixed taps (from a generated layout or added by hand) must stay on the bar.
+  const minLength = Math.max(MIN_LENGTH, ...(data.taps ?? []).map((t) => t.x + 20));
+
+  const tapHandles = taps.map((t) => (
+    <Handle
+      key={t.id}
+      type="source"
+      id={t.id}
+      position={t.side === "top" ? Position.Top : Position.Bottom}
+      className="bus-tap"
+      style={{ left: t.x }}
+    />
+  ));
 
   if (data.star) {
     // Star point of a three-winding transformer.
     return (
       <div className="node-wrapper relative" style={{ width, height: BAR }}>
         <svg width={width} height={BAR} overflow="visible" style={{ display: "block" }}>
-          <circle cx={width / 2} cy={BAR / 2} r={4} fill={selected ? "#3b82f6" : "#1e293b"} />
+          <circle cx={width / 2} cy={BAR / 2} r={4} fill={selected ? SELECTED : ink.line} />
         </svg>
-        {taps.map((t) => (
-          <Handle
-            key={t.id}
-            type="source"
-            id={t.id}
-            position={t.side === "top" ? Position.Top : Position.Bottom}
-            className="bus-tap"
-            style={{ left: t.x }}
-          />
-        ))}
+        {tapHandles}
       </div>
     );
   }
@@ -45,10 +81,10 @@ export function BusNode({ data, selected }: NodeProps<BusNodeType>) {
     <div className="node-wrapper relative" style={{ width, height: BAR }}>
       <svg width={width} height={BAR} overflow="visible" style={{ display: "block" }}>
         <rect x={0} y={0} width={width} height={BAR} fill={color} rx={1} />
-        <text x={-8} y={0} textAnchor="end" fontSize={11} fontWeight={600} fill="#1e293b">
+        <text x={-8} y={0} textAnchor="end" fontSize={11} fontWeight={600} fill={ink.line}>
           {data.label}
         </text>
-        <text x={-8} y={13} textAnchor="end" fontSize={9.5} fill="#64748b">
+        <text x={-8} y={13} textAnchor="end" fontSize={9.5} fill={ink.muted}>
           {data.caseRef ? `${data.caseRef.id} · ` : ""}
           {data.voltageKV} kV
         </text>
@@ -57,7 +93,7 @@ export function BusNode({ data, selected }: NodeProps<BusNodeType>) {
             x={width + 8}
             y={BAR / 2 + 3.5}
             fontSize={9.5}
-            fill={row.violation > 0 ? "#dc2626" : RESULT_TEXT}
+            fill={row.violation > 0 ? ink.alert("#dc2626") : ink.result}
             fontWeight={row.violation > 0 ? 600 : 400}
           >
             {row.vm.toFixed(3)} pu {row.va.toFixed(1)}°
@@ -65,18 +101,10 @@ export function BusNode({ data, selected }: NodeProps<BusNodeType>) {
         )}
       </svg>
 
-      {taps.map((t) => (
-        <Handle
-          key={t.id}
-          type="source"
-          id={t.id}
-          position={t.side === "top" ? Position.Top : Position.Bottom}
-          className="bus-tap"
-          style={{ left: t.x }}
-        />
-      ))}
+      {tapHandles}
       <Handle type="source" position={Position.Left} id="bus-left" className="bus-tap" style={{ top: BAR / 2 }} />
       <Handle type="source" position={Position.Right} id="bus-right" className="bus-tap" style={{ top: BAR / 2 }} />
+      {selected && <ResizeGrip id={id} length={width} minLength={minLength} />}
     </div>
   );
 }
