@@ -32,6 +32,17 @@ case bar shows what loaded, and each module uses the case if it can:
 If a module can't use the open case it says why, and the other modules keep
 working.
 
+### Log
+
+The strip along the bottom of the window says what Stannum is doing: the step
+in progress with a running timer (opening, solving, comparing, drawing), or the
+latest message. Click it or press **Ctrl+`** to open the log, which keeps every
+step with its time and source: the app's own lines and those from the core,
+rs-power and nodal. Filter to warnings or errors, search, or tick **Details**
+for solver iterations and other detail. Bus numbers in a line are links that
+show the bus in every module. **Copy** and **Save…** write the lines shown as
+plain text, for a bug report or a study record.
+
 ### Power flow
 
 Choose AC or DC, the starting voltages, tolerance, Newton iterations and

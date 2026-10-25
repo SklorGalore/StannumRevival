@@ -74,6 +74,22 @@ await page.getByText("How to read these results").waitFor();
 await page.getByText(/Response \(/).waitFor();
 await shot("power-sensitivities");
 
+// The log records each step: the app's own lines and the core's, with solver
+// iterations under Details. Ctrl+` opens and closes it.
+const log = page.getByRole("log", { name: "Log lines" });
+await page.keyboard.press("Control+Backquote");
+await log.getByText(/Solved power flow \(/).last().waitFor();
+await log.getByText(/Power flow: Converged after \d+ iterations/).last().waitFor();
+await log.getByText(/Sensitivities: \d+ injection columns/).last().waitFor();
+assert.equal(await log.getByText(/Newton iteration/).count(), 0, "solver detail is hidden by default");
+await page.getByTestId("log-dock").getByLabel("Details").check();
+await log.getByText(/Newton iteration 0/).first().waitFor();
+await shot("log");
+await page.getByTestId("log-dock").getByLabel("Details").uncheck();
+await page.getByRole("button", { name: "Close log" }).click();
+await log.waitFor({ state: "detached" });
+await page.getByTestId("log-status").filter({ hasText: /Sensitivities|Calculated sensitivities/ }).waitFor();
+
 // Topology on a RAW v35 case.
 await queue(STANNUM_RAW);
 await page.getByRole("button", { name: "Open another…" }).click();

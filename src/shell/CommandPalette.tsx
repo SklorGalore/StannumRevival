@@ -13,11 +13,13 @@ import {
   Play,
   Search,
   Sun,
+  Terminal,
   Wand2,
   X,
   Zap,
 } from "lucide-react";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
+import { useLog } from "../store/logStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
@@ -43,6 +45,7 @@ function useCommands(): Command[] {
   const linked = useWorkspace((s) => s.linked);
   const selection = useWorkspace((s) => s.selection);
   const preference = useTheme((s) => s.preference);
+  const logOpen = useLog((s) => s.open);
   return useMemo(() => {
     const w = useWorkspace.getState();
     const next = NEXT_PREFERENCE[preference];
@@ -70,8 +73,15 @@ function useCommands(): Command[] {
       keywords: "theme dark light appearance colour",
       run: () => useTheme.getState().setPreference(next),
     });
+    list.push({
+      id: "log",
+      title: logOpen ? "Hide log" : "Show log",
+      icon: <Terminal size={14} />,
+      keywords: "console output messages progress errors warnings",
+      run: () => useLog.getState().setOpen(!logOpen),
+    });
     return list;
-  }, [summary, linked, selection, preference]);
+  }, [summary, linked, selection, preference, logOpen]);
 }
 
 type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };

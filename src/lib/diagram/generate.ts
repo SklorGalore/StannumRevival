@@ -21,6 +21,7 @@ import type {
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
 import { busElement } from "../elements";
+import { useLog } from "../../store/logStore";
 
 export type Scope =
   | { kind: "all" }
@@ -268,8 +269,18 @@ export interface Piece {
 
 export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<Generated> {
   const buses = selectBuses(net, scope);
-  if (scope.kind !== "around") return layoutPiece(net, { buses });
-  return layoutPiece(net, { buses, root: scope.bus, byHop: true, focus: scope.bus });
+  const where = scope.kind === "around" ? ` around bus ${scope.bus} (${scope.depth} hops)` : scope.kind === "area" ? ` for area ${scope.area}` : "";
+  const end = useLog.getState().begin(`Laying out a one-line${where}`);
+  try {
+    const out = await (scope.kind !== "around"
+      ? layoutPiece(net, { buses })
+      : layoutPiece(net, { buses, root: scope.bus, byHop: true, focus: scope.bus }));
+    end({ done: `Drew a one-line${where}: ${out.buses} buses, ${out.nodes.length} symbols, ${out.boundary} off-page links` });
+    return out;
+  } catch (e) {
+    end({ error: (e as Error).message });
+    throw e;
+  }
 }
 
 /** Lay out a set of buses with everything attached to them. */

@@ -6,11 +6,13 @@
 //! - [`diagram`]: the case as a drawable network for one-line diagrams.
 //! - [`diff`]: exact RAW case comparison (ported from case-diff).
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
+//! - [`logbook`]: the application log shown in the log panel.
 
 pub mod derived_topology;
 pub mod diagram;
 pub mod diff;
 pub mod elements;
+pub mod logbook;
 pub mod power;
 pub mod workspace;
 

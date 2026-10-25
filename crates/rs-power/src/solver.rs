@@ -860,6 +860,7 @@ fn newton(
             log::warn!("Newton solve reached iteration limit {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
+        log::debug!("Newton iteration {iteration}: residual={residual:.6e}");
         debug_assert_eq!(f.len(), layout.len());
         let mut j = layout_jacobian(net, v, &layout);
         j.extend(dc_jacobian(terminals, v, &layout, case.base_mva)?);
