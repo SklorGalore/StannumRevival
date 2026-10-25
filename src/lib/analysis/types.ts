@@ -26,7 +26,10 @@ export interface CaseSummary {
   format: "matpower" | "raw";
   power: ModuleStatus<{ counts: CaseCounts; warnings: RawWarning[] }>;
   topology: ModuleStatus<{
+    /** RAW revision nodal read; 0 when built from the power flow model. */
     revision: number;
+    /** Built from the power flow model (MATPOWER, RAW other than revision 35). */
+    derived?: boolean;
     buses: number;
     equipment: number;
     titles: string[];

@@ -653,6 +653,13 @@ if (STANNUM_VIOLATIONS) {
   await page.keyboard.press("Shift+Enter");
   await page.getByText(/^Around\b/).filter({ hasText: "170" }).first().waitFor();
   await page.keyboard.press("Escape");
+
+  // MATPOWER has no RAW records, so Topology is built from the power flow model.
+  await page.getByRole("button", { name: "Topology", exact: true }).click();
+  await page.getByText("Built from the power flow model.").waitFor();
+  await page.locator("canvas:visible").first().waitFor();
+  await page.getByText("Articulation buses").first().waitFor();
+  await shot("topology-matpower");
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
