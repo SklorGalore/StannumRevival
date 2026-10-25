@@ -353,9 +353,21 @@ export interface NetworkBranch {
   tap: number;
   shift: number;
 }
+/** A two-terminal DC line, from its rectifier bus to its inverter bus. */
+export interface NetworkDcLine {
+  index: number;
+  element: string;
+  name: string;
+  from: number;
+  to: number;
+  online: boolean;
+  /** Scheduled MW sent from the rectifier; the power flow holds it fixed. */
+  mw: number;
+}
 export interface CaseNetwork {
   base_mva: number;
   buses: NetworkBus[];
   generators: NetworkGenerator[];
   branches: NetworkBranch[];
+  dc_lines: NetworkDcLine[];
 }

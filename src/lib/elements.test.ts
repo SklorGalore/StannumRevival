@@ -26,5 +26,7 @@ describe("shared element ids", () => {
   it("reads well", () => {
     expect(elementLabel("line:1001:1071:2")).toBe("Line 1001–1071 circuit 2");
     expect(elementLabel("load:5:1")).toBe("Load 1 at bus 5");
+    expect(elementLabel("dcline:301:3021:DC 1")).toBe("DC line DC 1 (301–3021)");
+    expect(elementSection("dcline:301:3021:1")).toBe("TWO-TERMINAL DC");
   });
 });

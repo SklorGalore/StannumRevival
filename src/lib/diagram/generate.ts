@@ -4,11 +4,13 @@
 import ELK from "elkjs/lib/elk-api.js";
 import type { ElkExtendedEdge, ElkNode, ElkPoint } from "elkjs/lib/elk-api";
 import workerUrl from "elkjs/lib/elk-worker.min.js?url";
-import type { CaseNetwork, NetworkBranch, NetworkBus } from "../analysis/types";
+import type { CaseNetwork, NetworkBranch, NetworkBus, NetworkDcLine } from "../analysis/types";
 import type {
   BusData,
   BusTap,
+  CaseRef,
   ConductorData,
+  DcLinkData,
   GeneratorData,
   LoadData,
   OffPageData,
@@ -33,6 +35,7 @@ export const BUS_BAR = 6;
 const GEN = { w: 40, h: 80 };
 const LOAD = { w: 40, h: 60 };
 const XFMR = { w: 40, h: 100 };
+export const DC_LINK = { w: 40, h: 140 };
 const OFF_PAGE = { w: 40, h: 40 };
 const SHUNT = { w: 40, h: 60 };
 /** Width each generator, load or shunt takes along its bus, name and results included. */
@@ -48,15 +51,67 @@ const FLOW_LABEL = { w: 64, h: 34 };
 
 export const busLabel = (b: Pick<NetworkBus, "id" | "name">) => b.name.trim() || `Bus ${b.id}`;
 
+/** A branch, or a DC line carried with the branches so that scopes, layout
+ *  and off-page markers treat both alike. */
+export type Link = NetworkBranch & { dc?: NetworkDcLine };
+
+/** Keeps DC lines' `index` clear of branch indexes in symbol ids. */
+const DC_INDEX = 1_000_000;
+
+const linkCache = new WeakMap<CaseNetwork, Link[]>();
+/** Every branch and DC line of the case. Networks without `dc_lines` (from
+ *  an older backend) just have none. */
+export function linksOf(net: CaseNetwork): Link[] {
+  let links = linkCache.get(net);
+  if (!links) {
+    links = [
+      ...net.branches,
+      ...(net.dc_lines ?? []).map((d) => ({
+        index: DC_INDEX + d.index,
+        element: d.element,
+        circuit: d.name,
+        winding: 0,
+        from: d.from,
+        to: d.to,
+        online: d.online,
+        transformer: false,
+        rate_a: 0,
+        tap: 1,
+        shift: 0,
+        dc: d,
+      })),
+    ];
+    linkCache.set(net, links);
+  }
+  return links;
+}
+
+/** The case record a branch or DC line stands for. */
+export const linkRef = (br: Link): CaseRef =>
+  br.dc ? { kind: "dcline", id: br.dc.index, element: br.element } : { kind: "branch", id: br.index, element: br.element };
+
+/** Symbol data for a DC line drawn from `upper` down to `lower`. */
+export function dcLinkData(d: NetworkDcLine, upperKV: number, lowerKV: number, reversed: boolean): DcLinkData {
+  return {
+    label: `DC ${d.name}`,
+    scheduledMW: d.mw,
+    upperKV,
+    lowerKV,
+    caseRef: { kind: "dcline", id: d.index, element: d.element },
+    reversed: reversed || undefined,
+    outOfService: !d.online || undefined,
+  };
+}
+
 interface Adjacent {
-  branch: NetworkBranch;
+  branch: Link;
   other: number;
 }
 
 function adjacency(net: CaseNetwork): Map<number, Adjacent[]> {
   const adj = new Map<number, Adjacent[]>();
   for (const b of net.buses) adj.set(b.id, []);
-  for (const br of net.branches) {
+  for (const br of linksOf(net)) {
     adj.get(br.from)?.push({ branch: br, other: br.to });
     adj.get(br.to)?.push({ branch: br, other: br.from });
   }
@@ -182,7 +237,7 @@ export interface Generated {
   /** Branches to buses outside the scope, drawn as off-page markers. */
   boundary: number;
   /** Branches from the new buses to buses already drawn (see `Piece.drawn`). */
-  links: NetworkBranch[];
+  links: Link[];
 }
 
 type EdgeSpec = {
@@ -227,8 +282,9 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
   const busById = new Map(net.buses.map((b) => [b.id, b]));
   // The anchor only joins the new buses; its other branches are already drawn.
   const touchesAnchor = (br: NetworkBranch) => br.from === anchor || br.to === anchor;
-  const inner = net.branches.filter((br) => chosen.has(br.from) && chosen.has(br.to));
-  const crossing = net.branches.filter((br) => chosen.has(br.from) !== chosen.has(br.to) && !touchesAnchor(br));
+  const all = linksOf(net);
+  const inner = all.filter((br) => chosen.has(br.from) && chosen.has(br.to));
+  const crossing = all.filter((br) => chosen.has(br.from) !== chosen.has(br.to) && !touchesAnchor(br));
   const boundary = crossing.filter((br) => !drawn.has(chosen.has(br.from) ? br.to : br.from));
   const links = crossing.filter((br) => drawn.has(chosen.has(br.from) ? br.to : br.from));
   const gens = net.generators.filter((g) => chosen.has(g.bus));
@@ -326,9 +382,33 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const [upper, lower] = reversed ? [br.to, br.from] : [br.from, br.to];
     bump(upper);
     bump(lower);
-    const ref = { kind: "branch" as const, id: br.index, element: br.element };
+    const ref = linkRef(br);
     const outOfService = !br.online || undefined;
-    if (br.transformer) {
+    if (br.dc) {
+      const id = `dc${br.dc.index}`;
+      nodes.push({
+        id,
+        width: DC_LINK.w,
+        height: DC_LINK.h,
+        ports: [port(`${id}:a`, DC_LINK.w / 2, 0, "NORTH"), port(`${id}:b`, DC_LINK.w / 2, DC_LINK.h, "SOUTH")],
+        labels: [outside("DC", "H_RIGHT", SIDE_LABEL)],
+        layoutOptions: { ...fixedPorts, ...row(upper, true) },
+      });
+      const data = dcLinkData(br.dc, kv(upper), kv(lower), reversed);
+      rfNodes.set(id, { id, type: "dcLink", position: { x: 0, y: 0 }, data } as SLDNode);
+      specs.push({
+        id: `e-${id}-a`,
+        source: { node: `b${upper}` },
+        target: { node: id, port: `${id}:a`, handle: "dc-top" },
+        data: conductor(kv(upper), { outOfService }),
+      });
+      specs.push({
+        id: `e-${id}-b`,
+        source: { node: id, port: `${id}:b`, handle: "dc-bottom" },
+        target: { node: `b${lower}` },
+        data: conductor(kv(lower), { outOfService }),
+      });
+    } else if (br.transformer) {
       const id = `t${br.index}`;
       nodes.push({
         id,
@@ -377,7 +457,8 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const far = inside === br.from ? br.to : br.from;
     const farBus = busById.get(far);
     const farName = farBus ? busLabel(farBus) : `Bus ${far}`;
-    const text = farName === `Bus ${far}` ? `To ${farName}` : `To ${farName} (${far})`;
+    const via = br.dc ? " by DC" : "";
+    const text = farName === `Bus ${far}` ? `To ${farName}${via}` : `To ${farName} (${far})${via}`;
     bump(inside);
     const id = `o${br.index}`;
     nodes.push({
@@ -393,7 +474,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       bus: far,
       busName: farBus ? busLabel(farBus) : "",
       voltageKV: kv(inside),
-      caseRef: { kind: "branch", id: br.index, element: br.element },
+      caseRef: linkRef(br),
       // Flow is read at the inside end, so "reversed" means inside is "to".
       reversed: inside === br.to || undefined,
       outOfService: !br.online || undefined,
@@ -404,7 +485,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       source: { node: `b${inside}` },
       target: { node: id, port: `${id}:p`, handle: "op-top" },
       data: conductor(kv(inside), {
-        caseRef: { kind: "branch", id: br.index, element: br.element },
+        caseRef: linkRef(br),
         reversed: inside === br.to || undefined,
         outOfService: !br.online || undefined,
       }),

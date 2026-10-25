@@ -132,8 +132,10 @@ export function ConductorEdge({
   const overload = loading ? ink.alert(loading) : null;
   const offline = data?.outOfService;
 
+  // A wire standing for a DC line (to an off-page marker) is drawn dashed in ink.
+  const dc = data?.caseRef?.kind === "dcline";
   // With results on, wires go neutral so only loading stands out.
-  const base = results ? ink.wire : ink.voltage(kv);
+  const base = dc ? ink.line : results ? ink.wire : ink.voltage(kv);
   const stroke = selected ? SELECTED : offline ? ink.off : (overload ?? base);
   const width = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
 
@@ -163,7 +165,7 @@ export function ConductorEdge({
       <BaseEdge
         id={id}
         path={path}
-        style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : undefined }}
+        style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : dc ? "6 4" : undefined }}
       />
       {selected && pts && <SegmentGrips id={id} points={pts} />}
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}

@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -346,6 +346,25 @@ await shot("theme-dark");
 for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Light"; i++) await theme.click();
 assert(!(await page.evaluate(() => document.documentElement.classList.contains("dark"))), "light theme applied");
 assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white")), "theme changes colours");
+
+// DC lines: one hop around a DC rectifier bus draws each DC line as a
+// converter pair down to its inverter bus, and the legend names it.
+if (STANNUM_RAW_DC) {
+  await queue(STANNUM_RAW_DC);
+  await page.getByRole("button", { name: "Open another…" }).click();
+  await page.getByRole("button", { name: "Diagram", exact: true }).click();
+  await page.getByRole("button", { name: "From case" }).click();
+  await page.getByLabel(/Around a bus/).check();
+  await page.getByRole("combobox", { name: "Bus number" }).fill("301");
+  await page.getByLabel("Hops out").selectOption("1");
+  page.once("dialog", (d) => d.accept()); // replace the edited drawing
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  await page.locator(".react-flow__node-dcLink").first().waitFor();
+  assert.equal(await page.locator(".react-flow__node-dcLink").count(), 2, "both DC lines from bus 301 drawn");
+  assert.match(await page.getByTestId("voltage-legend").innerText(), /DC line/, "legend names DC lines");
+  await shot("diagram-dc");
+}
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();

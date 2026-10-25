@@ -35,7 +35,12 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
         let import = rs_power::parse_raw_with_options(text, &rs_power::RawOptions::default())
             .map_err(|e| e.to_string())?;
         Ok(PowerCase {
-            elements: Elements::from_raw(&import.branch_sources, &import.generator_sources),
+            elements: Elements::from_raw(
+                &import.case,
+                &import.branch_sources,
+                &import.generator_sources,
+                &import.dc_line_names,
+            ),
             case: import.case,
             warnings: import
                 .warnings

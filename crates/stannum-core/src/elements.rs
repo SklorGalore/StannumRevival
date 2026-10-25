@@ -39,6 +39,12 @@ pub fn generator(bus: u32, id: &str) -> String {
     format!("generator:{bus}:{id}")
 }
 
+/// The shared id of a two-terminal DC line, such as `dcline:101:205:DC1`.
+pub fn dc_line(from: u32, to: u32, name: &str) -> String {
+    let (a, b) = if from <= to { (from, to) } else { (to, from) };
+    format!("dcline:{a}:{b}:{name}")
+}
+
 /// What one rs-power branch row is, in shared terms.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct BranchElement {
@@ -60,11 +66,18 @@ pub struct GeneratorElement {
 pub struct Elements {
     pub branches: Vec<BranchElement>,
     pub generators: Vec<GeneratorElement>,
+    /// One id per row of `case.dcline`.
+    pub dc_lines: Vec<String>,
 }
 
 impl Elements {
     /// From the RAW records rs-power kept for each row.
-    pub fn from_raw(branches: &[BranchSource], generators: &[GeneratorSource]) -> Self {
+    pub fn from_raw(
+        case: &Case,
+        branches: &[BranchSource],
+        generators: &[GeneratorSource],
+        dc_names: &[String],
+    ) -> Self {
         Self {
             branches: branches
                 .iter()
@@ -79,6 +92,13 @@ impl Elements {
                 .map(|s| GeneratorElement {
                     element: generator(s.bus, &s.id),
                     machine_id: s.id.clone(),
+                })
+                .collect(),
+            dc_lines: dc_rows(case)
+                .enumerate()
+                .map(|(i, (from, to))| {
+                    let name = dc_names.get(i).map_or("1", String::as_str);
+                    dc_line(from, to, name)
                 })
                 .collect(),
         }
@@ -121,11 +141,28 @@ impl Elements {
                 }
             })
             .collect();
+        let dc_lines = dc_rows(case)
+            .map(|(from, to)| {
+                let (_, n) = next(dc_line(from, to, ""));
+                dc_line(from, to, &n)
+            })
+            .collect();
         Self {
             branches,
             generators,
+            dc_lines,
         }
     }
+}
+
+/// Rectifier and inverter bus of each DC line row.
+fn dc_rows(case: &Case) -> impl Iterator<Item = (u32, u32)> + '_ {
+    case.dcline.iter().flatten().map(|row| {
+        (
+            row.first().copied().unwrap_or(0.0) as u32,
+            row.get(1).copied().unwrap_or(0.0) as u32,
+        )
+    })
 }
 
 #[cfg(test)]

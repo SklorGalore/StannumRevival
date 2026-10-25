@@ -8,6 +8,9 @@ import type { BusData } from "../../store/types";
 /** Which colour stands for which base kV, for the voltages in the drawing. */
 export function VoltageLegend() {
   const nodes = useDiagramStore((s) => s.nodes);
+  const hasDc = useDiagramStore(
+    (s) => s.nodes.some((n) => n.type === "dcLink") || s.edges.some((e) => e.data?.caseRef?.kind === "dcline")
+  );
   const ink = useInk();
   const levels = useMemo(() => {
     const kvs = new Set<number>();
@@ -24,7 +27,7 @@ export function VoltageLegend() {
     return [...byLevel.values()];
   }, [nodes]);
 
-  if (ink.mono || levels.length < 2) return null;
+  if (ink.mono || levels.length + Number(hasDc) < 2) return null;
   return (
     <Panel position="top-right">
       <div
@@ -38,6 +41,14 @@ export function VoltageLegend() {
             <span className="tabular-nums">{kvs.map(fmt).join(", ")} kV</span>
           </div>
         ))}
+        {hasDc && (
+          <div className="flex items-center gap-2 leading-5">
+            <svg width={20} height={6} className="shrink-0">
+              <line x1={0} y1={3} x2={20} y2={3} stroke={ink.line} strokeWidth={2} strokeDasharray="6 4" />
+            </svg>
+            <span>DC line</span>
+          </div>
+        )}
       </div>
     </Panel>
   );
