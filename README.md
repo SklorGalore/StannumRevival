@@ -185,6 +185,10 @@ STANNUM_MATPOWER=$F/case9.m STANNUM_RAW=$F/five_bus.raw STANNUM_RAW_B=$F/five_bu
 comparison as JSON in the same shape as a small script over the Python
 case-diff, which makes it easy to confirm the two agree on new files.
 
+Branching, pull request rules and the repository's security settings are in
+[CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see
+[SECURITY.md](SECURITY.md).
+
 ## Layout
 
 ```
