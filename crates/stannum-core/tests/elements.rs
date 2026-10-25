@@ -207,10 +207,16 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
             assert!((d.loss_mw - detail.line_loss_mw - detail.converter_loss_mw).abs() < 1e-6);
             assert!(d.loss_mw > 50.0 && d.qt < 0.0);
         }
+        // VSC lines lose converter and I²R power; multi-terminal rows stay lossless.
+        for d in &dc[2..4] {
+            let v = d.vsc_detail.as_ref().unwrap();
+            let losses = v.from_loss_mw + v.to_loss_mw + v.line_loss_mw;
+            assert!(d.detail.is_none() && (d.loss_mw - losses).abs() < 1e-6 && losses > 0.5);
+        }
         assert!(
-            dc[2..]
+            dc[4..]
                 .iter()
-                .all(|d| d.detail.is_none() && d.loss_mw.abs() < 1e-9)
+                .all(|d| d.vsc_detail.is_none() && d.loss_mw.abs() < 1e-9)
         );
         if enforce_q_limits {
             assert!(dc.iter().all(|d| d.q_violation < 1e-3));
@@ -230,6 +236,6 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
         report
             .dc_lines
             .iter()
-            .all(|d| d.detail.is_none() && d.loss_mw.abs() < 1e-9)
+            .all(|d| d.detail.is_none() && d.vsc_detail.is_none() && d.loss_mw.abs() < 1e-9)
     );
 }

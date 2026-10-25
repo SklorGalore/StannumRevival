@@ -3,6 +3,7 @@ use crate::{
     BusType, Case, Error, Generator,
     dc::{self, LccLine, LccSolution, TapTargets, Taps},
     network::Network,
+    vsc::{self, DcState, VscAcControl, VscLine, VscSolution},
 };
 use faer::{
     Mat,
@@ -57,13 +58,18 @@ pub enum DcModel {
     #[default]
     Simplified,
     /// The listed rows use the detailed two-terminal LCC model (see
-    /// [`LccLine`]); other rows stay simplified. The DC operating point is
-    /// recomputed from the terminal voltages at every Newton step, and the
-    /// converter terminals become voltage-dependent loads that
-    /// absorb reactive power. DC (linear) solves use the simplified model.
+    /// [`LccLine`]) or VSC model (see [`VscLine`]); other rows stay
+    /// simplified. The LCC operating point is recomputed from the terminal
+    /// voltages at every Newton step, and the converter terminals become
+    /// voltage-dependent loads that absorb reactive power. VSC lines keep
+    /// their AC voltage or power factor control, with active power from the
+    /// DC-side solution and passes that enforce converter MVA and current
+    /// limits. DC (linear) solves use the simplified model.
     Detailed {
-        /// Detailed data, each naming its `case.dcline` row.
+        /// Detailed LCC data, each naming its `case.dcline` row.
         lines: Vec<LccLine>,
+        /// Detailed VSC data, each naming its `case.dcline` row.
+        vsc_lines: Vec<VscLine>,
         /// Step converter taps between Newton solves to hold the scheduled
         /// DC voltage and keep firing angles in range (PSS/E's DC tap
         /// adjustment). When false, the taps stay at their case values.
@@ -117,6 +123,11 @@ pub struct PowerFlowResult {
     pub lcc: Vec<LccSolution>,
     /// Number of passes that changed one or more DC converter taps.
     pub dc_tap_passes: usize,
+    /// Operating points of the detailed VSC lines, in the order given by
+    /// [`DcModel::Detailed`]. Empty for the simplified model.
+    pub vsc: Vec<VscSolution>,
+    /// Number of passes that reduced VSC output to converter limits.
+    pub vsc_limit_passes: usize,
 }
 
 fn linear(
@@ -267,6 +278,139 @@ impl LccTerminal<'_> {
             C::new(solution.inverter_mw, -solution.inverter_mvar) / base_mva,
         ]
     }
+}
+
+/// A detailed VSC line during an AC solve: its terminal generators (from
+/// end, then to end of its `dcline` row) and the scale on its power order.
+pub(crate) struct VscTerminal<'a> {
+    line: &'a VscLine,
+    gens: [usize; 2],
+    scale: f64,
+    state: DcState,
+    limited: [bool; 2],
+}
+
+impl VscTerminal<'_> {
+    /// RAW converter index at row end `e` (0 from, 1 to).
+    fn converter(&self, e: usize) -> usize {
+        if e == 0 {
+            self.line.from
+        } else {
+            1 - self.line.from
+        }
+    }
+
+    /// Write the DC solution into the terminal generators.
+    fn apply(&self, case: &mut Case) {
+        for e in 0..2 {
+            let c = self.converter(e);
+            let p = self.state.injection_mw[c];
+            let g = &mut case.generators[self.gens[e]];
+            g.pg = p;
+            let conv = &self.line.converters[c];
+            if conv.ac_control == VscAcControl::PowerFactor {
+                let q = conv.power_factor_q(p);
+                (g.qg, g.qmin, g.qmax) = (q, q, q);
+            }
+        }
+    }
+
+    fn solution(&self, case: &Case) -> VscSolution {
+        let (f, t) = (self.converter(0), self.converter(1));
+        let s = &self.state;
+        let current = if f == 0 { s.current_ka } else { -s.current_ka };
+        VscSolution {
+            row: self.line.row,
+            current_ka: current,
+            from_kv: s.kv[f],
+            to_kv: s.kv[t],
+            from_mw: -s.injection_mw[f],
+            to_mw: s.injection_mw[t],
+            from_mvar: case.generators[self.gens[0]].qg,
+            to_mvar: case.generators[self.gens[1]].qg,
+            from_loss_mw: s.loss_mw[f],
+            to_loss_mw: s.loss_mw[t],
+            line_loss_mw: self.line.resistance * current * current,
+            order_scale: self.scale,
+            from_limited: self.limited[0],
+            to_limited: self.limited[1],
+        }
+    }
+}
+
+/// The reported operating point of a detailed VSC line that carries nothing.
+fn idle_vsc(line: &VscLine) -> VscSolution {
+    VscSolution {
+        row: line.row,
+        current_ka: 0.0,
+        from_kv: 0.0,
+        to_kv: 0.0,
+        from_mw: 0.0,
+        to_mw: 0.0,
+        from_mvar: 0.0,
+        to_mvar: 0.0,
+        from_loss_mw: 0.0,
+        to_loss_mw: 0.0,
+        line_loss_mw: 0.0,
+        order_scale: 1.0,
+        from_limited: false,
+        to_limited: false,
+    }
+}
+
+/// Reduce VSC output where a converter exceeds its MVA or current limit.
+/// Returns whether anything changed that needs another Newton solve.
+fn vsc_limit_pass(
+    terminals: &mut [VscTerminal<'_>],
+    net: &Network,
+    case: &mut Case,
+    v: &[C],
+    enforce_q_limits: bool,
+) -> Result<bool, Error> {
+    let mut changed = false;
+    for t in terminals.iter_mut() {
+        let mut scale = t.scale;
+        for e in 0..2 {
+            let conv = &t.line.converters[t.converter(e)];
+            let g = &case.generators[t.gens[e]];
+            let Some(&i) = net.by_id.get(&g.bus) else {
+                continue;
+            };
+            let kv = v[i].norm() * case.buses[net.external[i]].base_kv;
+            let limit = conv.mva_limit(kv);
+            let s = g.pg.hypot(g.qg);
+            if s <= limit * (1.0 + 1e-6) + 1e-6 {
+                continue;
+            }
+            t.limited[e] = true;
+            let (p, q) = if conv.ac_control == VscAcControl::PowerFactor {
+                // P and Q move together at a fixed power factor.
+                (g.pg * limit / s, g.qg * limit / s)
+            } else {
+                vsc::reduce(g.pg, g.qg, limit, conv.power_weighting)
+            };
+            if g.pg.abs() > 1e-9 && p.abs() < g.pg.abs() * (1.0 - 1e-9) {
+                scale = scale.min(t.scale * p.abs() / g.pg.abs());
+            }
+            if conv.ac_control == VscAcControl::Voltage && q.abs() < g.qg.abs() * (1.0 - 1e-9) {
+                let g = &mut case.generators[t.gens[e]];
+                let cap = q.abs();
+                if g.qmax > cap || g.qmin < -cap {
+                    g.qmax = g.qmax.min(cap);
+                    g.qmin = g.qmin.max(-cap);
+                    // Tighter limits only act when they are enforced.
+                    changed |= enforce_q_limits;
+                }
+            }
+        }
+        if scale < t.scale - 1e-12 {
+            t.scale = scale;
+            t.state = t.line.dc_state(scale).map_err(Error::InvalidCase)?;
+            t.apply(case);
+            changed = true;
+        }
+    }
+    Ok(changed)
 }
 
 /// Update every detailed DC line at voltages `v`; return per-bus injections.
@@ -571,6 +715,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         q_limit_passes: 0,
         lcc: Vec::new(),
         dc_tap_passes: 0,
+        vsc: Vec::new(),
+        vsc_limit_passes: 0,
     })
 }
 
@@ -588,6 +734,7 @@ fn solve_core(
     opt: &PowerFlowOptions,
     lines: &[&LccLine],
     adjust_taps: bool,
+    vsc_terminals: &mut [VscTerminal<'_>],
 ) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
@@ -661,7 +808,7 @@ fn solve_core(
             }
         }
     }
-    let (mut iterations, mut passes, mut tap_passes) = (0, 0, 0);
+    let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
     let (status, residual) = loop {
         let (status, it, residual) = newton(&net, &case, &kinds, &mut v, &mut terminals, opt)?;
         iterations += it;
@@ -689,6 +836,13 @@ fn solve_core(
                 }
                 continue;
             }
+        }
+        if vsc_passes < MAX_TAP_PASSES
+            && vsc_limit_pass(vsc_terminals, &net, &mut case, &v, opt.enforce_q_limits)?
+        {
+            vsc_passes += 1;
+            log::debug!("VSC limit pass {vsc_passes} reduced converter output");
+            continue;
         }
         if !opt.enforce_q_limits {
             break (status, residual);
@@ -748,8 +902,9 @@ fn solve_core(
                     SolveStatus::ReactiveLimitsInfeasible,
                     iterations,
                     residual,
-                    [passes, tap_passes],
+                    [passes, tap_passes, vsc_passes],
                     &terminals,
+                    vsc_terminals,
                 );
             }
         }
@@ -785,8 +940,9 @@ fn solve_core(
         status,
         iterations,
         residual,
-        [passes, tap_passes],
+        [passes, tap_passes, vsc_passes],
         &terminals,
+        vsc_terminals,
     )
 }
 
@@ -804,8 +960,9 @@ fn finish_ac(
     status: SolveStatus,
     iterations: usize,
     residual: f64,
-    [passes, tap_passes]: [usize; 2],
+    [passes, tap_passes, vsc_passes]: [usize; 3],
     terminals: &[LccTerminal<'_>],
+    vsc_terminals: &[VscTerminal<'_>],
 ) -> Result<PowerFlowResult, Error> {
     let mut offsets = vec![0.0; net.external.len()];
     for ((island, &original), &reference) in
@@ -832,6 +989,7 @@ fn finish_ac(
         flows[e.original] = [sf.re, sf.im, st.re, st.im];
     }
     zero_offline(net, &mut case);
+    let vsc = vsc_terminals.iter().map(|t| t.solution(&case)).collect();
     Ok(PowerFlowResult {
         case,
         branch_flows: flows,
@@ -841,6 +999,8 @@ fn finish_ac(
         q_limit_passes: passes,
         lcc: terminals.iter().map(|t| t.solution.clone()).collect(),
         dc_tap_passes: tap_passes,
+        vsc,
+        vsc_limit_passes: vsc_passes,
     })
 }
 
@@ -1007,22 +1167,66 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
     let original_generators = input.generators.len();
     let mut working = input.clone();
     let rows = input.dcline.as_ref().map_or(0, Vec::len);
-    let (detailed, adjust_taps): (Vec<&LccLine>, bool) = match &opt.dc_model {
-        DcModel::Detailed { lines, adjust_taps } if opt.model == Model::Ac => {
-            let mut seen = vec![false; rows];
-            for line in lines {
-                line.validate().map_err(Error::InvalidCase)?;
-                if line.row >= rows || std::mem::replace(&mut seen[line.row], true) {
-                    return Err(Error::InvalidCase(format!(
-                        "detailed DC line {} names a missing or repeated dcline row {}",
-                        line.name, line.row
-                    )));
+    let (detailed, adjust_taps, detailed_vsc): (Vec<&LccLine>, bool, Vec<&VscLine>) =
+        match &opt.dc_model {
+            DcModel::Detailed {
+                lines,
+                vsc_lines,
+                adjust_taps,
+            } if opt.model == Model::Ac => {
+                let mut seen = vec![false; rows];
+                let mut claim = |row: usize, name: &str| {
+                    if row >= rows || std::mem::replace(&mut seen[row], true) {
+                        Err(Error::InvalidCase(format!(
+                            "detailed DC line {name} names a missing or repeated dcline row {row}"
+                        )))
+                    } else {
+                        Ok(())
+                    }
+                };
+                for line in lines {
+                    line.validate().map_err(Error::InvalidCase)?;
+                    claim(line.row, &line.name)?;
+                }
+                for line in vsc_lines {
+                    line.validate().map_err(Error::InvalidCase)?;
+                    claim(line.row, &line.name)?;
+                }
+                (
+                    lines.iter().collect(),
+                    *adjust_taps,
+                    vsc_lines.iter().collect(),
+                )
+            }
+            _ => (Vec::new(), false, Vec::new()),
+        };
+    // Detailed VSC rows keep their terminal generators, with active power
+    // from the DC-side solution.
+    let mut vsc_states = Vec::new();
+    if let Some(table) = &mut working.dcline {
+        for line in &detailed_vsc {
+            let row = &mut table[line.row];
+            if row[2] == 0.0 || !line.in_service {
+                row[2] = 0.0;
+                continue;
+            }
+            let state = line.dc_state(1.0).map_err(Error::InvalidCase)?;
+            let (f, t) = (line.from, 1 - line.from);
+            row[3] = -state.injection_mw[f];
+            row[15] = row[3] - state.injection_mw[t];
+            row[16] = 0.0;
+            for (k, c) in [(11, f), (13, t)] {
+                let conv = &line.converters[c];
+                if conv.ac_control == VscAcControl::PowerFactor {
+                    let q = conv.power_factor_q(state.injection_mw[c]);
+                    (row[k], row[k + 1]) = (q, q);
+                } else {
+                    (row[k], row[k + 1]) = (conv.qmin, conv.qmax);
                 }
             }
-            (lines.iter().collect(), *adjust_taps)
+            vsc_states.push((*line, state));
         }
-        _ => (Vec::new(), false),
-    };
+    }
     let mut skip = vec![false; rows];
     for line in &detailed {
         skip[line.row] = true;
@@ -1041,9 +1245,34 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
                 .is_some_and(|rows| rows[line.row][2] != 0.0)
         })
         .collect();
-    let mut result = solve_core(&working, opt, &active, adjust_taps).inspect_err(|error| {
-        log::error!("{:?} power-flow solve failed: {error}", opt.model);
-    })?;
+    let mut vsc_terminals: Vec<_> = vsc_states
+        .into_iter()
+        .filter_map(|(line, state)| {
+            let m = mappings.iter().find(|m| m.row == line.row)?;
+            Some(VscTerminal {
+                line,
+                gens: [m.from_generator, m.to_generator],
+                scale: 1.0,
+                state,
+                limited: [false; 2],
+            })
+        })
+        .collect();
+    let mut result = solve_core(&working, opt, &active, adjust_taps, &mut vsc_terminals)
+        .inspect_err(|error| {
+            log::error!("{:?} power-flow solve failed: {error}", opt.model);
+        })?;
+    let solved_vsc = std::mem::take(&mut result.vsc);
+    result.vsc = detailed_vsc
+        .iter()
+        .map(|line| {
+            solved_vsc
+                .iter()
+                .find(|s| s.row == line.row)
+                .cloned()
+                .unwrap_or_else(|| idle_vsc(line))
+        })
+        .collect();
     let vms: std::collections::HashMap<_, _> =
         result.case.buses.iter().map(|b| (b.id, b.vm)).collect();
     let vm = |bus: u32| vms.get(&bus).copied().unwrap_or(1.0);

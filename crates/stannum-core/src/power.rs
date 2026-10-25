@@ -20,6 +20,8 @@ pub struct PowerCase {
     /// Full data of the two-terminal (LCC) DC lines for the detailed model.
     /// Empty for MATPOWER cases, whose `dcline` rows carry no converter data.
     pub lcc_lines: Vec<rs_power::LccLine>,
+    /// Full data of the VSC DC lines for the detailed model.
+    pub vsc_lines: Vec<rs_power::VscLine>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -46,6 +48,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             case,
             warnings: Vec::new(),
             lcc_lines: Vec::new(),
+            vsc_lines: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -71,6 +74,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .map(dc_kind_label)
                 .collect(),
             lcc_lines: import.lcc_lines,
+            vsc_lines: import.vsc_lines,
             case: import.case,
             warnings: import
                 .warnings
@@ -100,7 +104,7 @@ pub enum StartChoice {
     Flat,
 }
 
-/// How two-terminal (LCC) DC lines are solved when the case has their data.
+/// How two-terminal (LCC) and VSC DC lines are solved when the case has their data.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DcModelChoice {
@@ -149,9 +153,12 @@ impl SolveSettings {
     /// model is chosen.
     pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
         let mut options = self.options();
-        if self.dc_model == DcModelChoice::Detailed && !power.lcc_lines.is_empty() {
+        if self.dc_model == DcModelChoice::Detailed
+            && (!power.lcc_lines.is_empty() || !power.vsc_lines.is_empty())
+        {
             options.dc_model = rs_power::DcModel::Detailed {
                 lines: power.lcc_lines.clone(),
+                vsc_lines: power.vsc_lines.clone(),
                 adjust_taps: self.adjust_dc_taps,
             };
         }
@@ -288,6 +295,41 @@ pub struct DcLineRow {
     pub q_violation: f64,
     /// Converter operating point from the detailed LCC model.
     pub detail: Option<LccDetail>,
+    /// Converter operating point from the detailed VSC model.
+    pub vsc_detail: Option<VscDetail>,
+}
+
+/// Operating point of a VSC DC line under the detailed model.
+#[derive(Clone, Debug, Serialize)]
+pub struct VscDetail {
+    /// DC current from the sending to the receiving end, kA.
+    pub current_ka: f64,
+    /// DC voltage at the sending and receiving converters, kV.
+    pub from_kv: f64,
+    pub to_kv: f64,
+    /// Converter losses at each end, MW.
+    pub from_loss_mw: f64,
+    pub to_loss_mw: f64,
+    pub line_loss_mw: f64,
+    /// Fraction of the power order kept after MVA or current limits.
+    pub order_scale: f64,
+    /// Whether each end's MVA or current limit reduced its output.
+    pub from_limited: bool,
+    pub to_limited: bool,
+}
+
+fn vsc_detail(s: &rs_power::VscSolution) -> VscDetail {
+    VscDetail {
+        current_ka: s.current_ka,
+        from_kv: s.from_kv,
+        to_kv: s.to_kv,
+        from_loss_mw: s.from_loss_mw,
+        to_loss_mw: s.to_loss_mw,
+        line_loss_mw: s.line_loss_mw,
+        order_scale: s.order_scale,
+        from_limited: s.from_limited,
+        to_limited: s.to_limited,
+    }
 }
 
 /// Operating point of a two-terminal DC line under the detailed model.
@@ -350,6 +392,8 @@ pub struct SolveReport {
     pub q_limit_passes: usize,
     /// Passes that stepped DC converter taps (detailed model).
     pub dc_tap_passes: usize,
+    /// Passes that reduced VSC output to converter MVA or current limits.
+    pub vsc_limit_passes: usize,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -527,6 +571,7 @@ pub fn report(
             let (from, to) = (d[0] as u32, d[1] as u32);
             let online = d[2] != 0.0;
             let detail = result.lcc.iter().find(|s| s.row == index).map(lcc_detail);
+            let vsc_detail = result.vsc.iter().find(|s| s.row == index).map(vsc_detail);
             let q_violation = if online && settings.model == ModelChoice::Ac && detail.is_none() {
                 outside(d[5], d[11], d[12]).max(outside(d[6], d[13], d[14]))
             } else {
@@ -554,6 +599,7 @@ pub fn report(
                 qmaxt: d[14],
                 q_violation,
                 detail,
+                vsc_detail,
             }
         })
         .collect();
@@ -585,6 +631,7 @@ pub fn report(
         iterations: result.iterations,
         q_limit_passes: result.q_limit_passes,
         dc_tap_passes: result.dc_tap_passes,
+        vsc_limit_passes: result.vsc_limit_passes,
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,

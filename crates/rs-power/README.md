@@ -173,6 +173,27 @@ rows stay simplified, and DC (linear) solves always use the simplified model.
   named by IF/IT/ID (the tap is applied inside the converter), a separate
   commutating bus (IC), and DCVMIN. Import warns when a line uses them.
 
+### Detailed VSC model
+
+With `all_dc_lines`, `RawImport::vsc_lines` keeps every VSC line that has one
+DC voltage converter (TYPE 1) and one power converter (TYPE 2) as a
+`VscLine`. Pass them as `DcModel::Detailed { vsc_lines, .. }`:
+
+- The power converter holds DCSET MW at its AC bus; the other holds DCSET kV
+  on the DC side. Converter losses are `ALOSS + BLOSS · Idc` (at least
+  MINLOSS), and the DC line loses `RDC · Idc²`, so the voltage end delivers
+  the order less all three.
+- On the AC side each converter holds its voltage within MINQ..MAXQ (MODE 1)
+  or its power factor (MODE 2), as in the simplified model.
+- After each converged Newton solve, a converter above SMAX or its IMAX
+  current at the solved voltage has its output cut, weighted by PWF (0 cuts
+  only P, 1 only Q): P through the power order, Q at a power factor end
+  directly, and Q at a voltage end through tighter Q limits (enforced when
+  `enforce_q_limits` is on). Cuts only shrink, so the passes end.
+- `PowerFlowResult::vsc` reports the DC current and voltages, each loss, the
+  kept fraction of the order, and which ends were limited.
+- Not modelled: remote voltage regulation (REMOT, RMPCT); import warns.
+
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
 revision layouts, all transformer CW/CZ combinations, partial winding statuses,

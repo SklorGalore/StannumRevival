@@ -2,6 +2,7 @@
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
     Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
+    VscAcControl, VscConverter, VscDcControl, VscLine,
 };
 use std::{collections::HashMap, path::Path};
 
@@ -53,6 +54,10 @@ pub struct RawImport {
     /// Every two-terminal DC line with its full RAW data, for the detailed
     /// DC model ([`crate::DcModel::Detailed`]). Each names its `case.dcline` row.
     pub lcc_lines: Vec<LccLine>,
+    /// Every VSC DC line with one DC-voltage and one power converter, with
+    /// its full RAW data, for the detailed DC model. Only filled when
+    /// [`RawOptions::all_dc_lines`] imports VSC rows.
+    pub vsc_lines: Vec<VscLine>,
 }
 
 /// Which RAW section a `case.dcline` row came from.
@@ -715,17 +720,22 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &mut ctx,
     )?;
     let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
+    let mut vsc_lines = vec![];
     if options.all_dc_lines {
+        let (vsc_rows, vsc_details) = convert_vsc(
+            section("voltage source converter"),
+            &case,
+            &indices,
+            &mut ctx,
+        )?;
+        for (k, detail) in vsc_details.into_iter().enumerate() {
+            if let Some(mut detail) = detail {
+                detail.row = dc_line_names.len() + k;
+                vsc_lines.push(detail);
+            }
+        }
         for (kind, rows) in [
-            (
-                DcLineKind::VoltageSourceConverter,
-                convert_vsc(
-                    section("voltage source converter"),
-                    &case,
-                    &indices,
-                    &mut ctx,
-                )?,
-            ),
+            (DcLineKind::VoltageSourceConverter, vsc_rows),
             (
                 DcLineKind::MultiTerminal,
                 convert_multi_terminal(section("multi-terminal DC"), &case, &indices, &mut ctx)?,
@@ -804,6 +814,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         dc_line_names,
         dc_line_kinds,
         lcc_lines,
+        vsc_lines,
     })
 }
 
@@ -1159,7 +1170,7 @@ fn convert_dc(
     ctx.warn(
         rows[0].line,
         true,
-        "two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
+        "in the simplified DC model, two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
     )?;
     case.dcline = Some(dc);
     Ok((names, lcc))
@@ -1273,6 +1284,9 @@ struct VscEnd {
     qmax: f64,
 }
 
+/// A converted `dcline` row with its RAW line name.
+type NamedRow = (String, Vec<f64>);
+
 /// Each VSC DC line becomes one lossless `dcline` row. The MW-controlled
 /// converter sets the transfer and the DC-voltage converter takes the other
 /// end. A converter in AC voltage control holds ACSET within MINQ..MAXQ; one
@@ -1282,11 +1296,12 @@ fn convert_vsc(
     case: &Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<Vec<(String, Vec<f64>)>, Error> {
+) -> Result<(Vec<NamedRow>, Vec<Option<VscLine>>), Error> {
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
     let mut out = vec![];
+    let mut details = vec![];
     for group in rows.chunks(3) {
         let r = &group[0];
         if group.len() != 3 {
@@ -1368,14 +1383,68 @@ fn convert_vsc(
         if line.iter().any(|n| !n.is_finite()) {
             return Err(r.error("nonfinite converted VSC DC line"));
         }
+        let detail = if types.contains(&1) && types.contains(&2) {
+            let converter = |c: &Record, t: u32| -> Result<VscConverter, Error> {
+                Ok(VscConverter {
+                    bus: c.id(0)?,
+                    dc_control: if t == 1 {
+                        VscDcControl::DcVoltage
+                    } else {
+                        VscDcControl::Power
+                    },
+                    ac_control: if c.optional(2, 1.0)? == 2.0 {
+                        VscAcControl::PowerFactor
+                    } else {
+                        VscAcControl::Voltage
+                    },
+                    dc_setpoint: c.num(3)?,
+                    ac_setpoint: c.optional(4, 1.0)?,
+                    loss_kw: c.optional(5, 0.0)?,
+                    loss_kw_per_amp: c.optional(6, 0.0)?,
+                    min_loss_kw: c.optional(7, 0.0)?,
+                    smax_mva: c.optional(8, 0.0)?,
+                    imax_amps: c.optional(9, 0.0)?,
+                    power_weighting: c.optional(10, 1.0)?,
+                    qmax: c.optional(11, 9999.0)?,
+                    qmin: c.optional(12, -9999.0)?,
+                    remote_bus: c.optional(13, 0.0)?.abs() as u32,
+                    remote_percent: c.optional(14, 100.0)?,
+                })
+            };
+            let detail = VscLine {
+                row: 0,
+                name: name.clone(),
+                in_service,
+                resistance: r.num(2)?,
+                converters: [converter(ends[0], types[0])?, converter(ends[1], types[1])?],
+                from: sending,
+            };
+            if detail
+                .converters
+                .iter()
+                .any(|c| c.remote_bus != 0 && c.remote_bus != c.bus)
+            {
+                ctx.warn(
+                    r.line,
+                    false,
+                    format!(
+                        "the detailed model of VSC DC line {name} regulates its own AC bus, not REMOT"
+                    ),
+                )?;
+            }
+            Some(detail)
+        } else {
+            None
+        };
         out.push((name, line));
+        details.push(detail);
     }
     ctx.warn(
         rows[0].line,
         true,
-        "VSC DC lines are lossless, regulate only their own AC bus, and ignore converter MVA and current limits",
+        "in the simplified DC model, VSC DC lines are lossless, regulate only their own AC bus, and ignore converter MVA and current limits",
     )?;
-    Ok(out)
+    Ok((out, details))
 }
 
 /// Each multi-terminal DC system becomes one lossless `dcline` row per

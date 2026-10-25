@@ -506,6 +506,8 @@ if (STANNUM_RAW_DC) {
   const first = await dcRows.first().innerText();
   assert.match(first, /Two-terminal[\s\S]*301[\s\S]*3021[\s\S]*-\d/, "rectifier absorbs Q");
   assert.match(first, /Rectifier/, "detailed model reports the controlling converter");
+  const vscRow = await dcRows.nth(2).innerText();
+  assert.match(vscRow, /VSC[\s\S]*At order/, "detailed VSC model reports its order state");
   await shot("power-dc-lines");
   await page.getByLabel("Enforce generator Q limits").uncheck();
 }
