@@ -7,6 +7,7 @@
 
 use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
+use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
 use serde::Serialize;
@@ -36,6 +37,9 @@ pub struct OpenCase {
     pub topology: Result<TopologyState, String>,
     pub solved: Option<(PowerFlowResult, SolveSettings)>,
     pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
+    /// The study's edits, and the case with them applied (None when there are none).
+    pub edits: Vec<Edit>,
+    pub edited: Option<PowerCase>,
 }
 
 #[derive(Default)]
@@ -255,6 +259,8 @@ impl OpenCase {
             topology,
             solved: None,
             sensitivity: None,
+            edits: vec![],
+            edited: None,
         }
     }
 
@@ -278,15 +284,41 @@ impl OpenCase {
         }
     }
 
+    /// The case power flow works on: the file with the study's edits applied.
     fn power_case(&self) -> Result<&PowerCase, String> {
-        self.power.as_ref().map_err(|e| e.clone())
+        let base = self.power.as_ref().map_err(|e| e.clone())?;
+        Ok(self.edited.as_ref().unwrap_or(base))
+    }
+
+    /// Replace the study's edits. Results from before the change are dropped,
+    /// since they describe a different case. On a bad edit nothing changes.
+    pub fn set_edits(&mut self, edits: Vec<Edit>) -> Result<(), String> {
+        let base = self.power.as_ref().map_err(|e| e.clone())?;
+        let edited = if edits.is_empty() {
+            None
+        } else {
+            Some(study::apply(base, &edits)?)
+        };
+        match edits.len() {
+            0 => log::info!("Study cleared: solves use the case as filed"),
+            n => log::info!(
+                "Study: {n} edit{} applied to the case",
+                if n == 1 { "" } else { "s" }
+            ),
+        }
+        self.edits = edits;
+        self.edited = edited;
+        self.solved = None;
+        self.sensitivity = None;
+        Ok(())
     }
 
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
         let power = self.power_case()?;
         let start = Instant::now();
         let options = settings.options_for(power);
-        let result = rs_power::solve(&power.case, &options).map_err(|e| e.to_string())?;
+        let result = rs_power::solve(&power.case, &options)
+            .map_err(|e| study::explain(e.to_string(), &self.edits))?;
         let solved_ms = elapsed_ms(start);
         let report = power::report(
             &result,

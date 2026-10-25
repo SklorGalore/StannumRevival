@@ -13,6 +13,7 @@ import type {
   SensitivitySummary,
   SolveReport,
   SolveSettings,
+  StudyEdit,
   TopoPath,
   TopologySnapshot,
 } from "./types";
@@ -26,6 +27,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
+  set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
   diff_compare: { label: "Comparing cases", done: "Compared cases" },
   save_diagram: { label: "Saving file", done: "Saved file" },
   diagram_network: { label: "Reading the case network", quiet: true },
@@ -104,6 +106,7 @@ export const api = {
   caseSummary: () => call<CaseSummary | null>("case_summary"),
 
   solve: (settings: SolveSettings) => call<SolveReport>("solve_power_flow", { settings }),
+  setStudyEdits: (edits: StudyEdit[]) => call<void>("set_study_edits", { edits }),
   sensitivities: (settings: SolveSettings) =>
     call<SensitivitySummary>("calculate_sensitivities", { settings }),
   responses: (column: number, quantity: string, engineering: boolean) =>

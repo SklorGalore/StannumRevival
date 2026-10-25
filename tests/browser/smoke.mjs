@@ -94,6 +94,35 @@ await page.getByRole("button", { name: "Close log" }).click();
 await log.waitFor({ state: "detached" });
 await page.getByTestId("log-status").filter({ hasText: /Sensitivities|Calculated sensitivities/ }).waitFor();
 
+// A study: take line 4-5 out, and the case re-solves without it.
+await page.getByRole("tab", { name: /Branches/ }).click();
+const line45 = page.locator("table:visible tbody tr:not([data-spacer])").nth(1);
+assert.equal((await line45.locator("td").nth(1).innerText()).trim(), "4");
+await line45.click();
+await page.getByTestId("table-selection").getByRole("button", { name: "Take out" }).click();
+await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
+await line45.locator("td", { hasText: /^Offline$/ }).waitFor();
+assert.equal((await line45.locator("td").nth(7).innerText()).trim(), "0.00", "no flow on the outaged line");
+await page.getByTestId("table-selection").getByRole("button", { name: "Put back" }).waitFor();
+// Redispatch a generator too.
+await page.getByRole("tab", { name: /Generators/ }).click();
+await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
+await page.getByTestId("table-selection").getByRole("button", { name: "Set output" }).click();
+await page.getByRole("dialog", { name: "Set output" }).getByLabel("MW").fill("120");
+await page.getByRole("button", { name: "Apply to study" }).click();
+await page.getByTestId("study-badge").filter({ hasText: "2 edits" }).waitFor();
+await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).locator("td", { hasText: /^120\.00$/ }).waitFor();
+await page.getByTestId("study-badge").click();
+const edits = page.getByTestId("study-edits");
+await edits.getByText("Line 4–5 circuit 1 out of service").waitFor();
+await edits.getByText(/Generator 1 at bus 2 set to 120\.0 MW \(was 163\.0 MW\)/).waitFor();
+await shot("study-edits");
+await page.getByRole("tab", { name: "Overview" }).click();
+await shot("study-overview");
+await page.getByRole("tab", { name: /Study/ }).click();
+await page.getByRole("button", { name: "Clear all" }).click();
+await page.getByTestId("study-badge").waitFor({ state: "detached" });
+
 // Topology on a RAW v35 case.
 await queue(STANNUM_RAW);
 await page.getByRole("button", { name: "Open another…" }).click();

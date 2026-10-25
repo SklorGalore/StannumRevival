@@ -530,3 +530,9 @@ export interface CaseNetwork {
   branches: NetworkBranch[];
   dc_lines: NetworkDcLine[];
 }
+
+/** One change a study makes to the open case (see stannum-core study.rs). */
+export type StudyEdit =
+  | { kind: "status"; element: string; online: boolean }
+  | { kind: "generation"; element: string; mw: number }
+  | { kind: "load"; bus: number; mw: number; mvar: number };

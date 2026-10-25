@@ -35,10 +35,13 @@ import { LoadingBar, RangeMark } from "../../ui/CellBars";
 import { FilterChips } from "../../ui/FilterChips";
 import { TopBranches, VoltageProfile } from "./OverviewCharts";
 import { useWidth } from "../../ui/useWidth";
+import { useStudy } from "../../store/studyStore";
+import { StudyActions } from "../../ui/StudyActions";
+import { StudyPanel } from "./StudyPanel";
 import type { FilterRule } from "../../lib/filters";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "warnings";
+type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "study" | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -758,6 +761,7 @@ function TableTab<T>({
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
               <DrawAroundButton element={element(selectedRow)} from="power" />
+              <StudyActions element={element(selectedRow)} />
             </span>
           )}
           <Button variant="ghost" className="whitespace-nowrap" onClick={exportCsv}>
@@ -887,17 +891,42 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     }
   }
 
-  const solve = () =>
-    run("solve", () => api.solve(settings), (r) => {
+  const solve = () => {
+    const revision = useStudy.getState().revision;
+    return run("solve", () => api.solve(settings), (r) => {
       setReport(r);
+      setSolvedRevision(revision);
       if (tab === "sensitivities" || tab === "warnings") setTab("overview");
     });
+  };
   const sensitivities = () =>
     run("sens", () => api.sensitivities(settings), (s) => {
       setSensitivity(s);
       setSensitivityVersion((v) => v + 1);
       setTab("sensitivities");
     });
+
+  // Study edits change the case: solve again so the results follow, and say
+  // so if the results on screen predate the latest edits.
+  const studyRevision = useStudy((s) => s.revision);
+  const studyCount = useStudy((s) => s.entries.length);
+  const [solvedRevision, setSolvedRevision] = useState(studyRevision);
+  const stale = !!report && solvedRevision !== studyRevision;
+  const lastStudyRevision = useRef(studyRevision);
+  useEffect(() => {
+    if (studyRevision === lastStudyRevision.current) return;
+    lastStudyRevision.current = studyRevision;
+    setSensitivity(null);
+    if (report && power?.available) void solve();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studyRevision]);
+  const studyShowRequest = useStudy((s) => s.showRequest);
+  const lastShowRequest = useRef(studyShowRequest);
+  useEffect(() => {
+    if (studyShowRequest === lastShowRequest.current) return;
+    lastShowRequest.current = studyShowRequest;
+    setTab("study");
+  }, [studyShowRequest]);
 
   // "Solve power flow" from the command palette.
   const solveRequest = useWorkspace((s) => s.solveRequest);
@@ -932,9 +961,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
         : []),
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
+      { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
-    [report, sensitivity, warnings.length]
+    [report, sensitivity, warnings.length, studyCount]
   );
 
   if (!summary) {
@@ -1006,10 +1036,24 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <ErrorBanner>{error}</ErrorBanner>
           </div>
         )}
-        {!report && !sensitivity && tab !== "warnings" ? (
+        {stale && (
+          <div className="p-3 pb-0">
+            <Notice>These results are from before your latest study edits. Solve again to update them.</Notice>
+          </div>
+        )}
+        {!report && !sensitivity && tab !== "warnings" && tab !== "study" ? (
           <EmptyState icon={<Play size={20} />} title="Ready to solve">
             {count(power.info!.counts.buses)} buses, {count(power.info!.counts.generators)} generators and{" "}
             {count(power.info!.counts.branches)} branches loaded.
+            {studyCount > 0 && (
+              <>
+                {" "}
+                <button className="text-teal-700 underline" onClick={() => setTab("study")}>
+                  {count(studyCount)} study edit{studyCount === 1 ? "" : "s"}
+                </button>{" "}
+                will apply.
+              </>
+            )}
             {warnings.length > 0 && (
               <>
                 {" "}
@@ -1119,6 +1163,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
               )}
+              {tab === "study" && <StudyPanel onShow={pick} />}
               {tab === "warnings" && (
                 <div className="h-full bg-white">
                   <DataTable

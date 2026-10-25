@@ -12,6 +12,7 @@ import { RotationField } from "./forms/RotationField";
 import { LabelField } from "./forms/LabelField";
 import type { SLDNode, SLDEdge, CaseRef, LabelOffset } from "../../store/types";
 import { elementLabel } from "../../lib/elements";
+import { StudyActions } from "../../ui/StudyActions";
 
 export function PropertiesPanel() {
   const nodes = useDiagramStore((s) => s.nodes);
@@ -107,6 +108,9 @@ function CaseElement({ caseRef }: { caseRef?: CaseRef }) {
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">In the open case</p>
       <p className="text-xs font-medium text-slate-700">{elementLabel(caseRef.element)}</p>
       <p className="font-mono text-[10px] text-slate-500 break-all">{caseRef.element}</p>
+      <div className="mt-1 -ml-1.5">
+        <StudyActions element={caseRef.element} />
+      </div>
     </div>
   );
 }
