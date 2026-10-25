@@ -58,11 +58,15 @@ export function useSharedSelection(): string | null {
     let point: { x: number; y: number } | null = null;
     if (hit.nodes[0]) point = centre(hit.nodes[0]);
     else {
-      const ends = [hit.edges[0].source, hit.edges[0].target]
-        .map((id) => nodes.find((n) => n.id === id))
-        .filter((n): n is SLDNode => !!n)
-        .map(centre);
-      if (ends.length) point = { x: ends.reduce((s, p) => s + p.x, 0) / ends.length, y: ends.reduce((s, p) => s + p.y, 0) / ends.length };
+      const route = (hit.edges[0].data as { route?: { x: number; y: number }[] } | undefined)?.route;
+      if (route && route.length > 1) point = halfway(route);
+      else {
+        const ends = [hit.edges[0].source, hit.edges[0].target]
+          .map((id) => nodes.find((n) => n.id === id))
+          .filter((n): n is SLDNode => !!n)
+          .map(centre);
+        if (ends.length) point = halfway(ends);
+      }
     }
     // A new drawing is first fitted to the screen, so centre after that.
     if (!point) return;
@@ -73,6 +77,20 @@ export function useSharedSelection(): string | null {
   }, [shared, fitRequest, getZoom, setCenter]);
 
   return missing;
+}
+
+/** The point half way along a polyline, so a routed wire is centred on the wire itself. */
+function halfway(points: { x: number; y: number }[]): { x: number; y: number } {
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
+  let left = lengths.reduce((a, b) => a + b, 0) / 2;
+  for (let i = 0; i < lengths.length; i++) {
+    if (left <= lengths[i] && lengths[i] > 0) {
+      const t = left / lengths[i];
+      return { x: points[i].x + t * (points[i + 1].x - points[i].x), y: points[i].y + t * (points[i + 1].y - points[i].y) };
+    }
+    left -= lengths[i];
+  }
+  return points[points.length - 1];
 }
 
 /** The bus to generate a drawing around for an element. */

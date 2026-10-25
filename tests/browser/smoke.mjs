@@ -151,6 +151,8 @@ assert.equal(await page.locator(".react-flow__node-bus.selected").count(), 1);
 await shot("selection-diagram");
 
 // Back the other way: a symbol picked in the diagram is selected in Topology.
+await page.locator(".react-flow__controls-fitview").click();
+await page.waitForTimeout(400);
 await page.locator(".react-flow__node-generator").first().click();
 await chip.filter({ hasText: /Generator/ }).waitFor();
 await chip.getByRole("button", { name: "Show in Topology" }).click();
@@ -173,6 +175,33 @@ assert.equal(await page.locator(".react-flow__node").count(), 0);
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node").count(), nodeCount);
 
+// A local drawing one hop around bus 4: the studied bus is highlighted and
+// branches leaving the drawing end in markers. Double-clicking a marker brings
+// that bus in without moving what is already drawn.
+await page.getByRole("button", { name: "From case" }).click();
+await page.getByLabel(/Around a bus/).check();
+await page.getByRole("combobox", { name: "Bus number" }).fill("4");
+await page.getByLabel("Hops out").selectOption("1");
+page.once("dialog", (d) => d.accept()); // replace the edited drawing
+await page.getByRole("button", { name: "Generate", exact: true }).click();
+await page.getByRole("dialog").waitFor({ state: "detached" });
+await page.getByText("Around").waitFor();
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
+const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
+assert.equal(await studied.count(), 1, "studied bus highlighted");
+const markers = page.locator(".react-flow__node-offPage");
+assert.equal(await markers.count(), 2, "markers toward buses 1 and 3");
+await page.waitForTimeout(400);
+const studiedAt = await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform);
+await markers.first().dblclick();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+assert.equal(await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform), studiedAt, "expand moved bus 4");
+await page.waitForTimeout(500); // wires go in a frame after the taps
+await shot("diagram-local");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "undo removes the expansion");
+
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 page.once("dialog", (d) => d.accept());
 await page.getByRole("button", { name: "New", exact: true }).click();
@@ -191,6 +220,105 @@ await page.locator(".react-flow__edge").first().waitFor();
 await shot("diagram-drawn");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
+
+// Wire routing: a wire drawn past a symbol goes around it and its label.
+await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: 330, y: 300 } });
+await load.hover();
+const loadTerminal = await load.locator(".react-flow__handle").boundingBox();
+await page.mouse.move(loadTerminal.x + loadTerminal.width / 2, loadTerminal.y + loadTerminal.height / 2);
+await page.mouse.down();
+await page.mouse.move(bar.x + 161, bar.y + bar.height + 4, { steps: 10 });
+await page.mouse.up();
+await page.locator(".react-flow__edge").first().waitFor();
+/** Screen rectangles a wire's path passes through, and the generator's outline with its text. */
+const wireVsSymbol = () =>
+  page.evaluate(() => {
+    const vp = document.querySelector(".react-flow__viewport");
+    const m = new DOMMatrix(getComputedStyle(vp).transform);
+    const origin = vp.parentElement.getBoundingClientRect();
+    const d = document.querySelector(".react-flow__edge-path").getAttribute("d");
+    const nums = d.match(/-?\d+(\.\d+)?/g).map(Number);
+    const pts = [];
+    for (let i = 0; i < nums.length; i += 2)
+      pts.push({ x: origin.left + m.a * nums[i] + m.e, y: origin.top + m.d * nums[i + 1] + m.f });
+    const gen = document.querySelector(".react-flow__node-generator");
+    let box = gen.getBoundingClientRect();
+    let [x0, y0, x1, y1] = [box.left, box.top, box.right, box.bottom];
+    for (const el of gen.querySelectorAll("svg *")) {
+      const r = el.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      [x0, y0, x1, y1] = [Math.min(x0, r.left), Math.min(y0, r.top), Math.max(x1, r.right), Math.max(y1, r.bottom)];
+    }
+    let crosses = false;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [p, q] = [pts[i], pts[i + 1]];
+      if (Math.max(p.x, q.x) > x0 && Math.min(p.x, q.x) < x1 && Math.max(p.y, q.y) > y0 && Math.min(p.y, q.y) < y1) crosses = true;
+    }
+    return { points: pts, crosses };
+  });
+await page.waitForFunction(() => document.querySelector(".react-flow__edge-path")?.getAttribute("d")?.split("L").length > 3);
+assert.equal((await wireVsSymbol()).crosses, false, "routed wire avoids the generator");
+await shot("diagram-routed");
+// Moving the load reroutes its wire on release, still clear of the generator.
+const loadBox = await load.boundingBox();
+const path = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+await page.mouse.move(loadBox.x + loadBox.width / 2, loadBox.y + loadBox.height - 10);
+await page.mouse.down();
+await page.mouse.move(loadBox.x + loadBox.width / 2 - 80, loadBox.y + loadBox.height + 30, { steps: 8 });
+await page.mouse.up();
+await page.waitForFunction((before) => document.querySelector(".react-flow__edge-path").getAttribute("d") !== before, path);
+await page.waitForTimeout(200);
+assert.equal((await wireVsSymbol()).crosses, false, "rerouted wire avoids the moved generator");
+// Drag a segment of the selected wire, then undo it.
+{
+  const { points } = await wireVsSymbol();
+  // Click the middle of the longest segment to select the wire.
+  let best = [points[0], points[1]];
+  for (let i = 0; i < points.length - 1; i++) {
+    const len = (p, q) => Math.abs(p.x - q.x) + Math.abs(p.y - q.y);
+    if (len(points[i], points[i + 1]) > len(...best)) best = [points[i], points[i + 1]];
+  }
+  await page.mouse.click((best[0].x + best[1].x) / 2, (best[0].y + best[1].y) / 2);
+}
+const grip = page.locator(".segment-grips [data-segment] rect").nth(1);
+await grip.waitFor();
+const before = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+const g = await grip.boundingBox();
+await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+await page.mouse.down();
+await page.mouse.move(g.x + g.width / 2 + 40, g.y + g.height / 2 + 40, { steps: 6 });
+await page.mouse.up();
+const after = await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d"));
+assert.notEqual(after, before, "dragging a segment moves it");
+await shot("diagram-segment-drag");
+await page.getByText("Adjusted by hand").waitFor();
+await page.keyboard.press("Control+z");
+assert.equal(await page.evaluate(() => document.querySelector(".react-flow__edge-path").getAttribute("d")), before);
+
+// On a fresh drawing, a generator dropped on the bar and a load dragged up to
+// it sit on the bus and are wired to it with no visible line.
+page.once("dialog", (d) => d.accept());
+await page.getByRole("button", { name: "New", exact: true }).click();
+await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
+const paneBox = await pane.boundingBox();
+const barNow = await page.locator(".react-flow__node-bus").boundingBox();
+await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, {
+  targetPosition: { x: barNow.x - paneBox.x + 40, y: barNow.y - paneBox.y + 20 },
+});
+// The wire has no length, so it counts as hidden: wait on the count.
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 1);
+const gen = await page.locator(".react-flow__node-generator").boundingBox();
+assert(Math.abs(gen.y - (barNow.y + barNow.height)) < 3, `generator hangs from the bar (${gen.y} vs ${barNow.y + barNow.height})`);
+const loadAt = await load.boundingBox();
+await page.mouse.move(loadAt.x + loadAt.width / 2, loadAt.y + 40);
+await page.mouse.down();
+await page.mouse.move(barNow.x + 160, barNow.y + barNow.height + 40, { steps: 10 });
+await page.mouse.up();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 2);
+const onBus = await load.boundingBox();
+assert(Math.abs(onBus.y - (barNow.y + barNow.height)) < 3, "dragged load snaps onto the bar");
+await shot("diagram-on-bus");
 
 // Inactive modules must not show the diagram through them.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();

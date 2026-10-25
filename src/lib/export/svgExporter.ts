@@ -66,6 +66,7 @@ export function exportSVG(flowContainer: HTMLElement, metadata: DiagramMetadata)
     for (const child of Array.from(edge.children)) {
       // Skip React Flow's wide transparent hit area.
       if (child.classList.contains("react-flow__edge-interaction")) continue;
+      if (child.classList.contains("segment-grips")) continue;
       copy.appendChild(cloneWithStyles(child));
     }
     content.appendChild(copy);

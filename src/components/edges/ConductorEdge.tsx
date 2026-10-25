@@ -4,6 +4,8 @@ import { branchFlow, loadingColor, mvar, mw, useResults } from "../../lib/diagra
 import { useInk, SELECTED } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
+import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
+import { SegmentGrips } from "./SegmentGrips";
 
 /** Wires meeting at each terminal, keyed "node/handle". */
 const degrees = new WeakMap<SLDEdge[], Map<string, number>>();
@@ -26,33 +28,16 @@ function useJunction(node: string, handle: string | null | undefined) {
   );
 }
 
-type Pt = { x: number; y: number };
-
-/** How far an end may drift from its routed position before the route is dropped. */
-const ROUTE_TOLERANCE = 6;
-
-/** The stored layout route, with its ends pinned to where the handles are now.
- *  Returns null once a symbol has been moved, so the wire falls back to an
- *  automatic right-angle path. */
+/** The stored route, with its ends pinned to where the handles are now.
+ *  Returns null once a symbol has moved, so the wire falls back to a simple
+ *  right-angle path until it is rerouted (on release, by useWireRouting). */
 function liveRoute(route: Pt[] | undefined, s: Pt, t: Pt): Pt[] | null {
   if (!route || route.length < 2) return null;
   const a = route[0];
   const b = route[route.length - 1];
   const near = (p: Pt, q: Pt) => Math.abs(p.x - q.x) <= ROUTE_TOLERANCE && Math.abs(p.y - q.y) <= ROUTE_TOLERANCE;
   if (!near(a, s) || !near(b, t)) return null;
-  const pts = route.map((p) => ({ ...p }));
-  // Move the end points and keep their first/last segment straight.
-  const pin = (i: number, j: number, to: Pt) => {
-    const vertical = Math.abs(pts[i].x - pts[j].x) < 0.5;
-    pts[i] = { ...to };
-    if (pts.length > 2) {
-      if (vertical) pts[j].x = to.x;
-      else pts[j].y = to.y;
-    }
-  };
-  pin(0, 1, s);
-  pin(pts.length - 1, pts.length - 2, t);
-  return pts;
+  return pinEnds(route, s, t);
 }
 
 /** The segment passing closest to a point, and the point's projection on it. */
@@ -120,6 +105,12 @@ export function ConductorEdge({
       seg = longestSegment(pts);
       mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
     }
+  } else if (Math.abs(s.x - t.x) < 1 && t.y > s.y - 8 && sourcePosition === "bottom" && targetPosition === "top") {
+    // Straight down, or no length at all for a symbol sitting on its bus:
+    // the step path would loop out past the terminals.
+    path = `M${s.x},${s.y} L${t.x},${t.y}`;
+    seg = { a: s, b: t };
+    mid = { x: s.x, y: (s.y + t.y) / 2 };
   } else {
     [path] = getSmoothStepPath({
       sourceX,
@@ -174,6 +165,7 @@ export function ConductorEdge({
         path={path}
         style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : undefined }}
       />
+      {selected && pts && <SegmentGrips id={id} points={pts} />}
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
       {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}
       {arrow && !offline && <path d={arrow} fill={overload ?? ink.result} />}

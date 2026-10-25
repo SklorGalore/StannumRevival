@@ -14,6 +14,7 @@ export function OffPageNode({ data, selected }: NodeProps<OffPageNodeType>) {
   return (
     <div className="node-wrapper relative" style={{ width: W, height: H }}>
       <svg width={W} height={H} overflow="visible" style={{ display: "block" }}>
+        <title>Double-click to bring {data.busName || `Bus ${data.bus}`} into the drawing</title>
         <line x1={CX} y1={0} x2={CX} y2={14} stroke={stroke} strokeWidth={STROKE} />
         {/* Off-page connector: a flag pointing away from the bus. */}
         <polygon
