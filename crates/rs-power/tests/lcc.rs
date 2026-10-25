@@ -70,7 +70,11 @@ fn line() -> LccLine {
 
 fn detailed(lines: Vec<LccLine>, adjust_taps: bool) -> PowerFlowOptions {
     PowerFlowOptions {
-        dc_model: DcModel::Detailed { lines, adjust_taps },
+        dc_model: DcModel::Detailed {
+            lines,
+            vsc_lines: Vec::new(),
+            adjust_taps,
+        },
         ..Default::default()
     }
 }

@@ -130,6 +130,23 @@ export interface DcLineRow {
   q_violation: number;
   /** Converter state from the detailed LCC model, when it was used. */
   detail?: LccDetail | null;
+  /** Converter state from the detailed VSC model, when it was used. */
+  vsc_detail?: VscDetail | null;
+}
+
+/** Operating point of a VSC DC line under the detailed model. */
+export interface VscDetail {
+  /** DC current from the sending to the receiving end, kA. */
+  current_ka: number;
+  from_kv: number;
+  to_kv: number;
+  from_loss_mw: number;
+  to_loss_mw: number;
+  line_loss_mw: number;
+  /** Fraction of the power order kept after MVA or current limits. */
+  order_scale: number;
+  from_limited: boolean;
+  to_limited: boolean;
 }
 
 /** Operating point of a two-terminal DC line under the detailed model. */
@@ -166,6 +183,8 @@ export interface SolveReport {
   q_limit_passes: number;
   /** Passes that stepped DC converter taps. */
   dc_tap_passes?: number;
+  /** Passes that reduced VSC output to converter MVA or current limits. */
+  vsc_limit_passes?: number;
   residual_pu: number;
   residual_mva: number;
   elapsed_ms: number;
