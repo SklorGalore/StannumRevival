@@ -52,6 +52,8 @@ fn dc_lines_match_paired_terminal_generators() {
                 pmax: 100.0,
                 pmin: -100.0,
                 extra: Vec::new(),
+                regulated_bus: None,
+                reactive_share: 100.0,
             },
             Generator {
                 bus: 7,
@@ -65,6 +67,8 @@ fn dc_lines_match_paired_terminal_generators() {
                 pmax: 100.0,
                 pmin: -100.0,
                 extra: Vec::new(),
+                regulated_bus: None,
+                reactive_share: 100.0,
             },
         ]);
         let options = PowerFlowOptions {

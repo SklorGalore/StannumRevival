@@ -16,6 +16,18 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Remote voltage regulation: `RawOptions::remote_regulation` keeps PSS/E IREG
+  and RMPCT in the new `Generator::regulated_bus` and
+  `Generator::reactive_share`. With reactive limits enforced, the regulated
+  bus is held at the setpoint, plant groups share reactive power by RMPCT,
+  generators starting at a limit start there, and a generator released at a
+  limit returns to voltage control when the bus voltage crosses back. This
+  makes the SyntheticUSA Q-limit solve converge.
+- Newton steps are shortened when they would change a voltage magnitude by
+  more than half.
+- The reactive-limit loop's island checks are linear in case size (they were
+  quadratic, which cost several seconds per pass at 80,000 buses).
+
 - Optional `rs-power-gui` desktop application for loading MATPOWER and RAW
   cases, configuring and running background AC/DC solves, reviewing convergence
   and operating-limit checks, browsing searchable result tables, calculating a

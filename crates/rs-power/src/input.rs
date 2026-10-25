@@ -405,6 +405,8 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
                 pmax: r[8],
                 pmin: r[9],
                 extra: r[10..].to_vec(),
+                regulated_bus: None,
+                reactive_share: 100.0,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
