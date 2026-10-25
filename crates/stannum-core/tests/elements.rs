@@ -197,9 +197,39 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
         assert_eq!(dc[2].kind, "vsc");
         // Line-commutated converters absorb within negative ranges.
         assert!(dc[0].qmaxf <= 0.0 && dc[0].qf < 0.0);
-        assert!(dc.iter().all(|d| d.online && d.loss_mw.abs() < 1e-9));
+        assert!(dc.iter().all(|d| d.online));
+        // Two-terminal lines use the detailed model by default: they lose
+        // I²R and report their converter state. The others stay lossless.
+        for d in &dc[..2] {
+            let detail = d.detail.as_ref().unwrap();
+            assert_eq!(detail.control, "rectifier");
+            assert!(detail.current_ka > 2.0 && detail.alpha > 0.0);
+            assert!((d.loss_mw - detail.line_loss_mw - detail.converter_loss_mw).abs() < 1e-6);
+            assert!(d.loss_mw > 50.0 && d.qt < 0.0);
+        }
+        assert!(
+            dc[2..]
+                .iter()
+                .all(|d| d.detail.is_none() && d.loss_mw.abs() < 1e-9)
+        );
         if enforce_q_limits {
             assert!(dc.iter().all(|d| d.q_violation < 1e-3));
         }
+        assert!(report.dc_tap_passes > 0);
     }
+    // The simplified model keeps MATPOWER's lossless rows.
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(stannum_core::power::SolveSettings {
+            dc_model: stannum_core::power::DcModelChoice::Simplified,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(
+        report
+            .dc_lines
+            .iter()
+            .all(|d| d.detail.is_none() && d.loss_mw.abs() < 1e-9)
+    );
 }

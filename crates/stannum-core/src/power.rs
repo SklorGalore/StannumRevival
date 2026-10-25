@@ -17,6 +17,9 @@ pub struct PowerCase {
     /// What each `case.dcline` row is: "two_terminal", "vsc" or
     /// "multi_terminal". MATPOWER cases only have two-terminal rows.
     pub dc_line_kinds: Vec<&'static str>,
+    /// Full data of the two-terminal (LCC) DC lines for the detailed model.
+    /// Empty for MATPOWER cases, whose `dcline` rows carry no converter data.
+    pub lcc_lines: Vec<rs_power::LccLine>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -42,6 +45,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
             case,
             warnings: Vec::new(),
+            lcc_lines: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -66,6 +70,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .copied()
                 .map(dc_kind_label)
                 .collect(),
+            lcc_lines: import.lcc_lines,
             case: import.case,
             warnings: import
                 .warnings
@@ -95,6 +100,21 @@ pub enum StartChoice {
     Flat,
 }
 
+/// How two-terminal (LCC) DC lines are solved when the case has their data.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DcModelChoice {
+    /// MATPOWER's lossless generator pair.
+    Simplified,
+    /// Converter equations with losses, firing angles and taps.
+    #[default]
+    Detailed,
+}
+
+fn yes() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SolveSettings {
     pub model: ModelChoice,
@@ -102,6 +122,11 @@ pub struct SolveSettings {
     pub tolerance: f64,
     pub max_iterations: usize,
     pub enforce_q_limits: bool,
+    #[serde(default)]
+    pub dc_model: DcModelChoice,
+    /// Step DC converter taps (detailed model only).
+    #[serde(default = "yes")]
+    pub adjust_dc_taps: bool,
 }
 
 impl Default for SolveSettings {
@@ -113,11 +138,27 @@ impl Default for SolveSettings {
             tolerance: d.tolerance,
             max_iterations: d.max_iterations,
             enforce_q_limits: false,
+            dc_model: DcModelChoice::Detailed,
+            adjust_dc_taps: true,
         }
     }
 }
 
 impl SolveSettings {
+    /// Solver options for `power`, using its LCC data when the detailed DC
+    /// model is chosen.
+    pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
+        let mut options = self.options();
+        if self.dc_model == DcModelChoice::Detailed && !power.lcc_lines.is_empty() {
+            options.dc_model = rs_power::DcModel::Detailed {
+                lines: power.lcc_lines.clone(),
+                adjust_taps: self.adjust_dc_taps,
+            };
+        }
+        options
+    }
+
+    /// Solver options without detailed DC line data.
     pub fn options(&self) -> PowerFlowOptions {
         PowerFlowOptions {
             model: match self.model {
@@ -242,8 +283,51 @@ pub struct DcLineRow {
     pub qmaxf: f64,
     pub qmint: f64,
     pub qmaxt: f64,
-    /// Largest MVAr outside either end's range; zero when within or offline.
+    /// Largest MVAr outside either end's range; zero when within, offline,
+    /// or solved with the detailed model (which has no Q range).
     pub q_violation: f64,
+    /// Converter operating point from the detailed LCC model.
+    pub detail: Option<LccDetail>,
+}
+
+/// Operating point of a two-terminal DC line under the detailed model.
+#[derive(Clone, Debug, Serialize)]
+pub struct LccDetail {
+    /// "rectifier", "inverter" (current margin), "angle_limited" or "blocked":
+    /// which converter holds the DC current.
+    pub control: &'static str,
+    /// Low DC voltage switched a power order to current control.
+    pub reduced_voltage: bool,
+    pub current_ka: f64,
+    pub rectifier_kv: f64,
+    pub inverter_kv: f64,
+    pub alpha: f64,
+    pub gamma: f64,
+    pub rectifier_tap: f64,
+    pub inverter_tap: f64,
+    pub line_loss_mw: f64,
+    pub converter_loss_mw: f64,
+}
+
+fn lcc_detail(s: &rs_power::LccSolution) -> LccDetail {
+    LccDetail {
+        control: match s.mode {
+            rs_power::LccMode::RectifierControl => "rectifier",
+            rs_power::LccMode::InverterControl => "inverter",
+            rs_power::LccMode::AngleLimited => "angle_limited",
+            rs_power::LccMode::Blocked => "blocked",
+        },
+        reduced_voltage: s.reduced_voltage,
+        current_ka: s.current_ka,
+        rectifier_kv: s.rectifier_kv,
+        inverter_kv: s.inverter_kv,
+        alpha: s.alpha,
+        gamma: s.gamma,
+        rectifier_tap: s.rectifier_tap,
+        inverter_tap: s.inverter_tap,
+        line_loss_mw: s.line_loss_mw,
+        converter_loss_mw: s.converter_loss_mw,
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -264,6 +348,8 @@ pub struct SolveReport {
     pub model: ModelChoice,
     pub iterations: usize,
     pub q_limit_passes: usize,
+    /// Passes that stepped DC converter taps (detailed model).
+    pub dc_tap_passes: usize,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -440,7 +526,8 @@ pub fn report(
         .map(|(index, d)| {
             let (from, to) = (d[0] as u32, d[1] as u32);
             let online = d[2] != 0.0;
-            let q_violation = if online && settings.model == ModelChoice::Ac {
+            let detail = result.lcc.iter().find(|s| s.row == index).map(lcc_detail);
+            let q_violation = if online && settings.model == ModelChoice::Ac && detail.is_none() {
                 outside(d[5], d[11], d[12]).max(outside(d[6], d[13], d[14]))
             } else {
                 0.0
@@ -466,6 +553,7 @@ pub fn report(
                 qmint: d[13],
                 qmaxt: d[14],
                 q_violation,
+                detail,
             }
         })
         .collect();
@@ -496,6 +584,7 @@ pub fn report(
         model: settings.model,
         iterations: result.iterations,
         q_limit_passes: result.q_limit_passes,
+        dc_tap_passes: result.dc_tap_passes,
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,

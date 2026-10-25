@@ -31,6 +31,8 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   tolerance: 1e-8,
   max_iterations: 10,
   enforce_q_limits: false,
+  dc_model: "detailed",
+  adjust_dc_taps: true,
 };
 
 export const CASE_FILTERS = [

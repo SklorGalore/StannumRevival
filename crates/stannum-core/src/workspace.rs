@@ -180,8 +180,8 @@ impl OpenCase {
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
         let power = self.power_case()?;
         let start = Instant::now();
-        let result =
-            rs_power::solve(&power.case, &settings.options()).map_err(|e| e.to_string())?;
+        let result = rs_power::solve(&power.case, &settings.options_for(power))
+            .map_err(|e| e.to_string())?;
         let report = power::report(
             &result,
             &power.elements,
@@ -197,9 +197,9 @@ impl OpenCase {
         &mut self,
         settings: SolveSettings,
     ) -> Result<power::SensitivitySummary, String> {
-        let case = &self.power_case()?.case;
+        let power = self.power_case()?;
         let start = Instant::now();
-        let s = rs_power::calculate_sensitivities(case, &settings.options())
+        let s = rs_power::calculate_sensitivities(&power.case, &settings.options_for(power))
             .map_err(|e| e.to_string())?;
         let summary = power::sensitivity_summary(&s, settings.model, elapsed_ms(start));
         self.sensitivity = Some((s, settings.model));

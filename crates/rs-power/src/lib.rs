@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 mod case;
+mod dc;
 mod input;
 mod network;
 mod output;
@@ -8,6 +9,7 @@ mod sensitivity;
 mod solver;
 
 pub use case::{Branch, Bus, BusType, Case, Generator};
+pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
 pub use input::{load_matpower, parse_matpower};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
@@ -21,7 +23,9 @@ pub use sensitivity::{
     make_jacobian, make_lodf, make_lodf_with_bridge_handling, make_ptdf, make_ptdf_columns,
     make_ptdf_transfers, make_ptdf_with_slack_matrix,
 };
-pub use solver::{Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve};
+pub use solver::{
+    DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
+};
 
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
 #[derive(Debug, thiserror::Error)]

@@ -8,6 +8,7 @@ import type {
   BranchRow,
   BusRow,
   GeneratorRow,
+  LccDetail,
   SolveReport,
   SolveSettings,
 } from "../../lib/analysis/types";
@@ -117,6 +118,18 @@ const DC_KIND_LABEL: Record<DcLineKind, string> = {
 
 const qRange = (lo: number, hi: number) => (lo === hi ? fixed(lo) : `${fixed(lo)} to ${fixed(hi)}`);
 
+const LCC_CONTROL_LABEL: Record<LccDetail["control"], string> = {
+  rectifier: "Rectifier",
+  inverter: "Inverter (margin)",
+  angle_limited: "Angle limited",
+  blocked: "Blocked",
+};
+
+/** A detailed-model value, blank for rows solved with the simplified model. */
+function detail(r: DcLineRow, show: (d: LccDetail) => string): string {
+  return r.detail ? show(r.detail) : "";
+}
+
 const dcLineColumns: Column<DcLineRow>[] = [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "name", header: "Name", value: (r) => parseElement(r.element)?.circuit ?? "" },
@@ -126,6 +139,19 @@ const dcLineColumns: Column<DcLineRow>[] = [
   { key: "to", header: "To", value: (r) => r.to, align: "right" },
   { key: "to_name", header: "To name", value: (r) => r.to_name },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
+  {
+    key: "control",
+    header: "Control",
+    title: "Detailed model: which converter holds the DC current",
+    value: (r) => (r.detail ? LCC_CONTROL_LABEL[r.detail.control] + (r.detail.reduced_voltage ? ", low voltage" : "") : ""),
+  },
+  { key: "id", header: "Id (kA)", value: (r) => r.detail?.current_ka ?? null, render: (r) => detail(r, (d) => fixed(d.current_ka, 4)), align: "right" },
+  { key: "vdr", header: "Vdr (kV)", title: "Rectifier DC voltage", value: (r) => r.detail?.rectifier_kv ?? null, render: (r) => detail(r, (d) => fixed(d.rectifier_kv, 1)), align: "right" },
+  { key: "vdi", header: "Vdi (kV)", title: "Inverter DC voltage", value: (r) => r.detail?.inverter_kv ?? null, render: (r) => detail(r, (d) => fixed(d.inverter_kv, 1)), align: "right" },
+  { key: "alpha", header: "α (°)", title: "Rectifier firing angle", value: (r) => r.detail?.alpha ?? null, render: (r) => detail(r, (d) => fixed(d.alpha, 2)), align: "right" },
+  { key: "gamma", header: "γ (°)", title: "Inverter extinction angle", value: (r) => r.detail?.gamma ?? null, render: (r) => detail(r, (d) => fixed(d.gamma, 2)), align: "right" },
+  { key: "tap_r", header: "Tap R", title: "Rectifier converter transformer tap", value: (r) => r.detail?.rectifier_tap ?? null, render: (r) => detail(r, (d) => fixed(d.rectifier_tap, 5)), align: "right" },
+  { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => r.detail?.inverter_tap ?? null, render: (r) => detail(r, (d) => fixed(d.inverter_tap, 5)), align: "right" },
   { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
   { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
@@ -137,7 +163,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
     render: (r) => fixed(r.qf),
     align: "right",
   },
-  { key: "qf_range", header: "QF range", value: (r) => r.qminf, render: (r) => qRange(r.qminf, r.qmaxf), align: "right" },
+  { key: "qf_range", header: "QF range", title: "Not used by the detailed model", value: (r) => r.qminf, render: (r) => (r.detail ? "—" : qRange(r.qminf, r.qmaxf)), align: "right" },
   {
     key: "qt",
     header: "QT (MVAr)",
@@ -146,7 +172,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
     render: (r) => fixed(r.qt),
     align: "right",
   },
-  { key: "qt_range", header: "QT range", value: (r) => r.qmint, render: (r) => qRange(r.qmint, r.qmaxt), align: "right" },
+  { key: "qt_range", header: "QT range", title: "Not used by the detailed model", value: (r) => r.qmint, render: (r) => (r.detail ? "—" : qRange(r.qmint, r.qmaxt)), align: "right" },
   { key: "vf", header: "VF (p.u.)", value: (r) => r.vf, render: (r) => fixed(r.vf, 4), align: "right" },
   { key: "vt", header: "VT (p.u.)", value: (r) => r.vt, render: (r) => fixed(r.vt, 4), align: "right" },
   {
@@ -235,6 +261,26 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
+      <Field label="Two-terminal DC lines">
+        <select
+          className={inputClass}
+          value={settings.dc_model}
+          disabled={!ac}
+          onChange={(e) => setSettings({ ...settings, dc_model: e.target.value as SolveSettings["dc_model"] })}
+        >
+          <option value="detailed">Detailed converters</option>
+          <option value="simplified">Simplified (MATPOWER)</option>
+        </select>
+      </Field>
+      <label className="flex items-center gap-2 text-xs text-slate-700">
+        <input
+          type="checkbox"
+          checked={settings.adjust_dc_taps && ac && settings.dc_model === "detailed"}
+          disabled={!ac || settings.dc_model !== "detailed"}
+          onChange={(e) => setSettings({ ...settings, adjust_dc_taps: e.target.checked })}
+        />
+        Adjust DC converter taps
+      </label>
       <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
         <Play size={14} /> {busy === "solve" ? "Solving…" : "Solve"}
       </Button>
@@ -288,7 +334,10 @@ function Overview({ report }: { report: SolveReport }) {
         <Metric
           label="Iterations"
           value={report.iterations}
-          detail={`${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}`}
+          detail={
+            `${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}` +
+            (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "")
+          }
         />
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
