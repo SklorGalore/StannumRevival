@@ -105,6 +105,12 @@ export function ConductorEdge({
       seg = longestSegment(pts);
       mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
     }
+  } else if (Math.abs(s.x - t.x) < 1 && t.y > s.y - 8 && sourcePosition === "bottom" && targetPosition === "top") {
+    // Straight down, or no length at all for a symbol sitting on its bus:
+    // the step path would loop out past the terminals.
+    path = `M${s.x},${s.y} L${t.x},${t.y}`;
+    seg = { a: s, b: t };
+    mid = { x: s.x, y: (s.y + t.y) / 2 };
   } else {
     [path] = getSmoothStepPath({
       sourceX,

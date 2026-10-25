@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { BusNode as BusNodeType } from "../../store/types";
 import { useResults } from "../../lib/diagram/results";
@@ -51,6 +51,10 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const results = useResults();
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
   const taps = busTaps(data);
+  // Re-measure when taps come or go (expand, undo, paste) so wires can attach.
+  const updateInternals = useUpdateNodeInternals();
+  const tapKey = taps.map((t) => `${t.id}${t.side}${t.x}`).join();
+  useEffect(() => updateInternals(id), [tapKey, id, updateInternals]);
   // Fixed taps (from a generated layout or added by hand) must stay on the bar.
   const minLength = Math.max(MIN_LENGTH, ...(data.taps ?? []).map((t) => t.x + 20));
 
@@ -80,6 +84,22 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   return (
     <div className="node-wrapper relative" style={{ width, height: BAR }}>
       <svg width={width} height={BAR} overflow="visible" style={{ display: "block" }}>
+        {data.focus && (
+          // The studied bus of a local drawing.
+          <rect
+            x={-6}
+            y={-6}
+            width={width + 12}
+            height={BAR + 12}
+            rx={4}
+            fill={ink.mono ? "none" : "#fef3c7"}
+            stroke={ink.mono ? ink.line : "#f59e0b"}
+            strokeWidth={1}
+            strokeDasharray={ink.mono ? "4 3" : undefined}
+          >
+            <title>Studied bus</title>
+          </rect>
+        )}
         <rect x={0} y={0} width={width} height={BAR} fill={color} rx={1} />
         <text x={-8} y={0} textAnchor="end" fontSize={11} fontWeight={600} fill={ink.line}>
           {data.label}

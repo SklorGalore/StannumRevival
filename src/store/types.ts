@@ -4,8 +4,8 @@ import type { Node, Edge } from "@xyflow/react";
 
 /** Links a symbol to a record of the open case, so results can be shown on it. */
 export interface CaseRef {
-  kind: "bus" | "gen" | "branch" | "load";
-  /** Bus number for buses and loads; table index for generators and branches. */
+  kind: "bus" | "gen" | "branch" | "load" | "shunt";
+  /** Bus number for buses, loads and shunts; table index for generators and branches. */
   id: number;
   /** Shared element id (see lib/elements.ts). Missing in diagrams saved before it existed. */
   element?: string;
@@ -27,6 +27,8 @@ export interface BusData extends Record<string, unknown> {
   taps?: BusTap[];
   /** Star point of a three-winding transformer: drawn as a small junction. */
   star?: boolean;
+  /** The bus a local drawing is centred on. */
+  focus?: boolean;
   caseRef?: CaseRef;
 }
 
@@ -44,6 +46,15 @@ export interface LoadData extends Record<string, unknown> {
   nominalMW: number;
   nominalMVAR: number;
   loadType: "static" | "motor" | "composite";
+  caseRef?: CaseRef;
+}
+
+/** Fixed shunt at a bus, in MW / Mvar at 1 pu voltage. Positive Mvar is a
+ *  capacitor (supplies reactive power), negative a reactor. */
+export interface ShuntData extends Record<string, unknown> {
+  label: string;
+  nominalMVAR: number;
+  nominalMW: number;
   caseRef?: CaseRef;
 }
 
@@ -126,6 +137,7 @@ export type SLDNodeType =
   | "bus"
   | "generator"
   | "load"
+  | "shunt"
   | "transformer"
   | "circuitBreaker"
   | "disconnector"
@@ -135,6 +147,7 @@ export type SLDNodeType =
 export type BusNode = Node<BusData, "bus">;
 export type GeneratorNode = Node<GeneratorData, "generator">;
 export type LoadNode = Node<LoadData, "load">;
+export type ShuntNode = Node<ShuntData, "shunt">;
 export type TransformerNode = Node<TransformerData, "transformer">;
 export type CircuitBreakerNode = Node<CircuitBreakerData, "circuitBreaker">;
 export type DisconnectorNode = Node<DisconnectorData, "disconnector">;
@@ -145,6 +158,7 @@ export type SLDNode =
   | BusNode
   | GeneratorNode
   | LoadNode
+  | ShuntNode
   | TransformerNode
   | CircuitBreakerNode
   | DisconnectorNode
@@ -165,6 +179,8 @@ export interface DiagramMetadata {
   schemaVersion: "1.0";
   /** File name of the case this diagram was generated from, if any. */
   caseName?: string;
+  /** For a local drawing: the studied bus and how many hops out it reaches. */
+  around?: { bus: number; depth: number };
 }
 
 export interface SLDDiagram {
@@ -243,7 +259,12 @@ export interface DiagramStore {
   newDiagram: () => void;
   loadDiagramFromJSON: (diagram: SLDDiagram) => void;
   /** Replace the drawing with a generated one (unsaved, new file). */
-  replaceWithGenerated: (nodes: SLDNode[], edges: SLDEdge[], caseName: string) => void;
+  replaceWithGenerated: (
+    nodes: SLDNode[],
+    edges: SLDEdge[],
+    caseName: string,
+    around?: { bus: number; depth: number }
+  ) => void;
   toggleResults: () => void;
   requestFit: () => void;
   setFilePath: (path: string | null) => void;

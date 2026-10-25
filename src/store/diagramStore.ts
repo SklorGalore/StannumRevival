@@ -311,7 +311,7 @@ export const useDiagramStore = create<DiagramStore>()(
         s.fitRequest += 1;
       }),
 
-    replaceWithGenerated: (nodes, edges, caseName) => {
+    replaceWithGenerated: (nodes, edges, caseName, around) => {
       // Undoable, so a generated drawing never silently replaces your work.
       get().checkpoint();
       set((s) => {
@@ -323,6 +323,7 @@ export const useDiagramStore = create<DiagramStore>()(
           title: caseName.replace(/\.[^.]+$/, ""),
           description: `One-line generated from ${caseName}`,
           caseName,
+          around,
           createdAt: now,
           modifiedAt: now,
         };

@@ -2,6 +2,7 @@ import type {
   BusData,
   GeneratorData,
   LoadData,
+  ShuntData,
   TransformerData,
   CircuitBreakerData,
   DisconnectorData,
@@ -30,6 +31,12 @@ export const defaultLoadData: LoadData = {
   nominalMW: 10,
   nominalMVAR: 3,
   loadType: "static",
+};
+
+export const defaultShuntData: ShuntData = {
+  label: "Shunt",
+  nominalMVAR: 25,
+  nominalMW: 0,
 };
 
 export const defaultTransformerData: TransformerData = {
@@ -75,6 +82,7 @@ export const defaultsByType: Partial<Record<SLDNodeType, object>> = {
   bus: defaultBusData,
   generator: defaultGeneratorData,
   load: defaultLoadData,
+  shunt: defaultShuntData,
   transformer: defaultTransformerData,
   circuitBreaker: defaultCircuitBreakerData,
   disconnector: defaultDisconnectorData,

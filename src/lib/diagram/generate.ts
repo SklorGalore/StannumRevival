@@ -12,6 +12,7 @@ import type {
   GeneratorData,
   LoadData,
   OffPageData,
+  ShuntData,
   SLDEdge,
   SLDNode,
   TransformerData,
@@ -33,6 +34,13 @@ const GEN = { w: 40, h: 80 };
 const LOAD = { w: 40, h: 60 };
 const XFMR = { w: 40, h: 100 };
 const OFF_PAGE = { w: 40, h: 40 };
+const SHUNT = { w: 40, h: 60 };
+/** Width each generator, load or shunt takes along its bus, name and results included. */
+const SLOT = 100;
+/** Room between wires that leave a bus carrying injections. */
+const PORT_GAP = 44;
+/** The bar runs this far past its last wire. */
+const BAR_END = 22;
 /** Space kept to the right of symbols for their name and results. */
 const SIDE_LABEL = 96;
 /** Room for a branch's flow results: three lines of small text. */
@@ -85,9 +93,10 @@ export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
   return new Set(depth.keys());
 }
 
-/** Level of each bus in a breadth-first walk from the reference (or highest
- *  voltage) bus of each connected part. Branches point down the levels. */
-function levels(buses: NetworkBus[], branches: NetworkBranch[]): Map<number, number> {
+/** Level of each bus in a breadth-first walk from `root` (for a local
+ *  drawing, the studied bus), else from the reference or highest-voltage bus
+ *  of each connected part. Branches point down the levels. */
+function levels(buses: NetworkBus[], branches: NetworkBranch[], root?: number): Map<number, number> {
   const adj = new Map<number, number[]>();
   for (const b of buses) adj.set(b.id, []);
   for (const br of branches) {
@@ -95,7 +104,11 @@ function levels(buses: NetworkBus[], branches: NetworkBranch[]): Map<number, num
     adj.get(br.to)!.push(br.from);
   }
   const order = [...buses].sort(
-    (a, b) => Number(b.kind === "Ref") - Number(a.kind === "Ref") || b.base_kv - a.base_kv || a.id - b.id
+    (a, b) =>
+      Number(b.id === root) - Number(a.id === root) ||
+      Number(b.kind === "Ref") - Number(a.kind === "Ref") ||
+      b.base_kv - a.base_kv ||
+      a.id - b.id
   );
   const level = new Map<number, number>();
   for (const root of order) {
@@ -142,12 +155,34 @@ function layoutEngine() {
   return elk;
 }
 
+let warmed = false;
+/** Start the layout worker ahead of time: its first run costs most of a second. */
+export function warmLayout() {
+  if (warmed) return;
+  warmed = true;
+  void layoutEngine()
+    .layout({
+      id: "warm",
+      layoutOptions: { "elk.algorithm": "layered", "elk.partitioning.activate": "true" },
+      children: [
+        { id: "a", width: 10, height: 10, layoutOptions: { "elk.partitioning.partition": "0" } },
+        { id: "b", width: 10, height: 10, layoutOptions: { "elk.partitioning.partition": "1" } },
+      ],
+      edges: [{ id: "e", sources: ["a"], targets: ["b"] }],
+    })
+    .catch(() => {
+      warmed = false;
+    });
+}
+
 export interface Generated {
   nodes: SLDNode[];
   edges: SLDEdge[];
   buses: number;
   /** Branches to buses outside the scope, drawn as off-page markers. */
   boundary: number;
+  /** Branches from the new buses to buses already drawn (see `Piece.drawn`). */
+  links: NetworkBranch[];
 }
 
 type EdgeSpec = {
@@ -157,15 +192,51 @@ type EdgeSpec = {
   data: ConductorData;
 };
 
+/** What to lay out: the buses, and how a local drawing is anchored. */
+export interface Piece {
+  buses: Set<number>;
+  /** Bus the layout grows from: it goes in the top row. */
+  root?: number;
+  /** Rows follow hop count from `root` (local drawings). */
+  byHop?: boolean;
+  /** The studied bus, drawn highlighted. */
+  focus?: number;
+  /** A bus already on the drawing that new buses hang from (Expand). It is
+   *  laid out only to anchor them: its injections keep their room on the bar
+   *  but are not drawn again, and it gets no off-page markers. */
+  anchor?: number;
+  /** Buses already drawn: branches to them are returned in `links` rather
+   *  than drawn as off-page markers. */
+  drawn?: Set<number>;
+}
+
 export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<Generated> {
-  const chosen = selectBuses(net, scope);
+  const buses = selectBuses(net, scope);
+  if (scope.kind !== "around") return layoutPiece(net, { buses });
+  return layoutPiece(net, { buses, root: scope.bus, byHop: true, focus: scope.bus });
+}
+
+/** Lay out a set of buses with everything attached to them. */
+export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Generated> {
+  const { anchor } = piece;
+  const drawn = piece.drawn ?? new Set<number>();
+  const chosen = new Set(piece.buses);
+  if (anchor != null) chosen.add(anchor);
   const buses = net.buses.filter((b) => chosen.has(b.id));
   if (!buses.length) throw new Error("No buses match that selection.");
   const busById = new Map(net.buses.map((b) => [b.id, b]));
+  // The anchor only joins the new buses; its other branches are already drawn.
+  const touchesAnchor = (br: NetworkBranch) => br.from === anchor || br.to === anchor;
   const inner = net.branches.filter((br) => chosen.has(br.from) && chosen.has(br.to));
-  const boundary = net.branches.filter((br) => chosen.has(br.from) !== chosen.has(br.to));
+  const crossing = net.branches.filter((br) => chosen.has(br.from) !== chosen.has(br.to) && !touchesAnchor(br));
+  const boundary = crossing.filter((br) => !drawn.has(chosen.has(br.from) ? br.to : br.from));
+  const links = crossing.filter((br) => drawn.has(chosen.has(br.from) ? br.to : br.from));
   const gens = net.generators.filter((g) => chosen.has(g.bus));
-  const level = levels(buses, inner);
+  const level = levels(buses, inner, piece.root ?? anchor);
+  // Local drawings put each hop on its own row: buses on even rows, what
+  // hangs from them (machines, loads, transformers, markers) on the odd row below.
+  const row = (bus: number, below = false): Record<string, string> =>
+    piece.byHop ? { "elk.partitioning.partition": String(2 * (level.get(bus) ?? 0) + (below ? 1 : 0)) } : {};
 
   const nodes: ElkNode[] = [];
   const specs: EdgeSpec[] = [];
@@ -183,23 +254,23 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
     ...extra,
   });
 
-  // Injections hang below their bus.
+  // Generators, loads and shunts sit right on their bus bar, side by side
+  // from its left end. They are not laid out by ELK: their bus is made wide
+  // and deep enough to hold them, and its wires leave from the right part.
+  type Injection = { node: SLDNode; handle: string; height: number; data: ConductorData };
+  const injections = new Map<number, Injection[]>();
+  const inject = (bus: number, inj: Injection) => {
+    const list = injections.get(bus) ?? [];
+    list.push(inj);
+    injections.set(bus, list);
+  };
   const genCount = new Map<number, number>();
   for (const g of gens) genCount.set(g.bus, (genCount.get(g.bus) ?? 0) + 1);
   const genSeen = new Map<number, number>();
   for (const g of gens) {
     const n = (genSeen.get(g.bus) ?? 0) + 1;
     genSeen.set(g.bus, n);
-    bump(g.bus);
     const id = `g${g.index}`;
-    nodes.push({
-      id,
-      width: GEN.w,
-      height: GEN.h,
-      ports: [port(`${id}:p`, GEN.w / 2, 0, "NORTH")],
-      labels: [outside("G", "H_RIGHT", SIDE_LABEL)],
-      layoutOptions: fixedPorts,
-    });
     const data: GeneratorData = {
       ...defaultGeneratorData,
       // Named by bus, numbered when a bus has several machines.
@@ -208,40 +279,44 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       voltageKV: kv(g.bus),
       caseRef: { kind: "gen", id: g.index, element: g.element },
     };
-    rfNodes.set(id, { id, type: "generator", position: { x: 0, y: 0 }, data } as SLDNode);
-    specs.push({
-      id: `e-${id}`,
-      source: { node: `b${g.bus}` },
-      target: { node: id, port: `${id}:p`, handle: "gen-top" },
+    inject(g.bus, {
+      node: { id, type: "generator", position: { x: 0, y: 0 }, data } as SLDNode,
+      handle: "gen-top",
+      height: GEN.h,
       data: conductor(kv(g.bus), { outOfService: !g.online || undefined }),
     });
   }
   for (const b of buses) {
-    if (b.star || (b.pd === 0 && b.qd === 0)) continue;
-    bump(b.id);
-    const id = `l${b.id}`;
-    nodes.push({
-      id,
-      width: LOAD.w,
-      height: LOAD.h,
-      ports: [port(`${id}:p`, LOAD.w / 2, 0, "NORTH")],
-      labels: [outside("Load", "H_RIGHT", SIDE_LABEL)],
-      layoutOptions: fixedPorts,
-    });
-    const data: LoadData = {
-      ...defaultLoadData,
-      label: "Load",
-      nominalMW: b.pd,
-      nominalMVAR: b.qd,
-      caseRef: { kind: "load", id: b.id, element: busElement(b.id) },
-    };
-    rfNodes.set(id, { id, type: "load", position: { x: 0, y: 0 }, data } as SLDNode);
-    specs.push({
-      id: `e-${id}`,
-      source: { node: `b${b.id}` },
-      target: { node: id, port: `${id}:p`, handle: "load-top" },
-      data: conductor(kv(b.id)),
-    });
+    if (b.star) continue;
+    if (b.pd !== 0 || b.qd !== 0) {
+      const data: LoadData = {
+        ...defaultLoadData,
+        label: "Load",
+        nominalMW: b.pd,
+        nominalMVAR: b.qd,
+        caseRef: { kind: "load", id: b.id, element: busElement(b.id) },
+      };
+      inject(b.id, {
+        node: { id: `l${b.id}`, type: "load", position: { x: 0, y: 0 }, data } as SLDNode,
+        handle: "load-top",
+        height: LOAD.h,
+        data: conductor(kv(b.id)),
+      });
+    }
+    if (b.gs !== 0 || b.bs !== 0) {
+      const data: ShuntData = {
+        label: b.bs < 0 ? "Reactor" : "Shunt",
+        nominalMVAR: b.bs,
+        nominalMW: b.gs,
+        caseRef: { kind: "shunt", id: b.id, element: busElement(b.id) },
+      };
+      inject(b.id, {
+        node: { id: `s${b.id}`, type: "shunt", position: { x: 0, y: 0 }, data } as SLDNode,
+        handle: "shunt-top",
+        height: SHUNT.h,
+        data: conductor(kv(b.id)),
+      });
+    }
   }
 
   for (const br of inner) {
@@ -261,7 +336,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
         height: XFMR.h,
         ports: [port(`${id}:hv`, XFMR.w / 2, 0, "NORTH"), port(`${id}:lv`, XFMR.w / 2, XFMR.h, "SOUTH")],
         labels: [outside("T", "H_RIGHT", SIDE_LABEL)],
-        layoutOptions: fixedPorts,
+        layoutOptions: { ...fixedPorts, ...row(upper, true) },
       });
       const data: TransformerData = {
         ...defaultTransformerData,
@@ -311,7 +386,7 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       height: OFF_PAGE.h,
       ports: [port(`${id}:p`, OFF_PAGE.w / 2, 0, "NORTH")],
       labels: [outside(text, "H_RIGHT", Math.max(textWidth(text), SIDE_LABEL))],
-      layoutOptions: fixedPorts,
+      layoutOptions: { ...fixedPorts, ...row(inside, true) },
     });
     const data: OffPageData = {
       label: text,
@@ -336,20 +411,50 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
     });
   }
 
+  // On a bus carrying injections every wire gets a port on the side it
+  // leaves from; ELK orders them and packs them at the right end.
+  const ports = new Map<string, { id: string; side: "NORTH" | "SOUTH" }[]>();
+  const portOn = (end: EdgeSpec["source"], side: "NORTH" | "SOUTH") => {
+    if (end.port || !injections.has(Number(end.node.slice(1)))) return;
+    const list = ports.get(end.node) ?? [];
+    end.port = `${end.node}:w${list.length}`;
+    list.push({ id: end.port, side });
+    ports.set(end.node, list);
+  };
+  for (const s of specs) {
+    if (s.source.node.startsWith("b")) portOn(s.source, "SOUTH");
+    if (s.target.node.startsWith("b")) portOn(s.target, "NORTH");
+  }
+
   // Buses go first so ELK keeps them in case order where it can.
   const busNodes: ElkNode[] = buses.map((b) => {
-    if (b.star) return { id: `b${b.id}`, width: 20, height: BUS_BAR };
+    if (b.star) return { id: `b${b.id}`, width: 20, height: BUS_BAR, layoutOptions: row(b.id) };
     const name = busLabel(b);
     const sub = `${b.id} · ${b.base_kv} kV`;
+    const left = outside(name, "H_LEFT", Math.max(textWidth(name, 7), textWidth(sub, 6)));
+    const inj = injections.get(b.id);
+    if (inj) {
+      const wires = ports.get(`b${b.id}`) ?? [];
+      return {
+        id: `b${b.id}`,
+        width: roundUp(Math.max(100, inj.length * SLOT + wires.length * PORT_GAP), 20),
+        height: BUS_BAR + Math.max(...inj.map((i) => i.height)),
+        layoutOptions: {
+          ...row(b.id),
+          "elk.portConstraints": "FIXED_SIDE",
+          "elk.portAlignment.default": "END",
+        },
+        ports: wires.map((w) => ({ id: w.id, width: 0, height: 0, layoutOptions: { "elk.port.side": w.side } })),
+        labels: [left, outside("pu", "H_RIGHT", 84 + BAR_END)],
+      };
+    }
     const width = Math.max(100, roundUp(((degree.get(b.id) ?? 0) + 1) * 44, 20));
     return {
       id: `b${b.id}`,
       width,
       height: BUS_BAR,
-      labels: [
-        outside(name, "H_LEFT", Math.max(textWidth(name, 7), textWidth(sub, 6))),
-        outside("pu", "H_RIGHT", 84),
-      ],
+      layoutOptions: row(b.id),
+      labels: [left, outside("pu", "H_RIGHT", 84)],
     };
   });
 
@@ -366,13 +471,17 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       "elk.layered.spacing.nodeNodeBetweenLayers": "48",
       "elk.layered.spacing.edgeNodeBetweenLayers": "18",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
-      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      // Network simplex gives the tidiest drawing but takes 13 s on case300;
+      // Brandes-Koepf takes 1.4 s there, at the cost of a wider drawing.
+      "elk.layered.nodePlacement.strategy": buses.length > READABLE_BUSES ? "BRANDES_KOEPF" : "NETWORK_SIMPLEX",
+      ...(piece.byHop ? { "elk.partitioning.activate": "true" } : {}),
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
       "elk.separateConnectedComponents": "true",
       "elk.spacing.componentComponent": "80",
       "elk.nodeLabels.placement": "OUTSIDE V_CENTER H_RIGHT",
       "elk.edgeLabels.placement": "CENTER",
       "elk.spacing.edgeLabel": "4",
+      "elk.spacing.portPort": String(PORT_GAP),
     },
     children: [...busNodes, ...nodes],
     edges: specs.map(
@@ -417,8 +526,16 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
       x: p.x,
       y: p.y,
     }));
-    const sourceHandle = s.source.handle ?? tapFor(s.source.node, section.startPoint);
-    const targetHandle = s.target.handle ?? tapFor(s.target.node, section.endPoint);
+    // A bus carrying injections is deeper than its bar: wires leaving its
+    // bottom start at the bar instead.
+    const onBar = (node: string, p: ElkPoint) => {
+      const n = at.get(node);
+      if (node.startsWith("b") && n && p.y > n.y! + BUS_BAR) p.y = n.y! + BUS_BAR;
+    };
+    onBar(s.source.node, route[0]);
+    onBar(s.target.node, route[route.length - 1]);
+    const sourceHandle = s.source.handle ?? tapFor(s.source.node, route[0]);
+    const targetHandle = s.target.handle ?? tapFor(s.target.node, route[route.length - 1]);
     edges.push({
       id: s.id,
       type: "conductor",
@@ -435,15 +552,39 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
   }
 
   const out: SLDNode[] = [];
+  for (const [bus, list] of injections) {
+    const n = at.get(`b${bus}`);
+    // The anchor's symbols are drawn already; its stand-in only keeps their room.
+    if (!n || bus === anchor) continue;
+    list.forEach((inj, i) => {
+      const x = 20 + i * SLOT;
+      const tap = `i${i}`;
+      const busTaps = taps.get(`b${bus}`) ?? [];
+      busTaps.push({ id: tap, x, side: "bottom" });
+      taps.set(`b${bus}`, busTaps);
+      // The symbol's terminal touches the underside of the bar.
+      out.push({ ...inj.node, position: { x: n.x! + x - 20, y: n.y! + BUS_BAR } } as SLDNode);
+      edges.push({
+        id: `e-${inj.node.id}`,
+        type: "conductor",
+        source: `b${bus}`,
+        sourceHandle: tap,
+        target: inj.node.id,
+        targetHandle: inj.handle,
+        data: inj.data,
+      } as SLDEdge);
+    });
+  }
   for (const b of buses) {
     const n = at.get(`b${b.id}`)!;
     const data: BusData = {
       label: b.star ? "" : busLabel(b),
       voltageKV: b.base_kv,
       orientation: "horizontal",
-      length: n.width!,
+      length: n.width! + (injections.has(b.id) ? BAR_END : 0),
       taps: taps.get(`b${b.id}`) ?? [],
       star: b.star || undefined,
+      focus: b.id === piece.focus || undefined,
       caseRef: { kind: "bus", id: b.id, element: busElement(b.id) },
     };
     out.push({ id: `b${b.id}`, type: "bus", position: { x: n.x!, y: n.y! }, data } as SLDNode);
@@ -453,5 +594,5 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
     out.push({ ...node, position: { x: n.x!, y: n.y! } } as SLDNode);
   }
 
-  return { nodes: out, edges, buses: buses.length, boundary: boundary.length };
+  return { nodes: out, edges, buses: buses.length, boundary: boundary.length, links };
 }

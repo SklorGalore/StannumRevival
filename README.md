@@ -78,6 +78,17 @@ generators, loads, lines and transformers are laid out top to bottom with
 right-angle wiring (ELK layered layout, run in a worker). Branches that leave
 the selection end in off-page markers naming the far bus. Three-winding
 transformers appear as their star point with a two-winding symbol per winding.
+Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
+solved voltage) sit directly on their bus bar; the bus's wires leave from the
+rest of the bar.
+
+Cases with more than 20 buses default to drawing around a bus, which is how a
+one-line is usually used: to look into a local problem. The studied bus sits at
+the top, highlighted, and each row below is one more hop out. The bar at the
+bottom of the canvas changes the hop count. On a drawing linked to the open
+case, double-click an off-page marker to bring its bus in, or right-click a bus
+for **Show neighbours** and **Draw N hops around** it. Brought-in buses are
+placed below what is already drawn and nothing that is there moves.
 
 Generated symbols stay linked to case records. After a solve (in Power flow, or
 **Solve** on the diagram toolbar) the diagram shows bus voltage and angle,
@@ -92,6 +103,8 @@ Wires take right-angle paths around symbols and their labels: a new wire is
 routed when you draw it, and the wires of a moved symbol are rerouted when you
 drop it. Select a wire and drag one of its segments to move it by hand; it then
 keeps that shape until you press **Reroute** in its properties.
+A generator, load or shunt dropped onto a bus bar, or dragged up until it
+touches one, hangs from the bar and is connected there.
 Breakers and disconnectors open and close on double-click. A selected bus has a
 grip on its right end for changing its length.
 
