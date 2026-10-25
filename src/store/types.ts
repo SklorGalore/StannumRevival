@@ -93,9 +93,13 @@ export interface ConductorData extends Record<string, unknown> {
   conductorType: "transmission" | "distribution" | "buswork";
   impedanceR?: number;
   impedanceX?: number;
-  /** Orthogonal route from layout, endpoints included, in flow coordinates.
-   *  Ignored once either end moves away from where it was routed. */
+  /** Orthogonal route, endpoints included, in flow coordinates: from the
+   *  layout or the wire router. Ignored once either end moves away from where
+   *  it was routed, until the router catches up. */
   route?: { x: number; y: number }[];
+  /** Set once a segment has been dragged by hand: the router then keeps this
+   *  shape, only moving its ends, until the wire is rerouted. */
+  pinnedRoute?: boolean;
   /** Box reserved by the layout for this wire's results, used with `route`. */
   labelAt?: { x: number; y: number; width: number; height: number };
   caseRef?: CaseRef;
