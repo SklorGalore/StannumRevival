@@ -137,7 +137,8 @@ row came from. Both are lossless approximations and warn:
 - A multi-terminal system is one row per scheduled converter, linked to the
   converter that holds the DC voltage (VCONV), which picks up the balance.
   Current-mode SETVL values are turned into MW with VCONV's scheduled DC
-  voltage. The DC buses and DC links are not modelled.
+  voltage. The DC buses and DC links are not modelled, and the negative
+  pole's voltage converter (VCONVN) gets no row.
 
 MATPOWER writes the reactive limits it estimates for line-commutated
 converters as positive (supplied) MVAr, although these converters absorb
@@ -253,6 +254,40 @@ DC voltage converter (TYPE 1) and one power converter (TYPE 2) as a
 - `PowerFlowResult::vsc` reports the DC current and voltages, each loss, the
   kept fraction of the order, and which ends were limited.
 - Not modelled: remote voltage regulation (REMOT, RMPCT); import warns.
+
+### Detailed multi-terminal DC model
+
+With `all_dc_lines`, `RawImport::mtdc` keeps each multi-terminal system as an
+`MtdcSystem`: its converters, DC buses and DC links, with each scheduled
+converter naming its `Case::dcline` row. Pass them as
+`DcModel::Detailed { mtdc, .. }`:
+
+- Each converter uses the two-terminal bridge equations and sits between its
+  DC bus (IDC) and a second DC bus or ground (IDC2), on the pole its CNVCOD
+  sign gives.
+- The converter at VCONV (VCONVN on the negative pole) holds SETVL kV across
+  it. The others hold SETVL MW of DC power, or SETVL amps in current control,
+  positive at a rectifier and negative at an inverter. The DC network is
+  solved by Newton's method on the DC bus voltages, so the voltage converters
+  take the balance and the link losses.
+- A converter that would need an angle below its minimum runs at that
+  minimum instead and falls short of its order. Below VCMOD, power orders
+  become current orders at SETVL over the voltage converter's SETVL.
+- The DC solution is recomputed from the converter bus voltages at every
+  Newton step, with numerical derivatives in the Jacobian. With
+  `adjust_taps`, each converter's tap steps to keep its angle within
+  ANGMN..ANGMX; when one tap step is wider than that range, the angle stays
+  at or above ANGMN.
+- `PowerFlowResult::mtdc` reports every DC bus voltage, link current, flow
+  and loss, and each converter's mode, current, DC voltage, angle, tap and
+  AC-side P and Q. Each `dcline` row gets its converter's P and Q at the
+  converter end; the voltage converter's end gets a share of the voltage
+  converters' Q and of the system's losses, in proportion to the converter's
+  DC power, so the rows add up to the system's losses.
+- A system is blocked when MDC is 0 or any of its rows is switched off.
+- Not modelled: DCPF and MARG order sharing, RGRND (fault analysis only in
+  PSS/E) and link inductance. Import warns about margins and ground
+  resistances.
 
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported

@@ -70,6 +70,7 @@ fn detailed(vsc_lines: Vec<VscLine>, enforce_q_limits: bool) -> PowerFlowOptions
         dc_model: DcModel::Detailed {
             lines: Vec::new(),
             vsc_lines,
+            mtdc: Vec::new(),
             adjust_taps: true,
         },
         ..Default::default()
