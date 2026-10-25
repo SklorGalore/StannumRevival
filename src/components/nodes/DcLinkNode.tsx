@@ -21,7 +21,8 @@ function Converter({ y, acOnTop, color }: { y: number; acOnTop: boolean; color: 
   return (
     <g stroke={color} strokeWidth={STROKE} fill="none">
       <rect x={x} y={y} width={BOX} height={BOX} fill="white" />
-      <path d={acOnTop ? `M${x},${y + BOX} L${x + BOX},${y}` : `M${x},${y} L${x + BOX},${y + BOX}`} />
+      {/* Bottom-left to top-right, so the ~ and = corners stay clear of it. */}
+      <path d={`M${x},${y + BOX} L${x + BOX},${y}`} />
       <path d={`M${acX - 5},${acY} q2.5,-4 5,0 t5,0`} strokeWidth={1.2} />
       <path d={`M${dcX - 5},${dcY - 2} h10 M${dcX - 5},${dcY + 2} h10`} strokeWidth={1.2} />
     </g>
