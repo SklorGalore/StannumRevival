@@ -16,6 +16,10 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Sensitivities follow remote regulation: with `enforce_q_limits`, a held
+  bus keeps its magnitude and the generator buses holding it move, as in the
+  solve, and reactive sharing between them is kept.
+
 - Faster reactive-limit solves: while generators may still switch between
   PV and PQ, each solve stops at a 0.01 p.u. mismatch, and only clear
   violations switch a generator. The final solve still meets the full

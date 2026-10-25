@@ -169,3 +169,40 @@ fn memphis_remote_regulation_tracks_the_case_voltages() {
     assert!(remote < 0.002, "{remote}");
     assert!(local > 0.01, "{local}");
 }
+
+#[test]
+fn memphis_sensitivities_follow_remote_regulation() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("_cases/MemphisCase2026_Mar7.RAW");
+    let imported = rs_power::load_raw_with_options(
+        &path,
+        &RawOptions {
+            remote_regulation: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let s = rs_power::calculate_sensitivities(&imported.case, &limited()).unwrap();
+    let solved = &s.power_flow.case;
+    let kind = |id: u32| solved.buses.iter().find(|b| b.id == id).unwrap().kind;
+    // A load bus held by a generator elsewhere keeps its magnitude, so it
+    // has no magnitude state; the generator's bus has one instead.
+    let (generator_bus, held) = solved
+        .generators
+        .iter()
+        .filter(|g| g.online && kind(g.bus) == BusType::Pv)
+        .find_map(|g| {
+            let r = g.regulated_bus.filter(|&r| r != g.bus)?;
+            (kind(r) == BusType::Pq).then_some((g.bus, r))
+        })
+        .expect("Memphis has generators holding remote load buses");
+    let states = &s.state_variables;
+    assert!(!states.contains(&rs_power::StateVariable::VoltageMagnitude(held)));
+    assert!(states.contains(&rs_power::StateVariable::VoltageMagnitude(generator_bus)));
+    assert!(
+        s.state_sensitivities
+            .iter()
+            .flatten()
+            .all(|x| x.is_finite())
+    );
+}

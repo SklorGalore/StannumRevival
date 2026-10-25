@@ -166,8 +166,9 @@ another island, or itself regulates a remote bus.
 
 Without reactive limits, regulated generators hold their own bus, as in
 MATPOWER: nothing then stops a small unit from driving its terminal to an
-extreme voltage to hold a distant bus. Sensitivities and Jacobians from
-[`make_jacobian`] still use the local formulation.
+extreme voltage to hold a distant bus. With reactive limits,
+`calculate_sensitivities` linearizes the same formulation as the solve (see
+below); [`make_jacobian`] still uses the local one.
 
 On the Texas A&M SyntheticUSA case (82,000 buses, 2,730 remote-regulating
 generators) the reactive-limit solve diverged with local setpoints and
@@ -353,6 +354,13 @@ assert!(matches!(result.state_variables[0], StateVariable::VoltageAngle(_)));
 println!("d(state 0)/d(injection 0) = {}", result.state_sensitivities[0][0]);
 # Ok::<(), rs_power::Error>(())
 ```
+
+With `enforce_q_limits` and remote regulation, the linearization follows the
+solve: a remotely held bus keeps its magnitude, so it has a reactive
+injection column but no magnitude state, and the generator buses holding it
+have magnitude states instead. Generators on different buses that share a
+held bus add one state each beyond the first, so there can be more state
+rows than injection columns.
 
 State rows and injection columns identify buses by their external IDs. Angles
 are in radians; voltage magnitudes and injections are in per unit. Divide MW or

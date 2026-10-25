@@ -2,7 +2,7 @@ use crate::{
     Case, Error, Model, PowerFlowOptions, PowerFlowResult, SolveStatus,
     network::Network,
     solve,
-    solver::{add_dc_line_generators, jacobian, variables},
+    solver::{Layout, add_dc_line_generators, jacobian, layout_jacobian, variables},
 };
 use faer::{
     Mat,
@@ -166,6 +166,10 @@ pub struct PowerFlowSensitivity {
     /// The converged operating point used for linearization.
     pub power_flow: PowerFlowResult,
     /// Rows of [`Self::state_sensitivities`], in reduced solver order.
+    ///
+    /// With reactive limits and remote regulation, a held bus has no
+    /// magnitude row and the generator buses holding it have one each, so
+    /// there can be more rows than [`Self::injection_variables`].
     pub state_variables: Vec<StateVariable>,
     /// Columns of both sensitivity arrays, in reduced solver order.
     ///
@@ -1177,7 +1181,15 @@ pub fn calculate_sensitivities(
                     C::from_polar(bus.vm, bus.va.to_radians())
                 })
                 .collect();
-            let (angles, pq) = variables(&net.kinds);
+            // With reactive limits, generators hold the buses they regulate,
+            // as in the solve: a held bus keeps its magnitude and the
+            // regulating generators' buses move instead.
+            let layout = if options.enforce_q_limits {
+                Layout::new(&net, &working, &net.kinds)
+            } else {
+                Layout::plain(&net.kinds)
+            };
+            let (angles, pq) = (layout.angles.clone(), layout.magnitudes.clone());
             let state_variables: Vec<_> = angles
                 .iter()
                 .map(|&bus| StateVariable::VoltageAngle(working.buses[net.external[bus]].id))
@@ -1188,14 +1200,21 @@ pub fn calculate_sensitivities(
             let injection_variables: Vec<_> = angles
                 .iter()
                 .map(|&bus| InjectionVariable::ActivePower(working.buses[net.external[bus]].id))
-                .chain(pq.iter().map(|&bus| {
+                .chain(layout.q_rows.iter().map(|&bus| {
                     InjectionVariable::ReactivePower(working.buses[net.external[bus]].id)
                 }))
                 .collect();
-            let sensitivity = inverse(
-                angles.len() + pq.len(),
-                &jacobian(&net, &voltage, &angles, &pq),
-            )?;
+            // Reactive-sharing rows come after the injection rows and take
+            // no injection of their own.
+            let n = layout.len();
+            let rhs: Vec<Vec<f64>> = (0..n)
+                .map(|row| {
+                    (0..injection_variables.len())
+                        .map(|column| if row == column { 1.0 } else { 0.0 })
+                        .collect()
+                })
+                .collect();
+            let sensitivity = solve_columns(n, &layout_jacobian(&net, &voltage, &layout), &rhs)?;
             let derivatives = ac_branch_state_derivatives(&net, &working, &voltage, &angles, &pq);
             (
                 state_variables,

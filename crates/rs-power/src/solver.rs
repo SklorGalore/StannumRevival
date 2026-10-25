@@ -269,7 +269,7 @@ impl Layout {
     /// [`Generator::regulated_bus`]. A group falls back to local control
     /// when its bus is a reference bus, lies in another island, or holds a
     /// remote bus itself.
-    fn new(net: &Network, case: &Case, kinds: &[BusType]) -> Self {
+    pub(crate) fn new(net: &Network, case: &Case, kinds: &[BusType]) -> Self {
         let mut layout = Self::plain(kinds);
         let n = kinds.len();
         let mut island = vec![0; n];
@@ -367,7 +367,7 @@ impl Layout {
     }
 
     /// Unknowns (and equations) in this layout.
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.angles.len() + self.magnitudes.len()
     }
 
@@ -445,7 +445,11 @@ pub(crate) fn jacobian(
     layout_jacobian(net, v, &layout)
 }
 
-fn layout_jacobian(net: &Network, v: &[C], layout: &Layout) -> Vec<Triplet<usize, usize, f64>> {
+pub(crate) fn layout_jacobian(
+    net: &Network,
+    v: &[C],
+    layout: &Layout,
+) -> Vec<Triplet<usize, usize, f64>> {
     let at = layout.indices(v.len());
     let mut entries = Vec::new();
     for (i, row) in net.y.iter().enumerate() {
