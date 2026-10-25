@@ -44,6 +44,8 @@ jobs:
       - run: npm ci
       - name: Type-check and build
         run: npm run build
+      - name: Frontend unit tests
+        run: npm test
       - name: Browser smoke test against the real Rust core
         run: |
           npm install --no-save playwright@1

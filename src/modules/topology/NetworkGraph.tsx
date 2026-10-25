@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 import cytoscape, { type Core, type StylesheetJson } from "cytoscape";
+// @ts-expect-error: cytoscape-fcose ships no type declarations.
+import fcose from "cytoscape-fcose";
+
+cytoscape.use(fcose);
 import type { GraphData, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
 import { nodeForBus } from "./viewModel";
 
@@ -36,7 +40,57 @@ const style: StylesheetJson = [
   { selector: "node.hovered", style: { "border-style": "dashed", "border-width": 3 } },
   { selector: "edge.hovered", style: { width: 5 } },
   { selector: "node.label-hidden", style: { label: "" } },
+  // Colour rules from the Filters & colours panel. Path and selection still win.
+  // Coloured buses are a little larger and outlined so pale colours still read.
+  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 38, height: 38, "border-color": "#334155", "border-width": 1.5 } },
+  { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
+  { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
+  // Under a colour rule, critical buses and bridges get a ring instead of a
+  // filled halo, so the halo doesn't hide the colours.
+  { selector: "node.articulation[fill]", style: { "underlay-opacity": 0, "border-color": colors.finding, "border-width": 3.5 } },
+  { selector: "edge.bridge[stroke]", style: { "underlay-opacity": 0.25, "underlay-padding": 3 } },
+  { selector: "node.path", style: { "background-color": colors.path } },
+  { selector: "edge.path", style: { "line-color": colors.path } },
 ];
+
+/**
+ * fCoSE spring layout with room between buses: springs a few bus-widths
+ * long, strong repulsion, and labels counted in each bus's footprint.
+ * The panel's aspect ratio is passed in so the result fills a wide view.
+ */
+function layoutFor(nodes: number): cytoscape.LayoutOptions {
+  return {
+    name: "fcose",
+    quality: nodes > 600 ? "draft" : "default",
+    animate: false,
+    randomize: true,
+    padding: 30,
+    nodeDimensionsIncludeLabels: true,
+    idealEdgeLength: () => 100,
+    nodeRepulsion: () => 25000,
+    edgeElasticity: () => 0.45,
+    nodeSeparation: 90,
+    gravity: 0.2,
+    gravityRange: 3.8,
+    numIter: 2500,
+    tile: true,
+    packComponents: true,
+  } as cytoscape.LayoutOptions;
+}
+
+/**
+ * Spring layouts come out roughly round, while the view is wide. Spread the
+ * buses horizontally (up to 2.2x) so the graph uses the whole panel.
+ */
+function stretchToFit(cy: Core, el: HTMLElement) {
+  const box = cy.nodes().boundingBox({});
+  if (!box.w || !box.h || !el.clientWidth || !el.clientHeight) return;
+  const factor = Math.min(2.2, el.clientWidth / el.clientHeight / (box.w / box.h));
+  if (factor <= 1.05) return;
+  const cx = box.x1 + box.w / 2;
+  cy.nodes().positions((n) => ({ x: cx + (n.position("x") - cx) * factor, y: n.position("y") }));
+  cy.fit(undefined, 30);
+}
 
 function refreshLabels(cy: Core) {
   const hide = cy.zoom() < 0.6;
@@ -54,6 +108,7 @@ export function NetworkGraph({
   onInspect,
   visible,
   fitSignal,
+  colors,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
@@ -62,6 +117,7 @@ export function NetworkGraph({
   onInspect: (s: GraphSelection) => void;
   visible: boolean;
   fitSignal: number;
+  colors?: { nodeColors: Record<string, string>; edgeColors: Record<string, string> };
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -101,11 +157,12 @@ export function NetworkGraph({
         })),
       ],
       style,
-      layout: { name: graph.nodes.length > 180 ? "circle" : "cose", animate: false, padding: 40, randomize: false } as cytoscape.LayoutOptions,
+      layout: layoutFor(graph.nodes.length),
       minZoom: 0.08,
       maxZoom: 4,
       wheelSensitivity: 0.25,
     });
+    stretchToFit(cy, container.current);
     cy.on("tap", "node", (ev) => inspect.current({ bus: ev.target.data("bus") ?? null, equipment: ev.target.data("equipment") ?? null }));
     cy.on("tap", "edge", (ev) => inspect.current({ bus: null, equipment: ev.target.data("equipment") }));
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));
@@ -133,6 +190,24 @@ export function NetworkGraph({
     }
     refreshLabels(cy);
   }, [selection, graph, snapshot, path]);
+
+  // Colour rules recolour in place, without a new layout.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const c = colors?.nodeColors[n.id()];
+        if (c) n.data("fill", c);
+        else n.removeData("fill");
+      });
+      cy.edges().forEach((e) => {
+        const c = colors?.edgeColors[e.id()];
+        if (c) e.data("stroke", c);
+        else e.removeData("stroke");
+      });
+    });
+  }, [colors, graph, snapshot, path]);
 
   // The pane may have been laid out while hidden; refit when it is shown.
   useEffect(() => {
