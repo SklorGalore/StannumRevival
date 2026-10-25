@@ -610,6 +610,48 @@ if (STANNUM_VIOLATIONS) {
     await page.getByTestId("draw-request").waitFor({ state: "detached" });
     await page.locator(".react-flow__node.selected").first().waitFor();
   }
+
+  // Ctrl+K finds a bus by number and shows it everywhere, linked or not.
+  await page.keyboard.press("Control+k");
+  const palette = page.getByRole("dialog", { name: "Search and commands" });
+  await palette.waitFor();
+  // Bus 7 is within limits, so the violations-only filter must step aside for it.
+  await palette.getByRole("combobox").fill("7");
+  await palette.getByRole("option").first().filter({ hasText: /^Bus 7(?!\d)/ }).waitFor();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Buses/ }).click();
+  const row7 = page.locator("tr[aria-selected=true]:visible").first();
+  await row7.waitFor();
+  assert.equal((await row7.locator("td").first().innerText()).trim(), "7", "bus 7 shown though within limits");
+  assert.equal(await page.getByLabel(/Voltage violations only/).isChecked(), false);
+  await page.getByRole("button", { name: "Diagram", exact: true }).click();
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("combobox").fill("170");
+  const firstHit = palette.getByRole("option").first();
+  await firstHit.filter({ hasText: /^Bus 170/ }).waitFor();
+  await shot("palette-bus");
+  await page.keyboard.press("Enter");
+  await palette.waitFor({ state: "detached" });
+  await page.getByTestId("selection-chip").filter({ hasText: "Bus 170" }).waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  const row170 = page.locator("tr[aria-selected=true]:visible").first();
+  await row170.waitFor();
+  assert.equal((await row170.locator("td").first().innerText()).trim(), "170", "bus 170 shown in Power flow");
+  await shot("palette-shown");
+
+  // Commands run from the palette too, and Shift+Enter draws around a result.
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("combobox").fill("solve");
+  await palette.getByRole("option", { name: /Solve power flow/ }).waitFor();
+  await page.keyboard.press("Enter");
+  await page.getByText("Converged").first().waitFor();
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("combobox").fill("170");
+  await palette.getByRole("option").first().filter({ hasText: /^Bus 170/ }).waitFor();
+  await page.keyboard.press("Shift+Enter");
+  await page.getByText(/^Around\b/).filter({ hasText: "170" }).first().waitFor();
+  await page.keyboard.press("Escape");
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

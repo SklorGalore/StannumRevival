@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, Play, Sigma, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
@@ -625,6 +625,11 @@ function TableTab<T>({
   );
   const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
   const selectedRow = selected === null ? undefined : rows.find(isSelected);
+  // An element picked elsewhere stays visible: drop the problems filter that would hide it.
+  useEffect(() => {
+    if (problem && problemsOnly && selectedRow && !problem.test(selectedRow)) setProblemsOnly(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
   async function exportCsv() {
     const filtered = filterRows(shown, columns, search);
     const csv = toCsv(
@@ -708,7 +713,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const select = useWorkspace((s) => s.select);
   // Picked here; while linked, the shared selection wins.
   const [picked, setPicked] = useState<string | null>(null);
-  const selected = linked ? (selection?.element ?? null) : picked;
+  const selected = linked || selection?.from === "search" ? (selection?.element ?? null) : picked;
   const pick = (element: string) => {
     setPicked(element);
     select(element, "power");
@@ -765,6 +770,18 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       setSensitivityVersion((v) => v + 1);
       setTab("sensitivities");
     });
+
+  // "Solve power flow" from the command palette.
+  const solveRequest = useWorkspace((s) => s.solveRequest);
+  const lastSolveRequest = useRef(solveRequest);
+  useEffect(() => {
+    if (solveRequest === lastSolveRequest.current) return;
+    lastSolveRequest.current = solveRequest;
+    if (!power?.available || busy) return;
+    setTab("overview");
+    void solve();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solveRequest]);
 
   async function exportMatpower(solved: boolean) {
     const stem = (summary?.name ?? "case").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");

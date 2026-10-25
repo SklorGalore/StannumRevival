@@ -8,8 +8,8 @@ export type ModuleId = "diagram" | "power" | "topology" | "diff";
 export interface SharedSelection {
   /** Shared element id (see lib/elements.ts), such as "bus:101". */
   element: string;
-  /** The module the user picked it in; the others follow quietly. */
-  from: ModuleId;
+  /** The module the user picked it in (the others follow quietly), or "search" when found with Ctrl+K. */
+  from: ModuleId | "search";
 }
 
 interface WorkspaceState {
@@ -29,6 +29,14 @@ interface WorkspaceState {
   selection: SharedSelection | null;
   /** Select an element everywhere (only while linked); null clears the selection. */
   select: (element: string | null, from: ModuleId) => void;
+  /** Show an element in every module, linked or not (a search result). */
+  focus: (element: string) => void;
+  /** Incremented to ask Power flow to solve with its current settings. */
+  solveRequest: number;
+  requestSolve: () => void;
+  /** The Ctrl+K search and command palette. */
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
   /** A request to draw a one-line around an element; n tells repeat requests apart. */
   drawRequest: { element: string; n: number } | null;
   /** Open the diagram drawn around an element (selecting it too while linked). */
@@ -67,8 +75,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
   selection: null,
   select: (element, from) => {
-    if (!get().linked) return;
     const current = get().selection;
+    if (!get().linked) {
+      // Picking something by hand replaces a search result.
+      if (current?.from === "search") set({ selection: null });
+      return;
+    }
     if (element === null) {
       if (current) set({ selection: null });
       return;
@@ -77,6 +89,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ selection: { element, from } });
   },
 
+  focus: (element) => set({ selection: { element, from: "search" } }),
+  solveRequest: 0,
+  requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, module: "power" })),
+  paletteOpen: false,
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   drawRequest: null,
   drawAround: (element, from) => {
     get().select(element, from);
