@@ -18,6 +18,7 @@ export function OffPageNode({ data, selected }: NodeProps<OffPageNodeType>) {
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       title={`Double-click to bring ${data.busName || `Bus ${data.bus}`} into the drawing`}
       graphic={

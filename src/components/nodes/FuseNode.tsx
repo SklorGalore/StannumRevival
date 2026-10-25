@@ -25,6 +25,7 @@ export function FuseNode({ data, selected }: NodeProps<FuseNodeType>) {
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       graphic={
         <>

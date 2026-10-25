@@ -25,6 +25,7 @@ export function ShuntNode({ data, selected }: NodeProps<ShuntNodeType>) {
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       graphic={
         <>

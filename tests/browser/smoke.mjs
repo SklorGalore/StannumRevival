@@ -17,6 +17,7 @@ assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, 
 
 const shim = () => {
   window.__dialogQueue = [];
+  window.__files = {};
   // Event listeners are never registered here, so unlisten is a no-op.
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   window.__TAURI_INTERNALS__ = {
@@ -28,6 +29,10 @@ const shim = () => {
     },
     invoke: async (cmd, args) => {
       if (cmd === "plugin:dialog|open" || cmd === "plugin:dialog|save") return window.__dialogQueue.shift() ?? null;
+      // Saved and exported files stay in the page, where the test reads them.
+      if (cmd === "save_diagram") return void (window.__files[args.path] = args.content);
+      if (cmd === "save_binary") return void (window.__files[args.path] = atob(args.dataB64));
+      if (cmd === "load_diagram") return window.__files[args.path];
       if (cmd.startsWith("plugin:event|")) return 0;
       const r = await fetch(`http://127.0.0.1:1421/invoke/${cmd}`, {
         method: "POST",
@@ -183,6 +188,54 @@ await page.keyboard.press("Delete");
 assert.equal(await page.locator(".react-flow__node").count(), 0);
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node").count(), nodeCount);
+
+// Labels: drag a generator's text clear of it (a leader line ties it back),
+// undo and redo the move, drag a wire's flow text, then check that export and
+// save keep the moved label where it was put.
+const genLabel = page.locator(".react-flow__node-generator").first().locator("g.label-drag");
+const labelAt = () => genLabel.getAttribute("transform");
+const dragBy = async (loc, dx, dy) => {
+  const b = await loc.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 + dx, b.y + b.height / 2 + dy, { steps: 8 });
+  await page.mouse.up();
+};
+const homeLabel = await labelAt();
+await dragBy(genLabel, 60, 40);
+await page.waitForFunction((t) => document.querySelector(".react-flow__node-generator g.label-drag").getAttribute("transform") !== t, homeLabel);
+const movedLabel = await labelAt();
+await page.locator(".react-flow__node-generator .label-leader").first().waitFor({ state: "attached" });
+await page.keyboard.press("Control+z");
+assert.equal(await labelAt(), homeLabel, "undo puts the label back in one step");
+await page.keyboard.press("Control+Shift+z");
+assert.equal(await labelAt(), movedLabel, "redo moves it again");
+const flowText = page.locator("text.edge-label").first();
+const flowX = await flowText.getAttribute("x");
+await dragBy(flowText, -60, 0);
+await page.waitForFunction((x) => document.querySelector("text.edge-label").getAttribute("x") !== x, flowX);
+await shot("diagram-labels");
+await queue("/tmp/labels.svg");
+await page.getByRole("button", { name: "Export", exact: true }).click();
+await page.locator("div.fixed button").filter({ hasText: /^SVG$/ }).click();
+await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
+await page.waitForFunction(() => window.__files["/tmp/labels.svg"]);
+const svgOut = await page.evaluate(() => window.__files["/tmp/labels.svg"]);
+assert(svgOut.includes(`transform="${movedLabel}"`), "exported SVG keeps the moved label");
+await queue("/tmp/labels.sld");
+await page.getByRole("button", { name: "Save As", exact: true }).click();
+await page.waitForFunction(() => window.__files["/tmp/labels.sld"]);
+// Saved, so New asks nothing.
+await page.getByRole("button", { name: "New", exact: true }).click();
+await page.locator(".react-flow__node-generator").first().waitFor({ state: "detached" });
+await queue("/tmp/labels.sld");
+await page.getByRole("button", { name: "Open", exact: true }).click();
+await page.locator(".react-flow__node-generator").first().waitFor();
+assert.equal(await labelAt(), movedLabel, "a saved drawing reopens with the label where it was put");
+await page.locator(".react-flow__node-generator").first().click({ position: { x: 20, y: 30 } });
+await page.getByRole("button", { name: "Reset label position" }).click();
+assert.equal(await labelAt(), homeLabel, "reset puts the label back");
+await page.keyboard.press("Escape");
 
 // A local drawing one hop around bus 4: the studied bus is highlighted and
 // branches leaving the drawing end in markers. Double-clicking a marker brings

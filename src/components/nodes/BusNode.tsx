@@ -6,6 +6,7 @@ import { useInk, SELECTED } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import { busTaps } from "./shared/busTaps";
 import { handleStyle } from "./shared/SymbolFrame";
+import { Leader, useBBox, useLabelDrag } from "./shared/labels";
 import { BAR, isVertical, tapFacing } from "../../lib/diagram/bus";
 
 const POSITION = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
@@ -63,6 +64,9 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   // Fixed taps (from a generated layout or added by hand) must stay on the bar.
   const minLength = Math.max(MIN_LENGTH, ...(data.taps ?? []).map((t) => t.x + 20));
   const width = vertical ? BAR : length;
+  const off = data.labelOffset ?? { x: 0, y: 0 };
+  const drag = useLabelDrag(data.labelOffset, (next) => useDiagramStore.getState().updateNodeData(id, { labelOffset: next }));
+  const [nameRef, nameBox] = useBBox<SVGGElement>([off.x, off.y, vertical, data.label, data.voltageKV]);
   const height = vertical ? length : BAR;
 
   const tapHandles = taps.map((t) => {
@@ -92,7 +96,8 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   }
 
   const name = (
-    <>
+    <g ref={nameRef} transform={`translate(${off.x},${off.y})`} {...drag}>
+      <title>Drag to move the label</title>
       <text
         x={vertical ? BAR / 2 : -8}
         y={vertical ? -20 : 0}
@@ -113,7 +118,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
         {data.caseRef ? `${data.caseRef.id} · ` : ""}
         {data.voltageKV} kV
       </text>
-    </>
+    </g>
   );
 
   return (
@@ -136,6 +141,13 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
           </rect>
         )}
         <rect x={0} y={0} width={width} height={height} fill={color} rx={1} />
+        {data.labelOffset && nameBox && (
+          <Leader
+            from={{ x: 0, y: 0, w: width, h: height }}
+            to={{ x: nameBox.x + off.x, y: nameBox.y + off.y, w: nameBox.w, h: nameBox.h }}
+            color={ink.muted}
+          />
+        )}
         {name}
         {row && (
           <text

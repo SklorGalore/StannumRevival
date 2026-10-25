@@ -115,6 +115,13 @@ between horizontal and vertical: generators, loads and shunts sitting on it go
 round with it, and its other wires move to the side of the bar facing where
 they go. A symbol dropped beside a vertical bus turns to face it and goes on it.
 
+Any label can be dragged to a clearer spot: a symbol's text, a bus's name and
+voltage, or the flow figures on a wire. A label pulled clear of what it belongs
+to gets a thin dashed leader back to it, and a wire's figures keep their
+distance from the wire when it moves. **Reset label position** in the
+properties panel puts one back; turning a symbol does too. Moved labels are
+saved with the drawing and appear where they were put in exports.
+
 | Action | How |
 | --- | --- |
 | Select several | Drag a box on empty canvas, or Shift/Ctrl-click |
@@ -124,13 +131,14 @@ they go. A symbol dropped beside a vertical bus turns to face it and goes on it.
 | Select all / clear | Ctrl+A / Esc |
 | Nudge | Arrow keys (one grid step; Shift for 1 px) |
 | Rotate | R (clockwise) / Shift+R; on a bus, horizontal ⇄ vertical |
+| Move a label | Drag its text |
 | Align and space evenly | Bar over the canvas, shown with two or more symbols selected |
 
 **Print style** draws everything in black for printing and export. Diagrams
 save as `.sld` and export to SVG, PNG or PDF with a title block. Keyboard
 shortcuts act on the diagram only while it is showing.
 
-Not yet: switched devices and HVDC from the case, and movable labels.
+Not yet: switched devices and HVDC from the case.
 
 ## Development
 
