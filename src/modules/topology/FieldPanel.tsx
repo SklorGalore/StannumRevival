@@ -11,36 +11,10 @@ import {
   type FilterOperator,
   type FilterRule,
 } from "./fields/field-view";
+import { OPERATORS, newRule as newFilterRule } from "../../lib/filters";
 import { COLOR_PALETTES, type ColorPresentation, type ColorScheme, type ColorSettings } from "./fields/field-colors";
 
 const FIELDS: Record<FieldTarget, FieldDefinition[]> = { bus: BUS_FIELDS, equipment: EQUIPMENT_FIELDS };
-
-const OPERATORS: Record<FieldDefinition["type"], { id: FilterOperator; label: string }[]> = {
-  number: [
-    { id: "eq", label: "=" },
-    { id: "neq", label: "≠" },
-    { id: "gt", label: ">" },
-    { id: "gte", label: "≥" },
-    { id: "lt", label: "<" },
-    { id: "lte", label: "≤" },
-    { id: "between", label: "between" },
-    { id: "missing", label: "is missing" },
-    { id: "present", label: "is present" },
-  ],
-  text: [
-    { id: "contains", label: "contains" },
-    { id: "eq", label: "is" },
-    { id: "neq", label: "is not" },
-    { id: "missing", label: "is missing" },
-    { id: "present", label: "is present" },
-  ],
-  category: [
-    { id: "eq", label: "is" },
-    { id: "neq", label: "is not" },
-    { id: "missing", label: "is missing" },
-    { id: "present", label: "is present" },
-  ],
-};
 
 const selectClass = `${inputClass} min-w-0`;
 
@@ -48,11 +22,8 @@ function definition(target: FieldTarget, key: string): FieldDefinition | undefin
   return FIELDS[target].find((f) => f.key === key);
 }
 
-let nextRule = 1;
-
 export function newRule(target: FieldTarget = "bus"): FilterRule {
-  const field = FIELDS[target][0];
-  return { id: `rule-${nextRule++}`, target, field: field.key, operator: OPERATORS[field.type][0].id, value: "" };
+  return newFilterRule(FIELDS[target], target);
 }
 
 function RuleRow({

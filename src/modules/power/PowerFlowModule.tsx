@@ -31,6 +31,10 @@ import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
 import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
 import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
+import { LoadingBar, RangeMark } from "../../ui/CellBars";
+import { FilterChips } from "../../ui/FilterChips";
+import type { FilterRule } from "../../lib/filters";
+import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "warnings";
 
@@ -41,7 +45,25 @@ const busColumns: Column<BusRow>[] = [
   { key: "name", header: "Name", value: (r) => r.name },
   { key: "kind", header: "Type", value: (r) => r.kind },
   { key: "base_kv", header: "Base kV", value: (r) => r.base_kv, render: (r) => fixed(r.base_kv, 1), align: "right" },
-  { key: "vm", header: "Vm (p.u.)", value: (r) => r.vm, render: (r) => fixed(r.vm, 4), align: "right" },
+  {
+    key: "vm",
+    header: "Vm (p.u.)",
+    value: (r) => r.vm,
+    render: (r) => (
+      <span className="inline-flex items-center gap-2">
+        <RangeMark
+          value={r.vm}
+          lo={r.vmin}
+          hi={r.vmax}
+          margin={0.05}
+          outside={r.violation > 0}
+          label={`${fixed(r.vm, 4)} p.u. against ${fixed(r.vmin, 3)} to ${fixed(r.vmax, 3)}`}
+        />
+        {fixed(r.vm, 4)}
+      </span>
+    ),
+    align: "right",
+  },
   { key: "va", header: "Va (°)", value: (r) => r.va, render: (r) => fixed(r.va, 3), align: "right" },
   { key: "vmin", header: "Vmin", value: (r) => r.vmin, render: (r) => fixed(r.vmin, 3), align: "right" },
   { key: "vmax", header: "Vmax", value: (r) => r.vmax, render: (r) => fixed(r.vmax, 3), align: "right" },
@@ -65,7 +87,27 @@ const generatorColumns: Column<GeneratorRow>[] = [
   { key: "machine_id", header: "ID", value: (r) => r.machine_id },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
   { key: "pg", header: "Pg (MW)", value: (r) => r.pg, render: (r) => fixed(r.pg), align: "right" },
-  { key: "qg", header: "Qg (MVAr)", value: (r) => r.qg, render: (r) => fixed(r.qg), align: "right" },
+  {
+    key: "qg",
+    header: "Qg (MVAr)",
+    value: (r) => r.qg,
+    render: (r) => (
+      <span className="inline-flex items-center gap-2">
+        {r.online && (
+          <RangeMark
+            value={r.qg}
+            lo={r.qmin}
+            hi={r.qmax}
+            margin={(r.qmax - r.qmin) * 0.15}
+            outside={r.q_violation > 0}
+            label={`${fixed(r.qg)} MVAr against ${fixed(r.qmin)} to ${fixed(r.qmax)}`}
+          />
+        )}
+        {fixed(r.qg)}
+      </span>
+    ),
+    align: "right",
+  },
   { key: "qmin", header: "Qmin", value: (r) => r.qmin, render: (r) => fixed(r.qmin), align: "right" },
   { key: "qmax", header: "Qmax", value: (r) => r.qmax, render: (r) => fixed(r.qmax), align: "right" },
   { key: "vg", header: "Vg (p.u.)", value: (r) => r.vg, render: (r) => fixed(r.vg, 4), align: "right" },
@@ -79,10 +121,12 @@ const generatorColumns: Column<GeneratorRow>[] = [
   },
 ];
 
-const branchColumns: Column<BranchRow>[] = [
+const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "from", header: "From", value: (r) => r.from, align: "right" },
+  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "" }] : []),
   { key: "to", header: "To", value: (r) => r.to, align: "right" },
+  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "" }] : []),
   {
     key: "circuit",
     header: "Circuit",
@@ -105,9 +149,11 @@ const branchColumns: Column<BranchRow>[] = [
       r.loading_pct === null ? (
         "—"
       ) : (
-        <span className={r.loading_pct > 100 ? "text-red-700 font-semibold" : r.loading_pct > 90 ? "text-amber-700" : ""}>
-          {fixed(r.loading_pct, 1)}
-        </span>
+        <LoadingBar pct={r.loading_pct}>
+          <span className={r.loading_pct > 100 ? "text-red-800 font-semibold" : r.loading_pct > 90 ? "text-amber-800" : ""}>
+            {fixed(r.loading_pct, 1)}
+          </span>
+        </LoadingBar>
       ),
     align: "right",
   },
@@ -701,6 +747,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [tab, setTab] = useState<Tab>("overview");
   // Shared so the diagram can overlay the same results.
   const report = useWorkspace((s) => s.solveReport);
+  const branchCols = useMemo(
+    // Name columns only when the case names its buses (MATPOWER doesn't).
+    () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
+    [report]
+  );
   const setReport = useWorkspace((s) => s.setSolveReport);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -736,8 +787,23 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     if (next) setTab(next);
   }, [selection, report]);
 
+  // Bus filters, shared by the bus, generator and branch tables. The selected
+  // element stays listed even when a filter would hide it.
+  const [rules, setRules] = useState<FilterRule[]>([]);
+  const passing = useMemo(() => (report ? passingBuses(report.buses, rules) : null), [report, rules]);
+  const selectedBus = selected === null ? null : elementBus(selected);
+  const filtered = useMemo(() => {
+    if (!report || !passing) return null;
+    return {
+      buses: report.buses.filter((b) => passing.has(b.id) || b.id === selectedBus),
+      generators: report.generators.filter((g) => passing.has(g.bus) || g.element === selected),
+      branches: report.branches.filter((b) => passing.has(b.from) || passing.has(b.to) || b.element === selected),
+    };
+  }, [report, passing, selected, selectedBus]);
+
   // A new case invalidates every result.
   useEffect(() => {
+    setRules([]);
     setSensitivity(null);
     setError(null);
     setTab("overview");
@@ -872,7 +938,30 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           </EmptyState>
         ) : (
           <>
-            <Tabs tabs={tabs} value={tab} onChange={setTab} />
+            <Tabs
+              tabs={tabs}
+              value={tab}
+              onChange={(t) => {
+                // "Only problems" belongs to the check that opened a table, not to the next tab.
+                setJump((j) => ({ ...j, problems: false }));
+                setTab(t);
+              }}
+            />
+            {report && (tab === "buses" || tab === "generators" || tab === "branches") && (
+              <FilterChips
+                fields={RESULT_BUS_FIELDS}
+                options={(field) => busFieldOptions(report.buses, field)}
+                rules={rules}
+                onRules={setRules}
+                note={
+                  filtered
+                    ? `${count(filtered[tab].length)} of ${count(report[tab].length)} ${tab}${
+                        tab === "generators" ? " at matching buses" : tab === "branches" ? " touching matching buses" : ""
+                      }`
+                    : "Applies to buses, generators and branches"
+                }
+              />
+            )}
             <div className="flex-1 min-h-0">
               {tab === "overview" && report && <Overview report={report} onJump={onJump} />}
               {tab === "buses" && report && (
@@ -882,7 +971,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.buses}
+                  rows={filtered?.buses ?? report.buses}
                   columns={busColumns}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
@@ -899,7 +988,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.generators}
+                  rows={filtered?.generators ?? report.generators}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
@@ -915,8 +1004,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.branches}
-                  columns={branchColumns}
+                  rows={filtered?.branches ?? report.branches}
+                  columns={branchCols}
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"
                   exportName="branches.csv"
