@@ -1,0 +1,26 @@
+{
+  "about": "Large test cases used by the opt-in large-case tests. The case files are not committed; scripts/fetch-test-cases.ps1 copies or downloads them into this folder and checks each SHA-256.",
+  "cases": [
+    {
+      "file": "SyntheticUSA.RAW",
+      "sha256": "fcb2cc368b2e6ef2e66a3a1b4eedf905d62e602285dfa2a6e720fef8ce871502",
+      "sources": ["SyntheticUSA.zip", "SyntheticUSA.RAW"],
+      "member": "SyntheticUSA.RAW",
+      "about": "Texas A&M synthetic USA, 82,000 buses, PSS/E RAW revision 33, nine two-terminal LCC lines"
+    },
+    {
+      "file": "Synthetic_East_West_US.RAW",
+      "sha256": "877b82e8c2cd93ef978990fa05b528baba435d82618bf8a0cb72c82af0125c60",
+      "sources": ["Synthetic_East_West_US.RAW.zip", "Synthetic80KNAEastWest.zip", "Synthetic_East_West_US.RAW.txt", "Synthetic_East_West_US.RAW"],
+      "member": "Synthetic_East_West_US.RAW*",
+      "about": "Texas A&M synthetic East-West US, 80,000 buses, PSS/E RAW revision 34, no DC lines"
+    },
+    {
+      "file": "case_ACTIVSg70k.m",
+      "sha256": "22d815497ccb587d3b7d167c740e8e75a7d509d813c34c186d08dec77f757e08",
+      "sources": ["ACTIVSg70k.zip", "case_ACTIVSg70k.zip", "case_ACTIVSg70k.m"],
+      "member": "case_ACTIVSg70k.m",
+      "about": "Texas A&M ACTIVSg70k, 70,000 buses, MATPOWER, no DC lines"
+    }
+  ]
+}

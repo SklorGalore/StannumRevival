@@ -3,6 +3,8 @@ import { Download, FolderOpen, Play, Sigma, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
+  DcLineKind,
+  DcLineRow,
   BranchRow,
   BusRow,
   GeneratorRow,
@@ -26,7 +28,7 @@ import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
 import { busElement, elementBus, parseElement } from "../../lib/elements";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "sensitivities" | "warnings";
+type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "sensitivities" | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -103,6 +105,55 @@ const branchColumns: Column<BranchRow>[] = [
           {fixed(r.loading_pct, 1)}
         </span>
       ),
+    align: "right",
+  },
+];
+
+const DC_KIND_LABEL: Record<DcLineKind, string> = {
+  two_terminal: "Two-terminal",
+  vsc: "VSC",
+  multi_terminal: "Multi-terminal",
+};
+
+const qRange = (lo: number, hi: number) => (lo === hi ? fixed(lo) : `${fixed(lo)} to ${fixed(hi)}`);
+
+const dcLineColumns: Column<DcLineRow>[] = [
+  { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
+  { key: "name", header: "Name", value: (r) => parseElement(r.element)?.circuit ?? "" },
+  { key: "kind", header: "Kind", value: (r) => DC_KIND_LABEL[r.kind] ?? r.kind },
+  { key: "from", header: "From", value: (r) => r.from, align: "right" },
+  { key: "from_name", header: "From name", value: (r) => r.from_name },
+  { key: "to", header: "To", value: (r) => r.to, align: "right" },
+  { key: "to_name", header: "To name", value: (r) => r.to_name },
+  { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
+  { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
+  { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
+  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  {
+    key: "qf",
+    header: "QF (MVAr)",
+    title: "Reactive power injected at the sending end; negative means absorbed",
+    value: (r) => r.qf,
+    render: (r) => fixed(r.qf),
+    align: "right",
+  },
+  { key: "qf_range", header: "QF range", value: (r) => r.qminf, render: (r) => qRange(r.qminf, r.qmaxf), align: "right" },
+  {
+    key: "qt",
+    header: "QT (MVAr)",
+    title: "Reactive power injected at the receiving end; negative means absorbed",
+    value: (r) => r.qt,
+    render: (r) => fixed(r.qt),
+    align: "right",
+  },
+  { key: "qt_range", header: "QT range", value: (r) => r.qmint, render: (r) => qRange(r.qmint, r.qmaxt), align: "right" },
+  { key: "vf", header: "VF (p.u.)", value: (r) => r.vf, render: (r) => fixed(r.vf, 4), align: "right" },
+  { key: "vt", header: "VT (p.u.)", value: (r) => r.vt, render: (r) => fixed(r.vt, 4), align: "right" },
+  {
+    key: "q_violation",
+    header: "Q outside range",
+    value: (r) => r.q_violation,
+    render: (r) => (r.q_violation > 0 ? <span className="text-amber-700 font-medium">{fixed(r.q_violation)}</span> : ""),
     align: "right",
   },
 ];
@@ -354,7 +405,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     if (!selection || selection.from === "power" || !report) return;
     const kind = parseElement(selection.element)?.kind;
     const next: Tab | null =
-      kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : null;
+      kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
     if (next) setTab(next);
   }, [selection, report]);
 
@@ -408,6 +459,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       { id: "buses" as const, label: "Buses", count: report?.buses.length, disabled: !report },
       { id: "generators" as const, label: "Generators", count: report?.generators.length, disabled: !report },
       { id: "branches" as const, label: "Branches", count: report?.branches.length, disabled: !report },
+      ...(report?.dc_lines?.length
+        ? [{ id: "dc" as const, label: "DC lines", count: report.dc_lines.length, disabled: false }]
+        : []),
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
@@ -509,6 +563,17 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   exportName="branches.csv"
                   element={(r) => r.element}
                   rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-400")}
+                />
+              )}
+              {tab === "dc" && report?.dc_lines && (
+                <TableTab
+                  rows={report.dc_lines}
+                  columns={dcLineColumns}
+                  rowKey={(r) => r.index}
+                  placeholder="Search DC lines…"
+                  exportName="dc-lines.csv"
+                  element={(r) => r.element}
+                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
                 />
               )}
               {tab === "sensitivities" && sensitivity && (

@@ -679,17 +679,21 @@ pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenera
                 "active dcline references isolated bus".into(),
             ));
         }
-        if case.buses[from_bus].kind != BusType::Reference {
+        // A terminal with a zero-width reactive range (a VSC end in power
+        // factor control) injects that fixed Q instead of holding voltage.
+        let fixed_from = line[11] == line[12];
+        let fixed_to = line[13] == line[14];
+        if !fixed_from && case.buses[from_bus].kind != BusType::Reference {
             case.buses[from_bus].kind = BusType::Pv;
         }
-        if case.buses[to_bus].kind != BusType::Reference {
+        if !fixed_to && case.buses[to_bus].kind != BusType::Reference {
             case.buses[to_bus].kind = BusType::Pv;
         }
         let from_generator = original_generators + from_generators.len();
         from_generators.push(Generator {
             bus: from,
             pg: -line[3],
-            qg: line[5],
+            qg: if fixed_from { line[11] } else { line[5] },
             qmax: line[12],
             qmin: line[11],
             vg: line[7],
@@ -702,7 +706,7 @@ pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenera
         to_generators.push(Generator {
             bus: to,
             pg: line[3] - line[15] - line[16] * line[3],
-            qg: line[6],
+            qg: if fixed_to { line[13] } else { line[6] },
             qmax: line[14],
             qmin: line[13],
             vg: line[8],

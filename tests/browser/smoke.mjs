@@ -491,6 +491,21 @@ if (STANNUM_RAW_DC) {
     "three multi-terminal converters linked to bus 212",
   );
   await shot("diagram-mtdc");
+
+  // Power flow lists every DC line; with Q limits on, the case converges and
+  // the line-commutated converters absorb reactive power.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByLabel("Enforce generator Q limits").check();
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.getByText("Converged").first().waitFor();
+  await page.getByRole("tab", { name: /DC lines/ }).click();
+  await page.getByText("P received (MW)").waitFor();
+  const dcRows = page.locator("tr:visible", { hasText: /Two-terminal|VSC|Multi-terminal/ });
+  assert.equal(await dcRows.count(), 7, "seven DC rows listed");
+  const first = await dcRows.first().innerText();
+  assert.match(first, /Two-terminal[\s\S]*301[\s\S]*3021[\s\S]*-\d/, "rectifier absorbs Q");
+  await shot("power-dc-lines");
+  await page.getByLabel("Enforce generator Q limits").uncheck();
 }
 
 // A DC line picked on the diagram is found in Case diff, and back again.

@@ -89,7 +89,7 @@ fn transformer_base_conversion_matches_equivalent_branch() {
 fn rejects_unsupported_and_malformed_data() {
     let good = raw(&[BUSES, "", "", GEN, LINE]);
     assert!(matches!(
-        parse_raw(&good.replace("0,100,33", "0,100,34")),
+        parse_raw(&good.replace("0,100,33", "0,100,36")),
         Err(Error::Unsupported(_))
     ));
     let zip = raw(&[BUSES, "20,1,1,1,1,50,15,1,0,0,0\n", "", GEN, LINE]);
@@ -462,4 +462,115 @@ fn vsc_and_multi_terminal_dc_lines_import_on_request() {
     // The extra rows solve as fixed terminal injections.
     let solved = rs_power::solve(&all.case, &rs_power::PowerFlowOptions::default()).unwrap();
     assert_eq!(solved.status, rs_power::SolveStatus::Converged);
+}
+
+#[test]
+fn revision_34_mixes_revision_33_and_35_layouts() {
+    // Revision 34 (PowerWorld's default export) has the system-wide block,
+    // switching-device section and twelve-rating branches of revision 35, but
+    // revision 33 generator and switched shunt records.
+    let text = "@!IC,SBASE,REV,XFRRAT,NXFRAT,BASFRQ\n0,100,34,0,0,60\nTitle\nTitle\nGENERAL,THRSHZ=.0002\n0 / END OF SYSTEM-WIDE DATA, BEGIN BUS DATA\n\
+10,'Slack',230,3,1,1,1,1.02,0,1.1,.9,1.1,.9\n20,'Load',115,1,1,1,1,1,0,1.1,.9,1.1,.9\n\
+0 / END OF BUS DATA, BEGIN LOAD DATA\n20,'1',1,1,1,30,10\n0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA\n\
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA\n10,'1',50,0,100,-100,1.02,0,100,0,1,0,0,1,1,100,200,0\n\
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA\n10,20,'1',.01,.1,.02,'Line',100,110,120,0,0,0,0,0,0,0,0,0,.01,.02,.03,.04,1\n\
+0 / END OF BRANCH DATA, BEGIN SYSTEM SWITCHING DEVICE DATA\n0 / END OF SYSTEM SWITCHING DEVICE DATA, BEGIN TRANSFORMER DATA\n\
+0 / END OF TRANSFORMER DATA, BEGIN AREA DATA\n0 / END OF AREA DATA, BEGIN TWO-TERMINAL DC DATA\n\
+0 / END OF TWO-TERMINAL DC DATA, BEGIN VSC DC LINE DATA\n0 / END OF VSC DC LINE DATA, BEGIN IMPEDANCE CORRECTION DATA\n\
+0 / END OF IMPEDANCE CORRECTION DATA, BEGIN MULTI-TERMINAL DC DATA\n0 / END OF MULTI-TERMINAL DC DATA, BEGIN MULTI-SECTION LINE DATA\n\
+0 / END OF MULTI-SECTION LINE DATA, BEGIN ZONE DATA\n0 / END OF ZONE DATA, BEGIN INTER-AREA TRANSFER DATA\n\
+0 / END OF INTER-AREA TRANSFER DATA, BEGIN OWNER DATA\n0 / END OF OWNER DATA, BEGIN FACTS DEVICE DATA\n\
+0 / END OF FACTS DEVICE DATA, BEGIN SWITCHED SHUNT DATA\n20,0,0,1,1.1,.9,0,100,'',25,1,25\n\
+0 / END OF SWITCHED SHUNT DATA, BEGIN GNE DEVICE DATA\n0 / END OF GNE DEVICE DATA, BEGIN INDUCTION MACHINE DATA\n\
+0 / END OF INDUCTION MACHINE DATA, BEGIN SUBSTATION DATA\n1,'Sub',0,0,0.1\n0 / END OF SUBSTATION NODE DATA\n0 / END OF SUBSTATION TERMINAL DATA\n\
+2,'Sub 2',0,0,0.1\n0 / END OF SUBSTATION NODE DATA\nQ\n";
+    let imported = parse_raw_with_options(text, &RawOptions::default()).unwrap();
+    assert_eq!(imported.revision, 34);
+    let g = &imported.case.generators[0];
+    assert_eq!((g.mbase, g.online, g.pmax), (100.0, true, 200.0));
+    let b = &imported.case.branches[0];
+    assert_eq!((b.rate_a, b.rate_c, b.online), (100.0, 120.0, true));
+    // BINIT 25 from the switched shunt plus BJ 0.04 p.u. from the line end.
+    assert_eq!(imported.case.buses[1].bs, 29.0);
+    // Substation blocks after the known sections are reported once.
+    let extra: Vec<_> = imported
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("additional section"))
+        .collect();
+    assert_eq!(extra.len(), 1);
+    assert_eq!(
+        extra[0].message,
+        "skipped 2 records of additional section data"
+    );
+}
+
+#[test]
+fn line_commutated_converters_absorb_reactive_power_on_request() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/raw/t_psse_case3.raw");
+    let text = std::fs::read_to_string(path).unwrap();
+    let options = |lcc_absorbs_reactive| RawOptions {
+        all_dc_lines: true,
+        lcc_absorbs_reactive,
+        ..Default::default()
+    };
+    let plain = parse_raw_with_options(&text, &options(false)).unwrap();
+    let flipped = parse_raw_with_options(&text, &options(true)).unwrap();
+    let (plain, flipped) = (plain.case.dcline.unwrap(), flipped.case.dcline.unwrap());
+    for (i, kind) in [0, 1, 2, 3, 4, 5, 6]
+        .into_iter()
+        .zip(["lcc", "lcc", "vsc", "vsc", "lcc", "lcc", "lcc"])
+    {
+        let (p, f) = (&plain[i], &flipped[i]);
+        if kind == "vsc" {
+            assert_eq!(p, f, "VSC row {i} is unchanged");
+        } else {
+            for col in [11, 13] {
+                assert_eq!((f[col], f[col + 1]), (-p[col + 1], -p[col]), "row {i}");
+                assert!(f[col + 1] <= 0.0, "row {i} only absorbs");
+            }
+            assert_eq!(p[..11], f[..11]);
+            assert_eq!(p[15..], f[15..]);
+        }
+    }
+}
+
+#[test]
+fn psse_case3_dc_lines_solve_with_q_limits_when_converters_absorb() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/raw/t_psse_case3.raw");
+    let text = std::fs::read_to_string(path).unwrap();
+    let imported = parse_raw_with_options(
+        &text,
+        &RawOptions {
+            all_dc_lines: true,
+            lcc_absorbs_reactive: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    for enforce_q_limits in [false, true] {
+        let result = rs_power::solve(
+            &imported.case,
+            &rs_power::PowerFlowOptions {
+                enforce_q_limits,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.status, rs_power::SolveStatus::Converged);
+        let lines = result.case.dcline.as_ref().unwrap();
+        // Both two-terminal rectifiers absorb reactive power.
+        assert!(lines[0][5] < 0.0 && lines[1][5] < 0.0);
+        // VDCLINE1's sending end holds its 0.95 power factor.
+        let q = 209.0 * 0.95f64.acos().tan();
+        assert!((lines[2][5] - q).abs() < 1e-9);
+        if enforce_q_limits {
+            for line in lines {
+                assert!(line[5] >= line[11] - 1e-4 && line[5] <= line[12] + 1e-4);
+                assert!(line[6] >= line[13] - 1e-4 && line[6] <= line[14] + 1e-4);
+            }
+        }
+    }
 }

@@ -173,3 +173,33 @@ fn dc_lines_reach_the_diagram_network() {
     assert_eq!(names, ["DC 0", "DC 1", "DC 2"]);
     assert!(!net.dc_lines[0].online, "mode 0 is blocked");
 }
+
+#[test]
+fn solve_report_lists_dc_lines_with_absorbing_converters() {
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    for enforce_q_limits in [false, true] {
+        let report = ws
+            .current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                enforce_q_limits,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(report.converged, "Q limits {enforce_q_limits}");
+        let dc = &report.dc_lines;
+        assert_eq!(dc.len(), 7);
+        assert_eq!(dc[0].element, "dcline:301:3021:1");
+        assert_eq!(
+            (dc[0].kind, dc[0].from, dc[0].to),
+            ("two_terminal", 301, 3021)
+        );
+        assert_eq!(dc[2].kind, "vsc");
+        // Line-commutated converters absorb within negative ranges.
+        assert!(dc[0].qmaxf <= 0.0 && dc[0].qf < 0.0);
+        assert!(dc.iter().all(|d| d.online && d.loss_mw.abs() < 1e-9));
+        if enforce_q_limits {
+            assert!(dc.iter().all(|d| d.q_violation < 1e-3));
+        }
+    }
+}

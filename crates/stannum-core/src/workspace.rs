@@ -182,7 +182,13 @@ impl OpenCase {
         let start = Instant::now();
         let result =
             rs_power::solve(&power.case, &settings.options()).map_err(|e| e.to_string())?;
-        let report = power::report(&result, &power.elements, &settings, elapsed_ms(start));
+        let report = power::report(
+            &result,
+            &power.elements,
+            &power.dc_line_kinds,
+            &settings,
+            elapsed_ms(start),
+        );
         self.solved = Some((result, settings));
         Ok(report)
     }

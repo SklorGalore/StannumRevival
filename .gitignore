@@ -11,3 +11,8 @@ src-tauri/gen/
 
 # Rust workspace build output
 /target/
+
+# Large test cases (fetched by scripts/fetch-test-cases.ps1)
+/tests/large/*
+!/tests/large/cases.json
+!/tests/large/README.md

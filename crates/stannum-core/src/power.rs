@@ -45,8 +45,11 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
+        // Line-commutated converters absorb reactive power, unlike MATPOWER's
+        // positive estimates.
         let options = rs_power::RawOptions {
             all_dc_lines: true,
+            lcc_absorbs_reactive: true,
             ..Default::default()
         };
         let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
@@ -211,6 +214,38 @@ pub struct BranchRow {
     pub loading_pct: Option<f64>,
 }
 
+/// A solved DC line row, from its sending (rectifier) bus to its receiving
+/// (inverter) bus.
+#[derive(Clone, Debug, Serialize)]
+pub struct DcLineRow {
+    pub index: usize,
+    /// Shared id, such as `dcline:101:205:DC1`.
+    pub element: String,
+    /// "two_terminal", "vsc" or "multi_terminal".
+    pub kind: &'static str,
+    pub from: u32,
+    pub to: u32,
+    pub from_name: String,
+    pub to_name: String,
+    pub online: bool,
+    /// MW taken from the AC system at the sending end.
+    pub pf: f64,
+    /// MW delivered to the AC system at the receiving end.
+    pub pt: f64,
+    /// MVAr injected into the AC system at each end (negative = absorbed).
+    pub qf: f64,
+    pub qt: f64,
+    pub vf: f64,
+    pub vt: f64,
+    pub loss_mw: f64,
+    pub qminf: f64,
+    pub qmaxf: f64,
+    pub qmint: f64,
+    pub qmaxt: f64,
+    /// Largest MVAr outside either end's range; zero when within or offline.
+    pub q_violation: f64,
+}
+
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct LimitSummary {
     pub voltage_violations: usize,
@@ -239,6 +274,7 @@ pub struct SolveReport {
     pub buses: Vec<BusRow>,
     pub generators: Vec<GeneratorRow>,
     pub branches: Vec<BranchRow>,
+    pub dc_lines: Vec<DcLineRow>,
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -276,6 +312,7 @@ fn outside(value: f64, low: f64, high: f64) -> f64 {
 pub fn report(
     result: &PowerFlowResult,
     elements: &Elements,
+    dc_kinds: &[&'static str],
     settings: &SolveSettings,
     elapsed_ms: f64,
 ) -> SolveReport {
@@ -395,6 +432,44 @@ pub fn report(
         })
         .collect();
 
+    let dc_lines: Vec<DcLineRow> = case
+        .dcline
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(index, d)| {
+            let (from, to) = (d[0] as u32, d[1] as u32);
+            let online = d[2] != 0.0;
+            let q_violation = if online && settings.model == ModelChoice::Ac {
+                outside(d[5], d[11], d[12]).max(outside(d[6], d[13], d[14]))
+            } else {
+                0.0
+            };
+            DcLineRow {
+                index,
+                element: elements.dc_lines.get(index).cloned().unwrap_or_default(),
+                kind: dc_kinds.get(index).copied().unwrap_or("two_terminal"),
+                from,
+                to,
+                from_name: name_of(from),
+                to_name: name_of(to),
+                online,
+                pf: d[3],
+                pt: d[4],
+                qf: d[5],
+                qt: d[6],
+                vf: d[7],
+                vt: d[8],
+                loss_mw: if online { d[3] - d[4] } else { 0.0 },
+                qminf: d[11],
+                qmaxf: d[12],
+                qmint: d[13],
+                qmaxt: d[14],
+                q_violation,
+            }
+        })
+        .collect();
+
     let total_generation_mw = case
         .generators
         .iter()
@@ -407,7 +482,8 @@ pub fn report(
         .filter(|b| b.kind != BusType::Isolated)
         .map(|b| b.pd)
         .sum();
-    let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum();
+    let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum::<f64>()
+        + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>();
 
     let (status, converged) = match result.status {
         SolveStatus::Converged => ("Converged", true),
@@ -430,6 +506,7 @@ pub fn report(
         buses,
         generators,
         branches,
+        dc_lines,
     }
 }
 

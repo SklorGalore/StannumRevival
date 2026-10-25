@@ -1,0 +1,106 @@
+//! Real-scale cases, ignored by default. Fetch them with
+//! `pwsh scripts/fetch-test-cases.ps1`, then run
+//! `cargo test --release -p rs-power --test large_cases -- --ignored`.
+use rs_power::{DcLineKind, PowerFlowOptions, RawOptions, SolveStatus, solve};
+use std::path::PathBuf;
+
+fn case_text(file: &str) -> String {
+    let dir = std::env::var_os("STANNUM_LARGE_CASES").map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/large"),
+        PathBuf::from,
+    );
+    let path = dir.join(file);
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+        panic!(
+            "{} is missing ({e}); run pwsh scripts/fetch-test-cases.ps1",
+            path.display()
+        )
+    });
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn options(enforce_q_limits: bool) -> PowerFlowOptions {
+    PowerFlowOptions {
+        enforce_q_limits,
+        ..Default::default()
+    }
+}
+
+fn stannum_raw(text: &str) -> rs_power::RawImport {
+    rs_power::parse_raw_with_options(
+        text,
+        &RawOptions {
+            all_dc_lines: true,
+            lcc_absorbs_reactive: true,
+            ..Default::default()
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+#[ignore = "needs tests/large/SyntheticUSA.RAW"]
+fn synthetic_usa_two_terminal_dc_lines() {
+    let imported = stannum_raw(&case_text("SyntheticUSA.RAW"));
+    assert_eq!(imported.revision, 33);
+    assert_eq!(imported.case.buses.len(), 82_000);
+    assert_eq!(imported.dc_line_kinds, [DcLineKind::TwoTerminal; 9]);
+    let lines = imported.case.dcline.as_ref().unwrap();
+    let mw: Vec<f64> = lines.iter().map(|l| l[3]).collect();
+    assert_eq!(
+        mw,
+        [
+            500.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0
+        ]
+    );
+    // Firing angles fixed at 15 degrees: the converters absorb at least
+    // P * tan(15 deg).
+    for line in lines {
+        let q = line[3] * 15f64.to_radians().tan();
+        assert!((line[12] + q).abs() < 1e-9 && line[11] < line[12]);
+    }
+
+    let result = solve(&imported.case, &options(false)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    // Today's lossless model: every MW sent arrives.
+    for line in result.case.dcline.as_ref().unwrap() {
+        assert_eq!(line[3], line[4]);
+    }
+    // With Q limits on, the converters can no longer supply the reactive
+    // power this case leans on, and the MATPOWER-style limit loop does not
+    // converge (tracked for plan phase 1).
+    let limited = solve(&imported.case, &options(true)).unwrap();
+    assert_ne!(limited.status, SolveStatus::Converged);
+}
+
+#[test]
+#[ignore = "needs tests/large/Synthetic_East_West_US.RAW"]
+fn synthetic_east_west_revision_34() {
+    let imported = stannum_raw(&case_text("Synthetic_East_West_US.RAW"));
+    assert_eq!(imported.revision, 34);
+    assert_eq!(imported.case.buses.len(), 80_000);
+    assert!(imported.case.dcline.is_none());
+    let extra = imported
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("additional section"))
+        .count();
+    assert_eq!(extra, 1, "substation data is reported once");
+    for q in [false, true] {
+        assert_eq!(
+            solve(&imported.case, &options(q)).unwrap().status,
+            SolveStatus::Converged
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs tests/large/case_ACTIVSg70k.m"]
+fn activsg70k_matpower() {
+    let case = rs_power::parse_matpower(&case_text("case_ACTIVSg70k.m")).unwrap();
+    assert_eq!(case.buses.len(), 70_000);
+    assert!(case.dcline.is_none());
+    let result = solve(&case, &options(false)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    assert!(result.residual < 1e-8);
+}
