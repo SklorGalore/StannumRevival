@@ -2,8 +2,8 @@
 
 ## Project Structure & Module Organization
 
-`rs-power` is a Rust 2024 library and interactive CLI for AC/DC power flow.
-`src/lib.rs` exposes the API; `src/main.rs` implements the CLI. Case types live
+`rs-power` is a Rust 2024 library for AC/DC power flow.
+`src/lib.rs` exposes the API. Case types live
 in `src/case.rs`, MATPOWER import/export in `src/input.rs` and `src/output.rs`,
 RAW conversion in `src/raw.rs`, network assembly in `src/network.rs`, and solving
 in `src/solver.rs`.
@@ -16,8 +16,7 @@ for usage, `benches/` for timings, and `scripts/` for fixture generators.
 
 Run from `crates/rs-power` with a Rust toolchain supporting edition 2024:
 
-- `cargo build --locked`: build the library and CLI.
-- `cargo run -- tests/fixtures/case9.m`: start an interactive session.
+- `cargo build --locked`: build the library.
 - `cargo run --example power_flow -- tests/fixtures/case9.m ac`: run the example.
 - `cargo fmt --all -- --check`: check formatting; use `cargo fmt --all` to apply it.
 - `cargo clippy --locked --all-targets -- -D warnings`: lint all targets.
@@ -36,7 +35,7 @@ are used or preserved. The README doubles as crate documentation.
 ## Testing Guidelines
 
 Use Rust's built-in test framework and descriptive behavior-based test names.
-Add focused regressions to the relevant suite for solver, importer, or CLI changes.
+Add focused regressions to the relevant suite for solver or importer changes.
 Reference comparisons allow `1e-6` p.u., `1e-5` degrees, and `1e-4` MW/MVAr;
 no percentage coverage threshold is specified. Ordinary tests require no MATPOWER
 installation. Regenerate fixtures only when required by the task, using the pinned

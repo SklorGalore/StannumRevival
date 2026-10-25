@@ -30,6 +30,8 @@ pub struct NetworkBus {
 pub struct NetworkGenerator {
     /// Index in the case's generator table (matches the power flow report).
     pub index: usize,
+    /// Shared id, such as `generator:101:1`.
+    pub element: String,
     pub bus: u32,
     pub online: bool,
     pub pmax: f64,
@@ -39,6 +41,11 @@ pub struct NetworkGenerator {
 pub struct NetworkBranch {
     /// Index in the case's branch table (matches the power flow report).
     pub index: usize,
+    /// Shared id, such as `line:101:102:1`.
+    pub element: String,
+    pub circuit: String,
+    /// 1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise.
+    pub winding: u8,
     pub from: u32,
     pub to: u32,
     pub online: bool,
@@ -85,6 +92,12 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
         .enumerate()
         .map(|(index, g)| NetworkGenerator {
             index,
+            element: power
+                .elements
+                .generators
+                .get(index)
+                .map(|e| e.element.clone())
+                .unwrap_or_default(),
             bus: g.bus,
             online: g.online,
             pmax: g.pmax,
@@ -100,8 +113,12 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             // A branch is drawn as a transformer when it changes voltage level,
             // has an off-nominal ratio, or shifts phase.
             let transformer = (kv_from - kv_to).abs() > 1e-6 || tap != 1.0 || br.shift != 0.0;
+            let e = power.elements.branches.get(index);
             NetworkBranch {
                 index,
+                element: e.map(|e| e.element.clone()).unwrap_or_default(),
+                circuit: e.map(|e| e.circuit.clone()).unwrap_or_default(),
+                winding: e.map_or(0, |e| e.winding),
                 from: br.from,
                 to: br.to,
                 online: br.online,

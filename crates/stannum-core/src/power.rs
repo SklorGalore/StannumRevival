@@ -1,5 +1,6 @@
 //! Power flow and sensitivities (rs-power), shaped for the frontend.
 
+use crate::elements::Elements;
 use rs_power::{
     BusType, Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
     PowerFlowSensitivity, SolveStatus, StateVariable,
@@ -11,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub struct PowerCase {
     pub case: Case,
     pub warnings: Vec<Warning>,
+    /// Shared ids for the case's branch and generator rows.
+    pub elements: Elements,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -24,6 +27,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     if is_matpower {
         let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
         Ok(PowerCase {
+            elements: Elements::from_matpower(&case),
             case,
             warnings: Vec::new(),
         })
@@ -31,6 +35,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
         let import = rs_power::parse_raw_with_options(text, &rs_power::RawOptions::default())
             .map_err(|e| e.to_string())?;
         Ok(PowerCase {
+            elements: Elements::from_raw(&import.branch_sources, &import.generator_sources),
             case: import.case,
             warnings: import
                 .warnings
@@ -141,6 +146,9 @@ pub struct BusRow {
 #[derive(Clone, Debug, Serialize)]
 pub struct GeneratorRow {
     pub index: usize,
+    /// Shared id, such as `generator:101:1`.
+    pub element: String,
+    pub machine_id: String,
     pub bus: u32,
     pub bus_name: String,
     pub online: bool,
@@ -157,6 +165,11 @@ pub struct GeneratorRow {
 #[derive(Clone, Debug, Serialize)]
 pub struct BranchRow {
     pub index: usize,
+    /// Shared id, such as `line:101:102:1`.
+    pub element: String,
+    pub circuit: String,
+    /// 1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise.
+    pub winding: u8,
     pub from: u32,
     pub to: u32,
     pub online: bool,
@@ -233,7 +246,12 @@ fn outside(value: f64, low: f64, high: f64) -> f64 {
 }
 
 /// Build the frontend report from a solve, including operating-limit checks.
-pub fn report(result: &PowerFlowResult, settings: &SolveSettings, elapsed_ms: f64) -> SolveReport {
+pub fn report(
+    result: &PowerFlowResult,
+    elements: &Elements,
+    settings: &SolveSettings,
+    elapsed_ms: f64,
+) -> SolveReport {
     let case = &result.case;
     let names = bus_names(case);
     let name_of = |id: u32| {
@@ -294,8 +312,11 @@ pub fn report(result: &PowerFlowResult, settings: &SolveSettings, elapsed_ms: f6
                     limits.worst_reactive = Some((g.bus, q_violation));
                 }
             }
+            let e = elements.generators.get(index);
             GeneratorRow {
                 index,
+                element: e.map(|e| e.element.clone()).unwrap_or_default(),
+                machine_id: e.map(|e| e.machine_id.clone()).unwrap_or_default(),
                 bus: g.bus,
                 bus_name: name_of(g.bus),
                 online: g.online,
@@ -326,8 +347,12 @@ pub fn report(result: &PowerFlowResult, settings: &SolveSettings, elapsed_ms: f6
                     limits.worst_branch = Some((br.from, br.to, loading));
                 }
             }
+            let e = elements.branches.get(index);
             BranchRow {
                 index,
+                element: e.map(|e| e.element.clone()).unwrap_or_default(),
+                circuit: e.map(|e| e.circuit.clone()).unwrap_or_default(),
+                winding: e.map_or(0, |e| e.winding),
                 from: br.from,
                 to: br.to,
                 online: br.online,

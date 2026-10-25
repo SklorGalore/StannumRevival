@@ -83,6 +83,19 @@ await page.getByRole("button", { name: "Path", exact: true }).click();
 await page.getByTestId("path-result").filter({ hasText: /hop|No active AC path/ }).waitFor();
 await shot("topology");
 
+// Filters and colour rules narrow the bus table and draw a legend.
+await page.getByRole("tab", { name: /Filters & colours/ }).click();
+await page.getByLabel("Colour buses by").selectOption("base_kv");
+await page.getByTestId("graph-legend").waitFor();
+await page.getByRole("button", { name: "Add filter" }).click();
+await page.getByLabel("Filter field").selectOption("number");
+await page.getByLabel("Filter operator").selectOption("eq");
+await page.getByLabel("Filter value").fill(firstBus);
+await page.getByTestId("filter-counts").filter({ hasText: /Showing 1 of/ }).waitFor();
+await page.getByRole("button", { name: "Clear all" }).click();
+await page.getByLabel("Colour buses by").selectOption("");
+await page.getByRole("tab", { name: "Selection" }).click();
+
 // The same RAW case solves too.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();

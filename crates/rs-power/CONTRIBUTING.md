@@ -33,9 +33,8 @@ valid as doctests. Document public fields with their units, sign conventions,
 and whether the solver uses or merely preserves them. Generated API docs are in
 `target/doc/rs_power/index.html`.
 
-CI runs formatting, Clippy, tests, and doctests on Linux, macOS, and Windows;
-Linux also runs `cargo package --locked`. The strict documentation command above
-is an additional local check.
+Stannum's CI runs formatting, Clippy, tests, and doctests on Linux. The strict
+documentation command above is an additional local check.
 
 For timings, run `cargo bench --bench power_flow`. Set
 `RS_POWER_BENCH_ITERATIONS` to a positive integer to override 20 measured
