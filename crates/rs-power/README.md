@@ -109,8 +109,8 @@ statuses. Impedance conversion uses the winding nominal voltage base, matching
 MATPOWER's `use_winding_baseV=1`, including its zero-NOMV behavior. ZIP loads are
 frozen at the supplied bus voltage. Switched shunts use BINIT, including offline
 records, as in MATPOWER. Transformer magnetizing admittance, tap controls,
-correction tables, remote regulation and wind control are ignored with warnings
-when present. Unsupported equipment sections are skipped with warnings, following
+correction tables and wind control are ignored with warnings when present, and
+so is remote regulation unless `remote_regulation` is set (see below). Unsupported equipment sections are skipped with warnings, following
 MATPOWER; ownership, zone, interchange and grouping metadata are not retained.
 Change-code files warn and are treated as standalone cases, never incremental
 updates. Unknown branch endpoints are retained with warnings; invalid transformer
@@ -144,6 +144,32 @@ reactive power. Set `lcc_absorbs_reactive: true` to store them as
 unchanged. When solving, a DC line end whose reactive range has zero width (a
 VSC in power factor control) injects that fixed MVAr rather than holding its
 bus voltage.
+
+### Remote voltage regulation
+
+MATPOWER holds every generator's voltage setpoint at its own bus. Set
+`remote_regulation: true` to keep PSS/E's IREG and RMPCT instead, in
+`Generator::regulated_bus` and `Generator::reactive_share`. When reactive
+limits are enforced, the solver then holds each regulated bus at the
+setpoint, freeing the generator terminals' voltages, and generators on
+different buses that hold the same bus share its reactive power in
+proportion to RMPCT (generators on one bus share as before). A generator at a
+limit is fixed there and stops holding the bus; it takes the bus back in a
+later pass if the bus's voltage moves past the setpoint on the other side.
+A generator whose output already sits at a limit in the case starts at that
+limit, since solved cases often leave small units pinned there. A group falls
+back to holding its own bus when the regulated bus is a reference bus, is in
+another island, or itself regulates a remote bus.
+
+Without reactive limits, regulated generators hold their own bus, as in
+MATPOWER: nothing then stops a small unit from driving its terminal to an
+extreme voltage to hold a distant bus. Sensitivities and Jacobians from
+[`make_jacobian`] still use the local formulation.
+
+On the Texas A&M SyntheticUSA case (82,000 buses, 2,730 remote-regulating
+generators) the reactive-limit solve diverged with local setpoints and
+converges with remote regulation, landing within 0.001 p.u. on average of
+the solved voltages saved in the case.
 
 ### Detailed two-terminal DC model
 
@@ -218,7 +244,9 @@ use the MATPOWER from-side tap convention; a zero tap magnitude means unity.
 Defaults are AC, supplied case voltages (with generator voltage setpoints at
 controlled buses), a `1e-8` per-unit mismatch tolerance, 10 Newton steps per
 reactive-limit pass, and reactive-limit enforcement disabled. Reactive-limit
-tolerance is `5e-6` MVAr. The iteration count includes all limit passes.
+tolerance is `5e-6` MVAr. The iteration count includes all limit passes. A
+Newton step that would change any voltage magnitude by more than half is
+shortened so that none does; ordinary steps are far smaller and unaffected.
 
 Always check `SolveStatus`. Reaching the iteration limit returns the final
 iterate, computed outputs and residual. Reactive-limit infeasibility is a

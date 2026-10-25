@@ -42,6 +42,8 @@ pub struct PowerFlowOptions {
     /// Newton steps per reactive-limit pass. Zero evaluates the initial state.
     pub max_iterations: usize,
     /// Fix AC reactive-limit violations and switch affected buses to PQ.
+    /// Also turns on remote voltage regulation ([`Generator::regulated_bus`]);
+    /// without limits, every generator holds its own bus.
     /// Defaults to false; enabling this for DC returns [`Error::Unsupported`].
     pub enforce_q_limits: bool,
     /// Reactive-limit violation tolerance in MVAr.
@@ -188,22 +190,213 @@ pub(crate) fn variables(kinds: &[BusType]) -> (Vec<usize>, Vec<usize>) {
     (angles, pq)
 }
 
-fn mismatch(
-    net: &Network,
-    v: &[C],
-    s: &[C],
-    angles: &[usize],
-    pq: &[usize],
-) -> Result<(Vec<f64>, f64), Error> {
+/// Which equations and voltage variables a Newton solve uses.
+///
+/// Angles (and active-power rows) are every non-reference bus. A bus that
+/// holds its own voltage has no magnitude variable and no reactive row. A
+/// group of buses holding one remote bus's voltage swaps that bus's
+/// magnitude variable for its own members' magnitudes, and adds rows that
+/// share the group's reactive power by [`Generator::reactive_share`].
+pub(crate) struct Layout {
+    /// Buses with an angle variable and an active-power row.
+    pub angles: Vec<usize>,
+    /// Buses with a voltage-magnitude variable.
+    pub magnitudes: Vec<usize>,
+    /// Buses with a reactive-power row.
+    pub q_rows: Vec<usize>,
+    /// Reactive-sharing rows within remote regulation groups.
+    shares: Vec<Share>,
+    /// Remotely held buses and their voltage setpoints in per unit.
+    pub targets: Vec<(usize, f64)>,
+    /// Buses whose generators hold a remote bus, in bus order.
+    pub remote: Vec<usize>,
+    /// The bus each entry of `remote` holds.
+    pub held: Vec<usize>,
+}
+
+/// One sharing row: `(Qa + qa) / wa − (Qb + qb) / wb = 0`, where `Q` is the
+/// bus's reactive mismatch and `q` its scheduled generator output, so each
+/// sum is the generator reactive power needed at that bus.
+struct Share {
+    a: usize,
+    b: usize,
+    weights: [f64; 2],
+    scheduled: [f64; 2],
+}
+
+impl Layout {
+    /// The plain layout: PV buses hold their own voltage.
+    pub(crate) fn plain(kinds: &[BusType]) -> Self {
+        let (angles, pq) = variables(kinds);
+        Self {
+            angles,
+            magnitudes: pq.clone(),
+            q_rows: pq,
+            shares: Vec::new(),
+            targets: Vec::new(),
+            remote: Vec::new(),
+            held: Vec::new(),
+        }
+    }
+
+    /// The layout for `kinds`, with remote regulation from the generators'
+    /// [`Generator::regulated_bus`]. A group falls back to local control
+    /// when its bus is a reference bus, lies in another island, or holds a
+    /// remote bus itself.
+    fn new(net: &Network, case: &Case, kinds: &[BusType]) -> Self {
+        let mut layout = Self::plain(kinds);
+        let n = kinds.len();
+        let mut island = vec![0; n];
+        for (k, buses) in net.islands.iter().enumerate() {
+            for &i in buses {
+                island[i] = k;
+            }
+        }
+        let wanted: Vec<Option<usize>> = (0..n)
+            .map(|i| {
+                if kinds[i] != BusType::Pv {
+                    return None;
+                }
+                net.gens[i]
+                    .iter()
+                    .find_map(|&g| case.generators[g].regulated_bus)
+                    .and_then(|id| net.by_id.get(&id).copied())
+                    .filter(|&t| t != i && island[t] == island[i])
+            })
+            .collect();
+        let mut groups: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+        let mut fallback = 0;
+        for (i, target) in wanted.iter().enumerate() {
+            let Some(t) = *target else { continue };
+            if kinds[t] == BusType::Reference || wanted[t].is_some() {
+                fallback += 1;
+                continue;
+            }
+            groups.entry(t).or_default().push(i);
+        }
+        if fallback > 0 {
+            log::debug!(
+                "{fallback} generator buses hold their own voltage because their regulated bus is a reference bus or regulates remotely"
+            );
+        }
+        if groups.is_empty() {
+            return layout;
+        }
+        let weight = |i: usize| {
+            let w: f64 = net.gens[i]
+                .iter()
+                .map(|&g| {
+                    let share = case.generators[g].reactive_share;
+                    if share.is_finite() && share > 0.0 {
+                        share
+                    } else {
+                        100.0
+                    }
+                })
+                .sum();
+            w / 100.0
+        };
+        let scheduled = |i: usize| {
+            net.gens[i]
+                .iter()
+                .map(|&g| case.generators[g].qg)
+                .sum::<f64>()
+                / case.base_mva
+        };
+        let mut held = vec![false; n];
+        for (&t, members) in &mut groups {
+            if kinds[t] == BusType::Pq {
+                held[t] = true;
+                let first = &case.generators[net.gens[members[0]][0]];
+                layout.targets.push((t, first.vg));
+            } else {
+                // A generator at the held bus joins the group and fixes its voltage.
+                members.insert(0, t);
+            }
+            for &m in members.iter() {
+                if m != t {
+                    layout.remote.push(m);
+                }
+            }
+            let b = members[0];
+            for &a in &members[1..] {
+                layout.shares.push(Share {
+                    a,
+                    b,
+                    weights: [weight(a), weight(b)],
+                    scheduled: [scheduled(a), scheduled(b)],
+                });
+            }
+        }
+        let mut pairs: Vec<_> = layout
+            .remote
+            .iter()
+            .map(|&m| (m, wanted[m].unwrap()))
+            .collect();
+        pairs.sort_unstable();
+        (layout.remote, layout.held) = pairs.into_iter().unzip();
+        layout.magnitudes.retain(|&i| !held[i]);
+        layout.magnitudes.extend(layout.remote.iter().copied());
+        layout
+    }
+
+    /// Unknowns (and equations) in this layout.
+    fn len(&self) -> usize {
+        self.angles.len() + self.magnitudes.len()
+    }
+
+    /// Row and column indices of each bus's variables and equations.
+    fn indices(&self, n: usize) -> Indices {
+        let mut angle = vec![None; n];
+        let mut magnitude = vec![None; n];
+        let mut reactive: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+        for (k, &i) in self.angles.iter().enumerate() {
+            angle[i] = Some(k);
+        }
+        for (k, &i) in self.magnitudes.iter().enumerate() {
+            magnitude[i] = Some(k + self.angles.len());
+        }
+        for (k, &i) in self.q_rows.iter().enumerate() {
+            reactive[i].push((k + self.angles.len(), 1.0));
+        }
+        let first = self.angles.len() + self.q_rows.len();
+        for (k, share) in self.shares.iter().enumerate() {
+            reactive[share.a].push((first + k, 1.0 / share.weights[0]));
+            reactive[share.b].push((first + k, -1.0 / share.weights[1]));
+        }
+        Indices {
+            angle,
+            magnitude,
+            reactive,
+        }
+    }
+}
+
+/// Per-bus positions in a [`Layout`]'s Jacobian.
+struct Indices {
+    /// Angle column, which is also the bus's active-power row.
+    angle: Vec<Option<usize>>,
+    /// Voltage-magnitude column.
+    magnitude: Vec<Option<usize>>,
+    /// Rows that the bus's reactive mismatch enters, with coefficients.
+    reactive: Vec<Vec<(usize, f64)>>,
+}
+
+fn mismatch(net: &Network, v: &[C], s: &[C], layout: &Layout) -> Result<(Vec<f64>, f64), Error> {
     let power = net.power(v);
-    let f: Vec<_> = angles
-        .iter()
-        .map(|&i| (power[i] - s[i]).re)
-        .chain(pq.iter().map(|&i| (power[i] - s[i]).im))
-        .collect();
     if power.iter().any(|z| !z.re.is_finite() || !z.im.is_finite()) {
         return Err(Error::Numerical("non-finite power mismatch".into()));
     }
+    let q = |i: usize| (power[i] - s[i]).im;
+    let f: Vec<_> = layout
+        .angles
+        .iter()
+        .map(|&i| (power[i] - s[i]).re)
+        .chain(layout.q_rows.iter().map(|&i| q(i)))
+        .chain(layout.shares.iter().map(|x| {
+            (q(x.a) + x.scheduled[0]) / x.weights[0] - (q(x.b) + x.scheduled[1]) / x.weights[1]
+        }))
+        .collect();
     let norm = f.iter().fold(0.0_f64, |a, &b| a.max(b.abs()));
     Ok((f, norm))
 }
@@ -214,15 +407,20 @@ pub(crate) fn jacobian(
     angles: &[usize],
     pq: &[usize],
 ) -> Vec<Triplet<usize, usize, f64>> {
-    let n = v.len();
-    let mut ai = vec![None; n];
-    let mut qi = vec![None; n];
-    for (k, &i) in angles.iter().enumerate() {
-        ai[i] = Some(k);
-    }
-    for (k, &i) in pq.iter().enumerate() {
-        qi[i] = Some(k + angles.len());
-    }
+    let layout = Layout {
+        angles: angles.to_vec(),
+        magnitudes: pq.to_vec(),
+        q_rows: pq.to_vec(),
+        shares: Vec::new(),
+        targets: Vec::new(),
+        remote: Vec::new(),
+        held: Vec::new(),
+    };
+    layout_jacobian(net, v, &layout)
+}
+
+fn layout_jacobian(net: &Network, v: &[C], layout: &Layout) -> Vec<Triplet<usize, usize, f64>> {
+    let at = layout.indices(v.len());
     let mut entries = Vec::new();
     for (i, row) in net.y.iter().enumerate() {
         let current: C = row.iter().map(|(&j, &y)| y * v[j]).sum();
@@ -233,20 +431,20 @@ pub(crate) fn jacobian(
                 da += C::i() * v[i] * current.conj();
                 dm += v[i] / v[i].norm() * current.conj();
             }
-            if let Some(r) = ai[i] {
-                if let Some(c) = ai[j] {
+            if let Some(r) = at.angle[i] {
+                if let Some(c) = at.angle[j] {
                     entries.push(Triplet::new(r, c, da.re));
                 }
-                if let Some(c) = qi[j] {
+                if let Some(c) = at.magnitude[j] {
                     entries.push(Triplet::new(r, c, dm.re));
                 }
             }
-            if let Some(r) = qi[i] {
-                if let Some(c) = ai[j] {
-                    entries.push(Triplet::new(r, c, da.im));
+            for &(r, k) in &at.reactive[i] {
+                if let Some(c) = at.angle[j] {
+                    entries.push(Triplet::new(r, c, k * da.im));
                 }
-                if let Some(c) = qi[j] {
-                    entries.push(Triplet::new(r, c, dm.im));
+                if let Some(c) = at.magnitude[j] {
+                    entries.push(Triplet::new(r, c, k * dm.im));
                 }
             }
         }
@@ -433,27 +631,18 @@ fn lcc_injections(terminals: &mut [LccTerminal<'_>], v: &[C], base_mva: f64) -> 
 fn lcc_jacobian(
     terminals: &[LccTerminal<'_>],
     v: &[C],
-    angles: &[usize],
-    pq: &[usize],
+    layout: &Layout,
     base_mva: f64,
 ) -> Vec<Triplet<usize, usize, f64>> {
     if terminals.is_empty() {
         return Vec::new();
     }
-    let n = v.len();
-    let mut ai = vec![None; n];
-    let mut qi = vec![None; n];
-    for (k, &i) in angles.iter().enumerate() {
-        ai[i] = Some(k);
-    }
-    for (k, &i) in pq.iter().enumerate() {
-        qi[i] = Some(k + angles.len());
-    }
+    let at = layout.indices(v.len());
     let mut entries = Vec::new();
     for t in terminals {
         let vm = [v[t.ends[0]].norm(), v[t.ends[1]].norm()];
         for j in 0..2 {
-            let Some(col) = qi[t.ends[j]] else {
+            let Some(col) = at.magnitude[t.ends[j]] else {
                 continue;
             };
             let h = 1e-6 * vm[j].max(1e-3);
@@ -465,11 +654,11 @@ fn lcc_jacobian(
             for k in 0..2 {
                 // The mismatch is power(v) − s, so its derivative is −ds/dVm.
                 let d = -(sp[k] - sm[k]) / (2.0 * h);
-                if let Some(row) = ai[t.ends[k]] {
+                if let Some(row) = at.angle[t.ends[k]] {
                     entries.push(Triplet::new(row, col, d.re));
                 }
-                if let Some(row) = qi[t.ends[k]] {
-                    entries.push(Triplet::new(row, col, d.im));
+                for &(row, c) in &at.reactive[t.ends[k]] {
+                    entries.push(Triplet::new(row, col, c * d.im));
                 }
             }
         }
@@ -485,12 +674,20 @@ fn newton(
     terminals: &mut [LccTerminal<'_>],
     opt: &PowerFlowOptions,
 ) -> Result<(SolveStatus, usize, f64), Error> {
-    let (angles, pq) = variables(kinds);
+    let layout = if opt.enforce_q_limits {
+        Layout::new(net, case, kinds)
+    } else {
+        Layout::plain(kinds)
+    };
+    for &(i, vm) in &layout.targets {
+        v[i] = C::from_polar(vm, v[i].arg());
+    }
     let base = net.injections(case);
     log::debug!(
-        "starting Newton solve ({} angle variables, {} magnitude variables, {} detailed DC lines)",
-        angles.len(),
-        pq.len(),
+        "starting Newton solve ({} angle variables, {} magnitude variables, {} remotely held buses, {} detailed DC lines)",
+        layout.angles.len(),
+        layout.magnitudes.len(),
+        layout.targets.len(),
         terminals.len()
     );
     for iteration in 0..=opt.max_iterations {
@@ -500,11 +697,7 @@ fn newton(
             let dc = lcc_injections(terminals, v, case.base_mva);
             base.iter().zip(dc).map(|(a, b)| a + b).collect()
         };
-        let (f, residual) = mismatch(net, v, &s, &angles, &pq)?;
-        log::debug!(
-            "Newton iteration {iteration}: residual={residual:.6e} p.u., tolerance={:.6e}",
-            opt.tolerance
-        );
+        let (f, residual) = mismatch(net, v, &s, &layout)?;
         if residual < opt.tolerance {
             log::debug!("Newton solve converged at iteration {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::Converged, iteration, residual));
@@ -513,16 +706,23 @@ fn newton(
             log::warn!("Newton solve reached iteration limit {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
-        let mut j = jacobian(net, v, &angles, &pq);
-        j.extend(lcc_jacobian(terminals, v, &angles, &pq, case.base_mva));
+        debug_assert_eq!(f.len(), layout.len());
+        let mut j = layout_jacobian(net, v, &layout);
+        j.extend(lcc_jacobian(terminals, v, &layout, case.base_mva));
         let dx = linear(f.len(), &j, &f.iter().map(|x| -x).collect::<Vec<_>>())?;
         let mut va: Vec<_> = v.iter().map(|z| z.arg()).collect();
         let mut vm: Vec<_> = v.iter().map(|z| z.norm()).collect();
-        for (k, &i) in angles.iter().enumerate() {
-            va[i] += dx[k];
+        let scale = step_scale(&dx[layout.angles.len()..], &layout.magnitudes, &vm);
+        if scale < 1.0 {
+            log::debug!(
+                "Newton iteration {iteration}: step scaled by {scale:.3e} to keep voltage magnitudes positive"
+            );
         }
-        for (k, &i) in pq.iter().enumerate() {
-            vm[i] += dx[k + angles.len()];
+        for (k, &i) in layout.angles.iter().enumerate() {
+            va[i] += scale * dx[k];
+        }
+        for (k, &i) in layout.magnitudes.iter().enumerate() {
+            vm[i] += scale * dx[k + layout.angles.len()];
         }
         for i in 0..v.len() {
             if !vm[i].is_finite() || vm[i] <= 0.0 || !va[i].is_finite() {
@@ -534,6 +734,19 @@ fn newton(
         }
     }
     unreachable!()
+}
+
+/// Largest relative magnitude change a Newton step may make at any bus.
+const MAX_MAGNITUDE_STEP: f64 = 0.5;
+
+/// Factor that shortens a Newton step so that no voltage magnitude changes
+/// by more than [`MAX_MAGNITUDE_STEP`] of its present value. Ordinary steps
+/// are far smaller and keep the full Newton step.
+fn step_scale(dvm: &[f64], buses: &[usize], vm: &[f64]) -> f64 {
+    dvm.iter()
+        .zip(buses)
+        .map(|(&d, &i)| MAX_MAGNITUDE_STEP * vm[i] / d.abs())
+        .fold(1.0, f64::min)
 }
 
 fn allocate(
@@ -801,13 +1014,55 @@ fn solve_core(
             };
         }
     }
+    // Remote regulation needs reactive limits: without them a small unit
+    // holding a distant bus drives its own terminal to any voltage, so those
+    // generators hold their own bus instead, as in MATPOWER.
+    let (remote, held) = if opt.enforce_q_limits {
+        let layout = Layout::new(&net, &case, &kinds);
+        (layout.remote, layout.held)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    // Buses holding a remote voltage keep their starting magnitude. Those
+    // whose generators all start at a reactive limit start there as PQ
+    // buses, which a solved case needs to converge; they return to holding
+    // the remote voltage when the limit-check pass finds it on the wrong side.
+    let mut released = vec![None; kinds.len()];
+    if opt.enforce_q_limits {
+        let mut started = 0;
+        for &i in &remote {
+            let at_limit = |g: &Generator| {
+                g.qg >= g.qmax - opt.q_limit_tolerance || g.qg <= g.qmin + opt.q_limit_tolerance
+            };
+            let gens = &net.gens[i];
+            if gens.iter().all(|&g| at_limit(&case.generators[g])) {
+                let mut upper = 0;
+                for &g in gens {
+                    let gen_data = &mut case.generators[g];
+                    if gen_data.qg >= gen_data.qmax - opt.q_limit_tolerance {
+                        upper += 1;
+                    }
+                    gen_data.qg = gen_data.qg.clamp(gen_data.qmin, gen_data.qmax);
+                }
+                kinds[i] = BusType::Pq;
+                released[i] = Some(2 * upper >= gens.len());
+                started += 1;
+            }
+        }
+        if started > 0 {
+            log::debug!(
+                "{started} remote-regulating generator buses start at their reactive limits"
+            );
+        }
+    }
     for (i, gens) in net.gens.iter().enumerate() {
-        if kinds[i] != BusType::Pq {
+        if kinds[i] != BusType::Pq && remote.binary_search(&i).is_err() {
             for &g in gens {
                 v[i] = C::from_polar(case.generators[g].vg, v[i].arg());
             }
         }
     }
+    let mut restores = vec![0; remote.len()];
     let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
     let (status, residual) = loop {
         let (status, it, residual) = newton(&net, &case, &kinds, &mut v, &mut terminals, opt)?;
@@ -862,35 +1117,68 @@ fn solve_core(
                 }
             }
         }
-        if violations.is_empty() {
+        // A remote-regulating bus at a limit holds its bus again once that
+        // bus's voltage is past the setpoint on the side the limit pushes.
+        let mut restored = Vec::new();
+        for (k, &i) in remote.iter().enumerate() {
+            let Some(upper) = released[i] else { continue };
+            if restores[k] >= MAX_RESTORES {
+                continue;
+            }
+            let setpoint = case.generators[net.gens[i][0]].vg;
+            let vm = v[held[k]].norm();
+            if (upper && vm > setpoint + RESTORE_TOLERANCE)
+                || (!upper && vm < setpoint - RESTORE_TOLERANCE)
+            {
+                restored.push(k);
+            }
+        }
+        if violations.is_empty() && restored.is_empty() {
             break (status, residual);
         }
         log::warn!(
-            "reactive-limit pass {} is enforcing {} generator violations",
+            "reactive-limit pass {} is enforcing {} generator violations and returning {} remote-regulating buses to voltage control",
             passes + 1,
-            violations.len()
+            violations.len(),
+            restored.len()
         );
-        for island in &net.islands {
+        let mut island_of = vec![0; net.external.len()];
+        for (k, island) in net.islands.iter().enumerate() {
+            for &i in island {
+                island_of[i] = k;
+            }
+        }
+        let mut gen_island = vec![usize::MAX; case.generators.len()];
+        for (i, gens) in net.gens.iter().enumerate() {
+            for &g in gens {
+                gen_island[g] = island_of[i];
+            }
+        }
+        let mut violating_bus = vec![false; net.external.len()];
+        let mut violating_gen = vec![false; case.generators.len()];
+        for &(i, g, _, _) in &violations {
+            violating_bus[i] = true;
+            violating_gen[g] = true;
+        }
+        for (k, island) in net.islands.iter().enumerate() {
             let island_remaining: Vec<_> = remaining
                 .iter()
                 .copied()
-                .filter(|g| island.iter().any(|&i| net.gens[i].contains(g)))
+                .filter(|&g| gen_island[g] == k)
                 .collect();
             let island_violations: Vec<_> = violations
                 .iter()
-                .filter(|violation| island.contains(&violation.0))
+                .filter(|violation| island_of[violation.0] == k)
                 .collect();
             let all_generators_violate_one_side = !island_remaining.is_empty()
                 && island_remaining.len() == island_violations.len()
-                && island_remaining
-                    .iter()
-                    .all(|g| island_violations.iter().any(|x| x.1 == *g))
+                && island_remaining.iter().all(|&g| violating_gen[g])
                 && island_violations
                     .iter()
                     .all(|x| x.3 == island_violations[0].3);
             let no_reference_candidate = island
                 .iter()
-                .all(|&i| kinds[i] == BusType::Pq || island_violations.iter().any(|v| v.0 == i));
+                .all(|&i| kinds[i] == BusType::Pq || violating_bus[i]);
             if all_generators_violate_one_side || no_reference_candidate {
                 return finish_ac(
                     input,
@@ -908,9 +1196,20 @@ fn solve_core(
                 );
             }
         }
-        for &(i, g, limit, _) in &violations {
+        for &(i, g, limit, upper) in &violations {
             case.generators[g].qg = limit;
             kinds[i] = BusType::Pq;
+            if remote.binary_search(&i).is_ok() {
+                released[i] = Some(upper);
+            }
+        }
+        for k in restored {
+            let i = remote[k];
+            if kinds[i] == BusType::Pq {
+                kinds[i] = BusType::Pv;
+            }
+            released[i] = None;
+            restores[k] += 1;
         }
         passes += 1;
         for (island, reference) in net.islands.iter().zip(&mut references) {
@@ -945,6 +1244,14 @@ fn solve_core(
         vsc_terminals,
     )
 }
+
+/// Times a remote-regulating bus may return from a reactive limit to
+/// voltage control, so that the limit loop cannot cycle.
+const MAX_RESTORES: usize = 3;
+
+/// How far past its setpoint (per unit) a remotely held bus must be before
+/// a generator at a reactive limit takes control of it again.
+const RESTORE_TOLERANCE: f64 = 1e-4;
 
 /// Tap passes before the DC converter taps are held where they are.
 const MAX_TAP_PASSES: usize = 20;
@@ -1103,6 +1410,8 @@ fn add_dc_line_generators_except(
             pmax: f64::INFINITY,
             pmin: f64::NEG_INFINITY,
             extra: Vec::new(),
+            regulated_bus: None,
+            reactive_share: 100.0,
         });
         to_generators.push(Generator {
             bus: to,
@@ -1116,6 +1425,8 @@ fn add_dc_line_generators_except(
             pmax: f64::INFINITY,
             pmin: f64::NEG_INFINITY,
             extra: Vec::new(),
+            regulated_bus: None,
+            reactive_share: 100.0,
         });
         mappings.push(DcLineGenerators {
             row,
@@ -1338,10 +1649,11 @@ mod tests {
         let v: Vec<_> = (0..net.external.len())
             .map(|i| C::from_polar(0.95 + 0.01 * i as f64, 0.025 * i as f64))
             .collect();
-        let (angles, pq) = variables(&net.kinds);
+        let layout = Layout::plain(&net.kinds);
+        let (angles, pq) = (&layout.angles, &layout.magnitudes);
         let n = angles.len() + pq.len();
         let mut exact = vec![vec![0.0; n]; n];
-        for t in jacobian(&net, &v, &angles, &pq) {
+        for t in jacobian(&net, &v, angles, pq) {
             exact[t.row][t.col] += t.val;
         }
         let s = net.injections(&case);
@@ -1358,8 +1670,58 @@ mod tests {
                 plus[i] = C::from_polar(v[i].norm() + h, v[i].arg());
                 minus[i] = C::from_polar(v[i].norm() - h, v[i].arg());
             }
-            let (fp, _) = mismatch(&net, &plus, &s, &angles, &pq).unwrap();
-            let (fm, _) = mismatch(&net, &minus, &s, &angles, &pq).unwrap();
+            let (fp, _) = mismatch(&net, &plus, &s, &layout).unwrap();
+            let (fm, _) = mismatch(&net, &minus, &s, &layout).unwrap();
+            for row in 0..n {
+                assert!(
+                    (exact[row][col] - (fp[row] - fm[row]) / (2.0 * h)).abs() < 1e-7,
+                    "Jacobian ({row},{col})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::needless_range_loop)]
+    fn remote_regulation_jacobian_matches_central_differences() {
+        let mut case = crate::parse_matpower(include_str!("../tests/fixtures/case9.m")).unwrap();
+        // Buses 2 and 3 share holding bus 7, two to one.
+        case.generators[1].regulated_bus = Some(7);
+        case.generators[2].regulated_bus = Some(7);
+        case.generators[2].reactive_share = 50.0;
+        let net = Network::new(&case).unwrap();
+        let layout = Layout::new(&net, &case, &net.kinds);
+        assert_eq!(layout.targets.len(), 1);
+        assert_eq!(layout.remote, [1, 2]);
+        assert_eq!(layout.shares.len(), 1);
+        let v: Vec<_> = (0..net.external.len())
+            .map(|i| C::from_polar(0.95 + 0.01 * i as f64, 0.025 * i as f64))
+            .collect();
+        let n = layout.len();
+        assert_eq!(
+            n,
+            layout.angles.len() + layout.q_rows.len() + layout.shares.len()
+        );
+        let mut exact = vec![vec![0.0; n]; n];
+        for t in layout_jacobian(&net, &v, &layout) {
+            exact[t.row][t.col] += t.val;
+        }
+        let s = net.injections(&case);
+        let h = 1e-6;
+        for col in 0..n {
+            let mut plus = v.clone();
+            let mut minus = v.clone();
+            if col < layout.angles.len() {
+                let i = layout.angles[col];
+                plus[i] *= C::from_polar(1.0, h);
+                minus[i] *= C::from_polar(1.0, -h);
+            } else {
+                let i = layout.magnitudes[col - layout.angles.len()];
+                plus[i] = C::from_polar(v[i].norm() + h, v[i].arg());
+                minus[i] = C::from_polar(v[i].norm() - h, v[i].arg());
+            }
+            let (fp, _) = mismatch(&net, &plus, &s, &layout).unwrap();
+            let (fm, _) = mismatch(&net, &minus, &s, &layout).unwrap();
             for row in 0..n {
                 assert!(
                     (exact[row][col] - (fp[row] - fm[row]) / (2.0 * h)).abs() < 1e-7,

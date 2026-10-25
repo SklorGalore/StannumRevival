@@ -53,10 +53,11 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
         // Line-commutated converters absorb reactive power, unlike MATPOWER's
-        // positive estimates.
+        // positive estimates. Generators hold the remote buses they regulate.
         let options = rs_power::RawOptions {
             all_dc_lines: true,
             lcc_absorbs_reactive: true,
+            remote_regulation: true,
             ..Default::default()
         };
         let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;

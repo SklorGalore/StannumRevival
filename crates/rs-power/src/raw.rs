@@ -22,6 +22,11 @@ pub struct RawOptions {
     /// MATPOWER writes the same estimates as positive, supplied limits, so
     /// this is off by default to keep conversions identical to MATPOWER 8.1.
     pub lcc_absorbs_reactive: bool,
+    /// Keep generators' remote voltage regulation (IREG, shared by RMPCT) in
+    /// [`Generator::regulated_bus`] and [`Generator::reactive_share`].
+    /// MATPOWER applies every setpoint at the generator's own bus, so this
+    /// is off by default to keep conversions identical to MATPOWER 8.1.
+    pub remote_regulation: bool,
 }
 
 /// A source-located diagnostic about RAW conversion.
@@ -615,14 +620,34 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     }
     for r in section("generator") {
         bus_index(r, 0)?;
-        if r.optional(7, 0.0)? != 0.0 && r.optional(7, 0.0)? != r.num(0)? {
-            ctx.warn(
-                r.line,
-                true,
-                "remote generator regulation ignored; voltage setpoint applied locally",
-            )?;
-        }
         let shift = usize::from(rev >= 35);
+        let ireg = r.optional(7, 0.0)?;
+        let regulated_bus = if ireg != 0.0 && ireg != r.num(0)? {
+            if !options.remote_regulation {
+                ctx.warn(
+                    r.line,
+                    true,
+                    "remote generator regulation ignored; voltage setpoint applied locally",
+                )?;
+                None
+            } else if let Some(&i) = indices.get(&r.id(7)?) {
+                Some(case.buses[i].id)
+            } else {
+                ctx.warn(
+                    r.line,
+                    true,
+                    "generator regulates an unknown bus; voltage setpoint applied locally",
+                )?;
+                None
+            }
+        } else {
+            None
+        };
+        let reactive_share = if options.remote_regulation {
+            r.optional(15 + shift, 100.0)?
+        } else {
+            100.0
+        };
         if r.optional(26 + shift, 0.0)? != 0.0 {
             ctx.warn(
                 r.line,
@@ -647,6 +672,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             pmax: r.num(16 + shift)?,
             pmin: r.num(17 + shift)?,
             extra: vec![0.0; 11],
+            regulated_bus,
+            reactive_share,
         });
     }
     for r in section("branch") {

@@ -32,6 +32,7 @@ fn stannum_raw(text: &str) -> rs_power::RawImport {
         &RawOptions {
             all_dc_lines: true,
             lcc_absorbs_reactive: true,
+            remote_regulation: true,
             ..Default::default()
         },
     )
@@ -66,11 +67,33 @@ fn synthetic_usa_two_terminal_dc_lines() {
     for line in result.case.dcline.as_ref().unwrap() {
         assert_eq!(line[3], line[4]);
     }
-    // With Q limits on, the converters can no longer supply the reactive
-    // power this case leans on, and the MATPOWER-style limit loop does not
-    // converge (tracked for plan phase 1).
+    // With Q limits on, 2,730 generators hold remote buses. Applied at each
+    // generator's own terminal instead, the limit loop diverged.
     let limited = solve(&imported.case, &options(true)).unwrap();
-    assert_ne!(limited.status, SolveStatus::Converged);
+    assert_eq!(limited.status, SolveStatus::Converged);
+    let (mean, _) = voltage_error(&imported.case, &limited.case);
+    assert!(mean < 0.002, "{mean}");
+
+    // It also converges with every DC line switched off.
+    let mut off = imported.case.clone();
+    for line in off.dcline.as_mut().unwrap() {
+        line[2] = 0.0;
+    }
+    assert_eq!(
+        solve(&off, &options(true)).unwrap().status,
+        SolveStatus::Converged
+    );
+}
+
+/// Mean voltage magnitude difference (p.u.) and largest angle difference
+/// (degrees) between a solution and the solved case it started from.
+fn voltage_error(case: &rs_power::Case, solved: &rs_power::Case) -> (f64, f64) {
+    let pairs = || case.buses.iter().zip(&solved.buses);
+    let mean = pairs().map(|(a, b)| (a.vm - b.vm).abs()).sum::<f64>() / case.buses.len() as f64;
+    let angle = pairs()
+        .map(|(a, b)| (a.va - b.va).abs())
+        .fold(0.0, f64::max);
+    (mean, angle)
 }
 
 #[test]
@@ -106,6 +129,26 @@ fn synthetic_usa_detailed_lcc_model() {
     let big = result.lcc[0].line_loss_mw;
     assert!(big > 20.0 && big < 26.0, "{big}");
     assert!(total_loss > 26.0 && total_loss < 34.0, "{total_loss}");
+
+    // With Q limits and remote regulation the solution lands on the saved
+    // PowerWorld one: under a thousandth of a p.u. apart on average.
+    let limited = solve(
+        &imported.case,
+        &PowerFlowOptions {
+            enforce_q_limits: true,
+            dc_model: DcModel::Detailed {
+                lines: imported.lcc_lines.clone(),
+                vsc_lines: Vec::new(),
+                adjust_taps: true,
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(limited.status, SolveStatus::Converged);
+    let (mean, angle) = voltage_error(&imported.case, &limited.case);
+    assert!(mean < 0.001, "{mean}");
+    assert!(angle < 3.0, "{angle}");
 }
 
 #[test]

@@ -69,6 +69,14 @@ pub struct Generator {
     pub pmin: f64,
     /// Columns after PMIN, retained without interpretation.
     pub extra: Vec<f64>,
+    /// External ID of the bus whose voltage this generator holds at `vg`,
+    /// when that is not its own bus (PSS/E IREG). `None` regulates locally.
+    /// Not a MATPOWER column, so MATPOWER import and export leave it out.
+    pub regulated_bus: Option<u32>,
+    /// Percent of the reactive power needed to hold a remote bus that this
+    /// generator supplies (PSS/E RMPCT); 100 by default. Generators on
+    /// different buses that hold the same bus share in proportion to it.
+    pub reactive_share: f64,
 }
 
 /// A line or transformer using the MATPOWER from-side tap convention.
