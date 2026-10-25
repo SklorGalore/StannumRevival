@@ -74,16 +74,18 @@ await page.getByText("How to read these results").waitFor();
 await page.getByText(/Response \(/).waitFor();
 await shot("power-sensitivities");
 
-// The log records each step: the app's own lines and the core's, with solver
-// iterations under Details. Ctrl+` opens and closes it.
+// The log records each step: the app's own lines and the solver's, pass by
+// pass and iteration by iteration. Ctrl+` opens and closes it.
 const log = page.getByRole("log", { name: "Log lines" });
 await page.keyboard.press("Control+Backquote");
 await log.getByText(/Solved power flow \(/).last().waitFor();
-await log.getByText(/Power flow: Converged after \d+ iterations/).last().waitFor();
+await log.getByText(/Finished AC power flow: converged/).last().waitFor();
+await log.getByText(/Newton iteration 1: largest P mismatch .* MW at bus/).last().waitFor();
+await log.getByText(/Totals: generation/).last().waitFor();
 await log.getByText(/Sensitivities: \d+ injection columns/).last().waitFor();
-assert.equal(await log.getByText(/Newton iteration/).count(), 0, "solver detail is hidden by default");
+assert.equal(await log.getByText(/assembling active network/).count(), 0, "detail lines are hidden by default");
 await page.getByTestId("log-dock").getByLabel("Details").check();
-await log.getByText(/Newton iteration 0/).first().waitFor();
+await log.getByText(/assembling active network/).first().waitFor();
 await shot("log");
 await page.getByTestId("log-dock").getByLabel("Details").uncheck();
 await page.getByRole("button", { name: "Close log" }).click();

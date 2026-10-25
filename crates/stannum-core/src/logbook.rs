@@ -167,4 +167,33 @@ mod tests {
         );
         assert!(!newer.iter().any(|e| e.message == "first"));
     }
+
+    #[test]
+    fn a_solve_reports_each_pass_and_iteration() {
+        install();
+        let before = latest();
+        let case = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../rs-power/tests/fixtures/case300.m");
+        let mut ws = crate::Workspace::default();
+        ws.open(&case).unwrap();
+        let settings: crate::power::SolveSettings = serde_json::from_value(serde_json::json!({
+            "model": "ac", "start": "case", "tolerance": 1e-8, "max_iterations": 20,
+            "enforce_q_limits": true, "dc_model": "detailed", "adjust_dc_taps": true,
+            "switch_shunts": true, "adjust_transformer_taps": true
+        }))
+        .unwrap();
+        ws.current_mut().unwrap().solve(settings).unwrap();
+        // Other tests log at the same time, so look only for this solve's lines.
+        let lines: Vec<String> = since(before).into_iter().map(|e| e.message).collect();
+        let has = |start: &str| lines.iter().any(|m| m.starts_with(start));
+        assert!(has("Starting AC power flow: 300 buses"), "{lines:#?}");
+        assert!(has("Network: 1 island, reference bus"));
+        assert!(has("Pass 1: Newton solve to 1e-2 pu, first solve"));
+        assert!(has("Newton iteration 1: largest P mismatch"));
+        assert!(has("Reactive-limit pass 1:"));
+        assert!(has("  generator at bus "));
+        assert!(has("Finished AC power flow: converged"));
+        assert!(has("Totals: generation"));
+        assert!(has("Operating limits:"));
+    }
 }

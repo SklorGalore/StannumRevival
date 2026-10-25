@@ -34,6 +34,10 @@ describe("linkify", () => {
     const links = linkify("buses 4, 5 and 6 are isolated").filter((s) => "element" in s);
     expect(links.map((s) => s.text)).toEqual(["4", "5", "6"]);
   });
+  it("stops at values that follow a bus", () => {
+    const links = linkify("worst bus 9033, 0.0194 pu outside").filter((s) => "element" in s);
+    expect(links.map((s) => s.text)).toEqual(["9033"]);
+  });
   it("leaves counts alone", () => {
     expect(linkify("Read case9.m: 9 buses, 3 generators")).toEqual([{ text: "Read case9.m: 9 buses, 3 generators" }]);
   });

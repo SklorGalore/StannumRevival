@@ -124,6 +124,63 @@ fn elapsed_ms(start: Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The solved case in a few lines: outcome, totals, limits and controls.
+fn log_report(report: &power::SolveReport, solved_ms: f64) {
+    let outcome = format!(
+        "Power flow: {} after {} iterations, largest mismatch {:.1e} MVA ({:.0} ms)",
+        report.status, report.iterations, report.residual_mva, solved_ms
+    );
+    // rs-power has already reported a converged solve; say so again only
+    // when it needs attention.
+    if !report.converged {
+        log::warn!("{outcome}");
+    }
+    log::info!(
+        "Totals: generation {:.1} MW, load {:.1} MW, losses {:.1} MW",
+        report.total_generation_mw,
+        report.total_load_mw,
+        report.total_losses_mw
+    );
+    let l = &report.limits;
+    let mut found = Vec::new();
+    if let Some((bus, by)) = l.worst_voltage {
+        found.push(format!(
+            "{} outside voltage limits (worst bus {bus}, {by:.4} pu outside)",
+            plural(l.voltage_violations, "bus", "buses")
+        ));
+    }
+    if let Some((bus, by)) = l.worst_reactive {
+        found.push(format!(
+            "{} outside Q limits (worst at bus {bus}, {by:.1} Mvar outside)",
+            plural(l.reactive_violations, "generator", "generators")
+        ));
+    }
+    if l.branch_overloads > 0
+        && let Some((from, to, pct)) = l.worst_branch
+    {
+        found.push(format!(
+            "{} over rate A (worst {from}-{to} at {pct:.1}%)",
+            plural(l.branch_overloads, "branch", "branches")
+        ));
+    }
+    if found.is_empty() {
+        log::info!("Operating limits: everything within limits");
+    } else {
+        log::warn!("Operating limits: {}", found.join("; "));
+    }
+    if report.shunts_switched + report.taps_moved > 0 {
+        log::info!(
+            "Voltage controls: {} and {} ended away from their starting settings",
+            plural(report.shunts_switched, "switched shunt", "switched shunts"),
+            plural(report.taps_moved, "tap", "taps")
+        );
+    }
+}
+
 impl OpenCase {
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Self {
         let name = path
@@ -240,15 +297,7 @@ impl OpenCase {
             elapsed_ms(start),
         );
         self.solved = Some((result, settings));
-        let outcome = format!(
-            "{} after {} iterations, largest mismatch {:.1e} MVA ({:.0} ms)",
-            report.status, report.iterations, report.residual_mva, solved_ms
-        );
-        if report.converged {
-            log::info!("Power flow: {outcome}");
-        } else {
-            log::warn!("Power flow: {outcome}");
-        }
+        log_report(&report, solved_ms);
         Ok(report)
     }
 

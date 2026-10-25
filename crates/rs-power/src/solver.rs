@@ -852,15 +852,46 @@ fn newton(
             base.iter().zip(dc).map(|(a, b)| a + b).collect()
         };
         let (f, residual) = mismatch(net, v, &s, &layout)?;
+        let bus_id = |i: usize| case.buses[net.external[i]].id;
+        let mismatch_text = || {
+            let (p, at_p) = largest(&f[..layout.angles.len()], &layout.angles);
+            let (q, at_q) = largest(
+                &f[layout.angles.len()..layout.angles.len() + layout.q_rows.len()],
+                &layout.q_rows,
+            );
+            let mut text = String::new();
+            if let Some(i) = at_p {
+                text += &format!(
+                    "largest P mismatch {} MW at bus {}",
+                    amount(p * case.base_mva),
+                    bus_id(i)
+                );
+            }
+            if let Some(i) = at_q {
+                text += &format!(
+                    ", largest Q mismatch {} Mvar at bus {}",
+                    amount(q * case.base_mva),
+                    bus_id(i)
+                );
+            }
+            text
+        };
         if residual < tolerance {
-            log::debug!("Newton solve converged at iteration {iteration}: residual={residual:.6e}");
+            log::info!(
+                "Newton iteration {iteration}: {}; converged (largest mismatch {:.2e} pu, tolerance {tolerance:.0e})",
+                mismatch_text(),
+                residual
+            );
             return Ok((SolveStatus::Converged, iteration, residual));
         }
         if iteration == opt.max_iterations {
-            log::warn!("Newton solve reached iteration limit {iteration}: residual={residual:.6e}");
+            log::warn!(
+                "Newton iteration {iteration}: {}; stopped at the iteration limit with largest mismatch {residual:.2e} pu",
+                mismatch_text()
+            );
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
-        log::debug!("Newton iteration {iteration}: residual={residual:.6e}");
+        let mismatch_now = mismatch_text();
         debug_assert_eq!(f.len(), layout.len());
         let mut j = layout_jacobian(net, v, &layout);
         j.extend(dc_jacobian(terminals, v, &layout, case.base_mva)?);
@@ -868,11 +899,27 @@ fn newton(
         let mut va: Vec<_> = v.iter().map(|z| z.arg()).collect();
         let mut vm: Vec<_> = v.iter().map(|z| z.norm()).collect();
         let scale = step_scale(&dx[layout.angles.len()..], &layout.magnitudes, &vm);
-        if scale < 1.0 {
-            log::debug!(
-                "Newton iteration {iteration}: step scaled by {scale:.3e} to keep voltage magnitudes positive"
+        let (dva, at_va) = largest(&dx[..layout.angles.len()], &layout.angles);
+        let (dvm, at_vm) = largest(&dx[layout.angles.len()..], &layout.magnitudes);
+        let mut step = String::new();
+        if let Some(i) = at_vm {
+            step += &format!(
+                "; correction: largest |dV| {} pu at bus {}",
+                amount((scale * dvm).abs()),
+                bus_id(i)
             );
         }
+        if let Some(i) = at_va {
+            step += &format!(
+                ", largest |dθ| {}° at bus {}",
+                amount((scale * dva).abs().to_degrees()),
+                bus_id(i)
+            );
+        }
+        if scale < 1.0 {
+            step += &format!(" (step shortened to {scale:.3} of full Newton step)");
+        }
+        log::info!("Newton iteration {iteration}: {mismatch_now}{step}");
         for (k, &i) in layout.angles.iter().enumerate() {
             va[i] += scale * dx[k];
         }
@@ -889,6 +936,35 @@ fn newton(
         }
     }
     unreachable!()
+}
+
+/// A number for the log: three decimals, or scientific notation when that
+/// would print as zero.
+fn amount(x: f64) -> String {
+    if x == 0.0 || x.abs() >= 1e-3 {
+        format!("{x:.3}")
+    } else {
+        format!("{x:.1e}")
+    }
+}
+
+/// "1 generator", "3 generators".
+fn count(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The entry of `values` largest in magnitude, with the bus it belongs to.
+fn largest(values: &[f64], buses: &[usize]) -> (f64, Option<usize>) {
+    values
+        .iter()
+        .zip(buses)
+        .fold((0.0, None), |(best, at), (&x, &i)| {
+            if at.is_none() || x.abs() > best.abs() {
+                (x, Some(i))
+            } else {
+                (best, at)
+            }
+        })
 }
 
 /// Mismatch (p.u.) at which a solve stops while reactive limits are still
@@ -988,8 +1064,8 @@ fn allocate(
 fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let n = net.external.len();
     let vars: Vec<_> = (0..n).filter(|i| !net.references.contains(i)).collect();
-    log::debug!(
-        "starting DC solve ({n} buses, {} variables, {} branches)",
+    log::info!(
+        "DC solve: {n} buses, {} angle variables, {} branches, one linear solve",
         vars.len(),
         net.edges.len()
     );
@@ -1065,7 +1141,7 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
             "DC solution failed power balance tolerance".into(),
         ));
     }
-    log::debug!("DC solve converged: residual={residual:.6e}");
+    log::info!("DC solve finished: largest mismatch {residual:.2e} pu");
     for &reference in &net.references {
         let gens = &net.gens[reference];
         let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
@@ -1264,6 +1340,47 @@ fn solve_core(
     // tolerance: the next pass changes the equations anyway. The last solve
     // always meets `opt.tolerance`.
     let mut loose = limits;
+    {
+        let id = |i: usize| case.buses[net.external[i]].id;
+        let count = |k: BusType| kinds.iter().filter(|&&x| x == k).count();
+        let refs: Vec<String> = references
+            .iter()
+            .take(5)
+            .map(|&i| id(i).to_string())
+            .collect();
+        let more = references.len().saturating_sub(5);
+        log::info!(
+            "Network: {} {}, reference {} {}{}; {} PV and {} PQ buses",
+            net.islands.len(),
+            if net.islands.len() == 1 {
+                "island"
+            } else {
+                "islands"
+            },
+            if references.len() == 1 {
+                "bus"
+            } else {
+                "buses"
+            },
+            refs.join(", "),
+            if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            },
+            count(BusType::Pv),
+            count(BusType::Pq)
+        );
+        let (shunts, taps) = controller.devices();
+        if !remote.is_empty() || !terminals.is_empty() || shunts + taps > 0 {
+            log::info!(
+                "Controls: {} generator buses regulating a remote bus, {} detailed DC lines or systems, {shunts} switched shunts and {taps} tap changers in voltage control",
+                remote.len(),
+                terminals.len()
+            );
+        }
+    }
+    let mut reason = "first solve";
     let (status, residual) = 'solve: loop {
         round += 1;
         let tolerance = if loose {
@@ -1271,6 +1388,14 @@ fn solve_core(
         } else {
             opt.tolerance
         };
+        log::info!(
+            "Pass {round}: Newton solve to {tolerance:.0e} pu, {reason}{}",
+            if loose && limits {
+                " (loose while reactive limits may still switch)"
+            } else {
+                ""
+            }
+        );
         let (status, it, residual) =
             newton(&net, &case, &kinds, &mut v, &mut terminals, opt, tolerance)?;
         iterations += it;
@@ -1283,6 +1408,7 @@ fn solve_core(
             );
             (case, v, terminals) = (saved_case, saved_v, saved_terminals);
             net = Network::new(&case)?;
+            reason = "after undoing the last shunt and tap moves";
             continue;
         }
         checkpoint = None;
@@ -1291,16 +1417,24 @@ fn solve_core(
             break (status, residual);
         }
         if adjust_taps && tap_passes < MAX_TAP_PASSES {
-            let mut changed = 0;
+            let mut changed = Vec::new();
             for t in &mut terminals {
                 let vm = end_magnitudes(t, &v);
                 if t.adjust_taps(&vm) {
-                    changed += 1;
+                    changed.push(match t {
+                        DcTerminal::Lcc(t) => t.line.name.trim().to_string(),
+                        DcTerminal::Mtdc(t) => t.system.name.trim().to_string(),
+                    });
                 }
             }
-            if changed > 0 {
+            if !changed.is_empty() {
                 tap_passes += 1;
-                log::debug!("DC tap pass {tap_passes} changed taps on {changed} lines");
+                log::info!(
+                    "DC tap pass {tap_passes}: converter taps moved on DC {} {}",
+                    if changed.len() == 1 { "line" } else { "lines" },
+                    changed.join(", ")
+                );
+                reason = "after moving DC converter taps";
                 if tap_passes == MAX_TAP_PASSES {
                     log::warn!(
                         "DC converter taps still moving after {MAX_TAP_PASSES} passes; holding them"
@@ -1313,7 +1447,8 @@ fn solve_core(
             && vsc_limit_pass(vsc_terminals, &net, &mut case, &v, opt.enforce_q_limits)?
         {
             vsc_passes += 1;
-            log::debug!("VSC limit pass {vsc_passes} reduced converter output");
+            log::info!("VSC limit pass {vsc_passes}: reduced converter output to its limits");
+            reason = "after limiting VSC converters";
             continue;
         }
         // After a loose solve, outputs can still move by about the
@@ -1361,6 +1496,7 @@ fn solve_core(
                 // The limits have settled; finish the solve before the
                 // other controls look at it.
                 loose = false;
+                reason = "reactive limits settled, finishing at full tolerance";
                 continue;
             }
             // Shunts and taps move once the generators have settled, so they
@@ -1375,9 +1511,11 @@ fn solve_core(
                 let moved = controller.pass(&mut case, &v, &kinds, round);
                 if moved > 0 {
                     control_passes += 1;
-                    log::debug!(
-                        "voltage control pass {control_passes} moved {moved} shunts or taps"
+                    log::info!(
+                        "Voltage control pass {control_passes}: moved {}",
+                        count(moved, "switched shunt or tap", "switched shunts or taps")
                     );
+                    reason = "after moving switched shunts and taps";
                     if control_passes == MAX_CONTROL_PASSES {
                         log::warn!(
                             "switched shunts or taps still moving after {MAX_CONTROL_PASSES} passes; holding them"
@@ -1390,12 +1528,6 @@ fn solve_core(
             }
             break (status, residual);
         }
-        log::warn!(
-            "reactive-limit pass {} is enforcing {} generator violations and returning {} remote-regulating buses to voltage control",
-            passes + 1,
-            violations.len(),
-            restored.len()
-        );
         let mut island_of = vec![0; net.external.len()];
         for (k, island) in net.islands.iter().enumerate() {
             for &i in island {
@@ -1437,8 +1569,13 @@ fn solve_core(
                 if loose {
                     // Report the infeasible state at full tolerance.
                     loose = false;
+                    reason = "checking infeasible reactive limits at full tolerance";
                     continue 'solve;
                 }
+                log::warn!(
+                    "Reactive limits are infeasible in island {}: no generator is left to hold its voltage",
+                    k + 1
+                );
                 return finish_ac(
                     input,
                     &net,
@@ -1460,7 +1597,71 @@ fn solve_core(
             // A reference bus that turns PQ keeps the active power it has
             // then, so take it from a full-tolerance solve, as MATPOWER does.
             loose = false;
+            reason = "a reference bus reached a limit, solving at full tolerance first";
             continue;
+        }
+        log::info!(
+            "Reactive-limit pass {}: {} outside {} Q limits {} held at the limit{}",
+            passes + 1,
+            count(violations.len(), "generator", "generators"),
+            if violations.len() == 1 {
+                "its"
+            } else {
+                "their"
+            },
+            if violations.len() == 1 { "is" } else { "are" },
+            if restored.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", {} return to holding their remote bus",
+                    count(restored.len(), "bus", "buses")
+                )
+            }
+        );
+        for (n, &(i, g, limit, upper)) in violations.iter().enumerate() {
+            let gen_data = &case.generators[g];
+            let text = if g >= setup.limited_from {
+                format!(
+                    "  continuous shunt at bus {} reaches the {} of its range ({:.1} Mvar)",
+                    case.buses[net.external[i]].id,
+                    if upper { "top" } else { "bottom" },
+                    limit
+                )
+            } else {
+                format!(
+                    "  generator at bus {}: Q {:.2} Mvar is {} {} {:.2} Mvar; bus becomes PQ",
+                    gen_data.bus,
+                    gen_data.qg,
+                    if upper { "above" } else { "below" },
+                    if upper { "Qmax" } else { "Qmin" },
+                    limit
+                )
+            };
+            if n < DETAIL_LINES {
+                log::info!("{text}");
+            } else {
+                log::debug!("{text}");
+            }
+        }
+        if violations.len() > DETAIL_LINES {
+            log::info!(
+                "  …and {} more {} (in the detailed log)",
+                violations.len() - DETAIL_LINES,
+                if violations.len() - DETAIL_LINES == 1 {
+                    "generator"
+                } else {
+                    "generators"
+                }
+            );
+        }
+        for &k in &restored {
+            log::info!(
+                "  bus {} returns to holding bus {} at {:.4} pu",
+                case.buses[net.external[remote[k]]].id,
+                case.buses[net.external[held[k]]].id,
+                case.generators[net.gens[remote[k]][0]].vg
+            );
         }
         loose = true;
         let mut fixed = false;
@@ -1496,6 +1697,11 @@ fn solve_core(
                     .copied()
                     .find(|&i| kinds[i] == BusType::Pv)
                     .expect("reference candidate checked above");
+                log::info!(
+                    "  reference moves from bus {} to bus {}",
+                    case.buses[net.external[*reference]].id,
+                    case.buses[net.external[i]].id
+                );
                 *reference = i;
                 kinds[i] = BusType::Reference;
             }
@@ -1505,6 +1711,7 @@ fn solve_core(
                 "reactive-limit loop did not terminate".into(),
             ));
         }
+        reason = "after reactive-limit switching";
     };
     finish_ac(
         input,
@@ -1534,6 +1741,10 @@ fn with_controls(
     result.voltage_control_passes = passes;
     result
 }
+
+/// Devices or generators listed one by one per pass in the normal log; the
+/// rest go to the detailed (debug) log.
+pub(crate) const DETAIL_LINES: usize = 10;
 
 /// Voltage control passes before switched shunts and taps are held.
 const MAX_CONTROL_PASSES: usize = 30;
@@ -1830,15 +2041,22 @@ fn write_mtdc_rows(
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let started = std::time::Instant::now();
     log::info!(
-        "starting {:?} power-flow solve: {} buses, {} generators, {} branches, initialization={:?}, tolerance={:.6e}, max_iterations={}, enforce_q_limits={}",
-        opt.model,
+        "Starting {} power flow: {} buses, {} generators, {} branches; {} start, tolerance {:.0e} pu, up to {} Newton iterations per pass, generator Q limits {}",
+        if opt.model == Model::Dc { "DC" } else { "AC" },
         input.buses.len(),
         input.generators.len(),
         input.branches.len(),
-        opt.initialization,
+        match opt.initialization {
+            Initialization::Case => "case voltage",
+            Initialization::Flat => "flat",
+        },
         opt.tolerance,
         opt.max_iterations,
-        opt.enforce_q_limits
+        if opt.enforce_q_limits {
+            "enforced"
+        } else {
+            "ignored"
+        }
     );
     let original_generators = input.generators.len();
     let mut working = input.clone();
@@ -2051,13 +2269,32 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         }
     }
     result.case.generators.truncate(original_generators);
+    let mut passes = Vec::new();
+    for (n, what) in [
+        (result.q_limit_passes, "reactive-limit"),
+        (result.voltage_control_passes, "shunt and tap"),
+        (result.dc_tap_passes, "DC tap"),
+        (result.vsc_limit_passes, "VSC limit"),
+    ] {
+        if n > 0 {
+            passes.push(format!("{n} {what}"));
+        }
+    }
     log::info!(
-        "finished {:?} power-flow solve: status={:?}, iterations={}, residual={:.6e}, q_limit_passes={}, elapsed={} ms",
-        opt.model,
-        result.status,
+        "Finished {} power flow: {}, {} Newton iterations in total{}, largest mismatch {:.2e} pu, {} ms",
+        if opt.model == Model::Dc { "DC" } else { "AC" },
+        match result.status {
+            SolveStatus::Converged => "converged",
+            SolveStatus::IterationLimit => "iteration limit reached",
+            SolveStatus::ReactiveLimitsInfeasible => "reactive limits infeasible",
+        },
         result.iterations,
+        if passes.is_empty() {
+            String::new()
+        } else {
+            format!(" ({} passes)", passes.join(", "))
+        },
         result.residual,
-        result.q_limit_passes,
         started.elapsed().as_millis()
     );
     Ok(result)

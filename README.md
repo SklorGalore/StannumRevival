@@ -38,8 +38,13 @@ The strip along the bottom of the window says what Stannum is doing: the step
 in progress with a running timer (opening, solving, comparing, drawing), or the
 latest message. Click it or press **Ctrl+`** to open the log, which keeps every
 step with its time and source: the app's own lines and those from the core,
-rs-power and nodal. Filter to warnings or errors, search, or tick **Details**
-for solver iterations and other detail. Bus numbers in a line are links that
+rs-power and nodal. A power flow is reported as a solver output window would:
+the network and controls it starts from, each pass and why it runs, every
+Newton iteration with the largest P and Q mismatches and voltage correction
+and the buses they are at, each generator switched at a reactive limit, each
+switched shunt and tap moved, then totals and operating-limit violations.
+Filter to warnings or errors, search, or tick **Details** for parser and
+network-assembly lines and the long tails of per-device lists. Bus numbers in a line are links that
 show the bus in every module. **Copy** and **Save…** write the lines shown as
 plain text, for a bug report or a study record.
 

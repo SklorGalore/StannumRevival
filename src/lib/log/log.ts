@@ -61,7 +61,8 @@ export function asText(entries: LogEntry[]): string {
 export type Segment = { text: string } | { text: string; element: string };
 
 // "bus 101", "Bus 101", "buses 101 and 102" are linked bus by bus.
-const BUS = /\b(bus(?:es)?)\s+(\d+(?:(?:\s*,\s*|\s+and\s+|\s*[-–]\s*)\d+)*)/gi;
+// A number followed by a decimal point is a value, not a bus.
+const BUS = /\b(bus(?:es)?)\s+(\d+(?!\d|\.\d)(?:(?:\s*,\s*|\s+and\s+|\s*[-–]\s*)\d+(?!\d|\.\d))*)/gi;
 
 /** Split a message so bus numbers in it can be shown as links. */
 export function linkify(message: string): Segment[] {

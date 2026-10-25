@@ -378,8 +378,21 @@ impl<'a> Controller<'a> {
     ///
     /// `round` counts the solves so far; a tap's response is measured only
     /// across consecutive rounds, when nothing else changed in between.
+    /// Switched shunts and tap changers under voltage control.
+    pub fn devices(&self) -> (usize, usize) {
+        (self.shunts.len(), self.taps.len())
+    }
+
     pub fn pass(&mut self, case: &mut Case, v: &[C], kinds: &[BusType], round: usize) -> usize {
         let mut moved = 0;
+        // The first few moves of a pass go to the normal log, the rest to the detailed one.
+        let report = |n: usize, text: String| {
+            if n < crate::solver::DETAIL_LINES {
+                log::info!("{text}");
+            } else {
+                log::debug!("{text}");
+            }
+        };
         let free = |i: usize| kinds[i] == BusType::Pq;
         for s in &mut self.shunts {
             let Some(c) = s.controlled.filter(|&c| free(c)) else {
@@ -404,6 +417,18 @@ impl<'a> Controller<'a> {
                 s.reversals += 1;
             }
             s.last = dir;
+            report(
+                moved,
+                format!(
+                    "  switched shunt at bus {}: {:.1} -> {:.1} Mvar, bus {} at {vm:.4} pu is outside {:.4}-{:.4}",
+                    s.shunt.bus,
+                    s.value,
+                    next,
+                    s.shunt.regulated_bus.unwrap_or(s.shunt.bus),
+                    s.shunt.vmin,
+                    s.shunt.vmax
+                ),
+            );
             case.buses[s.bus].bs += next - s.value;
             s.value = next;
             moved += 1;
@@ -423,9 +448,11 @@ impl<'a> Controller<'a> {
                 let s = (vm - v0) / (t.ratio - r0);
                 if s * sign * t.ratio / vm < MIN_TAP_EFFECT {
                     t.ineffective = true;
-                    log::debug!(
-                        "tap control on branch {} barely moves bus {}; holding it",
-                        t.tap.branch,
+                    let branch = &case.branches[t.tap.branch];
+                    log::info!(
+                        "  tap on transformer {}-{} barely moves bus {}; holding it",
+                        branch.from,
+                        branch.to,
                         t.tap.regulated_bus
                     );
                 } else {
@@ -464,13 +491,13 @@ impl<'a> Controller<'a> {
                 t.reversals += 1;
             }
             t.last = dir;
-            log::trace!(
-                "tap on branch {} holding bus {}: V={vm:.4} band {:.4}..{:.4}, ratio {:.5} -> {next:.5}",
-                t.tap.branch,
-                t.tap.regulated_bus,
-                t.tap.vmin,
-                t.tap.vmax,
-                t.ratio
+            let branch = &case.branches[t.tap.branch];
+            report(
+                moved,
+                format!(
+                    "  tap on transformer {}-{}: ratio {:.4} -> {next:.4}, bus {} at {vm:.4} pu is outside {:.4}-{:.4}",
+                    branch.from, branch.to, t.ratio, t.tap.regulated_bus, t.tap.vmin, t.tap.vmax
+                ),
             );
             t.before = Some((vm, t.ratio, round));
             t.ratio = next;
