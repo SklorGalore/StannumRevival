@@ -463,6 +463,34 @@ if (STANNUM_RAW_DC) {
   assert.equal(await page.locator(".react-flow__node-dcLink").count(), 2, "both DC lines from bus 301 drawn");
   assert.match(await page.getByTestId("voltage-legend").innerText(), /DC line/, "legend names DC lines");
   await shot("diagram-dc");
+
+  // VSC and multi-terminal DC use the same symbol with their own caption.
+  const around = async (bus) => {
+    await page.getByRole("button", { name: "From case" }).click();
+    await page.getByLabel(/Around a bus/).check();
+    await page.getByRole("combobox", { name: "Bus number" }).fill(String(bus));
+    await page.getByLabel("Hops out").selectOption("1");
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "Generate", exact: true }).click();
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    await page.locator(".react-flow__node-dcLink").first().waitFor();
+    await page.locator(".react-flow__controls-fitview").click();
+    await page.waitForTimeout(400);
+  };
+  await around(3005);
+  const vsc = page.locator(".react-flow__node-dcLink", { hasText: "VSC DC" });
+  assert.equal(await vsc.count(), 1, "VSC line from bus 3005 drawn");
+  assert.match(await vsc.innerText(), /VSC VDCLINE1/);
+  await shot("diagram-vsc");
+  // Bus 212 holds the DC voltage of the multi-terminal system, so all three
+  // scheduled converters link to it.
+  await around(212);
+  assert.equal(
+    await page.locator(".react-flow__node-dcLink", { hasText: "Multi-terminal DC" }).count(),
+    3,
+    "three multi-terminal converters linked to bus 212",
+  );
+  await shot("diagram-mtdc");
 }
 
 // A DC line picked on the diagram is found in Case diff, and back again.

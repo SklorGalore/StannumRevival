@@ -14,6 +14,17 @@ pub struct PowerCase {
     pub warnings: Vec<Warning>,
     /// Shared ids for the case's branch and generator rows.
     pub elements: Elements,
+    /// What each `case.dcline` row is: "two_terminal", "vsc" or
+    /// "multi_terminal". MATPOWER cases only have two-terminal rows.
+    pub dc_line_kinds: Vec<&'static str>,
+}
+
+fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
+    match kind {
+        rs_power::DcLineKind::TwoTerminal => "two_terminal",
+        rs_power::DcLineKind::VoltageSourceConverter => "vsc",
+        rs_power::DcLineKind::MultiTerminal => "multi_terminal",
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -28,12 +39,17 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
         let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
         Ok(PowerCase {
             elements: Elements::from_matpower(&case),
+            dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
             case,
             warnings: Vec::new(),
         })
     } else {
-        let import = rs_power::parse_raw_with_options(text, &rs_power::RawOptions::default())
-            .map_err(|e| e.to_string())?;
+        // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
+        let options = rs_power::RawOptions {
+            all_dc_lines: true,
+            ..Default::default()
+        };
+        let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
         Ok(PowerCase {
             elements: Elements::from_raw(
                 &import.case,
@@ -41,6 +57,12 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 &import.generator_sources,
                 &import.dc_line_names,
             ),
+            dc_line_kinds: import
+                .dc_line_kinds
+                .iter()
+                .copied()
+                .map(dc_kind_label)
+                .collect(),
             case: import.case,
             warnings: import
                 .warnings

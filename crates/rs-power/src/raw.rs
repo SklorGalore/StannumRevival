@@ -10,6 +10,10 @@ pub struct RawOptions {
     pub revision: Option<u32>,
     /// Reject lossy approximations and ignored equipment instead of warning.
     pub strict: bool,
+    /// Also convert voltage source converter (VSC) and multi-terminal DC
+    /// lines into `case.dcline` rows. MATPOWER skips both, so this is off by
+    /// default to keep conversions identical to MATPOWER 8.1.
+    pub all_dc_lines: bool,
 }
 
 /// A source-located diagnostic about RAW conversion.
@@ -34,8 +38,23 @@ pub struct RawImport {
     pub branch_sources: Vec<BranchSource>,
     /// The RAW record behind each entry of `case.generators`, in the same order.
     pub generator_sources: Vec<GeneratorSource>,
-    /// The name of each two-terminal DC line, in `case.dcline` order.
+    /// The name of the DC line behind each `case.dcline` row, in row order.
+    /// A multi-terminal system gives several rows that share its name.
     pub dc_line_names: Vec<String>,
+    /// The RAW section behind each `case.dcline` row, in row order.
+    pub dc_line_kinds: Vec<DcLineKind>,
+}
+
+/// Which RAW section a `case.dcline` row came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DcLineKind {
+    /// A two-terminal (line-commutated) DC line.
+    TwoTerminal,
+    /// A voltage source converter DC line.
+    VoltageSourceConverter,
+    /// One converter of a multi-terminal DC system, paired with the converter
+    /// that holds the system's DC voltage.
+    MultiTerminal,
 }
 
 /// Which RAW section a branch came from.
@@ -677,7 +696,31 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
     )?;
-    let dc_line_names = convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
+    let mut dc_line_names = convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
+    let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
+    if options.all_dc_lines {
+        for (kind, rows) in [
+            (
+                DcLineKind::VoltageSourceConverter,
+                convert_vsc(
+                    section("voltage source converter"),
+                    &case,
+                    &indices,
+                    &mut ctx,
+                )?,
+            ),
+            (
+                DcLineKind::MultiTerminal,
+                convert_multi_terminal(section("multi-terminal DC"), &case, &indices, &mut ctx)?,
+            ),
+        ] {
+            for (name, row) in rows {
+                dc_line_names.push(name);
+                dc_line_kinds.push(kind);
+                case.dcline.get_or_insert_with(Vec::new).push(row);
+            }
+        }
+    }
     for (i, rows) in sections.iter().enumerate() {
         let name = names.get(i).copied().unwrap_or("additional section");
         if !matches!(
@@ -691,7 +734,9 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 | "transformer"
                 | "two-terminal DC"
                 | "area"
-        ) && let Some(r) = rows.first()
+        ) && !(options.all_dc_lines
+            && matches!(name, "voltage source converter" | "multi-terminal DC"))
+            && let Some(r) = rows.first()
         {
             ctx.warn(
                 r.line,
@@ -717,6 +762,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         branch_sources,
         generator_sources,
         dc_line_names,
+        dc_line_kinds,
     })
 }
 
@@ -1038,4 +1084,254 @@ fn convert_dc(
     )?;
     case.dcline = Some(dc);
     Ok(names)
+}
+
+/// Voltage magnitude of a DC terminal's AC bus, used as its voltage setpoint.
+fn terminal_vm(
+    r: &Record,
+    bus: u32,
+    case: &Case,
+    indices: &HashMap<u32, usize>,
+) -> Result<f64, Error> {
+    indices
+        .get(&bus)
+        .map(|i| case.buses[*i].vm)
+        .ok_or_else(|| r.error("unknown DC terminal bus"))
+}
+
+/// Reactive limits of a line-commutated converter carrying `p` MW, estimated
+/// from its firing angles the same way as two-terminal DC lines.
+fn commutated_q_limits(p: f64, angmx: f64, angmn: f64) -> (f64, f64) {
+    let (min, max) = (angmn.to_radians(), angmx.to_radians());
+    (
+        (p * min.tan()).abs(),
+        (p * ((max.cos() + 0.5) * 0.5).acos().tan()).abs(),
+    )
+}
+
+/// One converter end of a VSC line: its AC bus, voltage setpoint and reactive range.
+struct VscEnd {
+    bus: u32,
+    vg: f64,
+    qmin: f64,
+    qmax: f64,
+}
+
+/// Each VSC DC line becomes one lossless `dcline` row. The MW-controlled
+/// converter sets the transfer and the DC-voltage converter takes the other
+/// end. A converter in AC voltage control holds ACSET within MINQ..MAXQ; one
+/// in power factor control gets a fixed reactive output at that factor.
+fn convert_vsc(
+    rows: &[Record],
+    case: &Case,
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context<'_>,
+) -> Result<Vec<(String, Vec<f64>)>, Error> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = vec![];
+    for group in rows.chunks(3) {
+        let r = &group[0];
+        if group.len() != 3 {
+            return Err(r.error("truncated voltage source converter DC line"));
+        }
+        let name = identifier(r, 0);
+        let in_service = r.optional(1, 1.0)? != 0.0;
+        let ends = [&group[1], &group[2]];
+        let mut types = [0; 2];
+        for (i, c) in ends.iter().enumerate() {
+            types[i] = c.id(1)?;
+            if types[i] > 2 {
+                return Err(c.error("VSC converter TYPE must be 0, 1 or 2"));
+            }
+        }
+        // The MW-controlled converter's DCSET is positive when it feeds power
+        // into its AC bus, so that converter is the receiving end.
+        let (mut sending, mut receiving, mut p) = (0, 1, 0.0);
+        if let Some(k) = types.iter().position(|&t| t == 2) {
+            let dcset = ends[k].num(3)?;
+            p = dcset.abs();
+            (sending, receiving) = if dcset >= 0.0 { (1 - k, k) } else { (k, 1 - k) };
+        } else if types.iter().all(|&t| t != 0) {
+            ctx.warn(
+                r.line,
+                true,
+                format!("VSC DC line {name} has no MW-controlled converter; scheduled at 0 MW"),
+            )?;
+        }
+        let terminal = |c: &Record, p: f64| -> Result<VscEnd, Error> {
+            let bus = c.id(0)?;
+            let vm = terminal_vm(c, bus, case, indices)?;
+            let mode = c.optional(2, 1.0)?;
+            let acset = c.optional(4, 1.0)?;
+            if mode == 2.0 {
+                let pf = acset.clamp(-1.0, 1.0);
+                if pf == 0.0 {
+                    return Err(c.error("VSC power factor setpoint must not be zero"));
+                }
+                let q = p * pf.abs().acos().tan() * pf.signum();
+                Ok(VscEnd {
+                    bus,
+                    vg: vm,
+                    qmin: q,
+                    qmax: q,
+                })
+            } else {
+                let (qmax, qmin) = (c.optional(11, 9999.0)?, c.optional(12, -9999.0)?);
+                if qmin > qmax {
+                    return Err(c.error("VSC MINQ exceeds MAXQ"));
+                }
+                if acset <= 0.0 {
+                    return Err(c.error("VSC AC voltage setpoint must be positive"));
+                }
+                Ok(VscEnd {
+                    bus,
+                    vg: acset,
+                    qmin,
+                    qmax,
+                })
+            }
+        };
+        let from = terminal(ends[sending], p)?;
+        let to = terminal(ends[receiving], p)?;
+        let mut line = vec![0.0; 17];
+        line[0] = from.bus as f64;
+        line[1] = to.bus as f64;
+        line[2] = f64::from(in_service && types.iter().all(|&t| t != 0));
+        line[3] = p;
+        line[4] = p;
+        line[7] = from.vg;
+        line[8] = to.vg;
+        line[9] = 0.85 * p;
+        line[10] = 1.15 * p;
+        line[11] = from.qmin;
+        line[12] = from.qmax;
+        line[13] = to.qmin;
+        line[14] = to.qmax;
+        if line.iter().any(|n| !n.is_finite()) {
+            return Err(r.error("nonfinite converted VSC DC line"));
+        }
+        out.push((name, line));
+    }
+    ctx.warn(
+        rows[0].line,
+        true,
+        "VSC DC lines are lossless, regulate only their own AC bus, and ignore converter MVA and current limits",
+    )?;
+    Ok(out)
+}
+
+/// Each multi-terminal DC system becomes one lossless `dcline` row per
+/// scheduled converter, linking it to the converter that holds the DC
+/// voltage (VCONV), which then picks up the balance of the system. The DC
+/// buses and DC links between converters are not modelled.
+fn convert_multi_terminal(
+    rows: &[Record],
+    case: &Case,
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context<'_>,
+) -> Result<Vec<(String, Vec<f64>)>, Error> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = vec![];
+    let mut i = 0;
+    while i < rows.len() {
+        let h = &rows[i];
+        let name = identifier(h, 0);
+        let (nconv, ndcbs, ndcln) = (h.id(1)? as usize, h.id(2)? as usize, h.id(3)? as usize);
+        let end = i + 1 + nconv + ndcbs + ndcln;
+        if end > rows.len() {
+            return Err(h.error("truncated multi-terminal DC line"));
+        }
+        let mode = h.id(4)?;
+        if mode > 2 {
+            return Err(h.error("multi-terminal DC control mode must be 0, 1 or 2"));
+        }
+        let vconv = h.integer(5, true)?;
+        let vconvn = h.optional(7, 0.0)?.abs() as u32;
+        let converters = &rows[i + 1..i + 1 + nconv];
+        i = end;
+        let Some(holder) = converters
+            .iter()
+            .find(|c| c.integer(0, true).ok() == Some(vconv))
+        else {
+            return Err(h.error(format!(
+                "multi-terminal DC line {name} has no converter at its voltage-controlling bus {vconv}"
+            )));
+        };
+        // In current mode SETVL is amps; the DC voltage is the holder's SETVL in kV.
+        let kv = holder.num(12)?.abs();
+        let holder_bus = vconv;
+        let holder_vm = terminal_vm(holder, holder_bus, case, indices)?;
+        let mut pairs = std::collections::HashSet::new();
+        for c in converters {
+            let bus = c.integer(0, true)?;
+            if bus == vconv || (vconvn != 0 && bus == vconvn) {
+                continue;
+            }
+            let setvl = c.num(12)?;
+            let p = match mode {
+                1 => setvl.abs(),
+                2 => setvl.abs() * kv / 1000.0,
+                _ => 0.0,
+            };
+            let vm = terminal_vm(c, bus, case, indices)?;
+            // A positive SETVL marks a rectifier, which sends power to the holder.
+            let rectifier = setvl >= 0.0;
+            let (from, to) = if rectifier {
+                (bus, holder_bus)
+            } else {
+                (holder_bus, bus)
+            };
+            let (from_vm, to_vm) = if rectifier {
+                (vm, holder_vm)
+            } else {
+                (holder_vm, vm)
+            };
+            let own = commutated_q_limits(p, c.num(2)?, c.num(3)?);
+            let held = commutated_q_limits(p, holder.num(2)?, holder.num(3)?);
+            let (qf, qt) = if rectifier { (own, held) } else { (held, own) };
+            let mut line = vec![0.0; 17];
+            line[0] = from as f64;
+            line[1] = to as f64;
+            line[2] = f64::from(mode != 0);
+            line[3] = p;
+            line[4] = p;
+            line[7] = from_vm;
+            line[8] = to_vm;
+            line[9] = 0.85 * p;
+            line[10] = 1.15 * p;
+            line[11] = qf.0;
+            line[12] = qf.1;
+            line[13] = qt.0;
+            line[14] = qt.1;
+            if line.iter().any(|n| !n.is_finite()) {
+                return Err(c.error("nonfinite converted multi-terminal DC converter"));
+            }
+            // Two converters on the same AC bus would share an id; number repeats.
+            let key = (from.min(to), from.max(to));
+            let mut row_name = name.clone();
+            let mut n = 1;
+            while !pairs.insert((key, row_name.clone())) {
+                n += 1;
+                row_name = format!("{name}#{n}");
+            }
+            out.push((row_name, line));
+        }
+        if vconvn != 0 {
+            ctx.warn(
+                h.line,
+                true,
+                format!("multi-terminal DC line {name}: alternate voltage-controlling converter {vconvn} is held at 0 MW"),
+            )?;
+        }
+    }
+    ctx.warn(
+        rows[0].line,
+        true,
+        "multi-terminal DC lines are lossless, ignore their DC network, and link each converter to the DC voltage converter",
+    )?;
+    Ok(out)
 }

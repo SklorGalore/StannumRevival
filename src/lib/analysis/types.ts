@@ -363,7 +363,12 @@ export interface NetworkDcLine {
   online: boolean;
   /** Scheduled MW sent from the rectifier; the power flow holds it fixed. */
   mw: number;
+  /** Which kind of DC line. A multi-terminal system gives one per scheduled
+   *  converter, each to the converter holding the DC voltage. Older backends
+   *  leave it out, which means two-terminal. */
+  kind?: DcLineKind;
 }
+export type DcLineKind = "two_terminal" | "vsc" | "multi_terminal";
 export interface CaseNetwork {
   base_mva: number;
   buses: NetworkBus[];

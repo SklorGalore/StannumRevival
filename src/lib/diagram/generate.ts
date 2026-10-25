@@ -93,13 +93,14 @@ export const linkRef = (br: Link): CaseRef =>
 /** Symbol data for a DC line drawn from `upper` down to `lower`. */
 export function dcLinkData(d: NetworkDcLine, upperKV: number, lowerKV: number, reversed: boolean): DcLinkData {
   return {
-    label: `DC ${d.name}`,
+    label: `${d.kind === "multi_terminal" ? "MTDC" : d.kind === "vsc" ? "VSC" : "DC"} ${d.name}`,
     scheduledMW: d.mw,
     upperKV,
     lowerKV,
     caseRef: { kind: "dcline", id: d.index, element: d.element },
     reversed: reversed || undefined,
     outOfService: !d.online || undefined,
+    dcKind: d.kind && d.kind !== "two_terminal" ? d.kind : undefined,
   };
 }
 

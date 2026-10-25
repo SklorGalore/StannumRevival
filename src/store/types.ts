@@ -173,6 +173,8 @@ export interface DcLinkData extends Record<string, unknown> {
   reversed?: boolean;
   outOfService?: boolean;
   rotation?: Rotation;
+  /** Two-terminal when left out. */
+  dcKind?: "two_terminal" | "vsc" | "multi_terminal";
 }
 
 // ── Typed React Flow unions ──────────────────────────────────────────────────

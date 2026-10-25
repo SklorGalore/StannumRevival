@@ -56,7 +56,9 @@ pub struct NetworkBranch {
     pub shift: f64,
 }
 
-/// A two-terminal DC line, from its rectifier bus to its inverter bus.
+/// A DC line, from its sending (rectifier) bus to its receiving (inverter)
+/// bus. A multi-terminal system gives one per scheduled converter, each
+/// running to the converter that holds the system's DC voltage.
 #[derive(Clone, Debug, Serialize)]
 pub struct NetworkDcLine {
     /// Row in the case's DC line table.
@@ -65,6 +67,8 @@ pub struct NetworkDcLine {
     pub element: String,
     /// The RAW name, or a number for MATPOWER cases.
     pub name: String,
+    /// "two_terminal", "vsc" or "multi_terminal".
+    pub kind: &'static str,
     pub from: u32,
     pub to: u32,
     pub online: bool,
@@ -162,6 +166,11 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             NetworkDcLine {
                 index,
                 name: element.rsplit(':').next().unwrap_or_default().to_string(),
+                kind: power
+                    .dc_line_kinds
+                    .get(index)
+                    .copied()
+                    .unwrap_or("two_terminal"),
                 element,
                 from: col(0) as u32,
                 to: col(1) as u32,

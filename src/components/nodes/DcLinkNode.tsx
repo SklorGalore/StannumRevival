@@ -18,6 +18,12 @@ const TERMINALS: Terminal[] = [
   { id: "dc-bottom", type: "source", x: CX, y: H, side: "bottom" },
 ];
 
+const KIND_TEXT = {
+  two_terminal: "Two-terminal DC",
+  vsc: "VSC DC",
+  multi_terminal: "Multi-terminal DC",
+} as const;
+
 /** A converter: a box split by a diagonal, ~ on the AC side and = on the DC side. */
 function Converter({ y, acOnTop, color }: { y: number; acOnTop: boolean; color: string }) {
   const x = CX - BOX / 2;
@@ -34,7 +40,9 @@ function Converter({ y, acOnTop, color }: { y: number; acOnTop: boolean; color: 
   );
 }
 
-/** A two-terminal DC line drawn as one symbol: rectifier, DC line, inverter.
+/** A DC line drawn as one symbol: rectifier, DC line, inverter. VSC lines and
+ *  each converter of a multi-terminal system (paired with the converter that
+ *  holds the DC voltage) use the same symbol with their own caption.
  *  The arrow on the DC section points from the rectifier to the inverter. */
 export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
   const ink = useInk();
@@ -69,7 +77,7 @@ export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
             {data.label}
           </text>
           <text y={TOP + 24} fontSize={9} fill={ink.muted}>
-            {data.outOfService ? "Blocked" : "Two-terminal DC"}
+            {data.outOfService ? "Blocked" : KIND_TEXT[data.dcKind ?? "two_terminal"]}
           </text>
           {!data.outOfService && (
             <text y={TOP + 36} fontSize={9} fill={results ? ink.result : ink.muted}>
