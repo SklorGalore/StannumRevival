@@ -68,6 +68,7 @@ await page.getByText("Operating limits").waitFor();
 await shot("power-overview");
 await page.getByRole("tab", { name: /Branches/ }).click();
 await page.getByText("Loading (%)").waitFor();
+await page.getByTestId("loading-bar").first().waitFor();
 await shot("power-branches");
 await page.getByRole("button", { name: "Calculate sensitivities" }).click();
 await page.getByText("How to read these results").waitFor();
@@ -123,6 +124,12 @@ await page.getByRole("tab", { name: "Selection" }).click();
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText(/Converged|Iteration limit|Q limits infeasible/).first().waitFor();
+// Branch tables name both ends when the case names its buses.
+await page.getByRole("tab", { name: /Branches/ }).click();
+await page.getByRole("columnheader", { name: "From name" }).waitFor();
+await page.locator("table:visible tbody tr").first().locator("td").nth(2).filter({ hasText: /\S/ }).waitFor();
+await shot("tables-names");
+await page.getByRole("tab", { name: "Overview" }).click();
 
 // Case diff, with the open case as baseline.
 await page.getByRole("button", { name: "Case diff", exact: true }).click();
@@ -145,7 +152,7 @@ await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.locator(".react-flow__node-bus").first().waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
-await page.getByText(/\d\.\d{3} pu/).first().waitFor();
+await page.locator("svg text", { hasText: /\d\.\d{3} pu/ }).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
 
@@ -626,6 +633,40 @@ if (STANNUM_VIOLATIONS) {
   await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
   await page.getByTestId("inspector").waitFor({ state: "detached" });
   await shot("diagram-roomy");
+
+  // Zoomed out, results turn into marks: heavier wires for loading, bigger
+  // arrows, and a band on buses near or past their limits. Numbers return on
+  // hover and when zoomed back in.
+  assert.ok((await page.getByTestId("voltage-band").count()) > 0, "the worst bus is banded");
+  const flowText = page.locator(".edge-label", { hasText: /\d MW/ });
+  assert.ok((await flowText.count()) > 0, "flows written out when close");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  const pane = page.locator(".react-flow__pane");
+  const box = await pane.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 12 && (await page.getByTestId("result-mark").count()) === 0; i++) {
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(150);
+  }
+  assert.ok((await page.getByTestId("result-mark").count()) > 0, "flows drawn as marks when far");
+  assert.equal(await flowText.count(), 0, "no flow text when far");
+  assert.ok((await page.getByTestId("voltage-band").count()) > 0, "band still shown when far");
+  await shot("diagram-marks");
+  // The same marks on the dark canvas, switched from the palette.
+  const isDark = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+  const wasDark = await isDark();
+  const cycleTheme = async () => {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search" }).fill("theme");
+    await page.getByRole("option", { name: /theme/ }).first().waitFor();
+    await page.keyboard.press("Enter");
+  };
+  for (let i = 0; i < 3 && !(await isDark()); i++) await cycleTheme();
+  await page.waitForTimeout(200);
+  await shot("diagram-marks-dark");
+  for (let i = 0; i < 3 && (await isDark()) !== wasDark; i++) await cycleTheme();
+  await page.locator(".react-flow__controls-fitview").click();
   await page.getByRole("button", { name: "Show components" }).click();
   await page.getByTestId("components-palette").waitFor();
   await page.getByRole("button", { name: "Hide components" }).click();
@@ -683,6 +724,48 @@ if (STANNUM_VIOLATIONS) {
   await page.keyboard.press("Shift+Enter");
   await page.getByText(/^Around\b/).filter({ hasText: "170" }).first().waitFor();
   await page.keyboard.press("Escape");
+
+  // Tables draw only the rows in view, carry bus names, and show loading and
+  // limits as bars and marks.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  const drawnRows = page.locator("table:visible tbody tr:not([data-spacer])");
+  const overloadsOnly = page.getByLabel(/Overloads only/);
+  if (await overloadsOnly.isChecked()) await overloadsOnly.uncheck();
+  const total = Number((await page.locator("text=/^[\\d,]+ rows?$/ >> visible=true").first().innerText()).replace(/[^\d]/g, ""));
+  assert.ok(total > 300, "case300 has more than 300 branches");
+  assert.ok((await drawnRows.count()) < total, "only rows in view are drawn");
+  const scroller = page.locator("table:visible").locator("xpath=..");
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await page.locator("table:visible tbody tr:not([data-spacer]) td:first-child", { hasText: new RegExp(`^${total}$`) }).waitFor();
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+  await page.getByRole("columnheader", { name: /Loading/ }).click();
+  await page.getByRole("columnheader", { name: /Loading/ }).click();
+  await shot("tables-branches");
+  await page.getByRole("tab", { name: /Buses/ }).click();
+  await page.getByTestId("range-mark").first().waitFor();
+  await page.getByRole("columnheader", { name: "Vm (p.u.)" }).click();
+  await shot("tables-buses");
+
+  // Filter chips narrow the bus, generator and branch tables together.
+  const violationsOnly = page.getByLabel(/Voltage violations only/);
+  if (await violationsOnly.isChecked()) await violationsOnly.uncheck();
+  const chips = page.getByTestId("filter-chips");
+  await chips.getByRole("button", { name: "Add filter" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit filter" });
+  await editor.getByLabel("Filter field").selectOption("base_kv");
+  await editor.getByLabel("Filter value").selectOption("230");
+  await editor.getByRole("button", { name: "Done" }).click();
+  await chips.getByTestId("filter-chip").filter({ hasText: "Base kV is 230" }).waitFor();
+  const kept = Number((await chips.getByText(/ of 300 buses$/).innerText()).split(" ")[0]);
+  assert.ok(kept > 0 && kept < 300, "some buses kept");
+  for (const kv of await page.locator("table:visible tbody tr:not([data-spacer]) td:nth-child(4)").allInnerTexts())
+    assert.equal(kv.trim(), "230.0", "only 230 kV buses listed");
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  await chips.getByText(/touching matching buses$/).waitFor();
+  await shot("filter-chips");
+  await chips.getByRole("button", { name: /^Remove filter/ }).click();
+  await chips.getByText("Applies to buses, generators and branches").waitFor();
 
   // MATPOWER has no RAW records, so Topology is built from the power flow model.
   await page.getByRole("button", { name: "Topology", exact: true }).click();

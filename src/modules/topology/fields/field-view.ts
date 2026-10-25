@@ -1,11 +1,7 @@
 // Ported from nodal's web/field-view.ts.
 import type { Bus, Equipment, GraphData, GraphNode, Snapshot } from './types';
-
-export type FieldTarget = 'bus' | 'equipment';
-export type FieldValue = string | number | null;
-export interface FieldDefinition { key: string; label: string; type: 'number' | 'text' | 'category' }
-export type FilterOperator = 'eq' | 'neq' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'missing' | 'present';
-export interface FilterRule { id: string; target: FieldTarget; field: string; operator: FilterOperator; value: string; upper?: string }
+import { distinctValues, matchesValue, type FieldDefinition, type FieldTarget, type FieldValue, type FilterRule } from '../../../lib/filters';
+export type { FieldDefinition, FieldTarget, FieldValue, FilterOperator, FilterRule } from '../../../lib/filters';
 
 export const BUS_FIELDS: FieldDefinition[] = [
   { key: 'number', label: 'Bus number', type: 'number' },
@@ -132,42 +128,6 @@ export function fieldValues(snapshot: Snapshot, target: FieldTarget, id: number 
   }));
 }
 
-function numeric(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function matchesValue(actual: FieldValue, rule: FilterRule): boolean {
-  if (rule.operator === 'missing') return actual === null;
-  if (rule.operator === 'present') return actual !== null;
-  if (actual === null) return false;
-  if (typeof actual === 'number') {
-    const value = numeric(rule.value);
-    if (value === null) return false;
-    switch (rule.operator) {
-      case 'eq': return actual === value;
-      case 'neq': return actual !== value;
-      case 'gt': return actual > value;
-      case 'gte': return actual >= value;
-      case 'lt': return actual < value;
-      case 'lte': return actual <= value;
-      case 'between': {
-        const upper = rule.upper === undefined ? null : numeric(rule.upper);
-        return upper !== null && upper >= value && actual >= value && actual <= upper;
-      }
-      default: return false;
-    }
-  }
-  const text = String(actual);
-  switch (rule.operator) {
-    case 'eq': return text === rule.value;
-    case 'neq': return text !== rule.value;
-    case 'contains': return text.toLocaleLowerCase().includes(rule.value.toLocaleLowerCase());
-    default: return false;
-  }
-}
-
 const BUS_DERIVED_FIELDS = new Set(['degree', 'island', 'articulation', 'status']);
 
 function matchesBusWithLookup(state: Lookup, bus: number, rules: FilterRule[]): boolean {
@@ -206,13 +166,7 @@ export function fieldOptions(snapshot: Snapshot, target: FieldTarget, field: str
   } else {
     for (const item of snapshot.case.equipment) values.push(...valuesFor(state, target, item.id, field));
   }
-  const distinct = unique(values);
-  return distinct.sort((a, b) => {
-    if (a === null) return b === null ? 0 : 1;
-    if (b === null) return -1;
-    if (typeof a === 'number' && typeof b === 'number') return a - b;
-    return String(a).localeCompare(String(b), undefined, { sensitivity: 'variant', numeric: true });
-  });
+  return distinctValues(values);
 }
 
 export function filterGraph(snapshot: Snapshot, graph: GraphData, rules: FilterRule[]): GraphData {

@@ -1,6 +1,7 @@
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import type { ConductorData } from "../../store/types";
-import { branchFlow, loadingColor, mvar, mw, useResults } from "../../lib/diagram/results";
+import { branchFlow, loadingColor, mvar, mw, useDrawnMaxFlow, useResults } from "../../lib/diagram/results";
+import { flowWidth, useResultMarks } from "../../lib/diagram/detail";
 import { useInk, SELECTED } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
@@ -101,6 +102,8 @@ export function ConductorEdge({
   selected,
 }: EdgeProps & { data?: ConductorData }) {
   const results = useResults();
+  const marks = useResultMarks();
+  const maxFlow = useDrawnMaxFlow(marks ? results : null);
   const ink = useInk();
   const dotAtSource = useJunction(source, sourceHandleId);
   const dotAtTarget = useJunction(target, targetHandleId);
@@ -157,7 +160,11 @@ export function ConductorEdge({
   // With results on, wires go neutral so only loading stands out.
   const base = dc ? ink.line : results ? ink.wire : ink.voltage(kv);
   const stroke = selected ? SELECTED : offline ? ink.off : (overload ?? base);
-  const width = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
+  const baseWidth = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
+  // Zoomed out, the wire's weight carries its loading instead of the text.
+  const asMarks = marks && !!flow;
+  const width = asMarks && flow ? flowWidth(row?.loading_pct, flow.p, maxFlow, baseWidth) : baseWidth;
+  const k = asMarks ? 2 : 1;
 
   const vertical = Math.abs(seg.a.x - seg.b.x) < 0.5;
   // Unit vector of the flow, along the labelled segment.
@@ -165,9 +172,9 @@ export function ConductorEdge({
   const dy = Math.sign(seg.b.y - seg.a.y) * (flow && flow.p < 0 ? -1 : 1);
   const arrow =
     flow && Math.abs(flow.p) > 0.05
-      ? `M${mid.x + dx * 5},${mid.y + dy * 5} L${mid.x - dx * 4 - dy * 4},${mid.y - dy * 4 + dx * 4} L${mid.x - dx * 4 + dy * 4},${mid.y - dy * 4 - dx * 4} Z`
+      ? `M${mid.x + dx * 5 * k},${mid.y + dy * 5 * k} L${mid.x - (dx + dy) * 4 * k},${mid.y + (dx - dy) * 4 * k} L${mid.x + (dy - dx) * 4 * k},${mid.y - (dy + dx) * 4 * k} Z`
       : null;
-  const lines = flow
+  const numbers = flow
     ? [
         mw(Math.abs(flow.p)),
         ...(results?.ac ? [mvar(flow.q)] : []),
@@ -176,6 +183,7 @@ export function ConductorEdge({
     : data?.label
       ? [data.label]
       : [];
+  const lines = asMarks ? [] : numbers;
   textAt ??= vertical
     ? { x: mid.x + 7, y: mid.y - (lines.length - 1) * 5.5 + 3, anchor: "start" }
     : { x: mid.x, y: mid.y - 6 - (lines.length - 1) * 11, anchor: "middle" };
@@ -192,6 +200,12 @@ export function ConductorEdge({
         path={path}
         style={{ stroke, strokeWidth: width, strokeDasharray: offline ? "5 4" : dc ? "6 4" : undefined }}
       />
+      {asMarks && (
+        // Hover target for the numbers the marks stand for.
+        <path d={path} fill="none" stroke="transparent" strokeWidth={14} data-testid="result-mark">
+          <title>{numbers.join(" · ")}</title>
+        </path>
+      )}
       {selected && pts && <SegmentGrips id={id} points={pts} />}
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
       {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}

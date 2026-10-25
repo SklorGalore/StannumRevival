@@ -1,6 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { TransformerNode as TransformerNodeType } from "../../store/types";
 import { branchFlow, loadingColor, mvar, mw, useResults } from "../../lib/diagram/results";
+import { useResultMarks } from "../../lib/diagram/detail";
 import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
 import { Ground } from "./shared/Ground";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
@@ -44,6 +45,7 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
   const secondaryWinding = data.connection.endsWith("Wye") ? "Wye" : "Delta";
   const results = useResults();
   const ink = useInk();
+  const marks = useResultMarks();
   const row = data.caseRef?.kind === "branch" ? results?.branches.get(data.caseRef.id) : undefined;
   const flow = row ? branchFlow(row, data.reversed) : null;
   const overload = loadingColor(row?.loading_pct);
@@ -62,7 +64,13 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
         <>
           <line x1={CX} y1={0} x2={CX} y2={HV - R} stroke={ink.line} strokeWidth={STROKE} />
           <line x1={CX} y1={LV + R} x2={CX} y2={H} stroke={ink.line} strokeWidth={STROKE} />
-          <circle cx={CX} cy={HV} r={R} fill="white" />
+          <circle cx={CX} cy={HV} r={R} fill="white">
+            {flow && marks && (
+              <title>
+                {[mw(Math.abs(flow.p)), ...(results?.ac ? [mvar(flow.q)] : []), ...(row?.loading_pct != null ? [`${row.loading_pct.toFixed(0)}%`] : [])].join(" · ")}
+              </title>
+            )}
+          </circle>
           <circle cx={CX} cy={LV} r={R} fill="white" />
           <circle cx={CX} cy={HV} r={R} fill="none" stroke={outline} strokeWidth={STROKE} strokeDasharray={dash} />
           <circle cx={CX} cy={LV} r={R} fill="none" stroke={outline} strokeWidth={STROKE} strokeDasharray={dash} />
@@ -94,7 +102,7 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
               ? `${data.primaryKV}/${data.secondaryKV} kV`
               : `${data.primaryKV || data.secondaryKV} kV winding`}
           </text>
-          {flow && (
+          {flow && !marks && (
             <text y={68} fontSize={9} fill={overload ? ink.alert(overload) : ink.result} fontWeight={overload ? 600 : 400}>
               <tspan>{mw(Math.abs(flow.p))}</tspan>
               {results?.ac && (

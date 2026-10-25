@@ -1,6 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { LoadNode as LoadNodeType } from "../../store/types";
 import { mvar, mw, useResults } from "../../lib/diagram/results";
+import { useResultMarks } from "../../lib/diagram/detail";
 import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
@@ -14,6 +15,7 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
   const isMotor = data.loadType === "motor";
   const results = useResults();
   const ink = useInk();
+  const marks = useResultMarks();
   const row = data.caseRef?.kind === "load" ? results?.buses.get(data.caseRef.id) : undefined;
   const outline = selected ? SELECTED : ink.line;
 
@@ -62,7 +64,7 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
           <text y={TEXT_Y} fontSize={10} fill={ink.text}>
             {data.label}
           </text>
-          {row && (
+          {row && !marks && (
             <text y={TEXT_Y + 12} fontSize={9} fill={ink.result}>
               <tspan>{mw(row.pd)}</tspan>
               {results?.ac && (
