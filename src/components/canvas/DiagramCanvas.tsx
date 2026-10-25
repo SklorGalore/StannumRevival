@@ -31,6 +31,20 @@ import { useDiagramStore } from "../../store/diagramStore";
 import { defaultsByType, defaultConductorData } from "../../store/defaults";
 import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
+import {
+  BAR,
+  across,
+  along,
+  isVertical,
+  outward,
+  placeTerminal,
+  sideForTerminal,
+  sideToward,
+  tapPoint,
+  terminalOf,
+  type Side,
+} from "../../lib/diagram/bus";
+import { symbolSize } from "../../lib/diagram/sizes";
 import { AlignBar } from "./AlignBar";
 import { VoltageLegend } from "./VoltageLegend";
 import { LocalScopeBar, NodeMenu, useCaseActions } from "./CaseActions";
@@ -51,9 +65,9 @@ function busAt(nodes: SLDNode[], p: { x: number; y: number }): SLDNode | null {
     if (n.type !== "bus") continue;
     const data = n.data as BusData;
     if (data.star) continue;
-    const len = data.length ?? 200;
-    if (p.x < n.position.x - 4 || p.x > n.position.x + len + 4) continue;
-    const d = Math.abs(p.y - (n.position.y + 3));
+    const at = along(n, p);
+    if (at < -4 || at > (data.length ?? 200) + 4) continue;
+    const d = Math.abs(across(n, p));
     if (d <= BUS_REACH && (!best || d < best.d)) best = { node: n, d };
   }
   return best?.node ?? null;
@@ -62,18 +76,34 @@ function busAt(nodes: SLDNode[], p: { x: number; y: number }): SLDNode | null {
 /** Terminal of each symbol that can sit straight on a bus bar. */
 const ON_BUS: Partial<Record<string, string>> = { generator: "gen-top", load: "load-top", shunt: "shunt-top" };
 
-/** Bus whose bar a symbol's terminal at `p` touches, from just above the bar
- *  to a little below it. */
-function barUnder(nodes: SLDNode[], p: { x: number; y: number }, reach: number): SLDNode | null {
+/** Bus whose bar a symbol's terminal at `p`, facing `facing`, touches: from
+ *  just past the bar to `reach` out on the symbol's side. Also says which
+ *  side of the bar the symbol hangs from. */
+function barUnder(
+  nodes: SLDNode[],
+  p: { x: number; y: number },
+  facing: Side,
+  reach: number
+): { bus: SLDNode; side: BusTap["side"] } | null {
   for (const n of nodes) {
     if (n.type !== "bus") continue;
     const data = n.data as BusData;
-    if (data.star || data.orientation === "vertical") continue;
-    const len = data.length ?? 200;
-    if (p.x < n.position.x || p.x > n.position.x + len) continue;
-    if (p.y >= n.position.y - 8 && p.y <= n.position.y + 6 + reach) return n;
+    if (data.star) continue;
+    const side = sideForTerminal(isVertical(data), facing);
+    if (!side) continue;
+    const at = along(n, p);
+    if (at < 0 || at > (data.length ?? 200)) continue;
+    // How far out the terminal is on the symbol's side of the bar.
+    const out = outward(n, p, side);
+    if (out >= -BAR / 2 - 8 && out <= BAR / 2 + reach) return { bus: n, side };
   }
   return null;
+}
+
+/** Centre of a node's box. */
+function centreOf(n: SLDNode) {
+  const { w, h } = n.type === "bus" ? { w: 0, h: 0 } : symbolSize(n);
+  return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
 }
 
 function pointerPoint(e: MouseEvent | TouchEvent) {
@@ -185,16 +215,17 @@ export function DiagramCanvas() {
       if (!node || !handle) return false;
       if (wires.some((e) => (e.target === nodeId && e.targetHandle === handle) || (e.source === nodeId && e.sourceHandle === handle)))
         return false;
-      const width = node.measured?.width ?? 40;
-      const terminal = { x: node.position.x + width / 2, y: node.position.y };
-      const bus = barUnder(all, terminal, reach);
-      if (!bus) return false;
+      const terminal = terminalOf(node);
+      const hit = barUnder(all, terminal.p, terminal.side, reach);
+      if (!hit) return false;
+      const { bus, side } = hit;
       const len = (bus.data as BusData).length ?? 200;
-      const x = Math.min(len, Math.max(0, Math.round((terminal.x - bus.position.x) / gridSize) * gridSize));
-      // Hang the symbol from the underside of the bar.
-      const position = { x: bus.position.x + x - width / 2, y: bus.position.y + 6 };
+      const x = Math.min(len, Math.max(0, Math.round(along(bus, terminal.p) / gridSize) * gridSize));
+      // Hang the symbol from the side of the bar its terminal faces.
+      const { w, h } = symbolSize(node);
+      const position = placeTerminal(tapPoint(bus, x, side), terminal.side, w, h);
       useDiagramStore.getState().setNodes(all.map((n) => (n.id === nodeId ? ({ ...n, position } as SLDNode) : n)));
-      wireToBus(useDiagramStore.getState().nodes.find((n) => n.id === bus.id)!, x, "bottom", nodeId, handle);
+      wireToBus(useDiagramStore.getState().nodes.find((n) => n.id === bus.id)!, x, side, nodeId, handle);
       return true;
     },
     [wireToBus]
@@ -214,7 +245,7 @@ export function DiagramCanvas() {
         if (bus?.type !== "bus" || !otherNode || (bus.data as BusData).star) continue;
         const tap = busTaps(bus.data as BusData).find((t) => t.id === params[`${end}Handle`]);
         if (!tap) continue;
-        const facing: BusTap["side"] = otherNode.position.y > bus.position.y ? "bottom" : "top";
+        const facing = sideToward(bus, centreOf(otherNode));
         if (tap.side !== facing) return wireToBus(bus, tap.x, facing, other, otherHandle ?? null);
       }
       const newEdge: SLDEdge = {
@@ -271,9 +302,9 @@ export function DiagramCanvas() {
       const bus = busAt(all, p);
       if (!bus) return;
       const len = (bus.data as BusData).length ?? 200;
-      const x = Math.min(len, Math.max(0, Math.round((p.x - bus.position.x) / gridSize) * gridSize));
+      const x = Math.min(len, Math.max(0, Math.round(along(bus, p) / gridSize) * gridSize));
       // The tap goes on the side facing the symbol, so the wire never crosses the bar.
-      const side: BusTap["side"] = from.position.y > bus.position.y ? "bottom" : "top";
+      const side = sideToward(bus, centreOf(from));
       checkpoint();
       wireToBus(bus, x, side, from.id, state.fromHandle.id ?? null);
     },
@@ -326,13 +357,31 @@ export function DiagramCanvas() {
       } as SLDNode;
 
       addNode(newNode);
-      // Dropped onto a bus bar: it goes straight on the bus.
-      const bus = ON_BUS[type] ? barUnder(useDiagramStore.getState().nodes, position, 30) : null;
-      if (bus) {
-        const { nodes: all, setNodes: put } = useDiagramStore.getState();
-        const onBar = { x: position.x - 20, y: bus.position.y + 6 };
-        put(all.map((n) => (n.id === newNode.id ? ({ ...n, position: onBar } as SLDNode) : n)));
-        attachToBus(newNode.id, 30);
+      // Dropped onto a bus bar: it goes straight on the bus. The pointer
+      // stands for the terminal; symbols come from the palette upright.
+      // On a vertical bus it is turned to face the bar.
+      if (ON_BUS[type]) {
+        const all = useDiagramStore.getState().nodes;
+        const hit =
+          barUnder(all, position, "top", 30) ??
+          barUnder(all, position, "left", 30) ??
+          barUnder(all, position, "right", 30);
+        if (hit) {
+          const vertical = isVertical(hit.bus.data as BusData);
+          const rotation = vertical ? (hit.side === "top" ? 270 : 90) : 0;
+          // Put the terminal near the bar so the attach below finds it.
+          const p = tapPoint(hit.bus, along(hit.bus, position), hit.side);
+          const facing = vertical ? (rotation === 270 ? "left" : "right") : "top";
+          const { w, h } = symbolSize({ ...newNode, data: { ...newNode.data, rotation } } as SLDNode);
+          const onBar = placeTerminal(p, facing, w, h);
+          const { setNodes: put } = useDiagramStore.getState();
+          put(
+            all.map((n) =>
+              n.id === newNode.id ? ({ ...n, position: onBar, data: { ...n.data, rotation } } as SLDNode) : n
+            )
+          );
+          attachToBus(newNode.id, 30);
+        }
       }
     },
     [screenToFlowPosition, snapToGrid, gridSize, addNode, attachToBus]

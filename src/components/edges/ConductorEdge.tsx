@@ -65,6 +65,25 @@ function longestSegment(pts: Pt[]) {
   return best;
 }
 
+/** Direction a terminal on each side points, as a unit step. */
+const OUT: Record<string, { x: number; y: number }> = {
+  top: { x: 0, y: -1 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+};
+
+/** Two terminals that point at each other on one line (or touch). */
+function facingInLine(s: { x: number; y: number }, sp: string, t: { x: number; y: number }, tp: string) {
+  const a = OUT[sp];
+  const b = OUT[tp];
+  if (!a || !b || a.x !== -b.x || a.y !== -b.y) return false;
+  // In line across the run, and the target not more than a little behind.
+  const off = a.x !== 0 ? Math.abs(s.y - t.y) : Math.abs(s.x - t.x);
+  const ahead = (t.x - s.x) * a.x + (t.y - s.y) * a.y;
+  return off < 1 && ahead > -8;
+}
+
 export function ConductorEdge({
   id,
   source,
@@ -105,8 +124,8 @@ export function ConductorEdge({
       seg = longestSegment(pts);
       mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
     }
-  } else if (Math.abs(s.x - t.x) < 1 && t.y > s.y - 8 && sourcePosition === "bottom" && targetPosition === "top") {
-    // Straight down, or no length at all for a symbol sitting on its bus:
+  } else if (facingInLine(s, sourcePosition, t, targetPosition)) {
+    // Straight across, or no length at all for a symbol sitting on its bus:
     // the step path would loop out past the terminals.
     path = `M${s.x},${s.y} L${t.x},${t.y}`;
     seg = { a: s, b: t };

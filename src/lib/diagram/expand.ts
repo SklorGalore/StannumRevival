@@ -5,6 +5,8 @@ import type { CaseNetwork, NetworkBranch } from "../analysis/types";
 import type { BusData, BusTap, ConductorData, SLDEdge, SLDNode, TransformerData } from "../../store/types";
 import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
+import { symbolSize } from "./sizes";
+import { isVertical } from "./bus";
 import { BUS_BAR, layoutPiece } from "./generate";
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -14,30 +16,18 @@ const LABEL_ROOM = 100;
 const GAP = 20;
 const STEP = 40;
 
-const SIZE: Record<string, { w: number; h: number }> = {
-  generator: { w: 40, h: 80 },
-  load: { w: 40, h: 60 },
-  transformer: { w: 40, h: 100 },
-  offPage: { w: 40, h: 40 },
-  shunt: { w: 40, h: 60 },
-  circuitBreaker: { w: 40, h: 60 },
-  disconnector: { w: 40, h: 60 },
-  fuse: { w: 40, h: 60 },
-};
 
 function boxOf(n: SLDNode): Box {
   if (n.type === "bus") {
     const len = (n.data as BusData).length ?? 200;
+    // A vertical bus has its name above and voltage below.
+    if (isVertical(n.data as BusData))
+      return { x: n.position.x - 40, y: n.position.y - 30, w: BUS_BAR + 80, h: len + 50 };
     // Bus names sit to the left, voltages to the right.
     return { x: n.position.x - 90, y: n.position.y - 12, w: len + 90 + 90, h: BUS_BAR + 24 };
   }
-  const size = SIZE[n.type ?? ""] ?? { w: 40, h: 60 };
-  return {
-    x: n.position.x,
-    y: n.position.y,
-    w: (n.measured?.width ?? size.w) + LABEL_ROOM,
-    h: n.measured?.height ?? size.h,
-  };
+  const size = symbolSize(n);
+  return { x: n.position.x, y: n.position.y, w: size.w + LABEL_ROOM, h: size.h };
 }
 
 const overlaps = (a: Box, b: Box) =>

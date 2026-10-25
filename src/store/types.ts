@@ -11,7 +11,13 @@ export interface CaseRef {
   element?: string;
 }
 
-/** A connection point on a bus, at `x` px from its left end. */
+/** Clockwise turn of a symbol, in degrees. Text stays upright. */
+export type Rotation = 0 | 90 | 180 | 270;
+
+/** A connection point on a bus, at `x` px along it: from the left end of a
+ *  horizontal bus, from the top of a vertical one. A vertical bus is a
+ *  horizontal one turned clockwise, so its "top" side faces right and its
+ *  "bottom" side faces left. */
 export interface BusTap {
   id: string;
   x: number;
@@ -34,6 +40,7 @@ export interface BusData extends Record<string, unknown> {
 
 export interface GeneratorData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   nominalMW: number;
   voltageKV: number;
   powerFactor: number;
@@ -43,6 +50,7 @@ export interface GeneratorData extends Record<string, unknown> {
 
 export interface LoadData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   nominalMW: number;
   nominalMVAR: number;
   loadType: "static" | "motor" | "composite";
@@ -53,6 +61,7 @@ export interface LoadData extends Record<string, unknown> {
  *  capacitor (supplies reactive power), negative a reactor. */
 export interface ShuntData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   nominalMVAR: number;
   nominalMW: number;
   caseRef?: CaseRef;
@@ -60,6 +69,7 @@ export interface ShuntData extends Record<string, unknown> {
 
 export interface TransformerData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   ratingMVA: number;
   primaryKV: number;
   secondaryKV: number;
@@ -77,6 +87,7 @@ export interface TransformerData extends Record<string, unknown> {
 
 export interface CircuitBreakerData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   state: "open" | "closed" | "fault";
   ratingKV: number;
   ratingKA: number;
@@ -85,6 +96,7 @@ export interface CircuitBreakerData extends Record<string, unknown> {
 
 export interface DisconnectorData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   state: "open" | "closed";
   ratingKV: number;
   type: "gang-operated" | "single-pole";
@@ -92,6 +104,7 @@ export interface DisconnectorData extends Record<string, unknown> {
 
 export interface FuseData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   ratingKV: number;
   ratingA: number;
   type: "current-limiting" | "expulsion";
@@ -122,6 +135,7 @@ export interface ConductorData extends Record<string, unknown> {
 /** Marks a branch that leaves the drawn part of the case. */
 export interface OffPageData extends Record<string, unknown> {
   label: string;
+  rotation?: Rotation;
   /** Bus at the far end, outside the drawing. */
   bus: number;
   busName: string;
@@ -250,6 +264,9 @@ export interface DiagramStore {
   selectOnly: (nodeIds: string[], edgeIds: string[]) => void;
   /** Move the selected symbols; arrow keys nudge by one grid step. */
   nudge: (dx: number, dy: number) => void;
+  /** Turn the selected symbols a quarter about their centres (clockwise for
+   *  90); buses swap between horizontal and vertical. */
+  rotateSelection: (turn: 90 | -90) => void;
   align: (how: AlignMode) => void;
   toggleColorMode: () => void;
   updateNodeData: (id: string, data: Partial<SLDNode["data"]>) => void;

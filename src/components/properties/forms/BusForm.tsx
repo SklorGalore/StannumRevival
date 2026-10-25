@@ -4,6 +4,7 @@ import { Field, Input, Select, SectionTitle } from "./FormField";
 
 export function BusForm({ node }: { node: BusNode }) {
   const updateNodeData = useDiagramStore((s) => s.updateNodeData);
+  const rotateSelection = useDiagramStore((s) => s.rotateSelection);
   const d = node.data;
 
   function update(partial: Partial<typeof d>) {
@@ -28,7 +29,9 @@ export function BusForm({ node }: { node: BusNode }) {
       <Field label="Orientation">
         <Select
           value={d.orientation}
-          onChange={(e) => update({ orientation: e.target.value as typeof d.orientation })}
+          // Turning keeps the bus centred where it was (R does the same).
+          onChange={(e) => e.target.value !== d.orientation && rotateSelection(90)}
+          disabled={d.star}
         >
           <option value="horizontal">Horizontal</option>
           <option value="vertical">Vertical</option>

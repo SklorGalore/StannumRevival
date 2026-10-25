@@ -83,7 +83,7 @@
   pointer-events: none;
 }
 
-/* Grip on the right end of a selected bus for changing its length. */
+/* Grip on the far end of a selected bus for changing its length. */
 .bus-grip {
   position: absolute;
   top: -5px;
@@ -94,6 +94,13 @@
   border: 1.5px solid #3b82f6;
   cursor: ew-resize;
   pointer-events: all;
+}
+
+.bus-grip.vertical {
+  left: -5px;
+  width: 16px;
+  height: 8px;
+  cursor: ns-resize;
 }
 
 /* A bus under a wire being drawn: release to add a tap there. */
