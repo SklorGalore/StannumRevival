@@ -65,6 +65,7 @@ await page.getByRole("button", { name: "Open case…" }).first().click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText("Converged").first().waitFor();
 await page.getByText("Operating limits").waitFor();
+await page.getByTestId("top-branches").getByText("%").first().waitFor();
 await shot("power-overview");
 await page.getByRole("tab", { name: /Branches/ }).click();
 await page.getByText("Loading (%)").waitFor();
@@ -590,6 +591,19 @@ if (STANNUM_VIOLATIONS) {
   assert(violations > 0, "the case has voltage violations");
   await shot("findings-overview");
 
+  // The overview pictures every bus voltage against its limits, and the
+  // branches carrying the most (case300 has no ratings, so the largest flows).
+  const profile = page.getByTestId("voltage-profile");
+  await profile.scrollIntoViewIfNeeded();
+  assert.ok((await profile.locator("circle.fill-red-600").count()) === violations, "every violation drawn red");
+  const top = page.getByTestId("top-branches");
+  await top.getByText(/largest flows/).waitFor();
+  const svgBox = await profile.locator("svg").boundingBox();
+  await page.mouse.move(svgBox.x + 60, svgBox.y + svgBox.height / 2);
+  await page.getByTestId("voltage-profile-tip").waitFor();
+  await shot("overview-charts");
+  await page.mouse.move(0, 0);
+
   await voltage.locator("td").nth(1).getByRole("button").click();
   const only = page.getByLabel(/Voltage violations only/);
   assert.equal(await only.isChecked(), true, "only violations listed");
@@ -746,6 +760,14 @@ if (STANNUM_VIOLATIONS) {
   await page.getByRole("tab", { name: /Branches/ }).click();
   await chips.getByText(/touching matching buses$/).waitFor();
   await shot("filter-chips");
+  // The same filters narrow the overview's charts; its checks stay whole-case.
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await chips.getByText(new RegExp(`^Charts show ${kept} of 300 buses`)).waitFor();
+  await page.getByText(`${kept} of 300 buses, lowest to highest`).waitFor();
+  await page.getByText("Touching matching buses, against rating A").waitFor();
+  await page.getByTestId("voltage-profile").scrollIntoViewIfNeeded();
+  await shot("overview-filtered");
+  await page.getByRole("tab", { name: /Branches/ }).click();
   await chips.getByRole("button", { name: /^Remove filter/ }).click();
   await chips.getByText("Applies to buses, generators and branches").waitFor();
 
