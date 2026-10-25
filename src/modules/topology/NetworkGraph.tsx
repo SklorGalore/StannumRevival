@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
 import cytoscape, { type Core, type StylesheetJson } from "cytoscape";
+// @ts-expect-error: cytoscape-fcose ships no type declarations.
+import fcose from "cytoscape-fcose";
+
+cytoscape.use(fcose);
 import type { GraphData, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
 import { nodeForBus } from "./viewModel";
 
@@ -38,7 +42,7 @@ const style: StylesheetJson = [
   { selector: "node.label-hidden", style: { label: "" } },
   // Colour rules from the Filters & colours panel. Path and selection still win.
   // Coloured buses are a little larger and outlined so pale colours still read.
-  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 30, height: 30, "border-color": "#334155", "border-width": 1.5 } },
+  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 38, height: 38, "border-color": "#334155", "border-width": 1.5 } },
   { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
   { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
   // Under a colour rule, critical buses and bridges get a ring instead of a
@@ -50,14 +54,38 @@ const style: StylesheetJson = [
 ];
 
 /**
- * Force layouts come out roughly square, while the view is wide. Spread the
- * nodes horizontally (up to 2.5x) so the graph uses the whole panel.
+ * fCoSE spring layout with room between buses: springs a few bus-widths
+ * long, strong repulsion, and labels counted in each bus's footprint.
+ * The panel's aspect ratio is passed in so the result fills a wide view.
+ */
+function layoutFor(nodes: number): cytoscape.LayoutOptions {
+  return {
+    name: "fcose",
+    quality: nodes > 600 ? "draft" : "default",
+    animate: false,
+    randomize: true,
+    padding: 30,
+    nodeDimensionsIncludeLabels: true,
+    idealEdgeLength: () => 100,
+    nodeRepulsion: () => 25000,
+    edgeElasticity: () => 0.45,
+    nodeSeparation: 90,
+    gravity: 0.2,
+    gravityRange: 3.8,
+    numIter: 2500,
+    tile: true,
+    packComponents: true,
+  } as cytoscape.LayoutOptions;
+}
+
+/**
+ * Spring layouts come out roughly round, while the view is wide. Spread the
+ * buses horizontally (up to 2.2x) so the graph uses the whole panel.
  */
 function stretchToFit(cy: Core, el: HTMLElement) {
   const box = cy.nodes().boundingBox({});
   if (!box.w || !box.h || !el.clientWidth || !el.clientHeight) return;
-  const want = el.clientWidth / el.clientHeight;
-  const factor = Math.min(2.5, want / (box.w / box.h));
+  const factor = Math.min(2.2, el.clientWidth / el.clientHeight / (box.w / box.h));
   if (factor <= 1.05) return;
   const cx = box.x1 + box.w / 2;
   cy.nodes().positions((n) => ({ x: cx + (n.position("x") - cx) * factor, y: n.position("y") }));
@@ -129,7 +157,7 @@ export function NetworkGraph({
         })),
       ],
       style,
-      layout: { name: graph.nodes.length > 180 ? "circle" : "cose", animate: false, padding: 40, randomize: false } as cytoscape.LayoutOptions,
+      layout: layoutFor(graph.nodes.length),
       minZoom: 0.08,
       maxZoom: 4,
       wheelSensitivity: 0.25,
