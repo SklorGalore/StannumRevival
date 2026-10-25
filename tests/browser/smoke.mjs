@@ -127,7 +127,7 @@ await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.locator(".react-flow__node-bus").first().waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
-await page.getByText(/\d\.\d{3} pu/).first().waitFor();
+await page.locator("svg text", { hasText: /\d\.\d{3} pu/ }).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
 
@@ -608,6 +608,40 @@ if (STANNUM_VIOLATIONS) {
   await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
   await page.getByTestId("inspector").waitFor({ state: "detached" });
   await shot("diagram-roomy");
+
+  // Zoomed out, results turn into marks: heavier wires for loading, bigger
+  // arrows, and a band on buses near or past their limits. Numbers return on
+  // hover and when zoomed back in.
+  assert.ok((await page.getByTestId("voltage-band").count()) > 0, "the worst bus is banded");
+  const flowText = page.locator(".edge-label", { hasText: /\d MW/ });
+  assert.ok((await flowText.count()) > 0, "flows written out when close");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  const pane = page.locator(".react-flow__pane");
+  const box = await pane.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 12 && (await page.getByTestId("result-mark").count()) === 0; i++) {
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(150);
+  }
+  assert.ok((await page.getByTestId("result-mark").count()) > 0, "flows drawn as marks when far");
+  assert.equal(await flowText.count(), 0, "no flow text when far");
+  assert.ok((await page.getByTestId("voltage-band").count()) > 0, "band still shown when far");
+  await shot("diagram-marks");
+  // The same marks on the dark canvas, switched from the palette.
+  const isDark = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+  const wasDark = await isDark();
+  const cycleTheme = async () => {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search" }).fill("theme");
+    await page.getByRole("option", { name: /theme/ }).first().waitFor();
+    await page.keyboard.press("Enter");
+  };
+  for (let i = 0; i < 3 && !(await isDark()); i++) await cycleTheme();
+  await page.waitForTimeout(200);
+  await shot("diagram-marks-dark");
+  for (let i = 0; i < 3 && (await isDark()) !== wasDark; i++) await cycleTheme();
+  await page.locator(".react-flow__controls-fitview").click();
   await page.getByRole("button", { name: "Show components" }).click();
   await page.getByTestId("components-palette").waitFor();
   await page.getByRole("button", { name: "Hide components" }).click();

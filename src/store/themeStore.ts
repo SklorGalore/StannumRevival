@@ -12,7 +12,7 @@ interface ThemeState {
   systemDark: boolean;
   /** The theme in use. */
   theme: Theme;
-  /** Set while exporting the diagram, which is always drawn light. */
+  /** Set while exporting the diagram, which is always drawn light and in full detail. */
   exportLight: boolean;
   setExportLight: (on: boolean) => void;
 }
