@@ -94,7 +94,12 @@ await page.getByRole("button", { name: "Close log" }).click();
 await log.waitFor({ state: "detached" });
 await page.getByTestId("log-status").filter({ hasText: /Sensitivities|Calculated sensitivities/ }).waitFor();
 
-// A study: take line 4-5 out, and the case re-solves without it.
+// A study: save the solve as filed, take line 4-5 out, and the case
+// re-solves without it.
+await page.getByRole("tab", { name: /Study/ }).click();
+await page.getByRole("button", { name: "Save this solve" }).click();
+await page.getByTestId("saved-solves").getByRole("textbox", { name: "Solve name" }).first().waitFor();
+assert.equal(await page.getByTestId("saved-solves").getByRole("textbox").first().inputValue(), "Case as filed");
 await page.getByRole("tab", { name: /Branches/ }).click();
 const line45 = page.locator("table:visible tbody tr:not([data-spacer])").nth(1);
 assert.equal((await line45.locator("td").nth(1).innerText()).trim(), "4");
@@ -117,6 +122,12 @@ const edits = page.getByTestId("study-edits");
 await edits.getByText("Line 4–5 circuit 1 out of service").waitFor();
 await edits.getByText(/Generator 1 at bus 2 set to 120\.0 MW \(was 163\.0 MW\)/).waitFor();
 await shot("study-edits");
+// Compare the saved solve with now: line 4-5 taken out, its flow moved elsewhere.
+const comparison = page.getByTestId("solve-comparison");
+await comparison.waitFor();
+await page.getByTestId("compare-branches").locator("td", { hasText: "Taken out" }).waitFor();
+await page.getByTestId("solve-comparison").scrollIntoViewIfNeeded();
+await shot("study-compare");
 await page.getByRole("tab", { name: "Overview" }).click();
 await shot("study-overview");
 await page.getByRole("tab", { name: /Study/ }).click();

@@ -1163,7 +1163,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
               )}
-              {tab === "study" && <StudyPanel onShow={pick} />}
+              {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
               {tab === "warnings" && (
                 <div className="h-full bg-white">
                   <DataTable

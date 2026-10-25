@@ -2,7 +2,7 @@
 // every solve uses. The list lives here; stannum-core applies it.
 import { create } from "zustand";
 import { api } from "../lib/analysis/api";
-import type { StudyEdit } from "../lib/analysis/types";
+import type { SolveReport, StudyEdit } from "../lib/analysis/types";
 import { useWorkspace } from "./workspaceStore";
 
 /** What an edit replaced, for showing "was …" beside it. */
@@ -27,7 +27,25 @@ export function withEdit(entries: StudyEntry[], entry: StudyEntry): StudyEntry[]
   return [...rest, earlier?.was ? { ...entry, was: earlier.was } : entry];
 }
 
+/** A solve kept for comparing, with the edits it was solved with. */
+export interface SavedSolve {
+  id: number;
+  name: string;
+  report: SolveReport;
+  entries: StudyEntry[];
+}
+
+/** A side of a comparison: a saved solve, or whatever is solved now. */
+export type CompareSide = number | "current";
+
 interface StudyState {
+  saved: SavedSolve[];
+  saveSolve: (report: SolveReport, name: string) => void;
+  renameSolve: (id: number, name: string) => void;
+  deleteSolve: (id: number) => void;
+  /** Which two solves to compare, before and after. */
+  compare: { a: CompareSide; b: CompareSide } | null;
+  setCompare: (c: { a: CompareSide; b: CompareSide } | null) => void;
   entries: StudyEntry[];
   /** Bumps on every change the backend accepted, so Power flow can re-solve. */
   revision: number;
@@ -43,7 +61,26 @@ interface StudyState {
   show: () => void;
 }
 
+let nextSolve = 1;
+
 export const useStudy = create<StudyState>((set, get) => ({
+  saved: [],
+  saveSolve: (report, name) =>
+    set((s) => {
+      const solve = { id: nextSolve++, name, report, entries: s.entries };
+      const saved = [...s.saved, solve];
+      // The first save sets up "this solve against now"; later ones compare with the one before.
+      const compare = s.compare ?? { a: solve.id, b: "current" as const };
+      return { saved, compare };
+    }),
+  renameSolve: (id, name) => set((s) => ({ saved: s.saved.map((x) => (x.id === id ? { ...x, name } : x)) })),
+  deleteSolve: (id) =>
+    set((s) => ({
+      saved: s.saved.filter((x) => x.id !== id),
+      compare: s.compare && (s.compare.a === id || s.compare.b === id) ? null : s.compare,
+    })),
+  compare: null,
+  setCompare: (compare) => set({ compare }),
   entries: [],
   revision: 0,
   error: null,
@@ -76,5 +113,5 @@ let lastVersion = useWorkspace.getState().caseVersion;
 useWorkspace.subscribe((s) => {
   if (s.caseVersion === lastVersion) return;
   lastVersion = s.caseVersion;
-  useStudy.setState((st) => ({ entries: [], error: null, revision: st.revision + 1 }));
+  useStudy.setState((st) => ({ entries: [], saved: [], compare: null, error: null, revision: st.revision + 1 }));
 });
