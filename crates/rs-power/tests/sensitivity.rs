@@ -43,19 +43,29 @@ fn perturb(case: &mut rs_power::Case, variable: InjectionVariable, amount: f64) 
 }
 
 fn finite_difference(model: Model) {
-    let case = case();
     let options = PowerFlowOptions {
         model,
         tolerance: 1e-11,
         max_iterations: 20,
         ..Default::default()
     };
+    check_against_differences(case(), &options);
+}
+
+/// Compare every sensitivity with central differences of full solves.
+fn check_against_differences(case: rs_power::Case, options: &PowerFlowOptions) {
+    let model = options.model;
+    let options = options.clone();
     let sensitivity = calculate_sensitivities(&case, &options).unwrap();
     assert_eq!(sensitivity.power_flow.status, SolveStatus::Converged);
-    assert_eq!(
-        sensitivity.state_variables.len(),
-        sensitivity.injection_variables.len()
-    );
+    // Generators sharing a remote bus add a state each beyond the first.
+    assert!(sensitivity.state_variables.len() >= sensitivity.injection_variables.len());
+    if !options.enforce_q_limits {
+        assert_eq!(
+            sensitivity.state_variables.len(),
+            sensitivity.injection_variables.len()
+        );
+    }
     assert_eq!(
         sensitivity.state_sensitivities.len(),
         sensitivity.state_variables.len()
@@ -126,6 +136,34 @@ fn finite_difference(model: Model) {
 #[test]
 fn ac_sensitivities_match_central_differences() {
     finite_difference(Model::Ac);
+}
+
+#[test]
+fn remote_regulation_sensitivities_match_central_differences() {
+    // Generators at buses 2 and 3 share holding bus 7, 2:1.
+    let mut case = case();
+    for g in &mut case.generators[1..] {
+        g.regulated_bus = Some(7);
+    }
+    case.generators[2].reactive_share = 50.0;
+    let options = PowerFlowOptions {
+        enforce_q_limits: true,
+        tolerance: 1e-11,
+        max_iterations: 20,
+        ..Default::default()
+    };
+    let sensitivity = calculate_sensitivities(&case, &options).unwrap();
+    let states = &sensitivity.state_variables;
+    // Bus 7 is held, so its magnitude is fixed; the generator buses move.
+    assert!(!states.contains(&StateVariable::VoltageMagnitude(7)));
+    assert!(states.contains(&StateVariable::VoltageMagnitude(2)));
+    assert!(states.contains(&StateVariable::VoltageMagnitude(3)));
+    assert!(
+        sensitivity
+            .injection_variables
+            .contains(&InjectionVariable::ReactivePower(7))
+    );
+    check_against_differences(case, &options);
 }
 
 #[test]
