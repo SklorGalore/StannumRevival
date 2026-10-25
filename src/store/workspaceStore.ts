@@ -4,6 +4,14 @@ import type { CaseSummary, SolveReport } from "../lib/analysis/types";
 
 export type ModuleId = "diagram" | "power" | "topology" | "diff";
 
+/** One bus or piece of equipment selected across every module. */
+export interface SharedSelection {
+  /** Shared element id (see lib/elements.ts), such as "bus:101". */
+  element: string;
+  /** The module the user picked it in; the others follow quietly. */
+  from: ModuleId;
+}
+
 interface WorkspaceState {
   module: ModuleId;
   setModule: (m: ModuleId) => void;
@@ -15,8 +23,24 @@ interface WorkspaceState {
   /** Latest power flow solve of the open case, shared by Power flow and Diagram. */
   solveReport: SolveReport | null;
   setSolveReport: (r: SolveReport | null) => void;
+  /** Opt-in: when off, each module keeps its own selection. */
+  linked: boolean;
+  setLinked: (on: boolean) => void;
+  selection: SharedSelection | null;
+  /** Select an element everywhere (only while linked); null clears the selection. */
+  select: (element: string | null, from: ModuleId) => void;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
+}
+
+const LINKED_KEY = "stannum-linked-selection";
+
+function loadLinked(): boolean {
+  try {
+    return localStorage.getItem(LINKED_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
@@ -28,6 +52,26 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   openError: null,
   solveReport: null,
   setSolveReport: (solveReport) => set({ solveReport }),
+  linked: loadLinked(),
+  setLinked: (linked) => {
+    try {
+      localStorage.setItem(LINKED_KEY, linked ? "1" : "0");
+    } catch {
+      // Storage may be unavailable; the choice still holds for this session.
+    }
+    set({ linked, selection: null });
+  },
+  selection: null,
+  select: (element, from) => {
+    if (!get().linked) return;
+    const current = get().selection;
+    if (element === null) {
+      if (current) set({ selection: null });
+      return;
+    }
+    if (current?.element === element) return;
+    set({ selection: { element, from } });
+  },
 
   openCase: async (path) => {
     if (get().opening) return;
@@ -40,6 +84,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         caseSummary: summary,
         caseVersion: s.caseVersion + 1,
         solveReport: null,
+        selection: null,
         opening: false,
         // A MATPOWER file has no topology, and a RAW file outside rs-power's
         // support may still have one: move to a module that can use it.
@@ -55,6 +100,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closeCase: async () => {
     await api.closeCase();
-    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null }));
+    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null }));
   },
 }));

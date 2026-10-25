@@ -24,6 +24,7 @@ import {
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
+import { busElement, elementBus, parseElement } from "../../lib/elements";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "sensitivities" | "warnings";
 
@@ -284,6 +285,8 @@ function TableTab<T>({
   placeholder,
   exportName,
   rowClassName,
+  element,
+  matches,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -291,8 +294,15 @@ function TableTab<T>({
   placeholder: string;
   exportName: string;
   rowClassName?: (r: T) => string;
+  /** The shared id a row selects. */
+  element: (r: T) => string;
+  /** Whether a row shows the shared selection; defaults to an exact id match. */
+  matches?: (r: T, selected: string) => boolean;
 }) {
   const [search, setSearch] = useState("");
+  const selected = useWorkspace((s) => s.selection?.element ?? null);
+  const select = useWorkspace((s) => s.select);
+  const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
   async function exportCsv() {
     const filtered = filterRows(rows, columns, search);
     const csv = toCsv(
@@ -309,7 +319,15 @@ function TableTab<T>({
         </Button>
       </div>
       <div className="flex-1 min-h-0 bg-white">
-        <DataTable rows={rows} columns={columns} rowKey={rowKey} search={search} rowClassName={rowClassName} />
+        <DataTable
+          rows={rows}
+          columns={columns}
+          rowKey={rowKey}
+          search={search}
+          rowClassName={rowClassName}
+          isSelected={isSelected}
+          onRowClick={(r) => select(element(r), "power")}
+        />
       </div>
     </div>
   );
@@ -329,6 +347,16 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [sensitivityVersion, setSensitivityVersion] = useState(0);
   const [sensitivity, setSensitivity] = useState<Awaited<ReturnType<typeof api.sensitivities>> | null>(null);
+
+  // Follow a selection made elsewhere by showing the table that lists it.
+  const selection = useWorkspace((s) => s.selection);
+  useEffect(() => {
+    if (!selection || selection.from === "power" || !report) return;
+    const kind = parseElement(selection.element)?.kind;
+    const next: Tab | null =
+      kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : null;
+    if (next) setTab(next);
+  }, [selection, report]);
 
   // A new case invalidates every result.
   useEffect(() => {
@@ -456,6 +484,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
                   exportName="buses.csv"
+                  element={(r) => busElement(r.id)}
+                  matches={(r, sel) => elementBus(sel) === r.id}
                   rowClassName={(r) => (r.violation > 0 ? "bg-amber-50/60" : "")}
                 />
               )}
@@ -466,6 +496,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
                   exportName="generators.csv"
+                  element={(r) => r.element}
                   rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
                 />
               )}
@@ -476,6 +507,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"
                   exportName="branches.csv"
+                  element={(r) => r.element}
                   rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-400")}
                 />
               )}

@@ -2,6 +2,7 @@ import { FileText, FolderOpen, X } from "lucide-react";
 import { useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
+import { SelectionChip } from "./SelectionChip";
 
 /** The shared open case, shown above every analysis module. */
 export function CaseBar() {
@@ -36,6 +37,7 @@ export function CaseBar() {
           {opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file, or drop one on the window."}
         </span>
       )}
+      <SelectionChip />
       {openError && (
         <span role="alert" className="text-[11px] text-red-700 truncate" title={openError}>
           {openError}

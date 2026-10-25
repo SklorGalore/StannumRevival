@@ -51,3 +51,23 @@ export function elementLabel(id: string): string {
   if (e.kind === "generator" || e.kind === "load") return `${NAMES[e.kind]} ${e.circuit} at bus ${e.buses[0]}`;
   return `${NAMES[e.kind]} ${e.buses.join("–")} circuit ${e.circuit}`;
 }
+
+/** The bus an element sits at: the bus itself, or a generator's or load's bus. */
+export function elementBus(id: string): number | null {
+  const e = parseElement(id);
+  return e && (e.kind === "bus" || e.kind === "generator" || e.kind === "load") ? e.buses[0] : null;
+}
+
+/** The RAW section that holds an element, as Case diff names it. */
+export function elementSection(id: string): string | null {
+  const kind = parseElement(id)?.kind;
+  if (!kind) return null;
+  return {
+    bus: "BUS",
+    line: "BRANCH",
+    transformer: "TRANSFORMER",
+    switch: "SYSTEM SWITCHING DEVICE",
+    generator: "GENERATOR",
+    load: "LOAD",
+  }[kind];
+}

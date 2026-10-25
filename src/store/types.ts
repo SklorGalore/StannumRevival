@@ -246,6 +246,8 @@ export interface DiagramStore {
   duplicateSelection: () => void;
   selectAll: () => void;
   clearSelection: () => void;
+  /** Select exactly these symbols, without touching undo history. */
+  selectOnly: (nodeIds: string[], edgeIds: string[]) => void;
   /** Move the selected symbols; arrow keys nudge by one grid step. */
   nudge: (dx: number, dy: number) => void;
   align: (how: AlignMode) => void;

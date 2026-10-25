@@ -93,3 +93,46 @@ fn matpower_parallel_branches_are_numbered() {
     assert!(ids.contains("line:1:4:1"));
     assert_eq!(power.elements.generators[0].element, "generator:1:1");
 }
+
+/// Case diff records name the same elements as nodal, so a selection can
+/// jump between Topology and Case diff.
+#[test]
+fn diff_records_match_nodal_ids() {
+    let path = sample("MemphisCase2026_Mar7.RAW");
+    let mut ws = open(path.clone());
+    let topo = &ws.case.as_ref().unwrap().topology.as_ref().unwrap().case;
+    let mut known: HashSet<String> = topo
+        .buses
+        .iter()
+        .map(|b| format!("bus:{}", b.number))
+        .collect();
+    known.extend(topo.equipment.iter().map(|e| e.id.clone()));
+    known.extend(topo.loads.iter().map(|e| e.id.clone()));
+    known.extend(topo.generators.iter().map(|e| e.id.clone()));
+    ws.compare(&path, &path).unwrap();
+    let cmp = ws.comparison().unwrap();
+    let mut mapped = 0;
+    for section in [
+        "BUS",
+        "LOAD",
+        "GENERATOR",
+        "BRANCH",
+        "TRANSFORMER",
+        "SYSTEM SWITCHING DEVICE",
+    ] {
+        for row in cmp.section_records(section) {
+            let element = row.element.expect("record has an element id");
+            assert!(
+                known.contains(&element),
+                "{section}: {element} not in nodal"
+            );
+            mapped += 1;
+        }
+    }
+    assert_eq!(mapped, known.len());
+    assert!(
+        cmp.section_records("AREA")
+            .iter()
+            .all(|r| r.element.is_none())
+    );
+}
