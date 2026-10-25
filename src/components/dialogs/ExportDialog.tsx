@@ -51,19 +51,16 @@ export function ExportDialog({ onClose }: Props) {
         return;
       }
 
-      // Exports are always light: redraw the canvas light for the capture.
+      // Exports are always light and carry the full result text: redraw the
+      // canvas that way for the capture.
       const theme = useTheme.getState();
       let svgString: string;
-      if (theme.theme === "dark") {
-        theme.setExportLight(true);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        try {
-          svgString = exportSVG(container, metadata);
-        } finally {
-          theme.setExportLight(false);
-        }
-      } else {
+      theme.setExportLight(true);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      try {
         svgString = exportSVG(container, metadata);
+      } finally {
+        theme.setExportLight(false);
       }
 
       if (format === "svg") {

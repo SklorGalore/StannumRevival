@@ -53,3 +53,28 @@ export function loadingColor(pct: number | null | undefined): string | null {
 }
 
 export const RESULT_TEXT = "#0f766e";
+
+const drawnMax = new WeakMap<object, WeakMap<Results, number>>();
+
+/**
+ * Largest active power flow on a branch in this drawing, in MW, to weigh
+ * unrated branches against: the case's largest flow would make every wire in
+ * a local drawing look light.
+ */
+export function useDrawnMaxFlow(results: Results | null): number {
+  const edges = useDiagramStore((s) => s.edges);
+  if (!results) return 0;
+  let byResults = drawnMax.get(edges);
+  if (!byResults) drawnMax.set(edges, (byResults = new WeakMap()));
+  let max = byResults.get(results);
+  if (max === undefined) {
+    max = 0;
+    for (const e of edges) {
+      const ref = (e.data as { caseRef?: { kind: string; id: number } } | undefined)?.caseRef;
+      const row = ref?.kind === "branch" ? results.branches.get(ref.id) : undefined;
+      if (row) max = Math.max(max, Math.abs(row.pf), Math.abs(row.pt));
+    }
+    byResults.set(results, max);
+  }
+  return max;
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { BusNode as BusNodeType } from "../../store/types";
 import { useResults } from "../../lib/diagram/results";
+import { useResultMarks, voltageBand } from "../../lib/diagram/detail";
 import { useInk, SELECTED } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import { busTaps } from "./shared/busTaps";
@@ -55,6 +56,8 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const color = selected ? SELECTED : ink.voltage(data.voltageKV);
   const results = useResults();
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
+  const marks = useResultMarks();
+  const band = row ? voltageBand(row) : null;
   const taps = busTaps(data);
   // Re-measure when taps come or go (expand, undo, paste) or the bus turns,
   // so wires can attach.
@@ -140,7 +143,29 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
             <title>Studied bus</title>
           </rect>
         )}
-        <rect x={0} y={0} width={width} height={height} fill={color} rx={1} />
+        {row && band && (
+          // Voltage near (amber) or past (red) its limits, drawn at every zoom
+          // so it can be found from far away.
+          <rect
+            x={-4}
+            y={-4}
+            width={width + 8}
+            height={height + 8}
+            rx={3}
+            fill={ink.mono ? "none" : band === "past" ? "#dc2626" : "#d97706"}
+            fillOpacity={0.22}
+            stroke={ink.alert(band === "past" ? "#dc2626" : "#d97706")}
+            strokeWidth={marks ? 2 : 1}
+            data-testid="voltage-band"
+          />
+        )}
+        <rect x={0} y={0} width={width} height={height} fill={color} rx={1}>
+          {row && (
+            <title>
+              {row.vm.toFixed(3)} pu {row.va.toFixed(1)}°{band === "past" ? " · outside limits" : band === "near" ? " · near a limit" : ""}
+            </title>
+          )}
+        </rect>
         {data.labelOffset && nameBox && (
           <Leader
             from={{ x: 0, y: 0, w: width, h: height }}
@@ -149,7 +174,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
           />
         )}
         {name}
-        {row && (
+        {row && !marks && (
           <text
             x={vertical ? BAR / 2 : width + 8}
             y={vertical ? height + 16 : BAR / 2 + 3.5}
