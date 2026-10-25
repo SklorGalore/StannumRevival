@@ -15,13 +15,14 @@ interface PaletteCategory {
 }
 
 // Previews drawn with the same geometry as the canvas symbols, scaled down.
-const INK = "#1e293b";
+// Follows the text colour, so previews read in both themes.
+const INK = "currentColor";
 const SW = 1.5;
 
 function Preview({ w, h, children }: { w: number; h: number; children: React.ReactNode }) {
   const scale = 0.62;
   return (
-    <svg width={w * scale} height={h * scale} viewBox={`-1 -1 ${w + 2} ${h + 2}`} fill="none" stroke={INK} strokeWidth={SW}>
+    <svg width={w * scale} height={h * scale} viewBox={`-1 -1 ${w + 2} ${h + 2}`} fill="none" stroke={INK} strokeWidth={SW} className="text-slate-800">
       {children}
     </svg>
   );

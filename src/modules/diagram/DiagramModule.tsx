@@ -11,6 +11,7 @@ import { GenerateDialog } from "../../components/dialogs/GenerateDialog";
 import { useWorkspace } from "../../store/workspaceStore";
 import { elementLabel } from "../../lib/elements";
 import { generateCentre, useSharedSelection } from "./useSharedSelection";
+import { useDarkCanvas } from "../../lib/diagram/ink";
 
 /** Shown when the shared selection has no symbol in this drawing. */
 function NotDrawn({ element }: { element: string }) {
@@ -46,6 +47,8 @@ function Inner({ active }: { active: boolean }) {
   // Shortcuts (Delete, Ctrl+S) belong to the diagram only while it is visible.
   useKeyboardShortcuts(active);
   const missing = useSharedSelection();
+  // Print style and exports are black on white whatever the app theme.
+  const dark = useDarkCanvas();
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       <Toolbar />
@@ -53,7 +56,7 @@ function Inner({ active }: { active: boolean }) {
         <aside className="w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto">
           <ComponentPalette />
         </aside>
-        <main className="flex-1 min-w-0 relative">
+        <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
           {missing && <NotDrawn element={missing} />}
         </main>

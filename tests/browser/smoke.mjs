@@ -331,6 +331,17 @@ const showing = await page.evaluate(
 );
 assert.equal(showing, 0, "diagram symbols visible on another module");
 
+// Theme: the rail button cycles System, Light, Dark. Dark flips the app's
+// colours, while the diagram in print style stays black on white.
+const theme = page.getByRole("button", { name: /^Theme:/ });
+for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Dark"; i++) await theme.click();
+assert(await page.evaluate(() => document.documentElement.classList.contains("dark")), "dark theme applied");
+const bodyBg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white"));
+await shot("theme-dark");
+for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Light"; i++) await theme.click();
+assert(!(await page.evaluate(() => document.documentElement.classList.contains("dark"))), "light theme applied");
+assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white")), "theme changes colours");
+
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();
 console.log("smoke test passed");

@@ -1,4 +1,5 @@
 import { publishDiagramSelection } from "../../modules/diagram/useSharedSelection";
+import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
@@ -97,6 +98,7 @@ export function DiagramCanvas() {
   const addNode = useDiagramStore((s) => s.addNode);
   const setViewport = useDiagramStore((s) => s.setViewport);
   const fitRequest = useDiagramStore((s) => s.fitRequest);
+  const dark = useDarkCanvas();
   const [menu, setMenu] = useState<{ x: number; y: number; node: SLDNode } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const { linked, expand } = useCaseActions();
@@ -418,16 +420,16 @@ export function DiagramCanvas() {
             variant={BackgroundVariant.Dots}
             gap={gridSize}
             size={1}
-            color="#cbd5e1"
+            color={dark ? "#334155" : "#cbd5e1"}
           />
         )}
         <Controls />
         <MiniMap
           pannable
           zoomable
-          nodeColor={(n) => (n.type === "bus" ? "#334155" : "#94a3b8")}
-          maskColor="rgba(241, 245, 249, 0.7)"
-          style={{ width: 160, height: 110, border: "1px solid #e2e8f0", borderRadius: 6 }}
+          nodeColor={(n) => (n.type === "bus" ? (dark ? "#cbd5e1" : "#334155") : dark ? "#64748b" : "#94a3b8")}
+          maskColor={dark ? "rgba(2, 6, 23, 0.55)" : "rgba(241, 245, 249, 0.7)"}
+          style={{ width: 160, height: 110, border: `1px solid ${dark ? "#334155" : "#e2e8f0"}`, borderRadius: 6 }}
         />
       </ReactFlow>
     </div>
