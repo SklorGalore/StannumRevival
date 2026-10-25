@@ -130,6 +130,29 @@ function detail(r: DcLineRow, show: (d: LccDetail) => string): string {
   return r.detail ? show(r.detail) : "";
 }
 
+function num(value: number | null, digits: number): string {
+  return value === null ? "" : fixed(value, digits);
+}
+
+function dcCurrent(r: DcLineRow): number | null {
+  return r.detail?.current_ka ?? r.vsc_detail?.current_ka ?? null;
+}
+
+/** DC voltage at the sending (0) or receiving (1) converter. */
+function dcVoltage(r: DcLineRow, end: 0 | 1): number | null {
+  if (r.detail) return end === 0 ? r.detail.rectifier_kv : r.detail.inverter_kv;
+  if (r.vsc_detail) return end === 0 ? r.vsc_detail.from_kv : r.vsc_detail.to_kv;
+  return null;
+}
+
+function vscControl(r: DcLineRow): string {
+  const d = r.vsc_detail;
+  if (!d) return "";
+  const ends = [d.from_limited && "sending", d.to_limited && "receiving"].filter(Boolean);
+  if (!ends.length) return "At order";
+  return `Limited at ${ends.join(" and ")} end (${fixed(d.order_scale * 100, 1)}% of order)`;
+}
+
 const dcLineColumns: Column<DcLineRow>[] = [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "name", header: "Name", value: (r) => parseElement(r.element)?.circuit ?? "" },
@@ -142,12 +165,12 @@ const dcLineColumns: Column<DcLineRow>[] = [
   {
     key: "control",
     header: "Control",
-    title: "Detailed model: which converter holds the DC current",
-    value: (r) => (r.detail ? LCC_CONTROL_LABEL[r.detail.control] + (r.detail.reduced_voltage ? ", low voltage" : "") : ""),
+    title: "Detailed model: which converter holds the DC current (LCC), or whether converter limits cut the output (VSC)",
+    value: (r) => (r.detail ? LCC_CONTROL_LABEL[r.detail.control] + (r.detail.reduced_voltage ? ", low voltage" : "") : vscControl(r)),
   },
-  { key: "id", header: "Id (kA)", value: (r) => r.detail?.current_ka ?? null, render: (r) => detail(r, (d) => fixed(d.current_ka, 4)), align: "right" },
-  { key: "vdr", header: "Vdr (kV)", title: "Rectifier DC voltage", value: (r) => r.detail?.rectifier_kv ?? null, render: (r) => detail(r, (d) => fixed(d.rectifier_kv, 1)), align: "right" },
-  { key: "vdi", header: "Vdi (kV)", title: "Inverter DC voltage", value: (r) => r.detail?.inverter_kv ?? null, render: (r) => detail(r, (d) => fixed(d.inverter_kv, 1)), align: "right" },
+  { key: "id", header: "Id (kA)", value: (r) => dcCurrent(r), render: (r) => num(dcCurrent(r), 4), align: "right" },
+  { key: "vdr", header: "Vd send (kV)", title: "DC voltage at the sending converter (LCC rectifier)", value: (r) => dcVoltage(r, 0), render: (r) => num(dcVoltage(r, 0), 1), align: "right" },
+  { key: "vdi", header: "Vd recv (kV)", title: "DC voltage at the receiving converter (LCC inverter)", value: (r) => dcVoltage(r, 1), render: (r) => num(dcVoltage(r, 1), 1), align: "right" },
   { key: "alpha", header: "α (°)", title: "Rectifier firing angle", value: (r) => r.detail?.alpha ?? null, render: (r) => detail(r, (d) => fixed(d.alpha, 2)), align: "right" },
   { key: "gamma", header: "γ (°)", title: "Inverter extinction angle", value: (r) => r.detail?.gamma ?? null, render: (r) => detail(r, (d) => fixed(d.gamma, 2)), align: "right" },
   { key: "tap_r", header: "Tap R", title: "Rectifier converter transformer tap", value: (r) => r.detail?.rectifier_tap ?? null, render: (r) => detail(r, (d) => fixed(d.rectifier_tap, 5)), align: "right" },
@@ -261,7 +284,7 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
-      <Field label="Two-terminal DC lines">
+      <Field label="Two-terminal and VSC DC lines">
         <select
           className={inputClass}
           value={settings.dc_model}
@@ -336,7 +359,8 @@ function Overview({ report }: { report: SolveReport }) {
           value={report.iterations}
           detail={
             `${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}` +
-            (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "")
+            (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "") +
+            (report.vsc_limit_passes ? `, ${report.vsc_limit_passes} VSC limit pass${report.vsc_limit_passes === 1 ? "" : "es"}` : "")
           }
         />
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />

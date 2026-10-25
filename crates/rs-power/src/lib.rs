@@ -7,6 +7,7 @@ mod output;
 mod raw;
 mod sensitivity;
 mod solver;
+mod vsc;
 
 pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
@@ -26,6 +27,7 @@ pub use sensitivity::{
 pub use solver::{
     DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
 };
+pub use vsc::{VscAcControl, VscConverter, VscDcControl, VscLine, VscSolution};
 
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
 #[derive(Debug, thiserror::Error)]

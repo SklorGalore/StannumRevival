@@ -106,6 +106,7 @@ fn synthetic_usa_detailed_lcc_model() {
         &PowerFlowOptions {
             dc_model: DcModel::Detailed {
                 lines: imported.lcc_lines.clone(),
+                vsc_lines: Vec::new(),
                 adjust_taps: true,
             },
             ..Default::default()
@@ -137,6 +138,7 @@ fn synthetic_usa_detailed_lcc_model() {
             enforce_q_limits: true,
             dc_model: DcModel::Detailed {
                 lines: imported.lcc_lines.clone(),
+                vsc_lines: Vec::new(),
                 adjust_taps: true,
             },
             ..Default::default()
