@@ -1,5 +1,5 @@
-import { FileText, FolderOpen, Search, X } from "lucide-react";
-import { useWorkspace } from "../store/workspaceStore";
+import { Columns2, FileText, FolderOpen, Search, X } from "lucide-react";
+import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
@@ -14,6 +14,9 @@ export function CaseBar() {
   const openCase = useWorkspace((s) => s.openCase);
   const closeCase = useWorkspace((s) => s.closeCase);
   const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
+  const module = useWorkspace((s) => s.module);
+  const split = useWorkspace((s) => s.split);
+  const setSplit = useWorkspace((s) => s.setSplit);
 
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
@@ -47,6 +50,17 @@ export function CaseBar() {
         </span>
       )}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          onClick={() => setSplit(split ? null : SPLIT_PARTNER[module])}
+          aria-pressed={!!split}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
+            split ? "border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100" : "border-slate-300 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+          }`}
+          title={split ? "Back to one module at a time" : "Show two modules side by side, with linked selection"}
+        >
+          <Columns2 size={13} /> Side by side
+        </button>
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}

@@ -85,8 +85,11 @@ function Inner({ active }: { active: boolean }) {
   const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
   const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
   const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
-  // The inspector only takes room while something is selected.
-  const hasSelection = useDiagramStore((s) => s.selectedNodeIds.length + s.selectedEdgeIds.length > 0);
+  // The inspector only takes room while there is one thing to edit: a single
+  // symbol, or a single wire.
+  const hasSelection = useDiagramStore(
+    (s) => s.selectedNodeIds.length === 1 || (s.selectedNodeIds.length === 0 && s.selectedEdgeIds.length === 1)
+  );
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       <Toolbar />

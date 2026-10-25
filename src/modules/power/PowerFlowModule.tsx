@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FolderOpen, Play, Sigma, Zap } from "lucide-react";
+import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
@@ -34,6 +34,7 @@ import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
 import { LoadingBar, RangeMark } from "../../ui/CellBars";
 import { FilterChips } from "../../ui/FilterChips";
 import { TopBranches, VoltageProfile } from "./OverviewCharts";
+import { useWidth } from "../../ui/useWidth";
 import type { FilterRule } from "../../lib/filters";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
@@ -367,7 +368,9 @@ function SolvePanel({
   onSensitivities,
   report,
   onExport,
+  onHide,
 }: {
+  onHide: () => void;
   settings: SolveSettings;
   setSettings: (s: SolveSettings) => void;
   busy: string | null;
@@ -379,7 +382,18 @@ function SolvePanel({
   const ac = settings.model === "ac";
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
-      <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Solve settings</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Solve settings</p>
+        <button
+          type="button"
+          className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+          onClick={onHide}
+          title="Hide solve settings"
+          aria-label="Hide solve settings"
+        >
+          <PanelLeftClose size={14} />
+        </button>
+      </div>
       <Field label="Model">
         <div className="grid grid-cols-2 rounded-md border border-slate-300 overflow-hidden text-xs">
           {(["ac", "dc"] as const).map((m) => (
@@ -726,10 +740,10 @@ function TableTab<T>({
   }
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 border-b border-slate-200 bg-white">
         <SearchBox value={search} onChange={setSearch} placeholder={placeholder} />
         {problem && (
-          <label className={`flex items-center gap-1.5 text-xs ${problemCount ? "text-slate-700" : "text-slate-400"}`}>
+          <label className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${problemCount ? "text-slate-700" : "text-slate-400"}`}>
             <input
               type="checkbox"
               checked={problemsOnly}
@@ -746,7 +760,7 @@ function TableTab<T>({
               <DrawAroundButton element={element(selectedRow)} from="power" />
             </span>
           )}
-          <Button variant="ghost" onClick={exportCsv}>
+          <Button variant="ghost" className="whitespace-nowrap" onClick={exportCsv}>
             <Download size={13} /> Export CSV
           </Button>
         </div>
@@ -788,6 +802,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [tab, setTab] = useState<Tab>("overview");
   // Shared so the diagram can overlay the same results.
   const report = useWorkspace((s) => s.solveReport);
+  // Solve settings fold away in a narrow pane (side by side) unless asked for.
+  const [rootRef, width] = useWidth<HTMLDivElement>(1200);
+  const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
+  const showSettings = settingsOpen ?? width >= 960;
   const branchCols = useMemo(
     // Name columns only when the case names its buses (MATPOWER doesn't).
     () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
@@ -946,16 +964,42 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   }
 
   return (
-    <div className="h-full flex" aria-hidden={!active}>
-      <SolvePanel
-        settings={settings}
-        setSettings={setSettings}
-        busy={busy}
-        onSolve={solve}
-        onSensitivities={sensitivities}
-        report={report}
-        onExport={exportMatpower}
-      />
+    <div ref={rootRef} className="h-full flex" aria-hidden={!active}>
+      {showSettings ? (
+        <SolvePanel
+          settings={settings}
+          setSettings={setSettings}
+          busy={busy}
+          onSolve={solve}
+          onSensitivities={sensitivities}
+          report={report}
+          onExport={exportMatpower}
+          onHide={() => setSettingsOpen(false)}
+        />
+      ) : (
+        // Folded (by hand, or automatically in a narrow pane): solve stays one click away.
+        <div className="w-10 shrink-0 border-r border-slate-200 bg-white flex flex-col items-center gap-1 py-2" data-testid="solve-rail">
+          <button
+            type="button"
+            className="p-1.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            onClick={() => setSettingsOpen(true)}
+            title="Show solve settings"
+            aria-label="Show solve settings"
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+          <button
+            type="button"
+            className="p-1.5 rounded text-teal-700 hover:bg-teal-50 disabled:opacity-40"
+            onClick={solve}
+            disabled={!!busy}
+            title={`Solve (${settings.model.toUpperCase()})`}
+            aria-label="Solve"
+          >
+            <Play size={16} />
+          </button>
+        </div>
+      )}
       <div className="flex-1 min-w-0 flex flex-col">
         {error && (
           <div className="p-3 pb-0">

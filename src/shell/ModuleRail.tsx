@@ -3,7 +3,7 @@ import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
 
-const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
+export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "Single-line diagram editor" },
   { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC/DC power flow and sensitivities (rs-power)" },
   { id: "topology", label: "Topology", icon: <Network size={18} />, hint: "Islands, critical connections and paths (nodal)" },
@@ -26,6 +26,8 @@ export function Logo({ size = 28 }: { size?: number }) {
 export function ModuleRail() {
   const module = useWorkspace((s) => s.module);
   const setModule = useWorkspace((s) => s.setModule);
+  const split = useWorkspace((s) => s.split);
+  const setSplit = useWorkspace((s) => s.setSplit);
   return (
     <nav
       aria-label="Modules"
@@ -39,11 +41,15 @@ export function ModuleRail() {
       {MODULES.map((m) => (
         <button
           key={m.id}
-          title={m.hint}
-          aria-current={module === m.id ? "page" : undefined}
-          onClick={() => setModule(m.id)}
+          title={`${m.hint}. Shift+click to open it beside the current module.`}
+          aria-current={module === m.id || split === m.id ? "page" : undefined}
+          onClick={(e) => (e.shiftKey && m.id !== module ? setSplit(m.id) : setModule(m.id))}
           className={`mx-2 flex flex-col items-center gap-1 rounded-lg py-2 text-[10.5px] font-medium transition-colors ${
-            module === m.id ? "bg-teal-500/20 text-white" : "text-teal-100/70 hover:bg-white/5 hover:text-white"
+            module === m.id
+              ? "bg-teal-500/20 text-white"
+              : split === m.id
+                ? "bg-teal-500/10 text-white ring-1 ring-inset ring-teal-400/30"
+                : "text-teal-100/70 hover:bg-white/5 hover:text-white"
           }`}
         >
           {m.icon}

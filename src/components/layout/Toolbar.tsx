@@ -141,7 +141,7 @@ export function Toolbar() {
   }
 
   return (
-    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto">
+    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto whitespace-nowrap shrink-0">
       {/* App name */}
       <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
 

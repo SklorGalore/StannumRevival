@@ -1,25 +1,11 @@
 // Two pictures for the power flow overview: every bus voltage against its
 // limits, lowest to highest, and the most heavily loaded branches.
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useMemo, useState } from "react";
+import { useWidth } from "../../ui/useWidth";
 import type { BranchRow, BusRow } from "../../lib/analysis/types";
 import { fixed } from "../../lib/analysis/format";
 import { voltageBand } from "../../lib/diagram/detail";
 import { DrawAroundButton } from "../../ui/DrawAround";
-
-function useWidth<T extends HTMLElement>(): [RefObject<T>, number] {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(600);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWidth(el.clientWidth || 600);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width];
-}
 
 /** The most common value, for drawing one limit band across all buses. */
 function mode(values: number[]): number | null {

@@ -12,9 +12,30 @@ export interface SharedSelection {
   from: ModuleId | "search";
 }
 
+/** The module that goes beside another when split view opens without a choice. */
+export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", topology: "diagram", diff: "diagram" };
+
+/** Bring a module into view: switch to it, unless split view already shows it. */
+export function showing(s: { module: ModuleId; split: ModuleId | null }, m: ModuleId): { module: ModuleId } {
+  return { module: s.split === m ? s.module : m };
+}
+
 interface WorkspaceState {
+  /** The module in view, or on the left in split view. */
   module: ModuleId;
+  /** Bring a module into view (a module already on the right stays there). */
   setModule: (m: ModuleId) => void;
+  /** Swap the two sides of split view. */
+  swapSplit: () => void;
+  /** The module on the right in split view, or null for one module at a time. */
+  split: ModuleId | null;
+  /** Open split view with a module on the right (linking selection while it is open), or close it. */
+  setSplit: (m: ModuleId | null) => void;
+  /** The left pane's share of the width. */
+  splitRatio: number;
+  setSplitRatio: (r: number) => void;
+  /** Whether opening split view turned linking on, so closing it turns it back off. */
+  splitLinked: boolean;
   caseSummary: CaseSummary | null;
   /** Increments on every open/close so modules can drop stale results. */
   caseVersion: number;
@@ -57,7 +78,24 @@ function loadLinked(): boolean {
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   module: "power",
-  setModule: (module) => set({ module }),
+  setModule: (module) => set((s) => showing(s, module)),
+  swapSplit: () => set((s) => (s.split ? { module: s.split, split: s.module } : {})),
+  split: null,
+  splitLinked: false,
+  setSplit: (split) => {
+    const s = get();
+    if (split === null) {
+      if (s.splitLinked) set({ linked: false, selection: null });
+      set({ split: null, splitLinked: false });
+      return;
+    }
+    if (split === s.module) return;
+    // Side by side is where linked selection pays off, so it is on while split.
+    if (!s.split && !s.linked) set({ linked: true, splitLinked: true });
+    set({ split });
+  },
+  splitRatio: 0.5,
+  setSplitRatio: (r) => set({ splitRatio: Math.min(0.8, Math.max(0.2, r)) }),
   caseSummary: null,
   caseVersion: 0,
   opening: false,
@@ -71,7 +109,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     } catch {
       // Storage may be unavailable; the choice still holds for this session.
     }
-    set({ linked, selection: null });
+    set({ linked, selection: null, splitLinked: false });
   },
   selection: null,
   select: (element, from) => {
@@ -91,13 +129,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   focus: (element) => set({ selection: { element, from: "search" } }),
   solveRequest: 0,
-  requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, module: "power" })),
+  requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, ...showing(s, "power") })),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   drawRequest: null,
   drawAround: (element, from) => {
     get().select(element, from);
-    set((s) => ({ drawRequest: { element, n: (s.drawRequest?.n ?? 0) + 1 }, module: "diagram" }));
+    set((s) => ({ drawRequest: { element, n: (s.drawRequest?.n ?? 0) + 1 }, ...showing(s, "diagram") }));
   },
 
   openCase: async (path) => {
