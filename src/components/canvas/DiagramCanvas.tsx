@@ -32,6 +32,7 @@ import { defaultsByType, defaultConductorData } from "../../store/defaults";
 import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
 import { AlignBar } from "./AlignBar";
+import { VoltageLegend } from "./VoltageLegend";
 import { LocalScopeBar, NodeMenu, useCaseActions } from "./CaseActions";
 import { warmLayout } from "../../lib/diagram/generate";
 import { useWireRouting } from "./useWireRouting";
@@ -424,6 +425,7 @@ export function DiagramCanvas() {
           />
         )}
         <Controls />
+        <VoltageLegend />
         <MiniMap
           pannable
           zoomable
