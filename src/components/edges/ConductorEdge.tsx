@@ -133,7 +133,7 @@ export function ConductorEdge({
   const offline = data?.outOfService;
 
   // With results on, wires go neutral so only loading stands out.
-  const base = results ? (ink.mono ? ink.line : "#334155") : ink.voltage(kv);
+  const base = results ? ink.wire : ink.voltage(kv);
   const stroke = selected ? SELECTED : offline ? ink.off : (overload ?? base);
   const width = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
 

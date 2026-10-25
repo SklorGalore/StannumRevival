@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { X, Download } from "lucide-react";
 import { useDiagramStore } from "../../store/diagramStore";
 import { exportSVG } from "../../lib/export/svgExporter";
+import { useTheme } from "../../store/themeStore";
 import { exportPNG } from "../../lib/export/pngExporter";
 import { exportPDF } from "../../lib/export/pdfExporter";
 import { showSaveDialog, saveBinaryFile } from "../../lib/tauri/commands";
@@ -50,7 +51,20 @@ export function ExportDialog({ onClose }: Props) {
         return;
       }
 
-      const svgString = exportSVG(container, metadata);
+      // Exports are always light: redraw the canvas light for the capture.
+      const theme = useTheme.getState();
+      let svgString: string;
+      if (theme.theme === "dark") {
+        theme.setExportLight(true);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        try {
+          svgString = exportSVG(container, metadata);
+        } finally {
+          theme.setExportLight(false);
+        }
+      } else {
+        svgString = exportSVG(container, metadata);
+      }
 
       if (format === "svg") {
         const b64 = btoa_utf8(svgString);

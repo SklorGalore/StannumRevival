@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTheme } from "../../store/themeStore";
 import cytoscape, { type Core, type StylesheetJson } from "cytoscape";
 // @ts-expect-error: cytoscape-fcose ships no type declarations.
 import fcose from "cytoscape-fcose";
@@ -13,7 +14,7 @@ export interface GraphSelection {
 }
 
 // Palette and styling follow nodal's graph-presentation.ts (light theme).
-const colors = {
+const LIGHT = {
   node: "#5b7f91",
   text: "#233c50",
   surface: "#ffffff",
@@ -22,9 +23,22 @@ const colors = {
   finding: "#986315",
   selection: "#0f766e",
   path: "#2563eb",
+  outline: "#334155",
 };
 
-const style: StylesheetJson = [
+const DARK: typeof LIGHT = {
+  node: "#7fa3b5",
+  text: "#d5e3ec",
+  surface: "#151c2b",
+  junction: "#8fa6b4",
+  edge: "#5c7282",
+  finding: "#d39a3d",
+  selection: "#2dd4bf",
+  path: "#60a5fa",
+  outline: "#cbd5e1",
+};
+
+const styleFor = (colors: typeof LIGHT): StylesheetJson => [
   { selector: "node", style: { "background-color": colors.node, width: 25, height: 25, label: "data(label)", color: colors.text, "font-size": 11, "text-valign": "bottom", "text-margin-y": 6, "border-width": 2, "border-color": colors.surface, "min-zoomed-font-size": 9 } },
   { selector: "node.junction", style: { shape: "diamond", "background-color": colors.surface, "border-color": colors.junction, width: 18, height: 18 } },
   { selector: "edge", style: { width: 1.7, "line-color": colors.edge, "curve-style": "bezier" } },
@@ -42,7 +56,7 @@ const style: StylesheetJson = [
   { selector: "node.label-hidden", style: { label: "" } },
   // Colour rules from the Filters & colours panel. Path and selection still win.
   // Coloured buses are a little larger and outlined so pale colours still read.
-  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 38, height: 38, "border-color": "#334155", "border-width": 1.5 } },
+  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 38, height: 38, "border-color": colors.outline, "border-width": 1.5 } },
   { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
   { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
   // Under a colour rule, critical buses and bridges get a ring instead of a
@@ -123,6 +137,13 @@ export function NetworkGraph({
   const cyRef = useRef<Core | null>(null);
   const inspect = useRef(onInspect);
   inspect.current = onInspect;
+  const dark = useTheme((s) => s.theme === "dark");
+  const palette = useRef(dark ? DARK : LIGHT);
+  palette.current = dark ? DARK : LIGHT;
+  // Restyle in place when the theme changes, without re-running the layout.
+  useEffect(() => {
+    cyRef.current?.style(styleFor(dark ? DARK : LIGHT));
+  }, [dark]);
 
   // Rebuild only when the displayed graph changes.
   useEffect(() => {
@@ -156,7 +177,7 @@ export function NetworkGraph({
             .join(" "),
         })),
       ],
-      style,
+      style: styleFor(palette.current),
       layout: layoutFor(graph.nodes.length),
       minZoom: 0.08,
       maxZoom: 4,
