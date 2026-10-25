@@ -3,10 +3,10 @@
 
 use stannum_core::diff::{DiffSummary, RecordDetail, RecordRow};
 use stannum_core::power::{ResponseTable, SensitivitySummary, SolveReport, SolveSettings};
-use stannum_core::{CaseSummary, Workspace};
+use stannum_core::{logbook, CaseSummary, Workspace};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default, Clone)]
 pub struct SharedWorkspace(Arc<Mutex<Workspace>>);
@@ -170,4 +170,32 @@ pub async fn diff_record_detail(
         Ok(ws.comparison()?.record_detail(&section, index))
     })
     .await
+}
+
+/// Log lines numbered above `since`, for the log panel to catch up.
+#[tauri::command]
+pub fn log_entries(since: u64) -> Vec<logbook::Entry> {
+    logbook::since(since)
+}
+
+/// Event that carries new log lines to the window, a batch at a time.
+pub const LOG_EVENT: &str = "stannum://log";
+
+/// Push new log lines to the window several times a second, so the panel
+/// shows a solve's progress while it runs.
+pub fn stream_log(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut seen = 0;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            if logbook::latest() == seen {
+                continue;
+            }
+            let batch = logbook::since(seen);
+            if let Some(last) = batch.last() {
+                seen = last.seq;
+                let _ = app.emit(LOG_EVENT, batch);
+            }
+        }
+    });
 }

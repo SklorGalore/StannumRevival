@@ -22,11 +22,16 @@ async fn save_binary(path: String, data_b64: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    stannum_core::logbook::install();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(analysis::SharedWorkspace::default())
+        .setup(|app| {
+            analysis::stream_log(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             save_diagram,
             load_diagram,
@@ -45,6 +50,7 @@ pub fn run() {
             analysis::diff_compare,
             analysis::diff_section_records,
             analysis::diff_record_detail,
+            analysis::log_entries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

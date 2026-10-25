@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { catchUpLog, useLog } from "../../store/logStore";
 import type {
   CaseNetwork,
   CaseSummary,
@@ -16,12 +17,38 @@ import type {
   TopologySnapshot,
 } from "./types";
 
-/** Tauri rejects with the Rust error string; normalize to Error. */
+/** How each command reads in the log. Quiet ones only log when they fail. */
+const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean }> = {
+  open_case: { label: "Opening case", done: "Opened case" },
+  close_case: { label: "Closing case", done: "Closed case" },
+  solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
+  calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
+  export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
+  topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
+  topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
+  diff_compare: { label: "Comparing cases", done: "Compared cases" },
+  save_diagram: { label: "Saving file", done: "Saved file" },
+  diagram_network: { label: "Reading the case network", quiet: true },
+  topology_shortest_path: { label: "Finding a path", quiet: true },
+};
+
+/**
+ * Every backend call goes through here: Tauri rejects with the Rust error
+ * string, normalized to Error, and each call is recorded in the log.
+ */
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const meta = LOG_LABELS[command] ?? { label: command.replace(/_/g, " "), quiet: true };
+  const end = useLog.getState().begin(meta.label);
   try {
-    return await invoke<T>(command, args);
+    const result = await invoke<T>(command, args);
+    await catchUpLog();
+    end({ done: meta.done, quiet: meta.quiet });
+    return result;
   } catch (e) {
-    throw new Error(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
+    const error = new Error(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
+    await catchUpLog();
+    end({ error: error.message });
+    throw error;
   }
 }
 

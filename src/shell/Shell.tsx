@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
 import { CommandPalette } from "./CommandPalette";
+import { LogDock } from "./LogDock";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { MODULES } from "./ModuleRail";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
@@ -165,6 +166,7 @@ export function Shell() {
           {pane("diff", <CaseDiffModule active={shown("diff")} />)}
           {split && <Divider container={body} />}
         </div>
+        <LogDock />
       </div>
     </div>
   );
