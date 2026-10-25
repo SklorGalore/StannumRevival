@@ -37,11 +37,32 @@ const style: StylesheetJson = [
   { selector: "edge.hovered", style: { width: 5 } },
   { selector: "node.label-hidden", style: { label: "" } },
   // Colour rules from the Filters & colours panel. Path and selection still win.
-  { selector: "node[fill]", style: { "background-color": "data(fill)" } },
-  { selector: "edge[stroke]", style: { "line-color": "data(stroke)" } },
+  // Coloured buses are a little larger and outlined so pale colours still read.
+  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 30, height: 30, "border-color": "#334155", "border-width": 1.5 } },
+  { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
+  { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
+  // Under a colour rule, critical buses and bridges get a ring instead of a
+  // filled halo, so the halo doesn't hide the colours.
+  { selector: "node.articulation[fill]", style: { "underlay-opacity": 0, "border-color": colors.finding, "border-width": 3.5 } },
+  { selector: "edge.bridge[stroke]", style: { "underlay-opacity": 0.25, "underlay-padding": 3 } },
   { selector: "node.path", style: { "background-color": colors.path } },
   { selector: "edge.path", style: { "line-color": colors.path } },
 ];
+
+/**
+ * Force layouts come out roughly square, while the view is wide. Spread the
+ * nodes horizontally (up to 2.5x) so the graph uses the whole panel.
+ */
+function stretchToFit(cy: Core, el: HTMLElement) {
+  const box = cy.nodes().boundingBox({});
+  if (!box.w || !box.h || !el.clientWidth || !el.clientHeight) return;
+  const want = el.clientWidth / el.clientHeight;
+  const factor = Math.min(2.5, want / (box.w / box.h));
+  if (factor <= 1.05) return;
+  const cx = box.x1 + box.w / 2;
+  cy.nodes().positions((n) => ({ x: cx + (n.position("x") - cx) * factor, y: n.position("y") }));
+  cy.fit(undefined, 30);
+}
 
 function refreshLabels(cy: Core) {
   const hide = cy.zoom() < 0.6;
@@ -113,6 +134,7 @@ export function NetworkGraph({
       maxZoom: 4,
       wheelSensitivity: 0.25,
     });
+    stretchToFit(cy, container.current);
     cy.on("tap", "node", (ev) => inspect.current({ bus: ev.target.data("bus") ?? null, equipment: ev.target.data("equipment") ?? null }));
     cy.on("tap", "edge", (ev) => inspect.current({ bus: null, equipment: ev.target.data("equipment") }));
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));

@@ -469,7 +469,7 @@ export function TopologyModule({ active }: { active: boolean }) {
           <strong>Topology coverage is limited.</strong> {warnings.map((d) => `${d.message} (${d.section})`).join(" · ")}
         </Notice>
       )}
-      <div className="flex-1 min-h-0 grid grid-cols-[1fr_300px] grid-rows-[minmax(0,1.1fr)_minmax(0,1fr)] gap-3">
+      <div className="flex-1 min-h-0 grid grid-cols-[1fr_300px] grid-rows-[minmax(0,1.6fr)_minmax(0,1fr)] gap-3">
         <Panel
           eyebrow="Network view"
           title={scope?.title ?? "Network"}

@@ -37,7 +37,7 @@ const fields:Record<FieldTarget,FieldDefinition[]>={bus:BUS_FIELDS,equipment:EQU
 const paletteIds=new Set(COLOR_PALETTES.map(palette=>palette.id));
 
 export function defaultColorSettings():ColorSettings {
-  const scheme=():ColorScheme=>({field:'',palette:'categorical-8',colors:{},low:'#f1f5f9',high:'#0f766e',min:null,max:null,missing:'#cbd5e1',mixed:'#8b5cf6'});
+  const scheme=():ColorScheme=>({field:'',palette:'categorical-8',colors:{},low:'#c4e3dd',high:'#0f766e',min:null,max:null,missing:'#cbd5e1',mixed:'#8b5cf6'});
   return {bus:scheme(),equipment:scheme()};
 }
 
