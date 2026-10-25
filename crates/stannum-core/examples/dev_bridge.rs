@@ -6,8 +6,8 @@
 //! POST /invoke/<command> with the command's JSON arguments. Mirrors
 //! src-tauri/src/analysis.rs; it is not part of the desktop app.
 use serde_json::{Value, json};
-use stannum_core::Workspace;
 use stannum_core::power::SolveSettings;
+use stannum_core::{Workspace, logbook};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -76,12 +76,14 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
+        "log_entries" => to_json(logbook::since(arg(args, "since")?)),
         other => Err(format!("unknown command {other}")),
     }
 }
 
 fn main() -> std::io::Result<()> {
     let addr = std::env::var("STANNUM_BRIDGE").unwrap_or_else(|_| "127.0.0.1:1421".into());
+    logbook::install();
     let listener = TcpListener::bind(&addr)?;
     eprintln!("stannum dev bridge on http://{addr}");
     let mut ws = Workspace::default();

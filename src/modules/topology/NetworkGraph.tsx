@@ -7,6 +7,8 @@ import fcose from "cytoscape-fcose";
 cytoscape.use(fcose);
 import type { GraphData, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
 import { nodeForBus } from "./viewModel";
+import { useLog } from "../../store/logStore";
+import { duration } from "../../lib/log/log";
 
 export interface GraphSelection {
   bus: number | null;
@@ -154,6 +156,7 @@ export function NetworkGraph({
     const pathNodes = new Set(path?.node_ids ?? []);
     const pathEdges = new Set(path?.connection_ids ?? []);
     const kinds = new Map(snapshot.case.equipment.map((e) => [e.id, e.kind]));
+    const laidOut = performance.now();
     const cy = cytoscape({
       container: container.current,
       elements: [
@@ -183,6 +186,9 @@ export function NetworkGraph({
       maxZoom: 4,
       wheelSensitivity: 0.25,
     });
+    useLog
+      .getState()
+      .add("info", `Laid out the topology graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges (${duration(performance.now() - laidOut)})`);
     stretchToFit(cy, container.current);
     cy.on("tap", "node", (ev) => inspect.current({ bus: ev.target.data("bus") ?? null, equipment: ev.target.data("equipment") ?? null }));
     cy.on("tap", "edge", (ev) => inspect.current({ bus: null, equipment: ev.target.data("equipment") }));

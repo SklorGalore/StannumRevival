@@ -124,6 +124,63 @@ fn elapsed_ms(start: Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The solved case in a few lines: outcome, totals, limits and controls.
+fn log_report(report: &power::SolveReport, solved_ms: f64) {
+    let outcome = format!(
+        "Power flow: {} after {} iterations, largest mismatch {:.1e} MVA ({:.0} ms)",
+        report.status, report.iterations, report.residual_mva, solved_ms
+    );
+    // rs-power has already reported a converged solve; say so again only
+    // when it needs attention.
+    if !report.converged {
+        log::warn!("{outcome}");
+    }
+    log::info!(
+        "Totals: generation {:.1} MW, load {:.1} MW, losses {:.1} MW",
+        report.total_generation_mw,
+        report.total_load_mw,
+        report.total_losses_mw
+    );
+    let l = &report.limits;
+    let mut found = Vec::new();
+    if let Some((bus, by)) = l.worst_voltage {
+        found.push(format!(
+            "{} outside voltage limits (worst bus {bus}, {by:.4} pu outside)",
+            plural(l.voltage_violations, "bus", "buses")
+        ));
+    }
+    if let Some((bus, by)) = l.worst_reactive {
+        found.push(format!(
+            "{} outside Q limits (worst at bus {bus}, {by:.1} Mvar outside)",
+            plural(l.reactive_violations, "generator", "generators")
+        ));
+    }
+    if l.branch_overloads > 0
+        && let Some((from, to, pct)) = l.worst_branch
+    {
+        found.push(format!(
+            "{} over rate A (worst {from}-{to} at {pct:.1}%)",
+            plural(l.branch_overloads, "branch", "branches")
+        ));
+    }
+    if found.is_empty() {
+        log::info!("Operating limits: everything within limits");
+    } else {
+        log::warn!("Operating limits: {}", found.join("; "));
+    }
+    if report.shunts_switched + report.taps_moved > 0 {
+        log::info!(
+            "Voltage controls: {} and {} ended away from their starting settings",
+            plural(report.shunts_switched, "switched shunt", "switched shunts"),
+            plural(report.taps_moved, "tap", "taps")
+        );
+    }
+}
+
 impl OpenCase {
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Self {
         let name = path
@@ -135,7 +192,28 @@ impl OpenCase {
             _ => CaseFormat::Raw,
         };
         let text = decode_text(bytes);
+        let start = Instant::now();
         let power = power::load(&text, format == CaseFormat::Matpower);
+        match &power {
+            Ok(p) => {
+                let c = power::counts(&p.case);
+                log::info!(
+                    "Read {name} for power flow: {} buses, {} generators, {} branches ({:.0} ms)",
+                    c.buses,
+                    c.generators,
+                    c.branches,
+                    elapsed_ms(start)
+                );
+                if !p.warnings.is_empty() {
+                    log::warn!(
+                        "{} conversion warnings while reading {name}; see Power flow for the list",
+                        p.warnings.len()
+                    );
+                }
+            }
+            Err(e) => log::warn!("Power flow can't use {name}: {e}"),
+        }
+        let start = Instant::now();
         let from_nodal = match format {
             CaseFormat::Matpower => {
                 Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
@@ -155,6 +233,20 @@ impl OpenCase {
             derived,
             merge_zero_impedance: false,
         });
+        match &topology {
+            Ok(t) => log::info!(
+                "Built topology{}: {} buses, {} equipment ({:.0} ms)",
+                if t.derived {
+                    " from the power flow model"
+                } else {
+                    ""
+                },
+                t.case.buses.len(),
+                t.case.equipment.len(),
+                elapsed_ms(start)
+            ),
+            Err(e) => log::warn!("Topology can't use {name}: {e}"),
+        }
         Self {
             path: path.to_path_buf(),
             name,
@@ -195,6 +287,7 @@ impl OpenCase {
         let start = Instant::now();
         let options = settings.options_for(power);
         let result = rs_power::solve(&power.case, &options).map_err(|e| e.to_string())?;
+        let solved_ms = elapsed_ms(start);
         let report = power::report(
             &result,
             &power.elements,
@@ -204,6 +297,7 @@ impl OpenCase {
             elapsed_ms(start),
         );
         self.solved = Some((result, settings));
+        log_report(&report, solved_ms);
         Ok(report)
     }
 
@@ -216,6 +310,12 @@ impl OpenCase {
         let s = rs_power::calculate_sensitivities(&power.case, &settings.options_for(power))
             .map_err(|e| e.to_string())?;
         let summary = power::sensitivity_summary(&s, settings.model, elapsed_ms(start));
+        log::info!(
+            "Sensitivities: {} injection columns, {} branches ({:.0} ms)",
+            summary.injections.len(),
+            summary.branches,
+            summary.elapsed_ms
+        );
         self.sensitivity = Some((s, settings.model));
         Ok(summary)
     }
@@ -246,7 +346,13 @@ impl OpenCase {
         } else {
             &self.power_case()?.case
         };
-        rs_power::save_matpower(path, case).map_err(|e| e.to_string())
+        rs_power::save_matpower(path, case).map_err(|e| e.to_string())?;
+        log::info!(
+            "Exported the {} case to {}",
+            if solved { "solved" } else { "input" },
+            path.display()
+        );
+        Ok(())
     }
 
     /// The case as buses, generators and branches for the one-line diagram.
@@ -269,6 +375,7 @@ impl OpenCase {
 
     pub fn set_merge_zero_impedance(&mut self, enabled: bool) -> Result<TopologyView, String> {
         let t = self.topology.as_mut().map_err(|e| e.clone())?;
+        let start = Instant::now();
         t.topology = Topology::with_options(
             &t.case,
             TopologyOptions {
@@ -276,6 +383,11 @@ impl OpenCase {
             },
         );
         t.merge_zero_impedance = enabled;
+        log::info!(
+            "Rebuilt topology {} zero-impedance merging ({:.0} ms)",
+            if enabled { "with" } else { "without" },
+            elapsed_ms(start)
+        );
         Ok(TopologyView {
             analysis: t.topology.analyze(&t.case),
             graph: t.topology.graph_data(),
@@ -292,6 +404,7 @@ impl OpenCase {
 
 impl Workspace {
     pub fn open(&mut self, path: &Path) -> Result<CaseSummary, String> {
+        log::info!("Opening {}", path.display());
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let case = OpenCase::from_bytes(path, &bytes);
         if case.power.is_err() && case.topology.is_err() && case.format == CaseFormat::Matpower {
@@ -325,10 +438,26 @@ impl Workspace {
     ) -> Result<diff::DiffSummary, String> {
         // Clear first so a failure never leaves stale results on screen.
         self.comparison = None;
+        let start = Instant::now();
+        log::info!(
+            "Comparing {} with {}",
+            baseline.display(),
+            comparison.display()
+        );
         let before = diff::parse_path(baseline).map_err(|e| e.to_string())?;
         let after = diff::parse_path(comparison).map_err(|e| e.to_string())?;
         let result = diff::compare_cases(before, after);
         let summary = result.summary();
+        log::info!(
+            "Case diff: {} differing records{} ({:.0} ms)",
+            summary.differing,
+            if summary.complete {
+                ""
+            } else {
+                ", comparison incomplete"
+            },
+            elapsed_ms(start)
+        );
         self.comparison = Some(result);
         Ok(summary)
     }

@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
 import { CommandPalette } from "./CommandPalette";
+import { LogDock } from "./LogDock";
 import { useWorkspace } from "../store/workspaceStore";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
 import { PowerFlowModule } from "../modules/power/PowerFlowModule";
@@ -70,6 +71,7 @@ export function Shell() {
             <CaseDiffModule active={module === "diff"} />
           </div>
         </div>
+        <LogDock />
       </div>
     </div>
   );
