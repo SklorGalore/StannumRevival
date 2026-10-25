@@ -33,6 +33,7 @@ import { busElement, elementBus, elementLabel, parseElement } from "../../lib/el
 import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
 import { LoadingBar, RangeMark } from "../../ui/CellBars";
 import { FilterChips } from "../../ui/FilterChips";
+import { TopBranches, VoltageProfile } from "./OverviewCharts";
 import type { FilterRule } from "../../lib/filters";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
@@ -497,6 +498,7 @@ type Jump = { tab: "buses" | "generators" | "branches"; problems: boolean; eleme
 
 function Overview({ report, onJump }: { report: SolveReport; onJump: (j: Jump) => void }) {
   const l = report.limits;
+  const names = useMemo(() => new Map(report.buses.filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()])), [report]);
   // The worst generator and branch are reported by bus numbers; find their rows.
   const worstGenerator = l.worst_reactive
     ? report.generators
@@ -627,6 +629,25 @@ function Overview({ report, onJump }: { report: SolveReport; onJump: (j: Jump) =
           </tbody>
         </table>
       </Panel>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Panel title="Voltage profile" eyebrow="Every bus, lowest to highest">
+          <div className="p-3">
+            <VoltageProfile
+              buses={report.buses}
+              onPick={(bus) => onJump({ tab: "buses", problems: false, element: busElement(bus) })}
+            />
+          </div>
+        </Panel>
+        <Panel title="Most loaded branches" eyebrow="Against rating A">
+          <div className="p-3">
+            <TopBranches
+              branches={report.branches}
+              names={names}
+              onPick={(element) => onJump({ tab: "branches", problems: false, element })}
+            />
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
