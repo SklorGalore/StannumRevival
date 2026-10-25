@@ -128,11 +128,15 @@ await shot("diagram");
 
 // One selection, seen in every module: pick a bus in Topology, then follow
 // the chip to Power flow, Case diff and the diagram.
+// Linking is opt-in: until it is on, a pick stays in its own module.
 const chip = page.getByTestId("selection-chip");
 await page.getByRole("button", { name: "Topology", exact: true }).click();
 await page.getByRole("tab", { name: /^Buses/ }).click();
 const busRow = page.locator("table:visible tbody tr").nth(2);
 const pickedBus = (await busRow.locator("td").first().innerText()).trim();
+await busRow.click();
+assert.equal(await chip.count(), 0, "unlinked selections stay local");
+await page.getByRole("button", { name: "Link selection" }).click();
 await busRow.click();
 await chip.filter({ hasText: `Bus ${pickedBus}` }).waitFor();
 await shot("selection-topology");

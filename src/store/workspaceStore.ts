@@ -23,11 +23,24 @@ interface WorkspaceState {
   /** Latest power flow solve of the open case, shared by Power flow and Diagram. */
   solveReport: SolveReport | null;
   setSolveReport: (r: SolveReport | null) => void;
+  /** Opt-in: when off, each module keeps its own selection. */
+  linked: boolean;
+  setLinked: (on: boolean) => void;
   selection: SharedSelection | null;
-  /** Select an element everywhere; null clears the selection. */
+  /** Select an element everywhere (only while linked); null clears the selection. */
   select: (element: string | null, from: ModuleId) => void;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
+}
+
+const LINKED_KEY = "stannum-linked-selection";
+
+function loadLinked(): boolean {
+  try {
+    return localStorage.getItem(LINKED_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
@@ -39,8 +52,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   openError: null,
   solveReport: null,
   setSolveReport: (solveReport) => set({ solveReport }),
+  linked: loadLinked(),
+  setLinked: (linked) => {
+    try {
+      localStorage.setItem(LINKED_KEY, linked ? "1" : "0");
+    } catch {
+      // Storage may be unavailable; the choice still holds for this session.
+    }
+    set({ linked, selection: null });
+  },
   selection: null,
   select: (element, from) => {
+    if (!get().linked) return;
     const current = get().selection;
     if (element === null) {
       if (current) set({ selection: null });
