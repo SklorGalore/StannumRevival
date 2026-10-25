@@ -1,7 +1,7 @@
 //! Real-scale cases, ignored by default. Fetch them with
 //! `pwsh scripts/fetch-test-cases.ps1`, then run
 //! `cargo test --release -p rs-power --test large_cases -- --ignored`.
-use rs_power::{DcLineKind, PowerFlowOptions, RawOptions, SolveStatus, solve};
+use rs_power::{DcLineKind, DcModel, LccMode, PowerFlowOptions, RawOptions, SolveStatus, solve};
 use std::path::PathBuf;
 
 fn case_text(file: &str) -> String {
@@ -71,6 +71,40 @@ fn synthetic_usa_two_terminal_dc_lines() {
     // converge (tracked for plan phase 1).
     let limited = solve(&imported.case, &options(true)).unwrap();
     assert_ne!(limited.status, SolveStatus::Converged);
+}
+
+#[test]
+#[ignore = "needs tests/large/SyntheticUSA.RAW"]
+fn synthetic_usa_detailed_lcc_model() {
+    let imported = stannum_raw(&case_text("SyntheticUSA.RAW"));
+    assert_eq!(imported.lcc_lines.len(), 9);
+    let result = solve(
+        &imported.case,
+        &PowerFlowOptions {
+            dc_model: DcModel::Detailed {
+                lines: imported.lcc_lines.clone(),
+                adjust_taps: true,
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let mut total_loss = 0.0;
+    for (s, line) in result.lcc.iter().zip(&imported.lcc_lines) {
+        assert_eq!(s.mode, LccMode::RectifierControl);
+        assert!((s.rectifier_kv * s.current_ka - line.setpoint).abs() < 1e-6);
+        assert!(s.rectifier_mvar > 0.0 && s.inverter_mvar > 0.0);
+        // α is held at its fixed 15° to within a tap step.
+        assert!(s.alpha >= 15.0 && s.alpha < 21.0, "{}", s.alpha);
+        total_loss += s.line_loss_mw;
+    }
+    // The inverter taps reach their 1.5 limit before VSCHD = 250 kV, so the
+    // lines run near 315 to 345 kV: about 23 MW lost on the 500 MW line and
+    // 0.8 to 0.9 MW on each 100 MW line, against 35 and 1.6 MW at 250 kV.
+    let big = result.lcc[0].line_loss_mw;
+    assert!(big > 20.0 && big < 26.0, "{big}");
+    assert!(total_loss > 26.0 && total_loss < 34.0, "{total_loss}");
 }
 
 #[test]

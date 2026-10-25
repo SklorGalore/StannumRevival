@@ -1,6 +1,8 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
-use crate::{Branch, Bus, BusType, Case, Error, Generator};
+use crate::{
+    Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
+};
 use std::{collections::HashMap, path::Path};
 
 /// Options for RAW import. Defaults to MATPOWER-style conversion with warnings.
@@ -48,6 +50,9 @@ pub struct RawImport {
     pub dc_line_names: Vec<String>,
     /// The RAW section behind each `case.dcline` row, in row order.
     pub dc_line_kinds: Vec<DcLineKind>,
+    /// Every two-terminal DC line with its full RAW data, for the detailed
+    /// DC model ([`crate::DcModel::Detailed`]). Each names its `case.dcline` row.
+    pub lcc_lines: Vec<LccLine>,
 }
 
 /// Which RAW section a `case.dcline` row came from.
@@ -702,7 +707,13 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
     )?;
-    let mut dc_line_names = convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
+    let (mut dc_line_names, lcc_lines) = convert_dc(
+        rev,
+        section("two-terminal DC"),
+        &mut case,
+        &indices,
+        &mut ctx,
+    )?;
     let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
     if options.all_dc_lines {
         for (kind, rows) in [
@@ -792,6 +803,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         generator_sources,
         dc_line_names,
         dc_line_kinds,
+        lcc_lines,
     })
 }
 
@@ -1064,16 +1076,18 @@ fn convert_transformers(
 }
 
 fn convert_dc(
+    rev: u32,
     rows: &[Record],
     case: &mut Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<Vec<String>, Error> {
+) -> Result<(Vec<String>, Vec<LccLine>), Error> {
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
     let mut dc = vec![];
     let mut names = vec![];
+    let mut lcc = vec![];
     for group in rows.chunks(3) {
         let r = &group[0];
         if group.len() != 3 {
@@ -1111,8 +1125,36 @@ fn convert_dc(
         if line.iter().any(|n| !n.is_finite()) {
             return Err(r.error("nonfinite converted DC line"));
         }
+        let detail = lcc_line(rev, dc.len(), r, rect, inv)?;
+        let mut ignored = vec![];
+        if detail.min_compounded_kv != 0.0 {
+            ignored.push("DCVMIN");
+        }
+        for c in [&detail.rectifier, &detail.inverter] {
+            if c.capacitor != 0.0 && !ignored.contains(&"XCAP") {
+                ignored.push("XCAP");
+            }
+            if c.commutating_bus != 0 && !ignored.contains(&"IC") {
+                ignored.push("IC");
+            }
+            if c.transformer.is_some() && !ignored.contains(&"IF/IT/ID") {
+                ignored.push("IF/IT/ID");
+            }
+        }
+        if !ignored.is_empty() {
+            ctx.warn(
+                r.line,
+                false,
+                format!(
+                    "the detailed model of DC line {} ignores {}",
+                    detail.name,
+                    ignored.join(", ")
+                ),
+            )?;
+        }
         dc.push(line);
         names.push(identifier(r, 0));
+        lcc.push(detail);
     }
     ctx.warn(
         rows[0].line,
@@ -1120,7 +1162,84 @@ fn convert_dc(
         "two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
     )?;
     case.dcline = Some(dc);
-    Ok(names)
+    Ok((names, lcc))
+}
+
+/// Full RAW data of one two-terminal DC line, which becomes `case.dcline` row `row`.
+fn lcc_line(
+    rev: u32,
+    row: usize,
+    r: &Record,
+    rect: &Record,
+    inv: &Record,
+) -> Result<LccLine, Error> {
+    let control = match r.id(1)? {
+        1 => LccControl::Power,
+        2 => LccControl::Current,
+        _ => LccControl::Blocked,
+    };
+    let text = |rec: &Record, i: usize| {
+        rec.fields
+            .get(i)
+            .map(|s| s.trim().trim_matches(['\'', '"']).trim().to_string())
+            .unwrap_or_default()
+    };
+    let converter = |c: &Record| -> Result<LccConverter, Error> {
+        // Revision 34 adds the node number ND after IC.
+        let shift = usize::from(rev >= 34);
+        let (from, to) = (c.optional(13 + shift, 0.0)?, c.optional(14 + shift, 0.0)?);
+        let transformer = (from != 0.0 && to != 0.0).then(|| {
+            let id = text(c, 15 + shift);
+            (
+                from.abs() as u32,
+                to.abs() as u32,
+                if id.is_empty() { "1".into() } else { id },
+            )
+        });
+        let bridges = c.num(1)?;
+        if bridges < 1.0 || bridges.fract() != 0.0 || bridges > f64::from(u32::MAX) {
+            return Err(c.error("DC converter bridge count must be a positive integer"));
+        }
+        Ok(LccConverter {
+            bus: c.id(0)?,
+            bridges: bridges as u32,
+            angle_max: c.num(2)?,
+            angle_min: c.num(3)?,
+            resistance: c.num(4)?,
+            reactance: c.num(5)?,
+            base_kv: c.num(6)?,
+            ratio: c.optional(7, 1.0)?,
+            tap: c.optional(8, 1.0)?,
+            tap_max: c.optional(9, 1.5)?,
+            tap_min: c.optional(10, 0.51)?,
+            tap_step: c.optional(11, 0.00625)?,
+            commutating_bus: c.optional(12, 0.0)?.abs() as u32,
+            transformer,
+            capacitor: c.optional(16 + shift, 0.0)?,
+        })
+    };
+    let meter = text(r, 8);
+    Ok(LccLine {
+        row,
+        name: identifier(r, 0),
+        control,
+        resistance: r.num(2)?,
+        setpoint: r.num(3)?,
+        scheduled_kv: r.num(4)?,
+        mode_switch_kv: r.optional(5, 0.0)?,
+        compounding_resistance: r.optional(6, 0.0)?,
+        current_margin: r.optional(7, 0.0)?,
+        metered_end: if meter.eq_ignore_ascii_case("R") {
+            LccEnd::Rectifier
+        } else {
+            LccEnd::Inverter
+        },
+        min_compounded_kv: r.optional(9, 0.0)?,
+        ccc_iterations: r.optional(10, 20.0)?.max(0.0) as u32,
+        ccc_acceleration: r.optional(11, 1.0)?,
+        rectifier: converter(rect)?,
+        inverter: converter(inv)?,
+    })
 }
 
 /// Voltage magnitude of a DC terminal's AC bus, used as its voltage setpoint.

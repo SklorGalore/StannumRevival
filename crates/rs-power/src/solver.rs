@@ -1,5 +1,9 @@
 // Formulations and result allocation adapted from MATPOWER 8.1; see NOTICE.
-use crate::{BusType, Case, Error, Generator, network::Network};
+use crate::{
+    BusType, Case, Error, Generator,
+    dc::{self, LccLine, LccSolution, TapTargets, Taps},
+    network::Network,
+};
 use faer::{
     Mat,
     prelude::Solve,
@@ -41,6 +45,30 @@ pub struct PowerFlowOptions {
     pub enforce_q_limits: bool,
     /// Reactive-limit violation tolerance in MVAr.
     pub q_limit_tolerance: f64,
+    /// How DC lines are modelled; defaults to [`DcModel::Simplified`].
+    pub dc_model: DcModel,
+}
+
+/// DC line model for AC solves.
+#[derive(Clone, Debug, Default)]
+pub enum DcModel {
+    /// Every `case.dcline` row is MATPOWER's generator pair: scheduled P,
+    /// linear losses, and terminals that hold voltage within their Q range.
+    #[default]
+    Simplified,
+    /// The listed rows use the detailed two-terminal LCC model (see
+    /// [`LccLine`]); other rows stay simplified. The DC operating point is
+    /// recomputed from the terminal voltages at every Newton step, and the
+    /// converter terminals become voltage-dependent loads that
+    /// absorb reactive power. DC (linear) solves use the simplified model.
+    Detailed {
+        /// Detailed data, each naming its `case.dcline` row.
+        lines: Vec<LccLine>,
+        /// Step converter taps between Newton solves to hold the scheduled
+        /// DC voltage and keep firing angles in range (PSS/E's DC tap
+        /// adjustment). When false, the taps stay at their case values.
+        adjust_taps: bool,
+    },
 }
 impl Default for PowerFlowOptions {
     fn default() -> Self {
@@ -51,6 +79,7 @@ impl Default for PowerFlowOptions {
             max_iterations: 10,
             enforce_q_limits: false,
             q_limit_tolerance: 5e-6,
+            dc_model: DcModel::Simplified,
         }
     }
 }
@@ -83,6 +112,11 @@ pub struct PowerFlowResult {
     pub residual: f64,
     /// Number of passes that fixed one or more generators at reactive limits.
     pub q_limit_passes: usize,
+    /// Operating points of the detailed DC lines, in the order given by
+    /// [`DcModel::Detailed`]. Empty for the simplified model.
+    pub lcc: Vec<LccSolution>,
+    /// Number of passes that changed one or more DC converter taps.
+    pub dc_tap_passes: usize,
 }
 
 fn linear(
@@ -209,21 +243,119 @@ pub(crate) fn jacobian(
     entries
 }
 
+/// A detailed DC line during an AC solve.
+struct LccTerminal<'a> {
+    line: &'a LccLine,
+    /// Internal bus indices, rectifier then inverter.
+    ends: [usize; 2],
+    /// Converter base voltages in kV.
+    kv: [f64; 2],
+    taps: Taps,
+    solution: LccSolution,
+    targets: TapTargets,
+}
+
+impl LccTerminal<'_> {
+    fn evaluate(&self, vm: [f64; 2]) -> (LccSolution, TapTargets) {
+        dc::operating_point(self.line, vm[0], vm[1], self.kv, self.taps)
+    }
+
+    /// Per-unit injections at the two ends (negative: the converters load the bus).
+    fn injections(solution: &LccSolution, base_mva: f64) -> [C; 2] {
+        [
+            -C::new(solution.rectifier_mw, solution.rectifier_mvar) / base_mva,
+            C::new(solution.inverter_mw, -solution.inverter_mvar) / base_mva,
+        ]
+    }
+}
+
+/// Update every detailed DC line at voltages `v`; return per-bus injections.
+fn lcc_injections(terminals: &mut [LccTerminal<'_>], v: &[C], base_mva: f64) -> Vec<C> {
+    let mut s = vec![C::new(0.0, 0.0); v.len()];
+    for t in terminals {
+        (t.solution, t.targets) = t.evaluate([v[t.ends[0]].norm(), v[t.ends[1]].norm()]);
+        for (k, z) in LccTerminal::injections(&t.solution, base_mva)
+            .into_iter()
+            .enumerate()
+        {
+            s[t.ends[k]] += z;
+        }
+    }
+    s
+}
+
+/// Jacobian terms for the DC injections' dependence on terminal voltage
+/// magnitudes, by central differences of the operating point.
+fn lcc_jacobian(
+    terminals: &[LccTerminal<'_>],
+    v: &[C],
+    angles: &[usize],
+    pq: &[usize],
+    base_mva: f64,
+) -> Vec<Triplet<usize, usize, f64>> {
+    if terminals.is_empty() {
+        return Vec::new();
+    }
+    let n = v.len();
+    let mut ai = vec![None; n];
+    let mut qi = vec![None; n];
+    for (k, &i) in angles.iter().enumerate() {
+        ai[i] = Some(k);
+    }
+    for (k, &i) in pq.iter().enumerate() {
+        qi[i] = Some(k + angles.len());
+    }
+    let mut entries = Vec::new();
+    for t in terminals {
+        let vm = [v[t.ends[0]].norm(), v[t.ends[1]].norm()];
+        for j in 0..2 {
+            let Some(col) = qi[t.ends[j]] else {
+                continue;
+            };
+            let h = 1e-6 * vm[j].max(1e-3);
+            let (mut plus, mut minus) = (vm, vm);
+            plus[j] += h;
+            minus[j] -= h;
+            let sp = LccTerminal::injections(&t.evaluate(plus).0, base_mva);
+            let sm = LccTerminal::injections(&t.evaluate(minus).0, base_mva);
+            for k in 0..2 {
+                // The mismatch is power(v) − s, so its derivative is −ds/dVm.
+                let d = -(sp[k] - sm[k]) / (2.0 * h);
+                if let Some(row) = ai[t.ends[k]] {
+                    entries.push(Triplet::new(row, col, d.re));
+                }
+                if let Some(row) = qi[t.ends[k]] {
+                    entries.push(Triplet::new(row, col, d.im));
+                }
+            }
+        }
+    }
+    entries
+}
+
 fn newton(
     net: &Network,
     case: &Case,
     kinds: &[BusType],
     v: &mut [C],
+    terminals: &mut [LccTerminal<'_>],
     opt: &PowerFlowOptions,
 ) -> Result<(SolveStatus, usize, f64), Error> {
     let (angles, pq) = variables(kinds);
-    let s = net.injections(case);
+    let base = net.injections(case);
     log::debug!(
-        "starting Newton solve ({} angle variables, {} magnitude variables)",
+        "starting Newton solve ({} angle variables, {} magnitude variables, {} detailed DC lines)",
         angles.len(),
-        pq.len()
+        pq.len(),
+        terminals.len()
     );
     for iteration in 0..=opt.max_iterations {
+        let s = if terminals.is_empty() {
+            base.clone()
+        } else {
+            let dc = lcc_injections(terminals, v, case.base_mva);
+            base.iter().zip(dc).map(|(a, b)| a + b).collect()
+        };
         let (f, residual) = mismatch(net, v, &s, &angles, &pq)?;
         log::debug!(
             "Newton iteration {iteration}: residual={residual:.6e} p.u., tolerance={:.6e}",
@@ -237,7 +369,8 @@ fn newton(
             log::warn!("Newton solve reached iteration limit {iteration}: residual={residual:.6e}");
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
-        let j = jacobian(net, v, &angles, &pq);
+        let mut j = jacobian(net, v, &angles, &pq);
+        j.extend(lcc_jacobian(terminals, v, &angles, &pq, case.base_mva));
         let dx = linear(f.len(), &j, &f.iter().map(|x| -x).collect::<Vec<_>>())?;
         let mut va: Vec<_> = v.iter().map(|z| z.arg()).collect();
         let mut vm: Vec<_> = v.iter().map(|z| z.norm()).collect();
@@ -259,8 +392,24 @@ fn newton(
     unreachable!()
 }
 
-fn allocate(net: &Network, case: &mut Case, kinds: &[BusType], references: &[usize], v: &[C]) {
-    let power = net.power(v);
+fn allocate(
+    net: &Network,
+    case: &mut Case,
+    kinds: &[BusType],
+    references: &[usize],
+    v: &[C],
+    terminals: &[LccTerminal<'_>],
+) {
+    let mut power = net.power(v);
+    // Generators supply the network injection plus what the converters draw.
+    for t in terminals {
+        for (k, z) in LccTerminal::injections(&t.solution, case.base_mva)
+            .into_iter()
+            .enumerate()
+        {
+            power[t.ends[k]] -= z;
+        }
+    }
     for (i, gens) in net.gens.iter().enumerate() {
         if kinds[i] == BusType::Pq || gens.is_empty() {
             continue;
@@ -420,6 +569,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         iterations: 1,
         residual,
         q_limit_passes: 0,
+        lcc: Vec::new(),
+        dc_tap_passes: 0,
     })
 }
 
@@ -432,7 +583,12 @@ fn zero_offline(net: &Network, case: &mut Case) {
     }
 }
 
-fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
+fn solve_core(
+    input: &Case,
+    opt: &PowerFlowOptions,
+    lines: &[&LccLine],
+    adjust_taps: bool,
+) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
         || !opt.q_limit_tolerance.is_finite()
@@ -449,6 +605,41 @@ fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, E
     let mut case = input.clone();
     if opt.model == Model::Dc {
         return dc(&net, case, opt);
+    }
+    let mut terminals = Vec::with_capacity(lines.len());
+    for &line in lines {
+        let mut ends = [0; 2];
+        let mut kv = [0.0; 2];
+        for (k, c) in [&line.rectifier, &line.inverter].into_iter().enumerate() {
+            let Some(&i) = net.by_id.get(&c.bus) else {
+                return Err(Error::InvalidCase(format!(
+                    "DC line {} references an unknown or isolated bus {}",
+                    line.name, c.bus
+                )));
+            };
+            ends[k] = i;
+            kv[k] = if c.base_kv > 0.0 {
+                c.base_kv
+            } else {
+                case.buses[net.external[i]].base_kv
+            };
+            if kv[k].is_nan() || kv[k] <= 0.0 {
+                return Err(Error::InvalidCase(format!(
+                    "DC line {} needs a converter base voltage (EBAS or bus base kV)",
+                    line.name
+                )));
+            }
+        }
+        let taps = [line.rectifier.tap, line.inverter.tap];
+        let (solution, targets) = dc::operating_point(line, 1.0, 1.0, kv, taps);
+        terminals.push(LccTerminal {
+            line,
+            ends,
+            kv,
+            taps,
+            solution,
+            targets,
+        });
     }
     let mut kinds = net.kinds.clone();
     let mut references = net.references.clone();
@@ -470,12 +661,36 @@ fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, E
             }
         }
     }
-    let (mut iterations, mut passes) = (0, 0);
+    let (mut iterations, mut passes, mut tap_passes) = (0, 0, 0);
     let (status, residual) = loop {
-        let (status, it, residual) = newton(&net, &case, &kinds, &mut v, opt)?;
+        let (status, it, residual) = newton(&net, &case, &kinds, &mut v, &mut terminals, opt)?;
         iterations += it;
-        allocate(&net, &mut case, &kinds, &references, &v);
-        if status != SolveStatus::Converged || !opt.enforce_q_limits {
+        allocate(&net, &mut case, &kinds, &references, &v, &terminals);
+        if status != SolveStatus::Converged {
+            break (status, residual);
+        }
+        if adjust_taps && tap_passes < MAX_TAP_PASSES {
+            let mut changed = 0;
+            for t in &mut terminals {
+                let vm = [v[t.ends[0]].norm(), v[t.ends[1]].norm()];
+                let next = dc::adjust_taps(t.line, &t.solution, &t.targets, vm, t.kv, t.taps);
+                if next != t.taps {
+                    t.taps = next;
+                    changed += 1;
+                }
+            }
+            if changed > 0 {
+                tap_passes += 1;
+                log::debug!("DC tap pass {tap_passes} changed taps on {changed} lines");
+                if tap_passes == MAX_TAP_PASSES {
+                    log::warn!(
+                        "DC converter taps still moving after {MAX_TAP_PASSES} passes; holding them"
+                    );
+                }
+                continue;
+            }
+        }
+        if !opt.enforce_q_limits {
             break (status, residual);
         }
         let mut violations = Vec::new();
@@ -533,7 +748,8 @@ fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, E
                     SolveStatus::ReactiveLimitsInfeasible,
                     iterations,
                     residual,
-                    passes,
+                    [passes, tap_passes],
+                    &terminals,
                 );
             }
         }
@@ -560,9 +776,22 @@ fn solve_core(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, E
         }
     };
     finish_ac(
-        input, &net, case, kinds, references, v, status, iterations, residual, passes,
+        input,
+        &net,
+        case,
+        kinds,
+        references,
+        v,
+        status,
+        iterations,
+        residual,
+        [passes, tap_passes],
+        &terminals,
     )
 }
+
+/// Tap passes before the DC converter taps are held where they are.
+const MAX_TAP_PASSES: usize = 20;
 
 #[allow(clippy::too_many_arguments)]
 fn finish_ac(
@@ -575,7 +804,8 @@ fn finish_ac(
     status: SolveStatus,
     iterations: usize,
     residual: f64,
-    passes: usize,
+    [passes, tap_passes]: [usize; 2],
+    terminals: &[LccTerminal<'_>],
 ) -> Result<PowerFlowResult, Error> {
     let mut offsets = vec![0.0; net.external.len()];
     for ((island, &original), &reference) in
@@ -609,6 +839,8 @@ fn finish_ac(
         iterations,
         residual,
         q_limit_passes: passes,
+        lcc: terminals.iter().map(|t| t.solution.clone()).collect(),
+        dc_tap_passes: tap_passes,
     })
 }
 
@@ -627,6 +859,15 @@ fn dc_bus(value: f64) -> Option<u32> {
 }
 
 pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenerators>, Error> {
+    add_dc_line_generators_except(case, &[])
+}
+
+/// As [`add_dc_line_generators`], leaving out the rows marked in `skip`
+/// (detailed DC lines), which are still validated.
+fn add_dc_line_generators_except(
+    case: &mut Case,
+    skip: &[bool],
+) -> Result<Vec<DcLineGenerators>, Error> {
     let Some(lines) = &case.dcline else {
         return Ok(Vec::new());
     };
@@ -669,7 +910,7 @@ pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenera
                 "dcline voltage setpoints must be positive".into(),
             ));
         }
-        if line[2] == 0.0 {
+        if line[2] == 0.0 || skip.get(row).copied().unwrap_or(false) {
             continue;
         }
         if case.buses[from_bus].kind == BusType::Isolated
@@ -731,6 +972,14 @@ pub(crate) fn add_dc_line_generators(case: &mut Case) -> Result<Vec<DcLineGenera
     Ok(mappings)
 }
 
+/// The operating point reported for a detailed line that is switched off.
+fn blocked(line: &LccLine) -> LccSolution {
+    let mut off = line.clone();
+    off.control = dc::LccControl::Blocked;
+    let taps = [line.rectifier.tap, line.inverter.tap];
+    dc::operating_point(&off, 1.0, 1.0, [1.0, 1.0], taps).0
+}
+
 /// Validate and solve a case. Each active electrical island needs one reference bus.
 /// Active MATPOWER DC lines are represented internally by a generator at each
 /// terminal. Input data is never modified.
@@ -757,12 +1006,68 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
     );
     let original_generators = input.generators.len();
     let mut working = input.clone();
-    let mappings = add_dc_line_generators(&mut working).inspect_err(|error| {
+    let rows = input.dcline.as_ref().map_or(0, Vec::len);
+    let (detailed, adjust_taps): (Vec<&LccLine>, bool) = match &opt.dc_model {
+        DcModel::Detailed { lines, adjust_taps } if opt.model == Model::Ac => {
+            let mut seen = vec![false; rows];
+            for line in lines {
+                line.validate().map_err(Error::InvalidCase)?;
+                if line.row >= rows || std::mem::replace(&mut seen[line.row], true) {
+                    return Err(Error::InvalidCase(format!(
+                        "detailed DC line {} names a missing or repeated dcline row {}",
+                        line.name, line.row
+                    )));
+                }
+            }
+            (lines.iter().collect(), *adjust_taps)
+        }
+        _ => (Vec::new(), false),
+    };
+    let mut skip = vec![false; rows];
+    for line in &detailed {
+        skip[line.row] = true;
+    }
+    let mappings = add_dc_line_generators_except(&mut working, &skip).inspect_err(|error| {
         log::error!("power-flow setup failed while converting DC lines: {error}");
     })?;
-    let mut result = solve_core(&working, opt).inspect_err(|error| {
+    // Rows switched off in the case stay off in the detailed model too.
+    let active: Vec<_> = detailed
+        .iter()
+        .copied()
+        .filter(|line| {
+            input
+                .dcline
+                .as_ref()
+                .is_some_and(|rows| rows[line.row][2] != 0.0)
+        })
+        .collect();
+    let mut result = solve_core(&working, opt, &active, adjust_taps).inspect_err(|error| {
         log::error!("{:?} power-flow solve failed: {error}", opt.model);
     })?;
+    let vms: std::collections::HashMap<_, _> =
+        result.case.buses.iter().map(|b| (b.id, b.vm)).collect();
+    let vm = |bus: u32| vms.get(&bus).copied().unwrap_or(1.0);
+    if let Some(lines) = &mut result.case.dcline {
+        let mut solutions = result.lcc.iter();
+        let mut all = Vec::with_capacity(detailed.len());
+        for line in &detailed {
+            let row = &mut lines[line.row];
+            let solution = if row[2] != 0.0 {
+                solutions.next().cloned()
+            } else {
+                None
+            };
+            let solution = solution.unwrap_or_else(|| blocked(line));
+            row[3] = solution.rectifier_mw;
+            row[4] = solution.inverter_mw;
+            row[5] = -solution.rectifier_mvar;
+            row[6] = -solution.inverter_mvar;
+            row[7] = vm(line.rectifier.bus);
+            row[8] = vm(line.inverter.bus);
+            all.push(solution);
+        }
+        result.lcc = all;
+    }
     if let Some(lines) = &mut result.case.dcline {
         for mapping in mappings {
             let from = &result.case.generators[mapping.from_generator];

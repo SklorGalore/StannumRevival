@@ -44,6 +44,10 @@ export interface SolveSettings {
   tolerance: number;
   max_iterations: number;
   enforce_q_limits: boolean;
+  /** Two-terminal DC lines: converter equations, or MATPOWER's lossless pair. */
+  dc_model: "detailed" | "simplified";
+  /** Step DC converter taps (detailed model only). */
+  adjust_dc_taps: boolean;
 }
 
 export interface BusRow {
@@ -124,6 +128,25 @@ export interface DcLineRow {
   qmint: number;
   qmaxt: number;
   q_violation: number;
+  /** Converter state from the detailed LCC model, when it was used. */
+  detail?: LccDetail | null;
+}
+
+/** Operating point of a two-terminal DC line under the detailed model. */
+export interface LccDetail {
+  /** Which converter holds the DC current. */
+  control: "rectifier" | "inverter" | "angle_limited" | "blocked";
+  /** Low DC voltage switched a power order to current control. */
+  reduced_voltage: boolean;
+  current_ka: number;
+  rectifier_kv: number;
+  inverter_kv: number;
+  alpha: number;
+  gamma: number;
+  rectifier_tap: number;
+  inverter_tap: number;
+  line_loss_mw: number;
+  converter_loss_mw: number;
 }
 
 export interface LimitSummary {
@@ -141,6 +164,8 @@ export interface SolveReport {
   model: ModelChoice;
   iterations: number;
   q_limit_passes: number;
+  /** Passes that stepped DC converter taps. */
+  dc_tap_passes?: number;
   residual_pu: number;
   residual_mva: number;
   elapsed_ms: number;

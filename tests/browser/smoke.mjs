@@ -493,7 +493,8 @@ if (STANNUM_RAW_DC) {
   await shot("diagram-mtdc");
 
   // Power flow lists every DC line; with Q limits on, the case converges and
-  // the line-commutated converters absorb reactive power.
+  // the line-commutated converters absorb reactive power. Two-terminal lines
+  // use the detailed converter model: the rectifier holds the order.
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   await page.getByLabel("Enforce generator Q limits").check();
   await page.getByRole("button", { name: "Solve", exact: true }).click();
@@ -504,6 +505,7 @@ if (STANNUM_RAW_DC) {
   assert.equal(await dcRows.count(), 7, "seven DC rows listed");
   const first = await dcRows.first().innerText();
   assert.match(first, /Two-terminal[\s\S]*301[\s\S]*3021[\s\S]*-\d/, "rectifier absorbs Q");
+  assert.match(first, /Rectifier/, "detailed model reports the controlling converter");
   await shot("power-dc-lines");
   await page.getByLabel("Enforce generator Q limits").uncheck();
 }

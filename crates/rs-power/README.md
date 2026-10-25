@@ -145,6 +145,34 @@ unchanged. When solving, a DC line end whose reactive range has zero width (a
 VSC in power factor control) injects that fixed MVAr rather than holding its
 bus voltage.
 
+### Detailed two-terminal DC model
+
+`RawImport::lcc_lines` keeps every field of each two-terminal DC record as an
+`LccLine` that names its `Case::dcline` row. Pass them in
+`PowerFlowOptions::dc_model = DcModel::Detailed { lines, adjust_taps }` to
+solve those rows with converter equations instead of the generator pair; other
+rows stay simplified, and DC (linear) solves always use the simplified model.
+
+- Each converter is a six-pulse bridge model in PSS/E units: no-load voltage
+  `Vdo = 3√2/π · NB · E · TR / TAP`, commutation drop `3/π · Xc` and
+  resistive drop `2 · Rc` per bridge, DC line resistance RDC, and
+  `Q = Id · √(Vdo² − Vd²)` absorbed at both ends.
+- The rectifier holds the power (SETVL > 0 at the rectifier, < 0 at the
+  inverter) or current order with α; the inverter runs at minimum γ. At
+  minimum α, the inverter takes the order less the DELTI margin. Below VCMOD,
+  a power order becomes the current SETVL / VSCHD.
+- The operating point is recomputed from the terminal voltage magnitudes at
+  every Newton step, with its voltage derivatives in the Jacobian. With
+  `adjust_taps`, converter taps step between Newton solves (like reactive-limit
+  passes) to bring the compounded DC voltage to VSCHD at RCOMP and α into its
+  ANMN..ANMX range.
+- `PowerFlowResult::lcc` reports current, DC voltages, angles, taps, control
+  mode, losses and both ends' P and Q; the `dcline` row gets the AC-side P and
+  Q (absorbed Q negative) and terminal voltages.
+- Not modelled: capacitor-commutated converters (XCAP), the AC transformer
+  named by IF/IT/ID (the tap is applied inside the converter), a separate
+  commutating bus (IC), and DCVMIN. Import warns when a line uses them.
+
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
 revision layouts, all transformer CW/CZ combinations, partial winding statuses,
