@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Crosshair, Link2, Link2Off, X } from "lucide-react";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { elementLabel } from "../lib/elements";
+import { DrawAroundButton } from "../ui/DrawAround";
 
 const TARGETS: { id: ModuleId; label: string }[] = [
   { id: "diagram", label: "Diagram" },
@@ -91,6 +92,7 @@ export function SelectionChip() {
             {t.label}
           </button>
         ))}
+        {module !== "diagram" && <DrawAroundButton element={selection.element} from={module} className="rounded-full" />}
         <button
           className="shrink-0 rounded-full p-0.5 text-teal-700 hover:bg-teal-100"
           onClick={() => select(null, module)}
