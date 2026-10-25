@@ -10,7 +10,7 @@ import { Button, ErrorBanner, Field, inputClass } from "../../ui/primitives";
 type ScopeKind = Scope["kind"];
 
 /** Choose which part of the open case to draw, then lay it out. */
-export function GenerateDialog({ onClose }: { onClose: () => void }) {
+export function GenerateDialog({ onClose, around }: { onClose: () => void; around?: number }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
   const replaceWithGenerated = useDiagramStore((s) => s.replaceWithGenerated);
@@ -38,6 +38,11 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
         setArea(real[0]?.area ?? 0);
         const ref = real.find((b) => b.kind === "Ref") ?? real[0];
         setCenter(ref ? String(ref.id) : "");
+        // Asked to draw around one bus, such as the shared selection.
+        if (around !== undefined && real.some((b) => b.id === around)) {
+          setKind("around");
+          setCenter(String(around));
+        }
       })
       .catch((e: Error) => live && setError(e.message));
     return () => {

@@ -1,0 +1,82 @@
+import { useEffect, useRef, useState } from "react";
+import { useReactFlow } from "@xyflow/react";
+import { useWorkspace } from "../../store/workspaceStore";
+import { useDiagramStore } from "../../store/diagramStore";
+import { busElement, elementBus, parseElement } from "../../lib/elements";
+import type { CaseRef, SLDEdge, SLDNode } from "../../store/types";
+
+const refOf = (x: SLDNode | SLDEdge | undefined) => (x?.data as { caseRef?: CaseRef } | undefined)?.caseRef;
+
+/** Publish a clicked case-linked symbol as the shared selection. */
+export function publishDiagramSelection(item: SLDNode | SLDEdge) {
+  const element = refOf(item)?.element;
+  if (element) useWorkspace.getState().select(element, "diagram");
+}
+
+/**
+ * Follow a selection made in another module: select the matching symbol and
+ * centre it. Returns the element when this drawing has no symbol for it.
+ */
+export function useSharedSelection(): string | null {
+  const shared = useWorkspace((s) => s.selection);
+  // A drawing opened or generated may now hold the selected element.
+  const fitRequest = useDiagramStore((s) => s.fitRequest);
+  const lastShared = useRef(shared);
+  const { getZoom, setCenter } = useReactFlow();
+  const [missing, setMissing] = useState<string | null>(null);
+
+  useEffect(() => {
+    // True when the selection changed; false when only the drawing did.
+    const moved = lastShared.current !== shared;
+    lastShared.current = shared;
+    setMissing(null);
+    const { nodes, edges, selectOnly } = useDiagramStore.getState();
+    if (!shared) return;
+    if (shared.from === "diagram") return;
+    const byElement = (id: string) => ({
+      nodes: nodes.filter((n) => refOf(n)?.element === id),
+      edges: edges.filter((e) => refOf(e)?.element === id),
+    });
+    let hit = byElement(shared.element);
+    // Loads are drawn on their bus; fall back to the bus for generators too.
+    const bus = elementBus(shared.element);
+    if (!hit.nodes.length && !hit.edges.length && bus !== null) hit = byElement(busElement(bus));
+    if (!hit.nodes.length && !hit.edges.length) {
+      selectOnly([], []);
+      setMissing(shared.element);
+      return;
+    }
+    const nodeIds = hit.nodes.map((n) => n.id);
+    const edgeIds = hit.edges.map((e) => e.id);
+    selectOnly(nodeIds, edgeIds);
+
+    // Centre on the symbol, or on the middle of a wire, keeping the zoom.
+    const centre = (n: SLDNode) => ({
+      x: n.position.x + (n.measured?.width ?? n.width ?? 0) / 2,
+      y: n.position.y + (n.measured?.height ?? n.height ?? 0) / 2,
+    });
+    let point: { x: number; y: number } | null = null;
+    if (hit.nodes[0]) point = centre(hit.nodes[0]);
+    else {
+      const ends = [hit.edges[0].source, hit.edges[0].target]
+        .map((id) => nodes.find((n) => n.id === id))
+        .filter((n): n is SLDNode => !!n)
+        .map(centre);
+      if (ends.length) point = { x: ends.reduce((s, p) => s + p.x, 0) / ends.length, y: ends.reduce((s, p) => s + p.y, 0) / ends.length };
+    }
+    // A new drawing is first fitted to the screen, so centre after that.
+    if (!point) return;
+    const { x, y } = point;
+    const timer = window.setTimeout(() => void setCenter(x, y, { zoom: Math.max(getZoom(), 0.8), duration: 250 }), moved ? 0 : 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shared, fitRequest, getZoom, setCenter]);
+
+  return missing;
+}
+
+/** The bus to generate a drawing around for an element. */
+export function generateCentre(element: string): number | null {
+  const e = parseElement(element);
+  return e ? e.buses[0] : null;
+}

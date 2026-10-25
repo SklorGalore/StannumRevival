@@ -1,3 +1,4 @@
+import { publishDiagramSelection } from "../../modules/diagram/useSharedSelection";
 import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
@@ -301,6 +302,10 @@ export function DiagramCanvas() {
             se.map((e) => e.id)
           );
         }}
+        // Only a click publishes: onSelectionChange also fires when another
+        // module's selection is applied here, or when the nodes change.
+        onNodeClick={(_, n) => publishDiagramSelection(n as unknown as SLDNode)}
+        onEdgeClick={(_, e) => publishDiagramSelection(e as unknown as SLDEdge)}
         onMoveEnd={(_, vp) => setViewport(vp)}
         // Any terminal can join any other: a generator's terminal and a bus
         // tap are both "sources", which strict mode refused to connect.

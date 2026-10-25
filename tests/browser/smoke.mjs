@@ -126,6 +126,41 @@ await page.getByText(/\d\.\d{3} pu/).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
 
+// One selection, seen in every module: pick a bus in Topology, then follow
+// the chip to Power flow, Case diff and the diagram.
+const chip = page.getByTestId("selection-chip");
+await page.getByRole("button", { name: "Topology", exact: true }).click();
+await page.getByRole("tab", { name: /^Buses/ }).click();
+const busRow = page.locator("table:visible tbody tr").nth(2);
+const pickedBus = (await busRow.locator("td").first().innerText()).trim();
+await busRow.click();
+await chip.filter({ hasText: `Bus ${pickedBus}` }).waitFor();
+await shot("selection-topology");
+const selectedFirstCell = () => page.locator("tr[aria-selected=true]:visible td").first().innerText();
+await chip.getByRole("button", { name: "Show in Power flow" }).click();
+assert.equal((await selectedFirstCell()).trim(), pickedBus);
+await shot("selection-power");
+await chip.getByRole("button", { name: "Show in Case diff" }).click();
+await page.locator("tr[aria-selected=true]:visible").first().waitFor();
+assert.equal((await selectedFirstCell()).trim(), pickedBus);
+await page.getByText("Original lines").waitFor();
+await shot("selection-diff");
+await chip.getByRole("button", { name: "Show in Diagram" }).click();
+await page.locator(".react-flow__node-bus.selected").waitFor();
+assert.equal(await page.locator(".react-flow__node-bus.selected").count(), 1);
+await shot("selection-diagram");
+
+// Back the other way: a symbol picked in the diagram is selected in Topology.
+await page.locator(".react-flow__node-generator").first().click();
+await chip.filter({ hasText: /Generator/ }).waitFor();
+await chip.getByRole("button", { name: "Show in Topology" }).click();
+await page.getByRole("tab", { name: /^Buses/, selected: true }).waitFor();
+await page.locator("tr[aria-selected=true]:visible").first().waitFor();
+await shot("selection-from-diagram");
+await page.keyboard.press("Escape");
+await chip.waitFor({ state: "detached" });
+await page.getByRole("button", { name: "Diagram", exact: true }).click();
+
 // Print style, then undo after deleting everything.
 await page.getByRole("button", { name: "Print style" }).click();
 await shot("diagram-print");

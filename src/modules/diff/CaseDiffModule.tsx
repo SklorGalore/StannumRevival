@@ -6,6 +6,7 @@ import type { DiffRecordDetail, DiffRecordRow, DiffStatus, DiffSummary } from ".
 import { count } from "../../lib/analysis/format";
 import { Button, EmptyState, ErrorBanner, Notice, Panel, SearchBox, StatusPill, inputClass } from "../../ui/primitives";
 import { DataTable, type Column } from "../../ui/DataTable";
+import { elementLabel, elementSection } from "../../lib/elements";
 
 const STATUSES: DiffStatus[] = ["added", "removed", "changed", "unchanged"];
 
@@ -54,12 +55,46 @@ export function CaseDiffModule({ active }: { active: boolean }) {
   const [summary, setSummary] = useState<DiffSummary | null>(null);
   const [section, setSection] = useState<string | null>(null);
   const [records, setRecords] = useState<DiffRecordRow[]>([]);
+  const [recordsFor, setRecordsFor] = useState<string | null>(null);
   const [includeUnchanged, setIncludeUnchanged] = useState(false);
   const [statusFilter, setStatusFilter] = useState<DiffStatus | "">("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<DiffRecordDetail | null>(null);
   const [changedOnly, setChangedOnly] = useState(false);
+  const shared = useWorkspace((s) => s.selection);
+  const select = useWorkspace((s) => s.select);
+  // A selection from another module waiting for its section's records to load.
+  const [pending, setPending] = useState<string | null>(null);
+  const [missing, setMissing] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMissing(null);
+    if (!shared || shared.from === "diff" || !summary) return;
+    const target = elementSection(shared.element);
+    if (!target || !summary.sections.some((x) => x.name === target)) {
+      setMissing(shared.element);
+      return;
+    }
+    setPending(shared.element);
+    setSection(target);
+  }, [shared, summary]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const target = elementSection(pending);
+    if (target !== section || recordsFor !== section) return;
+    const row = records.find((r) => r.element === pending);
+    setPending(null);
+    if (!row) {
+      setMissing(pending);
+      return;
+    }
+    if (row.status === "unchanged") setIncludeUnchanged(true);
+    if (statusFilter && statusFilter !== row.status) setStatusFilter("");
+    setSearch("");
+    setSelected(row.index);
+  }, [pending, records, recordsFor, section, statusFilter]);
 
   // Offer the open RAW case as the baseline.
   useEffect(() => {
@@ -102,7 +137,16 @@ export function CaseDiffModule({ active }: { active: boolean }) {
       return;
     }
     let cancelled = false;
-    api.diffSectionRecords(section).then((r) => !cancelled && setRecords(r)).catch((e) => setError((e as Error).message));
+    setRecords([]);
+    setRecordsFor(null);
+    const loading = section;
+    api
+      .diffSectionRecords(section)
+      .then((r) => {
+        if (cancelled) return;
+        setRecords(r);
+        setRecordsFor(loading);
+      }).catch((e) => setError((e as Error).message));
     return () => {
       cancelled = true;
     };
@@ -165,6 +209,11 @@ export function CaseDiffModule({ active }: { active: boolean }) {
       </Panel>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
+      {missing && summary && (
+        <Notice>
+          {elementLabel(missing)} is not in this comparison.
+        </Notice>
+      )}
 
       {!summary ? (
         <div className="flex-1 min-h-0">
@@ -253,7 +302,11 @@ export function CaseDiffModule({ active }: { active: boolean }) {
                   columns={recordColumns}
                   rowKey={(r) => r.index}
                   search={search}
-                  onRowClick={(r) => setSelected(r.index)}
+                  onRowClick={(r) => {
+                    setSelected(r.index);
+                    setMissing(null);
+                    if (r.element) select(r.element, "diff");
+                  }}
                   selectedKey={selected}
                   rowClassName={(r) => rowTone[r.status]}
                   empty={records.length ? "No differences in this section. Include unchanged to inspect records." : "No records."}

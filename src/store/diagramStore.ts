@@ -189,6 +189,16 @@ export const useDiagramStore = create<DiagramStore>()(
         for (const e of s.edges) e.selected = true;
       }),
 
+    selectOnly: (nodeIds, edgeIds) =>
+      set((s) => {
+        const n = new Set(nodeIds);
+        const e = new Set(edgeIds);
+        for (const node of s.nodes) node.selected = n.has(node.id);
+        for (const edge of s.edges) edge.selected = e.has(edge.id);
+        s.selectedNodeIds = nodeIds;
+        s.selectedEdgeIds = edgeIds;
+      }),
+
     clearSelection: () =>
       set((s) => {
         for (const n of s.nodes) n.selected = false;

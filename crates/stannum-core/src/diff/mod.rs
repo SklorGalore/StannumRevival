@@ -63,6 +63,8 @@ pub struct RecordRow {
     pub key: String,
     pub name: String,
     pub status: Status,
+    /// Shared element id (see `crate::elements`) for sections other modules show.
+    pub element: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -82,6 +84,50 @@ pub struct RecordDetail {
     pub fields: Vec<FieldRow>,
     pub before_lines: Option<Vec<String>>,
     pub after_lines: Option<Vec<String>>,
+}
+
+/// The shared element id of a record, for sections that hold one.
+///
+/// Key fields follow raw.schema.json: BUS `I`; LOAD and GENERATOR `I, ID`;
+/// BRANCH and SYSTEM SWITCHING DEVICE `I, J, CKT`; TRANSFORMER `I, J, K, CKT`.
+pub fn record_element(section: &str, key: &[value::Value]) -> Option<String> {
+    let int = |i: usize| -> Option<u32> {
+        match key.get(i)? {
+            value::Value::Number(n) => n.to_string().parse().ok(),
+            value::Value::Text(t) => t.trim().parse().ok(),
+        }
+    };
+    let id = |i: usize| -> String {
+        match key.get(i) {
+            Some(value::Value::Text(t)) if !t.trim().is_empty() => t.trim().to_string(),
+            Some(value::Value::Number(n)) => n.to_string(),
+            _ => "1".to_string(),
+        }
+    };
+    let branch_id = |kind: &str, buses: &mut Vec<u32>, ckt: String| {
+        buses.sort_unstable();
+        let joined = buses
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(":");
+        format!("{kind}:{joined}:{ckt}")
+    };
+    match section {
+        "BUS" => Some(crate::elements::bus(int(0)?)),
+        "GENERATOR" => Some(crate::elements::generator(int(0)?, &id(1))),
+        "LOAD" => Some(format!("load:{}:{}", int(0)?, id(1))),
+        "BRANCH" => Some(branch_id("line", &mut vec![int(0)?, int(1)?], id(2))),
+        "SYSTEM SWITCHING DEVICE" => Some(branch_id("switch", &mut vec![int(0)?, int(1)?], id(2))),
+        "TRANSFORMER" => {
+            let mut buses = vec![int(0)?, int(1)?];
+            if let Some(k) = int(2).filter(|k| *k != 0) {
+                buses.push(k);
+            }
+            Some(branch_id("transformer", &mut buses, id(3)))
+        }
+        _ => None,
+    }
 }
 
 fn key_text(key: &[value::Value]) -> String {
@@ -165,6 +211,7 @@ impl Comparison {
                             .map(value::Value::display)
                             .unwrap_or_default(),
                         status: r.status,
+                        element: record_element(section, &r.key),
                     })
                     .collect()
             })

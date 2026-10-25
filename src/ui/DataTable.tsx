@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface Column<T> {
@@ -19,6 +19,8 @@ interface DataTableProps<T> {
   pageSize?: number;
   onRowClick?: (row: T) => void;
   selectedKey?: string | number | null;
+  /** Marks rows as selected when one key is not enough (overrides selectedKey). */
+  isSelected?: (row: T) => boolean;
   rowClassName?: (row: T) => string;
   empty?: ReactNode;
   /** Keep the incoming order until the user sorts. */
@@ -50,6 +52,7 @@ export function DataTable<T>({
   pageSize = 100,
   onRowClick,
   selectedKey,
+  isSelected,
   rowClassName,
   empty = "No rows.",
   initialSort = null,
@@ -70,6 +73,24 @@ export function DataTable<T>({
       .map((x) => x.row);
   }, [filtered, sort, columns]);
 
+  const selectedRow = (row: T) =>
+    isSelected ? isSelected(row) : selectedKey !== undefined && selectedKey !== null && selectedKey === rowKey(row);
+
+  // When the selection changes (here or in another module), turn to its page
+  // and scroll it into view. Sorting or paging by hand doesn't re-trigger this.
+  const firstSelected = sorted.findIndex(selectedRow);
+  const revealKey = firstSelected >= 0 ? rowKey(sorted[firstSelected]) : null;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (revealKey === null) return;
+    setPage(Math.floor(firstSelected / pageSize));
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.querySelector("tr[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey]);
+
   const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const current = Math.min(page, pages - 1);
   const visible = sorted.slice(current * pageSize, (current + 1) * pageSize);
@@ -83,7 +104,7 @@ export function DataTable<T>({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
         <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr>
@@ -109,12 +130,14 @@ export function DataTable<T>({
           <tbody>
             {visible.map((row) => {
               const key = rowKey(row);
-              const selected = selectedKey !== undefined && selectedKey === key;
+              const selected = selectedRow(row);
               return (
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   aria-selected={selected}
+                  // Keep a revealed row clear of the sticky header.
+                  style={{ scrollMarginTop: 36 }}
                   className={`${onRowClick ? "cursor-pointer" : ""} ${
                     selected ? "bg-teal-50 outline outline-1 -outline-offset-1 outline-teal-400" : "hover:bg-slate-50"
                   } ${rowClassName?.(row) ?? ""}`}

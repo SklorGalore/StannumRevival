@@ -20,6 +20,7 @@ import { NetworkGraph, type GraphSelection } from "./NetworkGraph";
 import { FieldPanel, GraphLegend } from "./FieldPanel";
 import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
 import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
+import { busElement, elementBus, parseElement } from "../../lib/elements";
 import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
 
 type Tab = "buses" | "islands" | "critical" | "equipment" | "diagnostics";
@@ -223,6 +224,33 @@ export function TopologyModule({ active }: { active: boolean }) {
   const [colors, setColors] = useState<ColorSettings>(defaultColorSettings);
 
   const available = !!summary?.topology.available;
+  const shared = useWorkspace((s) => s.selection);
+  const select = useWorkspace((s) => s.select);
+
+  /** Select here and in every other module. */
+  function pick(next: GraphSelection) {
+    setSelection(next);
+    const element = next.equipment ?? (next.bus !== null ? busElement(next.bus) : null);
+    if (element) select(element, "topology");
+  }
+
+  /** What a shared element is in this view, and a neighborhood to show it in when it is off screen. */
+  function locate(element: string, s: TopologySnapshot): { selection: GraphSelection; bus: number | null } | null {
+    const parsed = parseElement(element);
+    if (!parsed) return null;
+    if (parsed.kind === "line" || parsed.kind === "transformer" || parsed.kind === "switch") {
+      const e = s.case.equipment.find((x) => x.id === element);
+      return e ? { selection: { bus: null, equipment: e.id }, bus: e.buses[0] ?? null } : null;
+    }
+    const bus = elementBus(element);
+    return bus !== null && s.case.buses.some((b) => b.number === bus) ? { selection: { bus, equipment: null }, bus } : null;
+  }
+
+  function inView(data: GraphData | undefined, target: GraphSelection): boolean {
+    if (!data) return false;
+    if (target.equipment) return data.edges.some((e) => e.equipment_id === target.equipment) || data.nodes.some((n) => n.equipment_id === target.equipment);
+    return target.bus !== null && !!nodeForBus(data, target.bus);
+  }
 
   function defaultScope(s: TopologySnapshot): Scope | null {
     const origin = s.analysis.degrees[0]?.bus;
@@ -245,8 +273,15 @@ export function TopologyModule({ active }: { active: boolean }) {
         const saved = loadFieldSettings(useWorkspace.getState().caseSummary?.path);
         setRules(saved.rules);
         setColors(saved.colors);
-        setScope(defaultScope(s));
-        setSelection({ bus: s.analysis.degrees[0]?.bus ?? null, equipment: null });
+        const current = useWorkspace.getState().selection;
+        const found = current ? locate(current.element, s) : null;
+        if (found && found.bus !== null) {
+          setScope({ kind: "neighborhood", title: `Bus ${found.bus} · 2-hop neighborhood`, data: neighborhood(s.graph, found.bus, 2) });
+          setSelection(found.selection);
+        } else {
+          setScope(defaultScope(s));
+          setSelection({ bus: s.analysis.degrees[0]?.bus ?? null, equipment: null });
+        }
         setPath(null);
         setPathText("Choose two bus numbers to find the fewest equipment hops.");
         setFromBus("");
@@ -256,6 +291,22 @@ export function TopologyModule({ active }: { active: boolean }) {
       .catch((e) => setError((e as Error).message))
       .finally(() => setBusy(false));
   }, [active, available, caseVersion, loadedVersion]);
+
+  // Follow a selection made in another module.
+  useEffect(() => {
+    if (!snapshot || !shared || shared.from === "topology") return;
+    const found = locate(shared.element, snapshot);
+    if (!found) return;
+    setSelection(found.selection);
+    setSide("selection");
+    setTab(found.selection.equipment ? "equipment" : "buses");
+    setSearch("");
+    if (found.bus !== null && !inView(scope?.data, found.selection)) {
+      setPath(null);
+      setScope({ kind: "neighborhood", title: `Bus ${found.bus} · 2-hop neighborhood`, data: neighborhood(snapshot.graph, found.bus, 2) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shared, snapshot]);
 
   useEffect(() => {
     if (!available) {
@@ -402,11 +453,11 @@ export function TopologyModule({ active }: { active: boolean }) {
   ];
 
   function onRowClick(row: unknown) {
-    if (tab === "buses") setSelection({ bus: (row as TopoBusRow).bus, equipment: null });
-    else if (tab === "equipment") setSelection({ bus: null, equipment: (row as EquipmentRow).id });
+    if (tab === "buses") pick({ bus: (row as TopoBusRow).bus, equipment: null });
+    else if (tab === "equipment") pick({ bus: null, equipment: (row as EquipmentRow).id });
     else if (tab === "critical") {
       const r = row as CriticalRow;
-      setSelection(r.bus !== null ? { bus: r.bus, equipment: null } : { bus: null, equipment: r.id });
+      pick(r.bus !== null ? { bus: r.bus, equipment: null } : { bus: null, equipment: r.id });
     } else if (tab === "islands") {
       const r = row as IslandRow;
       const data = islandGraph(snapshot!, r.island);
@@ -504,7 +555,7 @@ export function TopologyModule({ active }: { active: boolean }) {
               snapshot={snapshot}
               path={path}
               selection={selection}
-              onInspect={setSelection}
+              onInspect={pick}
               visible={active}
               fitSignal={fitSignal}
             />
@@ -551,7 +602,7 @@ export function TopologyModule({ active }: { active: boolean }) {
           <Inspector
             snapshot={snapshot}
             selection={selection}
-            onSelect={setSelection}
+            onSelect={pick}
             onNeighborhood={(bus, hops) => {
               setPath(null);
               setScope({ kind: "neighborhood", title: `Bus ${bus} · ${hops}-hop neighborhood`, data: neighborhood(snapshot.graph, bus, hops) });

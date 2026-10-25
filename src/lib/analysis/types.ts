@@ -300,6 +300,8 @@ export interface DiffRecordRow {
   key: string;
   name: string;
   status: DiffStatus;
+  /** Shared element id, for buses, branches, transformers, switches, loads and generators. */
+  element: string | null;
 }
 
 export interface DiffRecordDetail {
