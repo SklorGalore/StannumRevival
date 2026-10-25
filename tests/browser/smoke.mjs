@@ -508,7 +508,15 @@ if (STANNUM_RAW_DC) {
   assert.match(first, /Rectifier/, "detailed model reports the controlling converter");
   const vscRow = await dcRows.nth(2).innerText();
   assert.match(vscRow, /VSC[\s\S]*At order/, "detailed VSC model reports its order state");
+  const mtRow = await dcRows.nth(4).innerText();
+  assert.match(mtRow, /Multi-terminal[\s\S]*At order/, "detailed multi-terminal model reports its converter state");
   await shot("power-dc-lines");
+  // The DC network tab lists the multi-terminal system's buses and links.
+  await page.getByRole("tab", { name: /DC network/ }).click();
+  const network = page.getByTestId("dc-network");
+  await network.getByText("Holds DC voltage").waitFor();
+  assert.match(await network.innerText(), /DC5[\s\S]*517\.\d/, "star bus DC5 solved near 517 kV");
+  await shot("power-dc-network");
   await page.getByLabel("Enforce generator Q limits").uncheck();
 }
 

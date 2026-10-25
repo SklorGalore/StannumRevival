@@ -22,6 +22,8 @@ pub struct PowerCase {
     pub lcc_lines: Vec<rs_power::LccLine>,
     /// Full data of the VSC DC lines for the detailed model.
     pub vsc_lines: Vec<rs_power::VscLine>,
+    /// Full data of the multi-terminal DC systems for the detailed model.
+    pub mtdc: Vec<rs_power::MtdcSystem>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -49,6 +51,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             warnings: Vec::new(),
             lcc_lines: Vec::new(),
             vsc_lines: Vec::new(),
+            mtdc: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -76,6 +79,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .collect(),
             lcc_lines: import.lcc_lines,
             vsc_lines: import.vsc_lines,
+            mtdc: import.mtdc,
             case: import.case,
             warnings: import
                 .warnings
@@ -105,7 +109,8 @@ pub enum StartChoice {
     Flat,
 }
 
-/// How two-terminal (LCC) and VSC DC lines are solved when the case has their data.
+/// How two-terminal (LCC), VSC and multi-terminal DC lines are solved when
+/// the case has their data.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DcModelChoice {
@@ -155,11 +160,14 @@ impl SolveSettings {
     pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
         let mut options = self.options();
         if self.dc_model == DcModelChoice::Detailed
-            && (!power.lcc_lines.is_empty() || !power.vsc_lines.is_empty())
+            && (!power.lcc_lines.is_empty()
+                || !power.vsc_lines.is_empty()
+                || !power.mtdc.is_empty())
         {
             options.dc_model = rs_power::DcModel::Detailed {
                 lines: power.lcc_lines.clone(),
                 vsc_lines: power.vsc_lines.clone(),
+                mtdc: power.mtdc.clone(),
                 adjust_taps: self.adjust_dc_taps,
             };
         }
@@ -298,6 +306,88 @@ pub struct DcLineRow {
     pub detail: Option<LccDetail>,
     /// Converter operating point from the detailed VSC model.
     pub vsc_detail: Option<VscDetail>,
+    /// This row's converter from the detailed multi-terminal model.
+    pub mtdc_detail: Option<MtdcDetail>,
+}
+
+/// One converter of a multi-terminal DC system under the detailed model, as
+/// shown on the row that links it to the voltage-controlling converter.
+#[derive(Clone, Debug, Serialize)]
+pub struct MtdcDetail {
+    /// The system's name.
+    pub system: String,
+    /// "voltage", "order", "angle_limited" or "blocked".
+    pub control: &'static str,
+    /// Low DC voltage switched the power orders to current orders.
+    pub reduced_voltage: bool,
+    /// Whether the converter is the row's sending end.
+    pub at_from: bool,
+    pub rectifier: bool,
+    pub current_ka: f64,
+    /// DC voltage across the converter, kV.
+    pub dc_kv: f64,
+    /// Firing (rectifier) or extinction (inverter) angle, degrees.
+    pub angle: f64,
+    pub tap: f64,
+}
+
+fn mtdc_control(mode: rs_power::MtdcMode) -> &'static str {
+    match mode {
+        rs_power::MtdcMode::VoltageControl => "voltage",
+        rs_power::MtdcMode::OrderControl => "order",
+        rs_power::MtdcMode::AngleLimited => "angle_limited",
+        rs_power::MtdcMode::Blocked => "blocked",
+    }
+}
+
+/// A multi-terminal DC system's DC network under the detailed model.
+#[derive(Clone, Debug, Serialize)]
+pub struct DcSystemReport {
+    pub name: String,
+    pub reduced_voltage: bool,
+    pub line_loss_mw: f64,
+    pub converter_loss_mw: f64,
+    pub converters: Vec<DcConverterRow>,
+    pub buses: Vec<DcBusRow>,
+    pub links: Vec<DcLinkRow>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DcConverterRow {
+    /// AC bus number and name.
+    pub bus: u32,
+    pub bus_name: String,
+    /// DC bus number.
+    pub dc_bus: u32,
+    pub control: &'static str,
+    pub rectifier: bool,
+    pub current_ka: f64,
+    pub dc_kv: f64,
+    pub angle: f64,
+    pub tap: f64,
+    /// MW drawn from the AC bus (negative: delivered).
+    pub p_mw: f64,
+    /// MVAr absorbed at the AC bus.
+    pub q_mvar: f64,
+    pub loss_mw: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DcBusRow {
+    pub number: u32,
+    pub name: String,
+    pub kv: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DcLinkRow {
+    pub from: u32,
+    pub to: u32,
+    pub circuit: String,
+    pub current_ka: f64,
+    pub from_mw: f64,
+    pub to_mw: f64,
+    pub loss_mw: f64,
 }
 
 /// Operating point of a VSC DC line under the detailed model.
@@ -406,6 +496,8 @@ pub struct SolveReport {
     pub generators: Vec<GeneratorRow>,
     pub branches: Vec<BranchRow>,
     pub dc_lines: Vec<DcLineRow>,
+    /// DC networks of the multi-terminal systems (detailed model).
+    pub dc_systems: Vec<DcSystemReport>,
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -573,7 +665,25 @@ pub fn report(
             let online = d[2] != 0.0;
             let detail = result.lcc.iter().find(|s| s.row == index).map(lcc_detail);
             let vsc_detail = result.vsc.iter().find(|s| s.row == index).map(vsc_detail);
-            let q_violation = if online && settings.model == ModelChoice::Ac && detail.is_none() {
+            let mtdc_detail = result.mtdc.iter().find_map(|s| {
+                let c = s.converters.iter().find(|c| c.row == Some(index))?;
+                Some(MtdcDetail {
+                    system: s.name.clone(),
+                    control: mtdc_control(c.mode),
+                    reduced_voltage: s.reduced_voltage,
+                    at_from: c.bus == from,
+                    rectifier: c.rectifier,
+                    current_ka: c.current_ka,
+                    dc_kv: c.dc_kv,
+                    angle: c.angle,
+                    tap: c.tap,
+                })
+            });
+            let q_violation = if online
+                && settings.model == ModelChoice::Ac
+                && detail.is_none()
+                && mtdc_detail.is_none()
+            {
                 outside(d[5], d[11], d[12]).max(outside(d[6], d[13], d[14]))
             } else {
                 0.0
@@ -601,7 +711,58 @@ pub fn report(
                 q_violation,
                 detail,
                 vsc_detail,
+                mtdc_detail,
             }
+        })
+        .collect();
+    let dc_systems = result
+        .mtdc
+        .iter()
+        .map(|s| DcSystemReport {
+            name: s.name.clone(),
+            reduced_voltage: s.reduced_voltage,
+            line_loss_mw: s.line_loss_mw,
+            converter_loss_mw: s.converter_loss_mw,
+            converters: s
+                .converters
+                .iter()
+                .map(|c| DcConverterRow {
+                    bus: c.bus,
+                    bus_name: name_of(c.bus),
+                    dc_bus: c.dc_bus,
+                    control: mtdc_control(c.mode),
+                    rectifier: c.rectifier,
+                    current_ka: c.current_ka,
+                    dc_kv: c.dc_kv,
+                    angle: c.angle,
+                    tap: c.tap,
+                    p_mw: c.ac_mw,
+                    q_mvar: c.ac_mvar,
+                    loss_mw: c.loss_mw,
+                })
+                .collect(),
+            buses: s
+                .buses
+                .iter()
+                .map(|b| DcBusRow {
+                    number: b.number,
+                    name: b.name.clone(),
+                    kv: b.kv,
+                })
+                .collect(),
+            links: s
+                .links
+                .iter()
+                .map(|l| DcLinkRow {
+                    from: l.from,
+                    to: l.to,
+                    circuit: l.circuit.clone(),
+                    current_ka: l.current_ka,
+                    from_mw: l.from_mw,
+                    to_mw: l.to_mw,
+                    loss_mw: l.loss_mw,
+                })
+                .collect(),
         })
         .collect();
 
@@ -644,6 +805,7 @@ pub fn report(
         generators,
         branches,
         dc_lines,
+        dc_systems,
     }
 }
 

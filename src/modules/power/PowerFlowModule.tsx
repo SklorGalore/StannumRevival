@@ -5,6 +5,8 @@ import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../..
 import type {
   DcLineKind,
   DcLineRow,
+  DcSystemReport,
+  MtdcControl,
   BranchRow,
   BusRow,
   GeneratorRow,
@@ -29,7 +31,7 @@ import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
 import { busElement, elementBus, parseElement } from "../../lib/elements";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "sensitivities" | "warnings";
+type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -125,9 +127,46 @@ const LCC_CONTROL_LABEL: Record<LccDetail["control"], string> = {
   blocked: "Blocked",
 };
 
+const MTDC_CONTROL_LABEL: Record<MtdcControl, string> = {
+  voltage: "Holds DC voltage",
+  order: "At order",
+  angle_limited: "Angle limited",
+  blocked: "Blocked",
+};
+
 /** A detailed-model value, blank for rows solved with the simplified model. */
 function detail(r: DcLineRow, show: (d: LccDetail) => string): string {
   return r.detail ? show(r.detail) : "";
+}
+
+/**
+ * A multi-terminal converter's value at the row end it sits on: the sending
+ * (0) or receiving (1) end. The voltage converter's end is blank.
+ */
+function mtdcAt(r: DcLineRow, end: 0 | 1, value: (d: NonNullable<DcLineRow["mtdc_detail"]>) => number): number | null {
+  const m = r.mtdc_detail;
+  if (!m || m.at_from !== (end === 0)) return null;
+  return value(m);
+}
+
+/** Firing angle at the rectifier (α) or extinction angle at the inverter (γ). */
+function dcAngle(r: DcLineRow, rectifier: boolean): number | null {
+  if (r.detail) return rectifier ? r.detail.alpha : r.detail.gamma;
+  const m = r.mtdc_detail;
+  return m && m.rectifier === rectifier ? m.angle : null;
+}
+
+function dcTap(r: DcLineRow, rectifier: boolean): number | null {
+  if (r.detail) return rectifier ? r.detail.rectifier_tap : r.detail.inverter_tap;
+  const m = r.mtdc_detail;
+  return m && m.rectifier === rectifier ? m.tap : null;
+}
+
+function dcControl(r: DcLineRow): string {
+  if (r.detail) return LCC_CONTROL_LABEL[r.detail.control] + (r.detail.reduced_voltage ? ", low voltage" : "");
+  const m = r.mtdc_detail;
+  if (m) return MTDC_CONTROL_LABEL[m.control] + (m.reduced_voltage ? ", low voltage" : "");
+  return vscControl(r);
 }
 
 function num(value: number | null, digits: number): string {
@@ -135,14 +174,14 @@ function num(value: number | null, digits: number): string {
 }
 
 function dcCurrent(r: DcLineRow): number | null {
-  return r.detail?.current_ka ?? r.vsc_detail?.current_ka ?? null;
+  return r.detail?.current_ka ?? r.vsc_detail?.current_ka ?? r.mtdc_detail?.current_ka ?? null;
 }
 
 /** DC voltage at the sending (0) or receiving (1) converter. */
 function dcVoltage(r: DcLineRow, end: 0 | 1): number | null {
   if (r.detail) return end === 0 ? r.detail.rectifier_kv : r.detail.inverter_kv;
   if (r.vsc_detail) return end === 0 ? r.vsc_detail.from_kv : r.vsc_detail.to_kv;
-  return null;
+  return mtdcAt(r, end, (m) => m.dc_kv);
 }
 
 function vscControl(r: DcLineRow): string {
@@ -165,16 +204,17 @@ const dcLineColumns: Column<DcLineRow>[] = [
   {
     key: "control",
     header: "Control",
-    title: "Detailed model: which converter holds the DC current (LCC), or whether converter limits cut the output (VSC)",
-    value: (r) => (r.detail ? LCC_CONTROL_LABEL[r.detail.control] + (r.detail.reduced_voltage ? ", low voltage" : "") : vscControl(r)),
+    title:
+      "Detailed model: which converter holds the DC current (two-terminal), whether converter limits cut the output (VSC), or the converter's state (multi-terminal)",
+    value: (r) => dcControl(r),
   },
   { key: "id", header: "Id (kA)", value: (r) => dcCurrent(r), render: (r) => num(dcCurrent(r), 4), align: "right" },
   { key: "vdr", header: "Vd send (kV)", title: "DC voltage at the sending converter (LCC rectifier)", value: (r) => dcVoltage(r, 0), render: (r) => num(dcVoltage(r, 0), 1), align: "right" },
   { key: "vdi", header: "Vd recv (kV)", title: "DC voltage at the receiving converter (LCC inverter)", value: (r) => dcVoltage(r, 1), render: (r) => num(dcVoltage(r, 1), 1), align: "right" },
-  { key: "alpha", header: "α (°)", title: "Rectifier firing angle", value: (r) => r.detail?.alpha ?? null, render: (r) => detail(r, (d) => fixed(d.alpha, 2)), align: "right" },
-  { key: "gamma", header: "γ (°)", title: "Inverter extinction angle", value: (r) => r.detail?.gamma ?? null, render: (r) => detail(r, (d) => fixed(d.gamma, 2)), align: "right" },
-  { key: "tap_r", header: "Tap R", title: "Rectifier converter transformer tap", value: (r) => r.detail?.rectifier_tap ?? null, render: (r) => detail(r, (d) => fixed(d.rectifier_tap, 5)), align: "right" },
-  { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => r.detail?.inverter_tap ?? null, render: (r) => detail(r, (d) => fixed(d.inverter_tap, 5)), align: "right" },
+  { key: "alpha", header: "α (°)", title: "Rectifier firing angle", value: (r) => dcAngle(r, true), render: (r) => num(dcAngle(r, true), 2), align: "right" },
+  { key: "gamma", header: "γ (°)", title: "Inverter extinction angle", value: (r) => dcAngle(r, false), render: (r) => num(dcAngle(r, false), 2), align: "right" },
+  { key: "tap_r", header: "Tap R", title: "Rectifier converter transformer tap", value: (r) => dcTap(r, true), render: (r) => num(dcTap(r, true), 5), align: "right" },
+  { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => dcTap(r, false), render: (r) => num(dcTap(r, false), 5), align: "right" },
   { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
   { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
@@ -186,7 +226,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
     render: (r) => fixed(r.qf),
     align: "right",
   },
-  { key: "qf_range", header: "QF range", title: "Not used by the detailed model", value: (r) => r.qminf, render: (r) => (r.detail ? "—" : qRange(r.qminf, r.qmaxf)), align: "right" },
+  { key: "qf_range", header: "QF range", title: "Not used by the detailed model", value: (r) => r.qminf, render: (r) => (r.detail || r.mtdc_detail ? "—" : qRange(r.qminf, r.qmaxf)), align: "right" },
   {
     key: "qt",
     header: "QT (MVAr)",
@@ -195,7 +235,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
     render: (r) => fixed(r.qt),
     align: "right",
   },
-  { key: "qt_range", header: "QT range", title: "Not used by the detailed model", value: (r) => r.qmint, render: (r) => (r.detail ? "—" : qRange(r.qmint, r.qmaxt)), align: "right" },
+  { key: "qt_range", header: "QT range", title: "Not used by the detailed model", value: (r) => r.qmint, render: (r) => (r.detail || r.mtdc_detail ? "—" : qRange(r.qmint, r.qmaxt)), align: "right" },
   { key: "vf", header: "VF (p.u.)", value: (r) => r.vf, render: (r) => fixed(r.vf, 4), align: "right" },
   { key: "vt", header: "VT (p.u.)", value: (r) => r.vt, render: (r) => fixed(r.vt, 4), align: "right" },
   {
@@ -206,6 +246,70 @@ const dcLineColumns: Column<DcLineRow>[] = [
     align: "right",
   },
 ];
+
+const dcConverterColumns: Column<DcSystemReport["converters"][number]>[] = [
+  { key: "bus", header: "AC bus", value: (c) => c.bus, align: "right" },
+  { key: "bus_name", header: "Name", value: (c) => c.bus_name },
+  { key: "dc_bus", header: "DC bus", value: (c) => c.dc_bus, align: "right" },
+  { key: "role", header: "Role", value: (c) => (c.control === "blocked" ? "" : c.rectifier ? "Rectifier" : "Inverter") },
+  { key: "control", header: "Control", value: (c) => MTDC_CONTROL_LABEL[c.control] },
+  { key: "id", header: "Id (kA)", value: (c) => c.current_ka, render: (c) => fixed(c.current_ka, 4), align: "right" },
+  { key: "vd", header: "Vd (kV)", title: "DC voltage across the converter", value: (c) => c.dc_kv, render: (c) => fixed(c.dc_kv, 2), align: "right" },
+  { key: "angle", header: "α/γ (°)", title: "Firing angle at a rectifier, extinction angle at an inverter", value: (c) => c.angle, render: (c) => fixed(c.angle, 2), align: "right" },
+  { key: "tap", header: "Tap", value: (c) => c.tap, render: (c) => fixed(c.tap, 5), align: "right" },
+  { key: "p", header: "P drawn (MW)", title: "Active power drawn from the AC bus; negative means delivered", value: (c) => c.p_mw, render: (c) => fixed(c.p_mw), align: "right" },
+  { key: "q", header: "Q absorbed (MVAr)", value: (c) => c.q_mvar, render: (c) => fixed(c.q_mvar), align: "right" },
+];
+
+const dcBusColumns: Column<DcSystemReport["buses"][number]>[] = [
+  { key: "number", header: "DC bus", value: (b) => b.number, align: "right" },
+  { key: "name", header: "Name", value: (b) => b.name },
+  { key: "kv", header: "V (kV)", title: "Voltage to ground", value: (b) => b.kv, render: (b) => fixed(b.kv, 3), align: "right" },
+];
+
+const dcLinkColumns: Column<DcSystemReport["links"][number]>[] = [
+  { key: "from", header: "From", value: (l) => l.from, align: "right" },
+  { key: "to", header: "To", value: (l) => l.to, align: "right" },
+  { key: "circuit", header: "Circuit", value: (l) => l.circuit },
+  { key: "current", header: "I (kA)", title: "Current from the from bus to the to bus", value: (l) => l.current_ka, render: (l) => fixed(l.current_ka, 4), align: "right" },
+  { key: "from_mw", header: "P from (MW)", value: (l) => l.from_mw, render: (l) => fixed(l.from_mw), align: "right" },
+  { key: "to_mw", header: "P to (MW)", value: (l) => l.to_mw, render: (l) => fixed(l.to_mw), align: "right" },
+  { key: "loss", header: "Loss (MW)", value: (l) => l.loss_mw, render: (l) => fixed(l.loss_mw, 3), align: "right" },
+];
+
+/** DC buses, links and converters of each multi-terminal system. */
+function DcNetworkTab({ systems }: { systems: DcSystemReport[] }) {
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="dc-network">
+      {systems.map((s) => (
+        <Panel
+          key={s.name}
+          title={`Multi-terminal DC line ${s.name}`}
+          eyebrow={`Link loss ${fixed(s.line_loss_mw, 3)} MW · converter loss ${fixed(s.converter_loss_mw, 3)} MW${
+            s.reduced_voltage ? " · low voltage: current orders" : ""
+          }`}
+        >
+          <div className="space-y-3 p-3">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-600 mb-1">Converters</h3>
+              <DataTable rows={s.converters} columns={dcConverterColumns} rowKey={(c) => c.bus} />
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-600 mb-1">DC buses</h3>
+                <DataTable rows={s.buses} columns={dcBusColumns} rowKey={(b) => b.number} />
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold text-slate-600 mb-1">DC links</h3>
+                <DataTable rows={s.links} columns={dcLinkColumns} rowKey={(l) => s.links.indexOf(l)} />
+              </div>
+            </div>
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
 
 function SolvePanel({
   settings,
@@ -284,7 +388,7 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
-      <Field label="Two-terminal and VSC DC lines">
+      <Field label="DC line model">
         <select
           className={inputClass}
           value={settings.dc_model}
@@ -535,6 +639,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.dc_lines?.length
         ? [{ id: "dc" as const, label: "DC lines", count: report.dc_lines.length, disabled: false }]
         : []),
+      ...(report?.dc_systems?.length
+        ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
+        : []),
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
@@ -649,6 +756,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
                 />
               )}
+              {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
               )}

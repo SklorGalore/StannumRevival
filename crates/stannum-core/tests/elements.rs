@@ -207,17 +207,29 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
             assert!((d.loss_mw - detail.line_loss_mw - detail.converter_loss_mw).abs() < 1e-6);
             assert!(d.loss_mw > 50.0 && d.qt < 0.0);
         }
-        // VSC lines lose converter and I²R power; multi-terminal rows stay lossless.
+        // VSC lines lose converter and I²R power.
         for d in &dc[2..4] {
             let v = d.vsc_detail.as_ref().unwrap();
             let losses = v.from_loss_mw + v.to_loss_mw + v.line_loss_mw;
             assert!(d.detail.is_none() && (d.loss_mw - losses).abs() < 1e-6 && losses > 0.5);
         }
-        assert!(
-            dc[4..]
-                .iter()
-                .all(|d| d.vsc_detail.is_none() && d.loss_mw.abs() < 1e-9)
-        );
+        // The multi-terminal rows share the system's DC network losses.
+        let [system] = &report.dc_systems[..] else {
+            panic!()
+        };
+        assert_eq!((system.buses.len(), system.links.len()), (5, 4));
+        let mt_loss: f64 = dc[4..].iter().map(|d| d.loss_mw).sum();
+        assert!((mt_loss - system.line_loss_mw - system.converter_loss_mw).abs() < 1e-6);
+        assert!(mt_loss > 20.0, "{mt_loss}");
+        for d in &dc[4..] {
+            let m = d.mtdc_detail.as_ref().unwrap();
+            assert_eq!(m.control, "order");
+            assert_eq!(m.at_from, m.rectifier);
+            assert!(d.vsc_detail.is_none() && d.detail.is_none());
+        }
+        let held = system.converters.iter().find(|c| c.bus == 212).unwrap();
+        assert_eq!(held.control, "voltage");
+        assert!((held.dc_kv - 500.0).abs() < 1e-9);
         if enforce_q_limits {
             assert!(dc.iter().all(|d| d.q_violation < 1e-3));
         }
@@ -232,10 +244,9 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
             ..Default::default()
         })
         .unwrap();
-    assert!(
-        report
-            .dc_lines
-            .iter()
-            .all(|d| d.detail.is_none() && d.vsc_detail.is_none() && d.loss_mw.abs() < 1e-9)
-    );
+    assert!(report.dc_lines.iter().all(|d| d.detail.is_none()
+        && d.vsc_detail.is_none()
+        && d.mtdc_detail.is_none()
+        && d.loss_mw.abs() < 1e-9));
+    assert!(report.dc_systems.is_empty());
 }

@@ -2,6 +2,7 @@
 mod case;
 mod dc;
 mod input;
+mod mtdc;
 mod network;
 mod output;
 mod raw;
@@ -12,6 +13,10 @@ mod vsc;
 pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
 pub use input::{load_matpower, parse_matpower};
+pub use mtdc::{
+    MtdcBus, MtdcBusSolution, MtdcConverter, MtdcConverterSolution, MtdcLink, MtdcLinkSolution,
+    MtdcMode, MtdcSolution, MtdcSystem,
+};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
     BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawWarning,

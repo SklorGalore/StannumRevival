@@ -132,6 +132,71 @@ export interface DcLineRow {
   detail?: LccDetail | null;
   /** Converter state from the detailed VSC model, when it was used. */
   vsc_detail?: VscDetail | null;
+  /** This row's converter from the detailed multi-terminal model. */
+  mtdc_detail?: MtdcDetail | null;
+}
+
+export type MtdcControl = "voltage" | "order" | "angle_limited" | "blocked";
+
+/** One converter of a multi-terminal DC system, on the row linking it to the voltage converter. */
+export interface MtdcDetail {
+  system: string;
+  control: MtdcControl;
+  /** Low DC voltage switched the power orders to current orders. */
+  reduced_voltage: boolean;
+  /** Whether the converter is the row's sending end. */
+  at_from: boolean;
+  rectifier: boolean;
+  current_ka: number;
+  /** DC voltage across the converter, kV. */
+  dc_kv: number;
+  /** Firing (rectifier) or extinction (inverter) angle, degrees. */
+  angle: number;
+  tap: number;
+}
+
+/** The DC network of a multi-terminal system under the detailed model. */
+export interface DcSystemReport {
+  name: string;
+  reduced_voltage: boolean;
+  line_loss_mw: number;
+  converter_loss_mw: number;
+  converters: DcConverterRow[];
+  buses: DcBusRow[];
+  links: DcLinkRow[];
+}
+
+export interface DcConverterRow {
+  bus: number;
+  bus_name: string;
+  dc_bus: number;
+  control: MtdcControl;
+  rectifier: boolean;
+  current_ka: number;
+  dc_kv: number;
+  angle: number;
+  tap: number;
+  /** MW drawn from the AC bus; negative means delivered. */
+  p_mw: number;
+  /** MVAr absorbed at the AC bus. */
+  q_mvar: number;
+  loss_mw: number;
+}
+
+export interface DcBusRow {
+  number: number;
+  name: string;
+  kv: number;
+}
+
+export interface DcLinkRow {
+  from: number;
+  to: number;
+  circuit: string;
+  current_ka: number;
+  from_mw: number;
+  to_mw: number;
+  loss_mw: number;
 }
 
 /** Operating point of a VSC DC line under the detailed model. */
@@ -197,6 +262,8 @@ export interface SolveReport {
   branches: BranchRow[];
   /** Missing from older backends. */
   dc_lines?: DcLineRow[];
+  /** DC networks of the multi-terminal systems (detailed model). */
+  dc_systems?: DcSystemReport[];
 }
 
 export interface InjectionColumn {
