@@ -68,6 +68,7 @@ await page.getByText("Operating limits").waitFor();
 await shot("power-overview");
 await page.getByRole("tab", { name: /Branches/ }).click();
 await page.getByText("Loading (%)").waitFor();
+await page.getByTestId("loading-bar").first().waitFor();
 await shot("power-branches");
 await page.getByRole("button", { name: "Calculate sensitivities" }).click();
 await page.getByText("How to read these results").waitFor();
@@ -105,6 +106,12 @@ await page.getByRole("tab", { name: "Selection" }).click();
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText(/Converged|Iteration limit|Q limits infeasible/).first().waitFor();
+// Branch tables name both ends when the case names its buses.
+await page.getByRole("tab", { name: /Branches/ }).click();
+await page.getByRole("columnheader", { name: "From name" }).waitFor();
+await page.locator("table:visible tbody tr").first().locator("td").nth(2).filter({ hasText: /\S/ }).waitFor();
+await shot("tables-names");
+await page.getByRole("tab", { name: "Overview" }).click();
 
 // Case diff, with the open case as baseline.
 await page.getByRole("button", { name: "Case diff", exact: true }).click();
@@ -699,6 +706,28 @@ if (STANNUM_VIOLATIONS) {
   await page.keyboard.press("Shift+Enter");
   await page.getByText(/^Around\b/).filter({ hasText: "170" }).first().waitFor();
   await page.keyboard.press("Escape");
+
+  // Tables draw only the rows in view, carry bus names, and show loading and
+  // limits as bars and marks.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  const drawnRows = page.locator("table:visible tbody tr:not([data-spacer])");
+  const overloadsOnly = page.getByLabel(/Overloads only/);
+  if (await overloadsOnly.isChecked()) await overloadsOnly.uncheck();
+  const total = Number((await page.locator("text=/^[\\d,]+ rows?$/ >> visible=true").first().innerText()).replace(/[^\d]/g, ""));
+  assert.ok(total > 300, "case300 has more than 300 branches");
+  assert.ok((await drawnRows.count()) < total, "only rows in view are drawn");
+  const scroller = page.locator("table:visible").locator("xpath=..");
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await page.locator("table:visible tbody tr:not([data-spacer]) td:first-child", { hasText: new RegExp(`^${total}$`) }).waitFor();
+  await scroller.evaluate((el) => (el.scrollTop = 0));
+  await page.getByRole("columnheader", { name: /Loading/ }).click();
+  await page.getByRole("columnheader", { name: /Loading/ }).click();
+  await shot("tables-branches");
+  await page.getByRole("tab", { name: /Buses/ }).click();
+  await page.getByTestId("range-mark").first().waitFor();
+  await page.getByRole("columnheader", { name: "Vm (p.u.)" }).click();
+  await shot("tables-buses");
 
   // MATPOWER has no RAW records, so Topology is built from the power flow model.
   await page.getByRole("button", { name: "Topology", exact: true }).click();

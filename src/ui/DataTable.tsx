@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+/** Every body row is this tall, so only the rows in view need drawing. */
+export const ROW_HEIGHT = 28;
+const HEADER_HEIGHT = 33;
+/** Rows drawn beyond the edges of the view, for smooth scrolling. */
+const OVERSCAN = 12;
 
 export interface Column<T> {
   key: string;
@@ -16,7 +22,6 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   rowKey: (row: T) => string | number;
   search?: string;
-  pageSize?: number;
   onRowClick?: (row: T) => void;
   selectedKey?: string | number | null;
   /** Marks rows as selected when one key is not enough (overrides selectedKey). */
@@ -49,7 +54,6 @@ export function DataTable<T>({
   columns,
   rowKey,
   search = "",
-  pageSize = 100,
   onRowClick,
   selectedKey,
   isSelected,
@@ -58,7 +62,6 @@ export function DataTable<T>({
   initialSort = null,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState(initialSort);
-  const [page, setPage] = useState(0);
 
   const filtered = useMemo(() => filterRows(rows, columns, search), [rows, columns, search]);
   const sorted = useMemo(() => {
@@ -76,27 +79,40 @@ export function DataTable<T>({
   const selectedRow = (row: T) =>
     isSelected ? isSelected(row) : selectedKey !== undefined && selectedKey !== null && selectedKey === rowKey(row);
 
-  // When the selection changes (here or in another module), turn to its page
-  // and scroll it into view. Sorting or paging by hand doesn't re-trigger this.
+  // Only the rows in view (plus a margin) are drawn; spacer rows keep the
+  // scroll height, so a case with tens of thousands of rows scrolls freely.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState({ top: 0, height: 600 });
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setView({ top: el.scrollTop, height: el.clientHeight || 600 });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const first = Math.max(0, Math.floor(view.top / ROW_HEIGHT) - OVERSCAN);
+  const last = Math.min(sorted.length, Math.ceil((view.top + view.height) / ROW_HEIGHT) + OVERSCAN);
+  const visible = sorted.slice(first, last);
+  const above = first * ROW_HEIGHT;
+  const below = (sorted.length - last) * ROW_HEIGHT;
+
+  // When the selection changes (here or in another module), scroll it into
+  // view. Sorting or scrolling by hand doesn't re-trigger this.
   const firstSelected = sorted.findIndex(selectedRow);
   const revealKey = firstSelected >= 0 ? rowKey(sorted[firstSelected]) : null;
-  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (revealKey === null) return;
-    setPage(Math.floor(firstSelected / pageSize));
-    const id = requestAnimationFrame(() => {
-      scrollRef.current?.querySelector("tr[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
-    });
-    return () => cancelAnimationFrame(id);
+    const el = scrollRef.current;
+    if (revealKey === null || !el) return;
+    const top = firstSelected * ROW_HEIGHT;
+    const bodyHeight = el.clientHeight - HEADER_HEIGHT;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_HEIGHT > el.scrollTop + bodyHeight) el.scrollTop = top + ROW_HEIGHT - bodyHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey]);
 
-  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const current = Math.min(page, pages - 1);
-  const visible = sorted.slice(current * pageSize, (current + 1) * pageSize);
-
   function toggleSort(key: string) {
-    setPage(0);
     setSort((s) =>
       !s || s.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null
     );
@@ -104,7 +120,14 @@ export function DataTable<T>({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setView({ top: el.scrollTop, height: el.clientHeight || 600 });
+        }}
+      >
         <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr>
@@ -128,6 +151,11 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
+            {above > 0 && (
+              <tr aria-hidden="true" data-spacer style={{ height: above }}>
+                <td colSpan={columns.length} />
+              </tr>
+            )}
             {visible.map((row) => {
               const key = rowKey(row);
               const selected = selectedRow(row);
@@ -136,8 +164,7 @@ export function DataTable<T>({
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   aria-selected={selected}
-                  // Keep a revealed row clear of the sticky header.
-                  style={{ scrollMarginTop: 36 }}
+                  style={{ height: ROW_HEIGHT }}
                   className={`${onRowClick ? "cursor-pointer" : ""} ${
                     selected ? "bg-teal-50 outline outline-1 -outline-offset-1 outline-teal-400" : "hover:bg-slate-50"
                   } ${rowClassName?.(row) ?? ""}`}
@@ -145,7 +172,7 @@ export function DataTable<T>({
                   {columns.map((c) => (
                     <td
                       key={c.key}
-                      className={`px-2.5 py-1.5 border-b border-slate-100 whitespace-nowrap ${
+                      className={`px-2.5 py-0 border-b border-slate-100 whitespace-nowrap ${
                         c.align === "right" ? "text-right" : "text-left"
                       }`}
                     >
@@ -155,6 +182,11 @@ export function DataTable<T>({
                 </tr>
               );
             })}
+            {below > 0 && (
+              <tr aria-hidden="true" data-spacer style={{ height: below }}>
+                <td colSpan={columns.length} />
+              </tr>
+            )}
           </tbody>
         </table>
         {!visible.length && <div className="p-6 text-center text-xs text-slate-500">{empty}</div>}
@@ -164,27 +196,6 @@ export function DataTable<T>({
           {sorted.length.toLocaleString()} row{sorted.length === 1 ? "" : "s"}
           {sorted.length !== rows.length && ` of ${rows.length.toLocaleString()}`}
         </span>
-        {pages > 1 && (
-          <span className="flex items-center gap-1">
-            <button
-              className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"
-              disabled={current === 0}
-              onClick={() => setPage(current - 1)}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            Page {current + 1} of {pages}
-            <button
-              className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"
-              disabled={current >= pages - 1}
-              onClick={() => setPage(current + 1)}
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </span>
-        )}
       </div>
     </div>
   );
