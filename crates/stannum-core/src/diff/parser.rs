@@ -396,7 +396,7 @@ impl<'a> Parser<'a> {
             let evidence = layout["evidence"].as_str().unwrap_or_default();
             let verified = matches!(
                 evidence,
-                "records_verified" | "two_winding_records_verified"
+                "records_verified" | "two_winding_records_verified" | "manual_layout"
             );
             loop {
                 position = self.skip_headers(position);

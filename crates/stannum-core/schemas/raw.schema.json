@@ -2542,7 +2542,7 @@
       ],
       "layouts": {
         "35": {
-          "evidence": "header_only",
+          "evidence": "manual_layout",
           "lines": [
             {
               "fields": [
@@ -2580,7 +2580,7 @@
                 },
                 {
                   "name": "METER",
-                  "type": "integer"
+                  "type": "string"
                 },
                 {
                   "name": "DCVMIN",
@@ -2751,12 +2751,210 @@
           ]
         },
         "33": {
-          "evidence": "empty_section_no_field_headers",
-          "lines": null
+          "evidence": "manual_layout",
+          "lines": [
+            {
+              "fields": [
+                {
+                  "name": "NAME",
+                  "type": "string"
+                },
+                {
+                  "name": "MDC",
+                  "type": "integer"
+                },
+                {
+                  "name": "RDC",
+                  "type": "number"
+                },
+                {
+                  "name": "SETVL",
+                  "type": "number"
+                },
+                {
+                  "name": "VSCHD",
+                  "type": "number"
+                },
+                {
+                  "name": "VCMOD",
+                  "type": "number"
+                },
+                {
+                  "name": "RCOMP",
+                  "type": "number"
+                },
+                {
+                  "name": "DELTI",
+                  "type": "number"
+                },
+                {
+                  "name": "METER",
+                  "type": "string"
+                },
+                {
+                  "name": "DCVMIN",
+                  "type": "number"
+                },
+                {
+                  "name": "CCCITMX",
+                  "type": "integer"
+                },
+                {
+                  "name": "CCCACC",
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IPR",
+                  "type": "integer"
+                },
+                {
+                  "name": "NBR",
+                  "type": "integer"
+                },
+                {
+                  "name": "ANMXR",
+                  "type": "number"
+                },
+                {
+                  "name": "ANMNR",
+                  "type": "number"
+                },
+                {
+                  "name": "RCR",
+                  "type": "number"
+                },
+                {
+                  "name": "XCR",
+                  "type": "number"
+                },
+                {
+                  "name": "EBASR",
+                  "type": "number"
+                },
+                {
+                  "name": "TRR",
+                  "type": "number"
+                },
+                {
+                  "name": "TAPR",
+                  "type": "number"
+                },
+                {
+                  "name": "TMXR",
+                  "type": "number"
+                },
+                {
+                  "name": "TMNR",
+                  "type": "number"
+                },
+                {
+                  "name": "STPR",
+                  "type": "number"
+                },
+                {
+                  "name": "ICR",
+                  "type": "integer"
+                },
+                {
+                  "name": "IFR",
+                  "type": "integer"
+                },
+                {
+                  "name": "ITR",
+                  "type": "integer"
+                },
+                {
+                  "name": "IDR",
+                  "type": "string"
+                },
+                {
+                  "name": "XCAPR",
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "fields": [
+                {
+                  "name": "IPI",
+                  "type": "integer"
+                },
+                {
+                  "name": "NBI",
+                  "type": "integer"
+                },
+                {
+                  "name": "ANMXI",
+                  "type": "number"
+                },
+                {
+                  "name": "ANMNI",
+                  "type": "number"
+                },
+                {
+                  "name": "RCI",
+                  "type": "number"
+                },
+                {
+                  "name": "XCI",
+                  "type": "number"
+                },
+                {
+                  "name": "EBASI",
+                  "type": "number"
+                },
+                {
+                  "name": "TRI",
+                  "type": "number"
+                },
+                {
+                  "name": "TAPI",
+                  "type": "number"
+                },
+                {
+                  "name": "TMXI",
+                  "type": "number"
+                },
+                {
+                  "name": "TMNI",
+                  "type": "number"
+                },
+                {
+                  "name": "STPI",
+                  "type": "number"
+                },
+                {
+                  "name": "ICI",
+                  "type": "integer"
+                },
+                {
+                  "name": "IFI",
+                  "type": "integer"
+                },
+                {
+                  "name": "ITI",
+                  "type": "integer"
+                },
+                {
+                  "name": "IDI",
+                  "type": "string"
+                },
+                {
+                  "name": "XCAPI",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
         }
       },
       "notes": [
-        "Header lacks a comma between METER and DCVMIN; split into distinct fields. No populated records."
+        "Header lacks a comma between METER and DCVMIN; split into distinct fields.",
+        "No example file has populated records. Layouts follow the PSS/E program operation manual: three lines per record (control, rectifier, inverter). Revision 35 adds NDR and NDI after ICR and ICI. METER is the quoted character 'R' or 'I'."
       ]
     },
     "VSC DC LINE": {

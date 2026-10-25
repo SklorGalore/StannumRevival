@@ -90,13 +90,21 @@ pub struct RecordDetail {
 ///
 /// Key fields follow raw.schema.json: BUS `I`; LOAD and GENERATOR `I, ID`;
 /// BRANCH and SYSTEM SWITCHING DEVICE `I, J, CKT`; TRANSFORMER `I, J, K, CKT`.
-pub fn record_element(section: &str, key: &[value::Value]) -> Option<String> {
-    let int = |i: usize| -> Option<u32> {
-        match key.get(i)? {
+/// TWO-TERMINAL DC is keyed by `NAME` alone, so its buses come from the
+/// record's `IPR` and `IPI` fields.
+pub fn record_element(
+    section: &str,
+    key: &[value::Value],
+    record: Option<&parser::Record>,
+) -> Option<String> {
+    let number = |v: &value::Value| -> Option<u32> {
+        match v {
             value::Value::Number(n) => n.to_string().parse().ok(),
             value::Value::Text(t) => t.trim().parse().ok(),
         }
     };
+    let int = |i: usize| key.get(i).and_then(number);
+    let field = |name: &str| record?.field(name).and_then(number);
     let id = |i: usize| -> String {
         match key.get(i) {
             Some(value::Value::Text(t)) if !t.trim().is_empty() => t.trim().to_string(),
@@ -126,6 +134,11 @@ pub fn record_element(section: &str, key: &[value::Value]) -> Option<String> {
             }
             Some(branch_id("transformer", &mut buses, id(3)))
         }
+        "TWO-TERMINAL DC" => Some(crate::elements::dc_line(
+            field("IPR")?,
+            field("IPI")?,
+            &id(0),
+        )),
         _ => None,
     }
 }
@@ -211,7 +224,13 @@ impl Comparison {
                             .map(value::Value::display)
                             .unwrap_or_default(),
                         status: r.status,
-                        element: record_element(section, &r.key),
+                        // The baseline is usually the open case, so its
+                        // record names the element when the two differ.
+                        element: record_element(
+                            section,
+                            &r.key,
+                            r.before.as_ref().or(r.after.as_ref()),
+                        ),
                     })
                     .collect()
             })

@@ -215,3 +215,46 @@ fn diagram_network_describes_the_case() {
     // marks its generator step-ups as transformers: all branches draw as lines.
     assert!(net.branches.iter().all(|b| !b.transformer));
 }
+
+#[test]
+fn case_diff_names_dc_lines_like_the_diagram() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus_dc.raw")).unwrap();
+    let net = ws.current().unwrap().diagram_network().unwrap();
+    let drawn: Vec<&str> = net.dc_lines.iter().map(|d| d.element.as_str()).collect();
+    assert_eq!(drawn, ["dcline:1:3:East link"]);
+
+    let summary = ws
+        .compare(
+            &fixture("five_bus_dc.raw"),
+            &fixture("five_bus_dc_modified.raw"),
+        )
+        .unwrap();
+    // The layout is decoded, so DC records are no longer left unsupported.
+    assert!(summary.complete, "{:?}", summary.diagnostics);
+    let dc = summary
+        .sections
+        .iter()
+        .find(|s| s.name == "TWO-TERMINAL DC")
+        .unwrap();
+    assert_eq!((dc.counts.added, dc.counts.changed), (1, 1));
+
+    let comparison = ws.comparison().unwrap();
+    let rows = comparison.section_records("TWO-TERMINAL DC");
+    let changed = rows.iter().find(|r| r.status == Status::Changed).unwrap();
+    // The same id the diagram gives the line, so a pick there finds this row.
+    assert_eq!(changed.element.as_deref(), Some(drawn[0]));
+    let added = rows.iter().find(|r| r.status == Status::Added).unwrap();
+    assert_eq!(added.element.as_deref(), Some("dcline:2:5:Spur link"));
+
+    let detail = comparison
+        .record_detail("TWO-TERMINAL DC", changed.index)
+        .unwrap();
+    let setvl = detail.fields.iter().find(|f| f.name == "SETVL").unwrap();
+    assert_eq!(
+        (setvl.before.as_deref(), setvl.after.as_deref()),
+        (Some("40.00"), Some("55.00"))
+    );
+    let meter = detail.fields.iter().find(|f| f.name == "METER").unwrap();
+    assert_eq!(meter.before.as_deref(), Some("'I'"));
+}
