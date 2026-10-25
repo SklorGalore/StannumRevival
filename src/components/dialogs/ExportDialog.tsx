@@ -112,7 +112,7 @@ export function ExportDialog({ onClose }: Props) {
                 onClick={() => setFormat(f)}
                 className={`flex-1 py-1.5 text-xs rounded border transition-colors
                   ${format === f
-                    ? "border-blue-500 bg-blue-50 text-blue-700 font-semibold"
+                    ? "border-teal-500 bg-teal-50 text-teal-800 font-semibold"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
               >
@@ -134,7 +134,7 @@ export function ExportDialog({ onClose }: Props) {
                   onClick={() => setDpi(d)}
                   className={`flex-1 py-1.5 text-xs rounded border transition-colors
                     ${dpi === d
-                      ? "border-blue-500 bg-blue-50 text-blue-700 font-semibold"
+                      ? "border-teal-500 bg-teal-50 text-teal-800 font-semibold"
                       : "border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                 >
@@ -161,8 +161,8 @@ export function ExportDialog({ onClose }: Props) {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="flex-1 py-1.5 text-xs rounded bg-blue-600 text-white font-medium
-                       hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className="flex-1 py-1.5 text-xs rounded bg-teal-700 text-white font-medium
+                       hover:bg-teal-800 disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             <Download size={12} />
             {exporting ? "Exporting…" : "Export"}

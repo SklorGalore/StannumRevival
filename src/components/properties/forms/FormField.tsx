@@ -21,7 +21,7 @@ export function Input(props: InputProps) {
     <input
       {...props}
       className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded
-                 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400
+                 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500
                  bg-white text-slate-700"
     />
   );
@@ -36,7 +36,7 @@ export function Select({ children, ...props }: SelectProps) {
     <select
       {...props}
       className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded
-                 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400
+                 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500
                  bg-white text-slate-700"
     >
       {children}
