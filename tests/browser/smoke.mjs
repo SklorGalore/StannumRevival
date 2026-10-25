@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -463,6 +463,52 @@ if (STANNUM_RAW_DC) {
   assert.equal(await page.locator(".react-flow__node-dcLink").count(), 2, "both DC lines from bus 301 drawn");
   assert.match(await page.getByTestId("voltage-legend").innerText(), /DC line/, "legend names DC lines");
   await shot("diagram-dc");
+}
+
+// A DC line picked on the diagram is found in Case diff, and back again.
+// TWO-TERMINAL DC records are keyed by name, so this checks that the diff
+// names them by their buses the way the diagram does.
+if (STANNUM_DC_A && STANNUM_DC_B) {
+  const chip = page.getByTestId("selection-chip");
+  await queue(STANNUM_DC_A);
+  await page.getByRole("button", { name: "Open another…" }).click();
+  await page.getByRole("button", { name: "Case diff", exact: true }).click();
+  await page.getByText(/Use the open case/).click();
+  await queue(STANNUM_DC_B);
+  await page.getByRole("button", { name: "Browse…" }).nth(1).click();
+  await page.getByRole("button", { name: /Compare files/ }).click();
+  await page.getByText(/differing records/).first().waitFor();
+  await page.getByRole("button", { name: /^TWO-TERMINAL DC/ }).waitFor();
+
+  await page.getByRole("button", { name: "Diagram", exact: true }).click();
+  await page.getByRole("button", { name: "From case" }).click();
+  await page.getByLabel(/Whole case/).check();
+  page.once("dialog", (d) => d.accept()); // replace the edited drawing
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  await page.waitForTimeout(400); // fit-to-screen animation
+  const dc = page.locator(".react-flow__node-dcLink");
+  assert.equal(await dc.count(), 1, "one DC line drawn");
+  await dc.click();
+  await chip.filter({ hasText: /DC line East link/ }).waitFor();
+  await shot("dc-diff-picked");
+  await chip.getByRole("button", { name: "Show in Case diff" }).click();
+  const picked = page.locator("tr[aria-selected=true]:visible").first();
+  await picked.waitFor();
+  assert.match(await picked.innerText(), /East link/);
+  await page.getByText(/is not in this comparison/).waitFor({ state: "detached" });
+  const setvl = page.locator("tr:visible", { hasText: "SETVL" });
+  assert.match(await setvl.innerText(), /40\.00[\s\S]*55\.00/, "SETVL change shown");
+  await shot("dc-diff-found");
+
+  // Picking the row in Case diff selects the symbol on the diagram.
+  await page.keyboard.press("Escape");
+  await chip.waitFor({ state: "detached" });
+  await page.locator("section:has-text('Records') table tbody tr", { hasText: "East link" }).click();
+  await chip.filter({ hasText: /DC line East link/ }).waitFor();
+  await chip.getByRole("button", { name: "Show in Diagram" }).click();
+  await page.locator(".react-flow__node-dcLink.selected").waitFor();
+  await shot("dc-diff-back");
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
