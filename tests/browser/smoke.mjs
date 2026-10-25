@@ -167,8 +167,13 @@ await page.keyboard.press("Escape");
 await chip.waitFor({ state: "detached" });
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
 
+// Each base kV has its own colour, named in a legend; print style drops it.
+const legend = page.getByTestId("voltage-legend");
+assert.equal(await legend.innerText(), "138 kV\n69 kV", "legend lists the drawing's voltages");
+
 // Print style, then undo after deleting everything.
 await page.getByRole("button", { name: "Print style" }).click();
+assert.equal(await legend.count(), 0, "no voltage legend in print style");
 await shot("diagram-print");
 await page.getByRole("button", { name: "Print style" }).click();
 const nodeCount = await page.locator(".react-flow__node").count();

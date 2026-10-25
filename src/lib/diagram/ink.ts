@@ -49,7 +49,7 @@ const DARK: Ink = {
   result: "#5eead4",
   off: "#64748b",
   wire: "#94a3b8",
-  voltage: (kv) => (kv > 0 ? getVoltageColor(kv) : "#cbd5e1"),
+  voltage: (kv) => (kv > 0 ? getVoltageColor(kv, true) : "#cbd5e1"),
   alert: (c) => c,
 };
 
