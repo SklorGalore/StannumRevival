@@ -329,6 +329,52 @@ const onBus = await load.boundingBox();
 assert(Math.abs(onBus.y - (barNow.y + barNow.height)) < 3, "dragged load snaps onto the bar");
 await shot("diagram-on-bus");
 
+// Rotation: R turns the selection a quarter. A turned bus runs vertically;
+// symbols dropped beside it turn to face it and sit on it, and a wire released
+// on the bar gets a tap on the side it comes from.
+page.once("dialog", (d) => d.accept());
+await page.getByRole("button", { name: "New", exact: true }).click();
+await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 400, y: 150 } });
+const vbus = page.locator(".react-flow__node-bus");
+await vbus.click();
+await page.keyboard.press("r");
+await page.waitForFunction(() => {
+  const b = document.querySelector(".react-flow__node-bus").getBoundingClientRect();
+  return b.height > b.width;
+});
+const vb = await vbus.boundingBox();
+const vx = vb.x - paneBox.x;
+const vy = vb.y - paneBox.y;
+await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: vx + 20, y: vy + 60 } });
+await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: vx - 20, y: vy + 120 } });
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 2);
+const sideLoad = await load.boundingBox();
+assert(sideLoad.width > sideLoad.height, "load turned to face the vertical bus");
+assert(Math.abs(sideLoad.x - (vb.x + vb.width)) < 3, `load sits on the right of the bar (${sideLoad.x} vs ${vb.x + vb.width})`);
+const sideGen = await page.locator(".react-flow__node-generator").boundingBox();
+assert(Math.abs(sideGen.x + sideGen.width - vb.x) < 3, "generator sits on the left of the bar");
+await page.locator("[draggable=true]").filter({ hasText: "Circuit Breaker" }).dragTo(pane, { targetPosition: { x: vx + 200, y: vy + 160 } });
+const cb = page.locator(".react-flow__node-circuitBreaker");
+await cb.click();
+await page.keyboard.press("r");
+await page.waitForFunction(() => document.querySelector(".react-flow__node-circuitBreaker").getBoundingClientRect().width > 50);
+await page.keyboard.press("Shift+R");
+await page.waitForFunction(() => document.querySelector(".react-flow__node-circuitBreaker").getBoundingClientRect().width < 50);
+await page.getByRole("button", { name: "Turn clockwise" }).click();
+await page.getByTestId("rotation-angle").filter({ hasText: "90°" }).waitFor();
+// The breaker's lower terminal now faces left, toward the bar.
+const cbLeft = await page.locator('.react-flow__node-circuitBreaker [data-handleid="cb-bottom"]').boundingBox();
+assert(cbLeft.x < (await cb.boundingBox()).x + 6, "turned terminal is on the left");
+await page.mouse.move(cbLeft.x + cbLeft.width / 2, cbLeft.y + cbLeft.height / 2);
+await page.mouse.down();
+await page.mouse.move(vb.x + 3, vb.y + 170, { steps: 10 });
+await page.mouse.up();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 3);
+const wire = await page.evaluate(() => [...document.querySelectorAll(".react-flow__edge-path")].map((p) => p.getAttribute("d")).find((d) => d && d.length > 20));
+assert(wire, "wire from the breaker to the bar is drawn");
+await page.mouse.click(paneBox.x + 5, paneBox.y + 5);
+await shot("diagram-rotated");
+
 // Inactive modules must not show the diagram through them.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 const showing = await page.evaluate(

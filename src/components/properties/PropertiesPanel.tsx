@@ -8,6 +8,7 @@ import { CircuitBreakerForm } from "./forms/CircuitBreakerForm";
 import { DisconnectorForm } from "./forms/DisconnectorForm";
 import { FuseForm } from "./forms/FuseForm";
 import { EdgeForm } from "./forms/EdgeForm";
+import { RotationField } from "./forms/RotationField";
 import type { SLDNode, SLDEdge, CaseRef } from "../../store/types";
 import { elementLabel } from "../../lib/elements";
 
@@ -51,6 +52,16 @@ export function PropertiesPanel() {
 }
 
 function NodeForm({ node }: { node: SLDNode }) {
+  if (node.type === "bus") return <BusForm node={node} />;
+  return (
+    <>
+      <SymbolForm node={node} />
+      <RotationField node={node} />
+    </>
+  );
+}
+
+function SymbolForm({ node }: { node: SLDNode }) {
   switch (node.type) {
     case "bus":
       return <BusForm node={node} />;

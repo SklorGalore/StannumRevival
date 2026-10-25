@@ -1,7 +1,8 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 import type { DcLinkNode as DcLinkNodeType } from "../../store/types";
 import { mw, useResults } from "../../lib/diagram/results";
 import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
 const H = 140;
@@ -12,6 +13,10 @@ const TOP = 14;
 const BOTTOM = H - 14 - BOX;
 /** The dashed DC section between the converters. */
 const DC_DASH = "6 4";
+const TERMINALS: Terminal[] = [
+  { id: "dc-top", type: "target", x: CX, y: 0, side: "top" },
+  { id: "dc-bottom", type: "source", x: CX, y: H, side: "bottom" },
+];
 
 /** A converter: a box split by a diagonal, ~ on the AC side and = on the DC side. */
 function Converter({ y, acOnTop, color }: { y: number; acOnTop: boolean; color: string }) {
@@ -41,30 +46,38 @@ export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
   // Arrow from the rectifier toward the inverter.
   const down = !data.reversed;
   const arrow = down ? `M${CX - 4},${mid - 3} L${CX},${mid + 3} L${CX + 4},${mid - 3}` : `M${CX - 4},${mid + 3} L${CX},${mid - 3} L${CX + 4},${mid + 3}`;
-  const textX = W + 2;
   return (
-    <div className="node-wrapper relative" style={{ width: W, height: H }}>
-      <svg width={W} height={H} overflow="visible" style={{ display: "block" }}>
-        <line x1={CX} y1={0} x2={CX} y2={TOP} stroke={stem(data.upperKV)} strokeWidth={STROKE} />
-        <line x1={CX} y1={BOTTOM + BOX} x2={CX} y2={H} stroke={stem(data.lowerKV)} strokeWidth={STROKE} />
-        <line x1={CX} y1={dcTop} x2={CX} y2={BOTTOM} stroke={color} strokeWidth={2} strokeDasharray={DC_DASH} />
-        {!data.outOfService && <path d={arrow} fill="none" stroke={color} strokeWidth={1.4} />}
-        <Converter y={TOP} acOnTop color={color} />
-        <Converter y={BOTTOM} acOnTop={false} color={color} />
-        <text x={textX} y={TOP + 12} fontSize={10} fill={ink.text}>
-          {data.label}
-        </text>
-        <text x={textX} y={TOP + 24} fontSize={9} fill={ink.muted}>
-          {data.outOfService ? "Blocked" : "Two-terminal DC"}
-        </text>
-        {!data.outOfService && (
-          <text x={textX} y={mid + 3} fontSize={9} fill={results ? ink.result : ink.muted}>
-            {mw(data.scheduledMW)} {results ? "" : "sched."}
+    <SymbolFrame
+      w={W}
+      h={H}
+      rotation={data.rotation}
+      terminals={TERMINALS}
+      graphic={
+        <>
+          <line x1={CX} y1={0} x2={CX} y2={TOP} stroke={stem(data.upperKV)} strokeWidth={STROKE} />
+          <line x1={CX} y1={BOTTOM + BOX} x2={CX} y2={H} stroke={stem(data.lowerKV)} strokeWidth={STROKE} />
+          <line x1={CX} y1={dcTop} x2={CX} y2={BOTTOM} stroke={color} strokeWidth={2} strokeDasharray={DC_DASH} />
+          {!data.outOfService && <path d={arrow} fill="none" stroke={color} strokeWidth={1.4} />}
+          <Converter y={TOP} acOnTop color={color} />
+          <Converter y={BOTTOM} acOnTop={false} color={color} />
+        </>
+      }
+      labelTop={TOP + 3}
+      label={
+        <>
+          <text y={TOP + 12} fontSize={10} fill={ink.text}>
+            {data.label}
           </text>
-        )}
-      </svg>
-      <Handle type="target" position={Position.Top} id="dc-top" style={{ top: 0, left: CX }} />
-      <Handle type="source" position={Position.Bottom} id="dc-bottom" style={{ bottom: 0, left: CX }} />
-    </div>
+          <text y={TOP + 24} fontSize={9} fill={ink.muted}>
+            {data.outOfService ? "Blocked" : "Two-terminal DC"}
+          </text>
+          {!data.outOfService && (
+            <text y={TOP + 36} fontSize={9} fill={results ? ink.result : ink.muted}>
+              {mw(data.scheduledMW)} {results ? "" : "sched."}
+            </text>
+          )}
+        </>
+      }
+    />
   );
 }
