@@ -150,13 +150,18 @@ fn dc_lines_reach_the_diagram_network() {
     let lines: Vec<_> = net
         .dc_lines
         .iter()
-        .map(|d| (d.element.as_str(), d.from, d.to, d.online))
+        .map(|d| (d.element.as_str(), d.kind, d.from, d.to, d.online))
         .collect();
     assert_eq!(
         lines,
         [
-            ("dcline:301:3021:1", 301, 3021, true),
-            ("dcline:301:3022:2", 301, 3022, true)
+            ("dcline:301:3021:1", "two_terminal", 301, 3021, true),
+            ("dcline:301:3022:2", "two_terminal", 301, 3022, true),
+            ("dcline:3005:3008:VDCLINE1", "vsc", 3005, 3008, true),
+            ("dcline:203:205:VDCLINE2", "vsc", 203, 205, true),
+            ("dcline:212:402:1", "multi_terminal", 402, 212, true),
+            ("dcline:212:401:1", "multi_terminal", 401, 212, true),
+            ("dcline:212:213:1", "multi_terminal", 212, 213, true),
         ]
     );
     assert!(net.dc_lines.iter().all(|d| d.mw > 0.0));

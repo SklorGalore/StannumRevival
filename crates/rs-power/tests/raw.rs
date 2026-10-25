@@ -269,7 +269,7 @@ fn revision_override_default_and_mixed_delimiters() {
         &modern.replacen("0,100,33", "0,100,99", 1),
         &RawOptions {
             revision: Some(33),
-            strict: false,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -393,4 +393,73 @@ fn branch_and_generator_sources_follow_converted_rows() {
     }
     assert_eq!(import.generator_sources.len(), 1);
     assert_eq!(import.generator_sources[0].id, "1");
+}
+
+#[test]
+fn vsc_and_multi_terminal_dc_lines_import_on_request() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/raw/t_psse_case3.raw");
+    let text = std::fs::read_to_string(path).unwrap();
+    let plain = parse_raw_with_options(&text, &RawOptions::default()).unwrap();
+    assert_eq!(plain.case.dcline.as_ref().unwrap().len(), 2);
+    let all = parse_raw_with_options(
+        &text,
+        &RawOptions {
+            all_dc_lines: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    use rs_power::DcLineKind::*;
+    assert_eq!(
+        all.dc_line_kinds,
+        [
+            TwoTerminal,
+            TwoTerminal,
+            VoltageSourceConverter,
+            VoltageSourceConverter,
+            MultiTerminal,
+            MultiTerminal,
+            MultiTerminal
+        ]
+    );
+    let lines = all.case.dcline.as_ref().unwrap();
+    assert_eq!(lines[..2], plain.case.dcline.as_ref().unwrap()[..]);
+    // VDCLINE1: 3005 withdraws 209 MW (DCSET -209) and sends it to 3008,
+    // which regulates 0.99 pu within -140..150 MVAr.
+    let v1 = &lines[2];
+    assert_eq!(all.dc_line_names[2], "VDCLINE1");
+    assert_eq!((v1[0], v1[1], v1[2], v1[3]), (3005.0, 3008.0, 1.0, 209.0));
+    assert_eq!((v1[8], v1[13], v1[14]), (0.99, -140.0, 150.0));
+    // 3005 is in power factor control at 0.95.
+    let q = 209.0 * 0.95f64.acos().tan();
+    assert!((v1[11] - q).abs() < 1e-9 && (v1[12] - q).abs() < 1e-9);
+    // MTDC system 1: rectifiers 402 and 401 (321 MW each) and inverter 213
+    // (303.8 MW) each pair with 212, which holds the DC voltage.
+    let mt: Vec<_> = lines[4..].iter().map(|l| (l[0], l[1], l[3])).collect();
+    assert_eq!(
+        mt,
+        [
+            (402.0, 212.0, 321.0),
+            (401.0, 212.0, 321.0),
+            (212.0, 213.0, 303.8)
+        ]
+    );
+    assert!(all.dc_line_names[4..].iter().all(|n| n == "1"));
+    assert!(!all.warnings.iter().any(|w| w.message.contains("skipped")
+        && (w.message.contains("voltage source") || w.message.contains("multi-terminal"))));
+    assert!(
+        parse_raw_with_options(
+            &text,
+            &RawOptions {
+                all_dc_lines: true,
+                strict: true,
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    // The extra rows solve as fixed terminal injections.
+    let solved = rs_power::solve(&all.case, &rs_power::PowerFlowOptions::default()).unwrap();
+    assert_eq!(solved.status, rs_power::SolveStatus::Converged);
 }

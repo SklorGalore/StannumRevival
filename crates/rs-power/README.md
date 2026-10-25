@@ -88,7 +88,7 @@ approximations. Use the options API to inspect warnings or reject lossy imports:
 use rs_power::{load_raw_with_options, RawOptions};
 let imported = load_raw_with_options(
     "tests/fixtures/raw/revision_33.raw",
-    &RawOptions { revision: None, strict: false },
+    &RawOptions { revision: None, strict: false, all_dc_lines: false },
 )?;
 for warning in &imported.warnings {
     eprintln!("line {}: {}", warning.line, warning.message);
@@ -122,6 +122,20 @@ Literal MATPOWER import/export preserves this table. Active links are solved as
 paired terminal injections, matching MATPOWER's `toggle_dcline` power-flow
 representation; solved PF/PT/QF/QT and terminal voltages are written back to the
 table. RAW export is not provided.
+
+MATPOWER skips voltage source converter (VSC) and multi-terminal DC data. Set
+`all_dc_lines: true` to append them to `Case::dcline` as well, after the
+two-terminal rows, with `RawImport::dc_line_kinds` saying which section each
+row came from. Both are lossless approximations and warn:
+
+- A VSC line is one row from its sending converter to its receiving converter,
+  scheduled at the MW-controlled converter's DCSET. A converter in AC voltage
+  control holds ACSET within MINQ..MAXQ; one in power factor control gets a
+  fixed reactive output at that factor.
+- A multi-terminal system is one row per scheduled converter, linked to the
+  converter that holds the DC voltage (VCONV), which picks up the balance.
+  Current-mode SETVL values are turned into MW with VCONV's scheduled DC
+  voltage. The DC buses and DC links are not modelled.
 
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
