@@ -32,6 +32,7 @@ import { busTaps } from "../nodes/shared/busTaps";
 import { AlignBar } from "./AlignBar";
 import { LocalScopeBar, NodeMenu, useCaseActions } from "./CaseActions";
 import { warmLayout } from "../../lib/diagram/generate";
+import { useWireRouting } from "./useWireRouting";
 
 /** Changes that don't alter the drawing itself. */
 const VIEW_ONLY = new Set(["select", "dimensions"]);
@@ -104,6 +105,8 @@ export function DiagramCanvas() {
     const id = window.setTimeout(warmLayout, 300);
     return () => window.clearTimeout(id);
   }, []);
+  // Wires take right-angle paths around symbols once they're drawn or moved.
+  useWireRouting(wrapperRef);
 
   // Fit when a drawing is opened or generated, not when the first symbol is
   // dropped (React Flow's `fitView` prop zoomed a lone symbol to 400%). The
