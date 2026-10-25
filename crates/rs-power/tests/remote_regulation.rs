@@ -64,6 +64,8 @@ fn reactive_limit_releases_the_remote_bus() {
     assert!((result.case.generators[1].qg - (needed - 10.0)).abs() < 1e-9);
     assert_eq!(bus(&result.case, 2).kind, BusType::Pq);
     assert!(bus(&result.case, 7).vm < 1.025 - 1e-4);
+    // Limit passes solve loosely, but the answer meets the full tolerance.
+    assert!(result.residual < limited().tolerance);
 }
 
 #[test]
