@@ -4,8 +4,8 @@ import type { Node, Edge } from "@xyflow/react";
 
 /** Links a symbol to a record of the open case, so results can be shown on it. */
 export interface CaseRef {
-  kind: "bus" | "gen" | "branch" | "load" | "shunt";
-  /** Bus number for buses, loads and shunts; table index for generators and branches. */
+  kind: "bus" | "gen" | "branch" | "load" | "shunt" | "dcline";
+  /** Bus number for buses, loads and shunts; table index for generators, branches and DC lines. */
   id: number;
   /** Shared element id (see lib/elements.ts). Missing in diagrams saved before it existed. */
   element?: string;
@@ -145,6 +145,21 @@ export interface OffPageData extends Record<string, unknown> {
   outOfService?: boolean;
 }
 
+/** A two-terminal DC line: a converter at each end and the DC line between. */
+export interface DcLinkData extends Record<string, unknown> {
+  label: string;
+  /** Scheduled MW from the rectifier. */
+  scheduledMW: number;
+  /** AC voltage at the top and bottom converter. */
+  upperKV: number;
+  lowerKV: number;
+  caseRef?: CaseRef;
+  /** The rectifier is at the bottom end. */
+  reversed?: boolean;
+  outOfService?: boolean;
+  rotation?: Rotation;
+}
+
 // ── Typed React Flow unions ──────────────────────────────────────────────────
 
 export type SLDNodeType =
@@ -156,7 +171,8 @@ export type SLDNodeType =
   | "circuitBreaker"
   | "disconnector"
   | "fuse"
-  | "offPage";
+  | "offPage"
+  | "dcLink";
 
 export type BusNode = Node<BusData, "bus">;
 export type GeneratorNode = Node<GeneratorData, "generator">;
@@ -167,6 +183,7 @@ export type CircuitBreakerNode = Node<CircuitBreakerData, "circuitBreaker">;
 export type DisconnectorNode = Node<DisconnectorData, "disconnector">;
 export type FuseNode = Node<FuseData, "fuse">;
 export type OffPageNode = Node<OffPageData, "offPage">;
+export type DcLinkNode = Node<DcLinkData, "dcLink">;
 
 export type SLDNode =
   | BusNode
@@ -177,7 +194,8 @@ export type SLDNode =
   | CircuitBreakerNode
   | DisconnectorNode
   | FuseNode
-  | OffPageNode;
+  | OffPageNode
+  | DcLinkNode;
 
 export type SLDEdge = Edge<ConductorData>;
 

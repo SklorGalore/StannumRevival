@@ -136,3 +136,35 @@ fn diff_records_match_nodal_ids() {
             .all(|r| r.element.is_none())
     );
 }
+
+fn rs_power_raw(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../rs-power/tests/fixtures/raw")
+        .join(name)
+}
+
+#[test]
+fn dc_lines_reach_the_diagram_network() {
+    let ws = open(rs_power_raw("t_psse_case3.raw"));
+    let net = ws.current().unwrap().diagram_network().unwrap();
+    let lines: Vec<_> = net
+        .dc_lines
+        .iter()
+        .map(|d| (d.element.as_str(), d.from, d.to, d.online))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            ("dcline:301:3021:1", 301, 3021, true),
+            ("dcline:301:3022:2", 301, 3022, true)
+        ]
+    );
+    assert!(net.dc_lines.iter().all(|d| d.mw > 0.0));
+
+    // Names keep their spaces, and MATPOWER-style numbering is not used for RAW.
+    let ws = open(rs_power_raw("dc_modes.raw"));
+    let net = ws.current().unwrap().diagram_network().unwrap();
+    let names: Vec<_> = net.dc_lines.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(names, ["DC 0", "DC 1", "DC 2"]);
+    assert!(!net.dc_lines[0].online, "mode 0 is blocked");
+}

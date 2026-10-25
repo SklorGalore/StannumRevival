@@ -1,13 +1,13 @@
 // Grow a generated drawing: bring more of the case in around a bus that is
 // already drawn, without moving anything that is there.
 import { nanoid } from "nanoid";
-import type { CaseNetwork, NetworkBranch } from "../analysis/types";
+import type { CaseNetwork } from "../analysis/types";
 import type { BusData, BusTap, ConductorData, SLDEdge, SLDNode, TransformerData } from "../../store/types";
 import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
 import { symbolSize } from "./sizes";
 import { isVertical } from "./bus";
-import { BUS_BAR, layoutPiece } from "./generate";
+import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, type Link } from "./generate";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -47,7 +47,7 @@ export function drawnBuses(nodes: SLDNode[]): Map<number, SLDNode> {
 export function undrawnNeighbours(net: CaseNetwork, nodes: SLDNode[], bus: number): number[] {
   const drawn = drawnBuses(nodes);
   const out = new Set<number>();
-  for (const br of net.branches) {
+  for (const br of linksOf(net)) {
     const other = br.from === bus ? br.to : br.to === bus ? br.from : null;
     if (other != null && !drawn.has(other)) out.add(other);
   }
@@ -147,12 +147,14 @@ export async function expandDrawing(
   // Branches that now have both ends drawn lose their off-page markers.
   const nowDrawn = new Set([...drawn.keys(), ...fresh]);
   const joined = new Set(
-    net.branches.filter((br) => nowDrawn.has(br.from) && nowDrawn.has(br.to)).map((br) => br.index)
+    linksOf(net)
+      .filter((br) => nowDrawn.has(br.from) && nowDrawn.has(br.to))
+      .map((br) => `${br.dc ? "dc" : "br"}${br.dc?.index ?? br.index}`)
   );
+  const markerKey = (ref: { kind: string; id: number } | undefined) =>
+    ref?.kind === "branch" ? `br${ref.id}` : ref?.kind === "dcline" ? `dc${ref.id}` : "";
   const staleMarkers = new Set(
-    nodes
-      .filter((n) => n.type === "offPage" && n.data.caseRef?.kind === "branch" && joined.has(n.data.caseRef.id))
-      .map((n) => n.id)
+    nodes.filter((n) => n.type === "offPage" && joined.has(markerKey(n.data.caseRef))).map((n) => n.id)
   );
 
   const busNodes = new Map<number, SLDNode>(drawn);
@@ -179,7 +181,7 @@ export async function expandDrawing(
 
   // A branch from a new bus back to a bus drawn earlier: no layout route,
   // so it is drawn with a plain right-angle path.
-  function link(br: NetworkBranch) {
+  function link(br: Link) {
     const a = busNodes.get(br.from);
     const b = busNodes.get(br.to);
     if (!a || !b) return;
@@ -192,7 +194,38 @@ export async function expandDrawing(
       outOfService: !br.online || undefined,
       ...extra,
     });
-    if (br.transformer) {
+    if (br.dc) {
+      const id = `dc${br.dc.index}`;
+      const pos = {
+        x: Math.round((upper.position.x + lower.position.x) / 2 / 20) * 20,
+        y: Math.round(((upper.position.y + lower.position.y) / 2 - DC_LINK.h / 2) / 20) * 20,
+      };
+      const others = [...existing, ...newNodes.map(boxOf), ...linkNodes.map(boxOf)];
+      const at = () => boxOf({ type: "dcLink", position: pos } as SLDNode);
+      for (let i = 0; i < 50 && others.some((o) => overlaps(at(), o)); i++) pos.x += 40;
+      const data = dcLinkData(br.dc, kvOf(upper), kvOf(lower), !!reversed);
+      linkNodes.push({ id, type: "dcLink", position: pos, data, selected: true } as SLDNode);
+      linkEdges.push(
+        {
+          id: `e-${id}-a`,
+          type: "conductor",
+          source: upper.id,
+          sourceHandle: tapOn(upper, pos),
+          target: id,
+          targetHandle: "dc-top",
+          data: conductor(kvOf(upper)),
+        } as SLDEdge,
+        {
+          id: `e-${id}-b`,
+          type: "conductor",
+          source: id,
+          sourceHandle: "dc-bottom",
+          target: lower.id,
+          targetHandle: tapOn(lower, { x: pos.x, y: pos.y + DC_LINK.h }),
+          data: conductor(kvOf(lower)),
+        } as SLDEdge
+      );
+    } else if (br.transformer) {
       const id = `t${br.index}`;
       const pos = {
         x: Math.round((upper.position.x + lower.position.x) / 2 / 20) * 20,
@@ -209,7 +242,7 @@ export async function expandDrawing(
         primaryKV: kvOf(upper),
         secondaryKV: kvOf(lower),
         windingsUnknown: true,
-        caseRef: { kind: "branch", id: br.index, element: br.element },
+        caseRef: linkRef(br),
         reversed,
         outOfService: !br.online || undefined,
       };
@@ -242,7 +275,7 @@ export async function expandDrawing(
         sourceHandle: tapOn(upper, lower.position),
         target: lower.id,
         targetHandle: tapOn(lower, upper.position),
-        data: conductor(kvOf(upper), { caseRef: { kind: "branch", id: br.index, element: br.element }, reversed }),
+        data: conductor(kvOf(upper), { caseRef: linkRef(br), reversed }),
       } as SLDEdge);
     }
   }

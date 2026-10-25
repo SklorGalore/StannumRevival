@@ -56,4 +56,5 @@ jobs:
           npx wait-on -t 60000 http://localhost:1420
           F=crates/stannum-core/tests/fixtures
           STANNUM_MATPOWER=$PWD/$F/case9.m STANNUM_RAW=$PWD/$F/five_bus.raw STANNUM_RAW_B=$PWD/$F/five_bus_modified.raw \
+            STANNUM_RAW_DC=$PWD/crates/rs-power/tests/fixtures/raw/t_psse_case3.raw \
             node tests/browser/smoke.mjs

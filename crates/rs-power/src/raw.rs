@@ -34,6 +34,8 @@ pub struct RawImport {
     pub branch_sources: Vec<BranchSource>,
     /// The RAW record behind each entry of `case.generators`, in the same order.
     pub generator_sources: Vec<GeneratorSource>,
+    /// The name of each two-terminal DC line, in `case.dcline` order.
+    pub dc_line_names: Vec<String>,
 }
 
 /// Which RAW section a branch came from.
@@ -675,7 +677,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
     )?;
-    convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
+    let dc_line_names = convert_dc(section("two-terminal DC"), &mut case, &indices, &mut ctx)?;
     for (i, rows) in sections.iter().enumerate() {
         let name = names.get(i).copied().unwrap_or("additional section");
         if !matches!(
@@ -714,6 +716,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         warnings: ctx.warnings,
         branch_sources,
         generator_sources,
+        dc_line_names,
     })
 }
 
@@ -982,11 +985,12 @@ fn convert_dc(
     case: &mut Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<(), Error> {
+) -> Result<Vec<String>, Error> {
     if rows.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let mut dc = vec![];
+    let mut names = vec![];
     for group in rows.chunks(3) {
         let r = &group[0];
         if group.len() != 3 {
@@ -1025,6 +1029,7 @@ fn convert_dc(
             return Err(r.error("nonfinite converted DC line"));
         }
         dc.push(line);
+        names.push(identifier(r, 0));
     }
     ctx.warn(
         rows[0].line,
@@ -1032,5 +1037,5 @@ fn convert_dc(
         "two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
     )?;
     case.dcline = Some(dc);
-    Ok(())
+    Ok(names)
 }

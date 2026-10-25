@@ -5,6 +5,7 @@ export const SYMBOL_SIZE: Record<string, { w: number; h: number }> = {
   generator: { w: 40, h: 80 },
   load: { w: 40, h: 60 },
   transformer: { w: 40, h: 100 },
+  dcLink: { w: 40, h: 140 },
   offPage: { w: 40, h: 40 },
   shunt: { w: 40, h: 60 },
   circuitBreaker: { w: 40, h: 60 },

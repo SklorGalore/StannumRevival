@@ -56,12 +56,29 @@ pub struct NetworkBranch {
     pub shift: f64,
 }
 
+/// A two-terminal DC line, from its rectifier bus to its inverter bus.
+#[derive(Clone, Debug, Serialize)]
+pub struct NetworkDcLine {
+    /// Row in the case's DC line table.
+    pub index: usize,
+    /// Shared id, such as `dcline:101:205:DC1`.
+    pub element: String,
+    /// The RAW name, or a number for MATPOWER cases.
+    pub name: String,
+    pub from: u32,
+    pub to: u32,
+    pub online: bool,
+    /// Scheduled MW sent from the rectifier. The power flow holds it fixed.
+    pub mw: f64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct CaseNetwork {
     pub base_mva: f64,
     pub buses: Vec<NetworkBus>,
     pub generators: Vec<NetworkGenerator>,
     pub branches: Vec<NetworkBranch>,
+    pub dc_lines: Vec<NetworkDcLine>,
 }
 
 pub fn network(power: &PowerCase) -> CaseNetwork {
@@ -129,10 +146,35 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             }
         })
         .collect();
+    let dc_lines = case
+        .dcline
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(index, row)| {
+            let col = |i: usize| row.get(i).copied().unwrap_or(0.0);
+            let element = power
+                .elements
+                .dc_lines
+                .get(index)
+                .cloned()
+                .unwrap_or_default();
+            NetworkDcLine {
+                index,
+                name: element.rsplit(':').next().unwrap_or_default().to_string(),
+                element,
+                from: col(0) as u32,
+                to: col(1) as u32,
+                online: col(2) != 0.0,
+                mw: col(3),
+            }
+        })
+        .collect();
     CaseNetwork {
         base_mva: case.base_mva,
         buses,
         generators,
         branches,
+        dc_lines,
     }
 }

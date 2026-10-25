@@ -1,9 +1,9 @@
 // Shared element ids, the same in every module (see stannum-core's
 // elements.rs): bus:101, line:101:102:1, transformer:101:102:103:1,
-// generator:101:1, load:101:1. Branch bus numbers are sorted, and the last
+// generator:101:1, load:101:1, dcline:301:3021:DC1. Branch bus numbers are sorted, and the last
 // part is the circuit or machine id.
 
-export type ElementKind = "bus" | "line" | "transformer" | "switch" | "generator" | "load";
+export type ElementKind = "bus" | "line" | "transformer" | "switch" | "generator" | "load" | "dcline";
 
 export interface ParsedElement {
   kind: ElementKind;
@@ -12,7 +12,7 @@ export interface ParsedElement {
   circuit: string;
 }
 
-const KINDS = new Set<ElementKind>(["bus", "line", "transformer", "switch", "generator", "load"]);
+const KINDS = new Set<ElementKind>(["bus", "line", "transformer", "switch", "generator", "load", "dcline"]);
 
 export function busElement(bus: number): string {
   return `bus:${bus}`;
@@ -41,6 +41,7 @@ const NAMES: Record<ElementKind, string> = {
   switch: "Switch",
   generator: "Generator",
   load: "Load",
+  dcline: "DC line",
 };
 
 /** A readable name, such as "Line 101–102 circuit 2". */
@@ -49,6 +50,7 @@ export function elementLabel(id: string): string {
   if (!e) return id;
   if (e.kind === "bus") return `Bus ${e.buses[0]}`;
   if (e.kind === "generator" || e.kind === "load") return `${NAMES[e.kind]} ${e.circuit} at bus ${e.buses[0]}`;
+  if (e.kind === "dcline") return `DC line ${e.circuit} (${e.buses.join("–")})`;
   return `${NAMES[e.kind]} ${e.buses.join("–")} circuit ${e.circuit}`;
 }
 
@@ -69,5 +71,6 @@ export function elementSection(id: string): string | null {
     switch: "SYSTEM SWITCHING DEVICE",
     generator: "GENERATOR",
     load: "LOAD",
+    dcline: "TWO-TERMINAL DC",
   }[kind];
 }
