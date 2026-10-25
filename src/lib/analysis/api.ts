@@ -33,6 +33,8 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   enforce_q_limits: false,
   dc_model: "detailed",
   adjust_dc_taps: true,
+  switch_shunts: true,
+  adjust_transformer_taps: true,
 };
 
 export const CASE_FILTERS = [

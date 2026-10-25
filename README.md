@@ -35,8 +35,11 @@ working.
 ### Power flow
 
 Choose AC or DC, the starting voltages, tolerance, Newton iterations and
-whether to enforce generator reactive limits, then **Solve**. The overview shows
-convergence, residual (MVA and p.u.), totals and operating-limit checks
+whether to enforce generator reactive limits, then **Solve**. For RAW cases,
+**Switch shunts** and **Adjust transformer taps** (both on by default) let
+switched shunts and transformer taps in voltage control hold their buses within
+their bands. The overview shows convergence, residual (MVA and p.u.), how many
+shunts and taps moved, totals and operating-limit checks
 (voltage limits, generator Q limits, branch loading against rate A). The bus,
 generator and branch tables are searchable, sortable and export to CSV; rows
 outside limits are highlighted. A nonconverged result is kept and labelled so

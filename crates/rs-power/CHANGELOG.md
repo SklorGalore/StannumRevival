@@ -16,6 +16,13 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Switched shunt and transformer tap voltage control:
+  `RawImport::voltage_controls` lists switched shunts (MODSW 1 and 2) and
+  transformer windings (COD 1) in voltage control, and
+  `PowerFlowOptions::voltage_controls` applies them between Newton solves.
+  Results report the final values in `PowerFlowResult::switched_shunts` and
+  `tap_ratios`. Such records no longer warn on import.
+
 - Remote voltage regulation: `RawOptions::remote_regulation` keeps PSS/E IREG
   and RMPCT in the new `Generator::regulated_bus` and
   `Generator::reactive_share`. With reactive limits enforced, the regulated

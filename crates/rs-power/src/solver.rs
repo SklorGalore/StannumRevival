@@ -1,6 +1,7 @@
 // Formulations and result allocation adapted from MATPOWER 8.1; see NOTICE.
 use crate::{
-    BusType, Case, Error, Generator,
+    BusType, Case, Error, Generator, VoltageControls,
+    controls::{self, Controller, Setup},
     dc::{self, LccLine, LccSolution, TapTargets, Taps},
     mtdc::{self, MtdcMode, MtdcSolution, MtdcSystem},
     network::Network,
@@ -51,6 +52,10 @@ pub struct PowerFlowOptions {
     pub q_limit_tolerance: f64,
     /// How DC lines are modelled; defaults to [`DcModel::Simplified`].
     pub dc_model: DcModel,
+    /// Switched shunts and transformer taps that hold bus voltages between
+    /// Newton solves (AC only); empty by default. Continuous shunts keep to
+    /// their susceptance range even when `enforce_q_limits` is false.
+    pub voltage_controls: VoltageControls,
 }
 
 /// DC line model for AC solves.
@@ -95,6 +100,7 @@ impl Default for PowerFlowOptions {
             enforce_q_limits: false,
             q_limit_tolerance: 5e-6,
             dc_model: DcModel::Simplified,
+            voltage_controls: VoltageControls::default(),
         }
     }
 }
@@ -137,6 +143,16 @@ pub struct PowerFlowResult {
     pub vsc: Vec<VscSolution>,
     /// Number of passes that reduced VSC output to converter limits.
     pub vsc_limit_passes: usize,
+    /// Final susceptance (MVAr at 1 p.u.) of each switched shunt in
+    /// [`PowerFlowOptions::voltage_controls`], in its order; also applied to
+    /// the buses' `bs` in `case`.
+    pub switched_shunts: Vec<f64>,
+    /// Final winding ratio of each tap control in
+    /// [`PowerFlowOptions::voltage_controls`], in its order; also applied to
+    /// the branches' `tap` in `case`.
+    pub tap_ratios: Vec<f64>,
+    /// Number of passes that switched shunts or moved taps.
+    pub voltage_control_passes: usize,
     /// Operating points of the detailed multi-terminal DC systems, in the
     /// order given by [`DcModel::Detailed`]. Empty for the simplified model.
     pub mtdc: Vec<MtdcSolution>,
@@ -463,6 +479,7 @@ fn layout_jacobian(net: &Network, v: &[C], layout: &Layout) -> Vec<Triplet<usize
 }
 
 /// A detailed DC line during an AC solve.
+#[derive(Clone)]
 struct LccTerminal<'a> {
     line: &'a LccLine,
     /// Internal bus indices, rectifier then inverter.
@@ -622,6 +639,7 @@ fn vsc_limit_pass(
 }
 
 /// A detailed multi-terminal DC system during an AC solve.
+#[derive(Clone)]
 struct MtdcTerminal<'a> {
     system: &'a MtdcSystem,
     topology: mtdc::Topology,
@@ -658,6 +676,7 @@ impl MtdcTerminal<'_> {
 }
 
 /// A detailed DC line or system whose converters load AC buses.
+#[derive(Clone)]
 enum DcTerminal<'a> {
     Lcc(LccTerminal<'a>),
     Mtdc(MtdcTerminal<'a>),
@@ -1057,6 +1076,9 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         dc_tap_passes: 0,
         vsc: Vec::new(),
         vsc_limit_passes: 0,
+        switched_shunts: Vec::new(),
+        tap_ratios: Vec::new(),
+        voltage_control_passes: 0,
         mtdc: Vec::new(),
     })
 }
@@ -1077,6 +1099,7 @@ fn solve_core(
     systems: &[&MtdcSystem],
     adjust_taps: bool,
     vsc_terminals: &mut [VscTerminal<'_>],
+    setup: &Setup<'_>,
 ) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
@@ -1090,7 +1113,7 @@ fn solve_core(
             "reactive-limit enforcement is only available for AC".into(),
         ));
     }
-    let net = Network::new(input)?;
+    let mut net = Network::new(input)?;
     let mut case = input.clone();
     if opt.model == Model::Dc {
         return dc(&net, case, opt);
@@ -1114,6 +1137,7 @@ fn solve_core(
         }
         Ok((i, kv))
     };
+    let mut controller = Controller::new(setup, &net, &case);
     let mut terminals = Vec::with_capacity(lines.len() + systems.len());
     for &line in lines {
         let mut ends = [0; 2];
@@ -1216,9 +1240,27 @@ fn solve_core(
     }
     let mut restores = vec![0; remote.len()];
     let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
+    let mut control_passes = 0;
+    let mut round = 0;
+    // State before the last control pass, to go back to if the solve after
+    // it fails.
+    let mut checkpoint = None;
     let (status, residual) = loop {
+        round += 1;
         let (status, it, residual) = newton(&net, &case, &kinds, &mut v, &mut terminals, opt)?;
         iterations += it;
+        if status != SolveStatus::Converged
+            && let Some((earlier, saved_case, saved_v, saved_terminals)) = checkpoint.take()
+        {
+            let held = controller.undo(earlier);
+            log::warn!(
+                "solve failed after voltage control pass {control_passes}; undoing it and holding {held} shunts or taps"
+            );
+            (case, v, terminals) = (saved_case, saved_v, saved_terminals);
+            net = Network::new(&case)?;
+            continue;
+        }
+        checkpoint = None;
         allocate(&net, &mut case, &kinds, &references, &v, &terminals);
         if status != SolveStatus::Converged {
             break (status, residual);
@@ -1249,16 +1291,16 @@ fn solve_core(
             log::debug!("VSC limit pass {vsc_passes} reduced converter output");
             continue;
         }
-        if !opt.enforce_q_limits {
-            break (status, residual);
-        }
+        // Continuous-shunt helpers always keep to their range.
+        let limited = |g: usize| opt.enforce_q_limits || g >= setup.limited_from;
+        let limits = opt.enforce_q_limits || !setup.continuous.is_empty();
         let mut violations = Vec::new();
         let mut remaining = Vec::new();
-        for (i, gens) in net.gens.iter().enumerate() {
+        for (i, gens) in net.gens.iter().enumerate().filter(|_| limits) {
             if kinds[i] != BusType::Pq {
                 remaining.extend(gens.iter().copied());
             }
-            for &g in gens {
+            for &g in gens.iter().filter(|&&g| limited(g)) {
                 let gen_data = &case.generators[g];
                 if gen_data.qg > gen_data.qmax + opt.q_limit_tolerance {
                     violations.push((i, g, gen_data.qmax, true));
@@ -1284,6 +1326,31 @@ fn solve_core(
             }
         }
         if violations.is_empty() && restored.is_empty() {
+            // Shunts and taps move once the generators have settled, so they
+            // see the final reactive limits rather than fight them.
+            if !controller.is_empty() && control_passes < MAX_CONTROL_PASSES {
+                let saved = (
+                    controller.clone(),
+                    case.clone(),
+                    v.clone(),
+                    terminals.clone(),
+                );
+                let moved = controller.pass(&mut case, &v, &kinds, round);
+                if moved > 0 {
+                    control_passes += 1;
+                    log::debug!(
+                        "voltage control pass {control_passes} moved {moved} shunts or taps"
+                    );
+                    if control_passes == MAX_CONTROL_PASSES {
+                        log::warn!(
+                            "switched shunts or taps still moving after {MAX_CONTROL_PASSES} passes; holding them"
+                        );
+                    }
+                    net = Network::new(&case)?;
+                    checkpoint = Some(saved);
+                    continue;
+                }
+            }
             break (status, residual);
         }
         log::warn!(
@@ -1343,12 +1410,20 @@ fn solve_core(
                     [passes, tap_passes, vsc_passes],
                     &terminals,
                     vsc_terminals,
-                );
+                )
+                .map(|r| with_controls(r, &controller, opt, control_passes));
             }
         }
+        let mut fixed = false;
         for &(i, g, limit, upper) in &violations {
-            case.generators[g].qg = limit;
             kinds[i] = BusType::Pq;
+            if g >= setup.limited_from {
+                // A continuous shunt at an end of its range is a fixed shunt
+                // from then on, so its output follows the voltage squared.
+                fixed |= controller.fix_continuous(&mut case, net.external[i], g, limit);
+                continue;
+            }
+            case.generators[g].qg = limit;
             if remote.binary_search(&i).is_ok() {
                 released[i] = Some(upper);
             }
@@ -1360,6 +1435,9 @@ fn solve_core(
             }
             released[i] = None;
             restores[k] += 1;
+        }
+        if fixed {
+            net = Network::new(&case)?;
         }
         passes += 1;
         for (island, reference) in net.islands.iter().zip(&mut references) {
@@ -1393,7 +1471,23 @@ fn solve_core(
         &terminals,
         vsc_terminals,
     )
+    .map(|r| with_controls(r, &controller, opt, control_passes))
 }
+
+/// Record the switched shunts' and taps' final settings on a result.
+fn with_controls(
+    mut result: PowerFlowResult,
+    controller: &Controller<'_>,
+    opt: &PowerFlowOptions,
+    passes: usize,
+) -> PowerFlowResult {
+    (result.switched_shunts, result.tap_ratios) = controller.values(Some(&opt.voltage_controls));
+    result.voltage_control_passes = passes;
+    result
+}
+
+/// Voltage control passes before switched shunts and taps are held.
+const MAX_CONTROL_PASSES: usize = 30;
 
 /// Times a remote-regulating bus may return from a reactive limit to
 /// voltage control, so that the limit loop cannot cycle.
@@ -1464,6 +1558,9 @@ fn finish_ac(
         dc_tap_passes: tap_passes,
         vsc,
         vsc_limit_passes: vsc_passes,
+        switched_shunts: Vec::new(),
+        tap_ratios: Vec::new(),
+        voltage_control_passes: 0,
         mtdc: terminals
             .iter()
             .filter_map(|t| match t {
@@ -1821,6 +1918,11 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             })
         })
         .collect();
+    let setup = if opt.model == Model::Ac {
+        controls::setup(&mut working, &opt.voltage_controls)?
+    } else {
+        Setup::none(&working)
+    };
     let mut result = solve_core(
         &working,
         opt,
@@ -1828,10 +1930,12 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         &active_mtdc,
         adjust_taps,
         &mut vsc_terminals,
+        &setup,
     )
     .inspect_err(|error| {
         log::error!("{:?} power-flow solve failed: {error}", opt.model);
     })?;
+    controls::finish(&setup, &mut result.case, &mut result.switched_shunts);
     let solved_vsc = std::mem::take(&mut result.vsc);
     result.vsc = detailed_vsc
         .iter()

@@ -48,6 +48,10 @@ export interface SolveSettings {
   dc_model: "detailed" | "simplified";
   /** Step DC converter taps (detailed model only). */
   adjust_dc_taps: boolean;
+  /** Switch shunts in voltage control (AC only). */
+  switch_shunts: boolean;
+  /** Step transformer taps in voltage control (AC only). */
+  adjust_transformer_taps: boolean;
 }
 
 export interface BusRow {
@@ -250,6 +254,12 @@ export interface SolveReport {
   dc_tap_passes?: number;
   /** Passes that reduced VSC output to converter MVA or current limits. */
   vsc_limit_passes?: number;
+  /** Passes that switched shunts or stepped transformer taps. */
+  voltage_control_passes?: number;
+  /** Switched shunts that ended away from their starting value. */
+  shunts_switched?: number;
+  /** Transformer taps that ended away from their starting ratio. */
+  taps_moved?: number;
   residual_pu: number;
   residual_mva: number;
   elapsed_ms: number;

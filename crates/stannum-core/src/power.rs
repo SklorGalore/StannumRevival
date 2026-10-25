@@ -22,6 +22,8 @@ pub struct PowerCase {
     pub lcc_lines: Vec<rs_power::LccLine>,
     /// Full data of the VSC DC lines for the detailed model.
     pub vsc_lines: Vec<rs_power::VscLine>,
+    /// Switched shunts and transformer taps in voltage control (RAW only).
+    pub voltage_controls: rs_power::VoltageControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
 }
@@ -51,6 +53,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             warnings: Vec::new(),
             lcc_lines: Vec::new(),
             vsc_lines: Vec::new(),
+            voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
         })
     } else {
@@ -79,6 +82,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .collect(),
             lcc_lines: import.lcc_lines,
             vsc_lines: import.vsc_lines,
+            voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
             case: import.case,
             warnings: import
@@ -137,6 +141,12 @@ pub struct SolveSettings {
     /// Step DC converter taps (detailed model only).
     #[serde(default = "yes")]
     pub adjust_dc_taps: bool,
+    /// Switch shunts in voltage control (AC only).
+    #[serde(default = "yes")]
+    pub switch_shunts: bool,
+    /// Step transformer taps in voltage control (AC only).
+    #[serde(default = "yes")]
+    pub adjust_transformer_taps: bool,
 }
 
 impl Default for SolveSettings {
@@ -150,13 +160,15 @@ impl Default for SolveSettings {
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
+            switch_shunts: true,
+            adjust_transformer_taps: true,
         }
     }
 }
 
 impl SolveSettings {
     /// Solver options for `power`, using its LCC data when the detailed DC
-    /// model is chosen.
+    /// model is chosen and its voltage controls when they are switched on.
     pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
         let mut options = self.options();
         if self.dc_model == DcModelChoice::Detailed
@@ -170,6 +182,15 @@ impl SolveSettings {
                 mtdc: power.mtdc.clone(),
                 adjust_taps: self.adjust_dc_taps,
             };
+        }
+        if self.model == ModelChoice::Ac {
+            let controls = &power.voltage_controls;
+            if self.switch_shunts {
+                options.voltage_controls.switched_shunts = controls.switched_shunts.clone();
+            }
+            if self.adjust_transformer_taps {
+                options.voltage_controls.taps = controls.taps.clone();
+            }
         }
         options
     }
@@ -485,6 +506,12 @@ pub struct SolveReport {
     pub dc_tap_passes: usize,
     /// Passes that reduced VSC output to converter MVA or current limits.
     pub vsc_limit_passes: usize,
+    /// Passes that switched shunts or stepped transformer taps.
+    pub voltage_control_passes: usize,
+    /// Switched shunts that ended away from their starting susceptance.
+    pub shunts_switched: usize,
+    /// Transformer taps that ended away from their starting ratio.
+    pub taps_moved: usize,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -532,10 +559,20 @@ fn outside(value: f64, low: f64, high: f64) -> f64 {
 }
 
 /// Build the frontend report from a solve, including operating-limit checks.
+/// How many devices ended more than a rounding error from where they began.
+fn moved<T>(values: &[f64], devices: &[T], start: impl Fn(&T) -> f64) -> usize {
+    values
+        .iter()
+        .zip(devices)
+        .filter(|(v, d)| (*v - start(d)).abs() > 1e-6)
+        .count()
+}
+
 pub fn report(
     result: &PowerFlowResult,
     elements: &Elements,
     dc_kinds: &[&'static str],
+    controls: &rs_power::VoltageControls,
     settings: &SolveSettings,
     elapsed_ms: f64,
 ) -> SolveReport {
@@ -794,6 +831,11 @@ pub fn report(
         q_limit_passes: result.q_limit_passes,
         dc_tap_passes: result.dc_tap_passes,
         vsc_limit_passes: result.vsc_limit_passes,
+        voltage_control_passes: result.voltage_control_passes,
+        shunts_switched: moved(&result.switched_shunts, &controls.switched_shunts, |s| {
+            s.initial
+        }),
+        taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio),
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,

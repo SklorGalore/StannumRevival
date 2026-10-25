@@ -180,12 +180,13 @@ impl OpenCase {
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
         let power = self.power_case()?;
         let start = Instant::now();
-        let result = rs_power::solve(&power.case, &settings.options_for(power))
-            .map_err(|e| e.to_string())?;
+        let options = settings.options_for(power);
+        let result = rs_power::solve(&power.case, &options).map_err(|e| e.to_string())?;
         let report = power::report(
             &result,
             &power.elements,
             &power.dc_line_kinds,
+            &options.voltage_controls,
             &settings,
             elapsed_ms(start),
         );
