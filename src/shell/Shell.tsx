@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
+import { CommandPalette } from "./CommandPalette";
 import { useWorkspace } from "../store/workspaceStore";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
 import { PowerFlowModule } from "../modules/power/PowerFlowModule";
@@ -54,6 +55,7 @@ export function Shell() {
       <ModuleRail />
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
+        <CommandPalette />
         <div className="flex-1 min-h-0 relative">
           <div className={pane("diagram")} aria-hidden={module !== "diagram"}>
             <DiagramModule active={module === "diagram"} />

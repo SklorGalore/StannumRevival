@@ -1,8 +1,10 @@
-import { FileText, FolderOpen, X } from "lucide-react";
+import { FileText, FolderOpen, Search, X } from "lucide-react";
 import { useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
+
+const SHORTCUT = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
 /** The shared open case, shown above every analysis module. */
 export function CaseBar() {
@@ -11,6 +13,7 @@ export function CaseBar() {
   const openError = useWorkspace((s) => s.openError);
   const openCase = useWorkspace((s) => s.openCase);
   const closeCase = useWorkspace((s) => s.closeCase);
+  const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
 
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
@@ -44,6 +47,16 @@ export function CaseBar() {
         </span>
       )}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          onClick={() => setPaletteOpen(true)}
+          className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+          title="Find a bus, branch or generator, or run a command"
+        >
+          <Search size={13} />
+          <span>{summary ? "Find in case" : "Commands"}</span>
+          <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-400">{SHORTCUT}</kbd>
+        </button>
         <Button variant="primary" onClick={() => openCase()} disabled={opening}>
           <FolderOpen size={14} /> {summary ? "Open another…" : "Open case…"}
         </Button>

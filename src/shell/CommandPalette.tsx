@@ -1,0 +1,258 @@
+// Ctrl+K: find any bus, branch, generator or DC line in the open case, or run
+// a command. Enter shows an element in every module; Shift+Enter draws a
+// one-line around it.
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import {
+  CornerDownLeft,
+  FolderOpen,
+  GitCompareArrows,
+  Link2,
+  Moon,
+  Network,
+  PencilRuler,
+  Play,
+  Search,
+  Sun,
+  Wand2,
+  X,
+  Zap,
+} from "lucide-react";
+import { useWorkspace, type ModuleId } from "../store/workspaceStore";
+import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
+import { caseNetwork } from "../lib/diagram/network";
+import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
+import { centreBus } from "../ui/DrawAround";
+
+interface Command {
+  id: string;
+  title: string;
+  icon: ReactNode;
+  keywords: string;
+  run: () => void;
+}
+
+const MODULE_COMMANDS: { id: ModuleId; title: string; icon: ReactNode }[] = [
+  { id: "diagram", title: "Go to Diagram", icon: <PencilRuler size={14} /> },
+  { id: "power", title: "Go to Power flow", icon: <Zap size={14} /> },
+  { id: "topology", title: "Go to Topology", icon: <Network size={14} /> },
+  { id: "diff", title: "Go to Case diff", icon: <GitCompareArrows size={14} /> },
+];
+
+function useCommands(): Command[] {
+  const summary = useWorkspace((s) => s.caseSummary);
+  const linked = useWorkspace((s) => s.linked);
+  const selection = useWorkspace((s) => s.selection);
+  const preference = useTheme((s) => s.preference);
+  return useMemo(() => {
+    const w = useWorkspace.getState();
+    const next = NEXT_PREFERENCE[preference];
+    const list: Command[] = [
+      { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
+    ];
+    if (summary?.power.available)
+      list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
+    for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
+    if (summary) {
+      list.push({
+        id: "link",
+        title: linked ? "Unlink selection" : "Link selection",
+        icon: <Link2 size={14} />,
+        keywords: "linked selection follow modules",
+        run: () => w.setLinked(!linked),
+      });
+      if (selection) list.push({ id: "clear", title: "Clear selection", icon: <X size={14} />, keywords: "deselect escape", run: () => w.select(null, w.module) });
+      list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
+    }
+    list.push({
+      id: "theme",
+      title: next === "system" ? "Use the system theme" : `Switch to ${next} theme`,
+      icon: next === "dark" ? <Moon size={14} /> : <Sun size={14} />,
+      keywords: "theme dark light appearance colour",
+      run: () => useTheme.getState().setPreference(next),
+    });
+    return list;
+  }, [summary, linked, selection, preference]);
+}
+
+type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };
+
+/** Opens with Ctrl+K (Cmd+K on macOS) from anywhere. */
+export function CommandPalette() {
+  const open = useWorkspace((s) => s.paletteOpen);
+  const setOpen = useWorkspace((s) => s.setPaletteOpen);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setOpen(!useWorkspace.getState().paletteOpen);
+      }
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [setOpen]);
+
+  if (!open) return null;
+  return <Palette onClose={() => setOpen(false)} />;
+}
+
+function Palette({ onClose }: { onClose: () => void }) {
+  const summary = useWorkspace((s) => s.caseSummary);
+  const caseVersion = useWorkspace((s) => s.caseVersion);
+  const commands = useCommands();
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [elements, setElements] = useState<PaletteElement[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    setElements(null);
+    setLoadError(null);
+    if (!summary?.power.available) return;
+    let live = true;
+    caseNetwork()
+      .then((net) => live && setElements(paletteElements(net)))
+      .catch((e: Error) => live && setLoadError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [caseVersion, summary?.power.available]);
+
+  const rows: Row[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const cmds = commands.filter((c) => !q || `${c.title} ${c.keywords}`.toLowerCase().includes(q));
+    const found = elements && q ? searchElements(elements, q) : [];
+    // A query that looks like a bus number or name puts elements first.
+    const elementsFirst = found.length > 0 && (/^\d/.test(q) || cmds.length === 0 || !cmds.some((c) => c.title.toLowerCase().startsWith(q)));
+    const e: Row[] = found.map((item) => ({ kind: "element", item }));
+    const c: Row[] = (q ? cmds : cmds.slice(0, 8)).map((command) => ({ kind: "command", command }));
+    return elementsFirst ? [...e, ...c] : [...c, ...e];
+  }, [query, commands, elements]);
+
+  useEffect(() => setActive(0), [query]);
+  useEffect(() => {
+    listRef.current?.querySelector("[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  function choose(row: Row | undefined, draw: boolean) {
+    if (!row) return;
+    onClose();
+    if (row.kind === "command") return row.command.run();
+    const w = useWorkspace.getState();
+    if (draw && centreBus(row.item.element) !== null && summary?.power.available) w.drawAround(row.item.element, w.module);
+    else w.focus(row.item.element);
+  }
+
+  function onKeyDown(e: ReactKeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((a) => Math.min(rows.length - 1, a + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(0, a - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      choose(rows[active], e.shiftKey);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    }
+  }
+
+  const firstElement = rows.findIndex((r) => r.kind === "element");
+  const firstCommand = rows.findIndex((r) => r.kind === "command");
+  const hint = !summary
+    ? "Open a case to search its buses and branches."
+    : !summary.power.available
+      ? "Element search needs a case rs-power can read."
+      : loadError
+        ? `Couldn't read the case: ${loadError}`
+        : !elements
+          ? "Reading the case…"
+          : query.trim() && firstElement < 0
+            ? `Nothing in ${summary.name} matches “${query.trim()}”.`
+            : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[12vh]" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-label="Search and commands"
+        className="w-[min(640px,92vw)] rounded-lg bg-white shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-3 border-b border-slate-200">
+          <Search size={16} className="text-slate-400 shrink-0" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={summary?.power.available ? "Bus number or name, branch, generator, or a command…" : "Type a command…"}
+            className="flex-1 py-3 text-sm bg-transparent outline-none text-slate-800 placeholder:text-slate-400"
+            aria-label="Search"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-results"
+          />
+          <kbd className="text-[10px] text-slate-400 border border-slate-200 rounded px-1">Esc</kbd>
+        </div>
+        <ul id="palette-results" ref={listRef} role="listbox" className="max-h-[52vh] overflow-y-auto py-1">
+          {rows.map((row, i) => {
+            const selected = i === active;
+            const heading =
+              i === firstElement ? "In this case" : i === firstCommand ? "Commands" : null;
+            return (
+              <li key={row.kind === "command" ? row.command.id : row.item.element} role="presentation">
+                {heading && <p className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wider uppercase text-slate-400">{heading}</p>}
+                <div
+                  role="option"
+                  aria-selected={selected}
+                  className={`mx-1 flex items-center gap-2.5 rounded-md px-2.5 py-1.5 cursor-pointer ${selected ? "bg-teal-50" : ""}`}
+                  onMouseMove={() => setActive(i)}
+                  onClick={(e) => choose(row, e.shiftKey)}
+                >
+                  {row.kind === "command" ? (
+                    <>
+                      <span className="text-slate-500">{row.command.icon}</span>
+                      <span className="text-sm text-slate-800">{row.command.title}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-slate-800 truncate">{row.item.title}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">{row.item.detail}</span>
+                      </span>
+                      {selected && summary?.power.available && centreBus(row.item.element) !== null && (
+                        <button
+                          type="button"
+                          className="shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-teal-700 hover:bg-teal-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            choose(row, true);
+                          }}
+                          title="Draw a one-line around it (Shift+Enter)"
+                        >
+                          <Wand2 size={12} /> Draw around
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {selected && <CornerDownLeft size={13} className="shrink-0 text-slate-400" aria-hidden="true" />}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {hint && <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100">{hint}</p>}
+        <p className="px-3 py-1.5 text-[10.5px] text-slate-400 border-t border-slate-100 bg-slate-50 flex gap-3">
+          <span>↑↓ choose</span>
+          <span>Enter show everywhere</span>
+          <span>Shift+Enter draw around</span>
+        </p>
+      </div>
+    </div>
+  );
+}
