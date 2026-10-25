@@ -32,6 +32,9 @@ import { SensitivityView } from "./SensitivityView";
 import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
 import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
 import { LoadingBar, RangeMark } from "../../ui/CellBars";
+import { FilterChips } from "../../ui/FilterChips";
+import type { FilterRule } from "../../lib/filters";
+import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "warnings";
 
@@ -784,8 +787,23 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     if (next) setTab(next);
   }, [selection, report]);
 
+  // Bus filters, shared by the bus, generator and branch tables. The selected
+  // element stays listed even when a filter would hide it.
+  const [rules, setRules] = useState<FilterRule[]>([]);
+  const passing = useMemo(() => (report ? passingBuses(report.buses, rules) : null), [report, rules]);
+  const selectedBus = selected === null ? null : elementBus(selected);
+  const filtered = useMemo(() => {
+    if (!report || !passing) return null;
+    return {
+      buses: report.buses.filter((b) => passing.has(b.id) || b.id === selectedBus),
+      generators: report.generators.filter((g) => passing.has(g.bus) || g.element === selected),
+      branches: report.branches.filter((b) => passing.has(b.from) || passing.has(b.to) || b.element === selected),
+    };
+  }, [report, passing, selected, selectedBus]);
+
   // A new case invalidates every result.
   useEffect(() => {
+    setRules([]);
     setSensitivity(null);
     setError(null);
     setTab("overview");
@@ -920,7 +938,30 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           </EmptyState>
         ) : (
           <>
-            <Tabs tabs={tabs} value={tab} onChange={setTab} />
+            <Tabs
+              tabs={tabs}
+              value={tab}
+              onChange={(t) => {
+                // "Only problems" belongs to the check that opened a table, not to the next tab.
+                setJump((j) => ({ ...j, problems: false }));
+                setTab(t);
+              }}
+            />
+            {report && (tab === "buses" || tab === "generators" || tab === "branches") && (
+              <FilterChips
+                fields={RESULT_BUS_FIELDS}
+                options={(field) => busFieldOptions(report.buses, field)}
+                rules={rules}
+                onRules={setRules}
+                note={
+                  filtered
+                    ? `${count(filtered[tab].length)} of ${count(report[tab].length)} ${tab}${
+                        tab === "generators" ? " at matching buses" : tab === "branches" ? " touching matching buses" : ""
+                      }`
+                    : "Applies to buses, generators and branches"
+                }
+              />
+            )}
             <div className="flex-1 min-h-0">
               {tab === "overview" && report && <Overview report={report} onJump={onJump} />}
               {tab === "buses" && report && (
@@ -930,7 +971,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.buses}
+                  rows={filtered?.buses ?? report.buses}
                   columns={busColumns}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
@@ -947,7 +988,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.generators}
+                  rows={filtered?.generators ?? report.generators}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
@@ -963,7 +1004,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={report.branches}
+                  rows={filtered?.branches ?? report.branches}
                   columns={branchCols}
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"

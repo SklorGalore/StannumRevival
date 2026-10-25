@@ -729,6 +729,26 @@ if (STANNUM_VIOLATIONS) {
   await page.getByRole("columnheader", { name: "Vm (p.u.)" }).click();
   await shot("tables-buses");
 
+  // Filter chips narrow the bus, generator and branch tables together.
+  const violationsOnly = page.getByLabel(/Voltage violations only/);
+  if (await violationsOnly.isChecked()) await violationsOnly.uncheck();
+  const chips = page.getByTestId("filter-chips");
+  await chips.getByRole("button", { name: "Add filter" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit filter" });
+  await editor.getByLabel("Filter field").selectOption("base_kv");
+  await editor.getByLabel("Filter value").selectOption("230");
+  await editor.getByRole("button", { name: "Done" }).click();
+  await chips.getByTestId("filter-chip").filter({ hasText: "Base kV is 230" }).waitFor();
+  const kept = Number((await chips.getByText(/ of 300 buses$/).innerText()).split(" ")[0]);
+  assert.ok(kept > 0 && kept < 300, "some buses kept");
+  for (const kv of await page.locator("table:visible tbody tr:not([data-spacer]) td:nth-child(4)").allInnerTexts())
+    assert.equal(kv.trim(), "230.0", "only 230 kV buses listed");
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  await chips.getByText(/touching matching buses$/).waitFor();
+  await shot("filter-chips");
+  await chips.getByRole("button", { name: /^Remove filter/ }).click();
+  await chips.getByText("Applies to buses, generators and branches").waitFor();
+
   // MATPOWER has no RAW records, so Topology is built from the power flow model.
   await page.getByRole("button", { name: "Topology", exact: true }).click();
   await page.getByText("Built from the power flow model.").waitFor();
