@@ -63,19 +63,21 @@ const equipmentColumns: Column<EquipmentRow>[] = [
   { key: "name", header: "Name", value: (r) => r.name },
   { key: "status", header: "Status", value: (r) => r.status, align: "right" },
   { key: "topology", header: "Topology", value: (r) => r.topology },
-  { key: "line", header: "RAW line", value: (r) => r.line, align: "right" },
+  { key: "line", header: "RAW line", value: (r) => r.line, render: (r) => (r.line > 0 ? r.line : "—"), align: "right" },
 ];
 const diagnosticColumns: Column<DiagRow>[] = [
   { key: "severity", header: "Severity", value: (r) => r.severity },
   { key: "section", header: "Section", value: (r) => r.section },
-  { key: "line", header: "Line", value: (r) => r.line, align: "right" },
+  { key: "line", header: "Line", value: (r) => r.line, render: (r) => (r.line > 0 ? r.line : "—"), align: "right" },
   { key: "message", header: "Message", value: (r) => r.message },
 ];
 
 function SourceFields({ source }: { source: SourceRecord }) {
   return (
     <details className="mt-2 text-[11px]">
-      <summary className="cursor-pointer font-medium text-slate-600">RAW fields · line {source.line}</summary>
+      <summary className="cursor-pointer font-medium text-slate-600">
+        {source.line > 0 ? `RAW fields · line ${source.line}` : "Model fields"}
+      </summary>
       <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
         {Object.entries(source.fields).map(([k, v]) => (
           <div key={k} className="contents">
@@ -421,7 +423,7 @@ export function TopologyModule({ active }: { active: boolean }) {
           </Button>
         }
       >
-        Open a PSS/E RAW v35 case to find islands, bridges and articulation buses, trace shortest paths and explore the
+        Open a PSS/E RAW or MATPOWER case to find islands, bridges and articulation buses, trace shortest paths and explore the
         network graph. Powered by nodal.
       </EmptyState>
     );
@@ -449,6 +451,7 @@ export function TopologyModule({ active }: { active: boolean }) {
   const lines = c.equipment.filter((e) => e.kind === "line").length;
   const transformers = c.equipment.filter((e) => e.kind === "transformer").length;
   const warnings = c.diagnostics.filter((d) => d.severity === "warning");
+  const derived = !!summary.topology.info?.derived;
   const tooLarge = shownGraph && shownGraph.nodes.length > DISPLAY_LIMIT;
 
   const tabDefs = [
@@ -499,7 +502,7 @@ export function TopologyModule({ active }: { active: boolean }) {
     <div className="h-full flex flex-col gap-3 p-3 overflow-hidden" aria-busy={busy}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 flex-1 min-w-0">
-          <Metric label="RAW buses" value={count(c.buses.length)} detail={`${count(a.original_active_buses)} active · ${count(a.excluded_buses)} excluded`} />
+          <Metric label={derived ? "Buses" : "RAW buses"} value={count(c.buses.length)} detail={`${count(a.original_active_buses)} active · ${count(a.excluded_buses)} excluded`} />
           <Metric label="Lines" value={count(lines)} detail="Parallel circuits kept" />
           <Metric label="Transformers" value={count(transformers)} detail={`${count(a.synthetic_junctions)} 3-winding junctions`} />
           <Metric label="Islands" value={count(a.islands.length)} tone={a.islands.length > 1 ? "warn" : "neutral"} />
@@ -522,6 +525,13 @@ export function TopologyModule({ active }: { active: boolean }) {
         </div>
       </div>
       {error && <ErrorBanner>{error}</ErrorBanner>}
+      {derived && (
+        <Notice>
+          <strong>Built from the power flow model.</strong>{" "}
+          {summary.format === "matpower" ? "This MATPOWER case" : "This RAW revision"} isn't read by nodal directly, so
+          switching devices and the original RAW records aren't shown, and loads are summed per bus.
+        </Notice>
+      )}
       {warnings.length > 0 && (
         <Notice>
           <strong>Topology coverage is limited.</strong> {warnings.map((d) => `${d.message} (${d.section})`).join(" · ")}

@@ -22,6 +22,8 @@ pub enum CaseFormat {
 
 pub struct TopologyState {
     pub case: nodal::model::Case,
+    /// Built from the power flow model because nodal can't read the file.
+    pub derived: bool,
     pub topology: Topology,
     pub merge_zero_impedance: bool,
 }
@@ -74,7 +76,10 @@ pub struct PowerInfo {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct TopologyInfo {
+    /// RAW revision nodal read, or 0 when built from the power flow model.
     pub revision: i32,
+    /// Built from the power flow model (MATPOWER, RAW other than revision 35).
+    pub derived: bool,
     pub buses: usize,
     pub equipment: usize,
     pub titles: Vec<String>,
@@ -131,18 +136,25 @@ impl OpenCase {
         };
         let text = decode_text(bytes);
         let power = power::load(&text, format == CaseFormat::Matpower);
-        let topology = match format {
+        let from_nodal = match format {
             CaseFormat::Matpower => {
                 Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
             }
-            CaseFormat::Raw => nodal::parse_raw(bytes)
-                .map(|case| TopologyState {
-                    topology: Topology::new(&case),
-                    case,
-                    merge_zero_impedance: false,
-                })
-                .map_err(|d| d.to_string()),
+            CaseFormat::Raw => nodal::parse_raw(bytes).map_err(|d| d.to_string()),
         };
+        // nodal reads RAW revision 35 with every record; anything else that
+        // power flow can read gets a topology built from its model.
+        let topology = match (from_nodal, &power) {
+            (Ok(case), _) => Ok((case, false)),
+            (Err(_), Ok(p)) => Ok((crate::derived_topology::from_power(p), true)),
+            (Err(e), Err(_)) => Err(e),
+        }
+        .map(|(case, derived)| TopologyState {
+            topology: Topology::new(&case),
+            case,
+            derived,
+            merge_zero_impedance: false,
+        });
         Self {
             path: path.to_path_buf(),
             name,
@@ -165,6 +177,7 @@ impl OpenCase {
             }),
             topology: ModuleStatus::from(&self.topology, |t| TopologyInfo {
                 revision: t.case.revision,
+                derived: t.derived,
                 buses: t.case.buses.len(),
                 equipment: t.case.equipment.len(),
                 titles: t.case.titles.clone(),

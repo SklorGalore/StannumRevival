@@ -17,7 +17,14 @@ fn matpower_case_solves_and_reports_limits() {
     let summary = ws.open(&fixture("case9.m")).unwrap();
     assert_eq!(summary.format, CaseFormat::Matpower);
     assert!(summary.power.available);
-    assert!(!summary.topology.available, "topology needs RAW v35");
+    // nodal can't read MATPOWER, so topology comes from the power flow model.
+    let topo = summary
+        .topology
+        .info
+        .as_ref()
+        .expect("topology from the power model");
+    assert!(topo.derived);
+    assert_eq!((topo.buses, topo.equipment), (9, 9));
     assert!(!summary.diffable);
 
     let report = ws
@@ -257,4 +264,68 @@ fn case_diff_names_dc_lines_like_the_diagram() {
     );
     let meter = detail.fields.iter().find(|f| f.name == "METER").unwrap();
     assert_eq!(meter.before.as_deref(), Some("'I'"));
+}
+
+#[test]
+fn derived_topology_matches_nodal_on_a_v35_case() {
+    // Build the five-bus case both ways: nodal from the RAW records, and the
+    // fallback from rs-power's model. Ids and the analysis must agree.
+    let text = std::fs::read_to_string(fixture("five_bus.raw")).unwrap();
+    let power = stannum_core::power::load(&text, false).unwrap();
+    let derived = stannum_core::derived_topology::from_power(&power);
+    let nodal = nodal::parse_raw(text.as_bytes()).unwrap();
+    let ids = |c: &nodal::model::Case| {
+        let mut v: Vec<_> = c.equipment.iter().map(|e| e.id.clone()).collect();
+        v.sort();
+        v
+    };
+    assert_eq!(ids(&derived), ids(&nodal));
+    let mut buses: Vec<_> = derived.buses.iter().map(|b| b.number).collect();
+    buses.sort();
+    assert_eq!(buses, [1, 2, 3, 4, 5]);
+    let a = nodal::topology::analyze(&derived);
+    let b = nodal::topology::analyze(&nodal);
+    assert_eq!(a.islands.len(), b.islands.len());
+    assert_eq!(a.bridges.len(), b.bridges.len());
+    let (mut x, mut y) = (a.articulation_buses.clone(), b.articulation_buses.clone());
+    x.sort();
+    y.sort();
+    assert_eq!(x, y);
+}
+
+#[test]
+fn derived_topology_keeps_three_winding_transformers_whole() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../rs-power/tests/fixtures/raw/transformers.raw");
+    let mut ws = Workspace::default();
+    let summary = ws.open(&path).unwrap();
+    let topo = summary
+        .topology
+        .info
+        .as_ref()
+        .expect("revision 33 gets a derived topology");
+    assert!(topo.derived);
+    let snapshot = ws.current().unwrap().topology_snapshot().unwrap();
+    // No internal star buses, and each three-winding transformer is one
+    // piece of equipment with three terminals.
+    assert!(
+        snapshot
+            .case
+            .buses
+            .iter()
+            .all(|b| !b.name.starts_with("STR_PT_XF_"))
+    );
+    let three: Vec<_> = snapshot
+        .case
+        .equipment
+        .iter()
+        .filter(|e| e.id.starts_with("transformer:") && e.buses.len() == 3)
+        .collect();
+    assert!(
+        !three.is_empty(),
+        "the fixture has three-winding transformers"
+    );
+    for e in three {
+        assert_eq!(e.active_terminals.len(), 3);
+    }
 }

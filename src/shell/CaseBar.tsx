@@ -27,7 +27,7 @@ export function CaseBar() {
             {summary.name}
           </span>
           <span className="text-[11px] text-slate-500 truncate">
-            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${topo ? ` v${topo.revision}` : ""}`}
+            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${topo && !topo.derived ? ` v${topo.revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(
                 counts.branches
