@@ -54,7 +54,7 @@ function ToolbarButton({
                   ${danger
           ? "text-red-600 hover:bg-red-50"
           : active
-            ? "bg-blue-100 text-blue-700"
+            ? "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200"
             : "text-slate-600 hover:bg-slate-100"
         }
                   ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}

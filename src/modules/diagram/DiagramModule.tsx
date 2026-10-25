@@ -6,7 +6,7 @@ import { DiagramCanvas } from "../../components/canvas/DiagramCanvas";
 import { PropertiesPanel } from "../../components/properties/PropertiesPanel";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import { elementLabel } from "../../lib/elements";
@@ -78,13 +78,43 @@ function Inner({ active }: { active: boolean }) {
   const drawing = useDrawRequest();
   // Print style and exports are black on white whatever the app theme.
   const dark = useDarkCanvas();
+  // A drawing generated from the open case is studied, not built by hand:
+  // keep the components palette folded away unless asked for.
+  const openName = useWorkspace((s) => s.caseSummary?.name);
+  const generated = useDiagramStore((s) => !!s.metadata.caseName && s.metadata.caseName === openName);
+  const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
+  const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
+  const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
+  // The inspector only takes room while something is selected.
+  const hasSelection = useDiagramStore((s) => s.selectedNodeIds.length + s.selectedEdgeIds.length > 0);
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       <Toolbar />
       <div className="flex flex-1 min-h-0">
-        <aside className="w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto">
-          <ComponentPalette />
-        </aside>
+        {paletteOpen ? (
+          <aside className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
+            <button
+              className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              onClick={() => setPalette(false)}
+              title="Hide components"
+              aria-label="Hide components"
+            >
+              <PanelLeftClose size={15} />
+            </button>
+            <ComponentPalette />
+          </aside>
+        ) : (
+          <aside className="w-10 shrink-0 border-r border-slate-200 bg-white flex flex-col items-center py-2">
+            <button
+              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              onClick={() => setPalette(true)}
+              title="Show components to draw by hand"
+              aria-label="Show components"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          </aside>
+        )}
         <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
           {missing && !drawing.busy && <NotDrawn element={missing} />}
@@ -104,9 +134,11 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
-        <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
-          <PropertiesPanel />
-        </aside>
+        {hasSelection && (
+          <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="inspector">
+            <PropertiesPanel />
+          </aside>
+        )}
       </div>
       <StatusBar />
     </div>

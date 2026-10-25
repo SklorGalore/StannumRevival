@@ -17,14 +17,14 @@ export function StatusBar() {
   const zoom = Math.round((viewport.zoom ?? 1) * 100);
 
   return (
-    <div className="h-6 flex items-center px-3 gap-4 text-xs text-slate-400 font-mono border-t border-slate-200 bg-slate-50">
+    <div className="h-6 flex items-center px-3 gap-3 text-[11px] text-slate-500 tabular-nums border-t border-slate-200 bg-white">
       <span>
         {fileName}
         {isDirty && " *"}
       </span>
-      <span className="text-slate-300">|</span>
-      <span>Zoom: {zoom}%</span>
-      <span className="text-slate-300">|</span>
+      <span className="text-slate-300">·</span>
+      <span>{zoom}%</span>
+      <span className="text-slate-300">·</span>
       <span>
         {nodes.length} component{nodes.length !== 1 ? "s" : ""}
         {" · "}
@@ -32,7 +32,7 @@ export function StatusBar() {
       </span>
       {caseName && (
         <>
-          <span className="text-slate-300">|</span>
+          <span className="text-slate-300">·</span>
           <span className={caseName === openName ? "" : "text-amber-700"}>
             {caseName === openName ? `Linked to ${caseName}` : `Drawn from ${caseName}; open it to see results`}
           </span>

@@ -4,7 +4,7 @@ import { Field } from "./FormField";
 
 const BUTTON =
   "px-2 py-1 text-xs border border-slate-200 rounded bg-white text-slate-700 hover:bg-slate-50 " +
-  "focus:outline-none focus:ring-1 focus:ring-blue-400";
+  "focus:outline-none focus:ring-1 focus:ring-teal-500";
 
 /** Turn the selected symbol a quarter either way (also R and Shift+R). */
 export function RotationField({ node }: { node: SLDNode }) {

@@ -48,7 +48,7 @@ export function DiagramMetadataDialog({ onClose }: Props) {
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
             className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded
-                       focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+                       focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
           />
         </Field>
 
@@ -61,7 +61,7 @@ export function DiagramMetadataDialog({ onClose }: Props) {
           </button>
           <button
             onClick={handleSave}
-            className="flex-1 py-1.5 text-xs rounded bg-blue-600 text-white font-medium hover:bg-blue-700"
+            className="flex-1 py-1.5 text-xs rounded bg-teal-700 text-white font-medium hover:bg-teal-800"
           >
             Save
           </button>

@@ -601,6 +601,18 @@ if (STANNUM_VIOLATIONS) {
   await page.waitForTimeout(600); // centred after the fit
   await shot("findings-drawn");
 
+  // A drawing from the case keeps the components palette folded, and the
+  // inspector only appears with a selection, so the drawing gets the room.
+  assert.equal(await page.getByTestId("components-palette").count(), 0, "palette folded on a generated drawing");
+  await page.getByTestId("inspector").waitFor();
+  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await page.getByTestId("inspector").waitFor({ state: "detached" });
+  await shot("diagram-roomy");
+  await page.getByRole("button", { name: "Show components" }).click();
+  await page.getByTestId("components-palette").waitFor();
+  await page.getByRole("button", { name: "Hide components" }).click();
+  await page.getByTestId("components-palette").waitFor({ state: "detached" });
+
   // The overview's location link draws straight from the check.
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   await page.getByRole("tab", { name: "Overview" }).click();
