@@ -21,6 +21,7 @@ import { FieldPanel, GraphLegend } from "./FieldPanel";
 import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
 import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
 import { busElement, elementBus, parseElement } from "../../lib/elements";
+import { DrawAroundButton } from "../../ui/DrawAround";
 import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
 
 type Tab = "buses" | "islands" | "critical" | "equipment" | "diagnostics";
@@ -109,7 +110,10 @@ function Inspector({
     return (
       <div className="p-3 text-xs">
         <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Equipment</p>
-        <h3 className="text-sm font-semibold capitalize">{e.kind} · circuit {e.circuit.trim()}</h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold capitalize">{e.kind} · circuit {e.circuit.trim()}</h3>
+          <DrawAroundButton element={e.id} from="topology" />
+        </div>
         <p className="text-slate-500 break-all">{e.name.trim() || e.id}</p>
         <p className="mt-1.5">
           <span className={`rounded px-1.5 py-px text-[10px] font-semibold ${active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
@@ -148,9 +152,12 @@ function Inspector({
   return (
     <div className="p-3 text-xs">
       <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Bus</p>
-      <h3 className="text-sm font-semibold">
-        {members.length > 1 ? `Merged node ${bus.number} · ${members.length} buses` : `Bus ${bus.number}`}
-      </h3>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          {members.length > 1 ? `Merged node ${bus.number} · ${members.length} buses` : `Bus ${bus.number}`}
+        </h3>
+        <DrawAroundButton element={busElement(bus.number)} from="topology" />
+      </div>
       <p className="text-slate-600">{bus.name.trim()}</p>
       <dl className="mt-2 grid grid-cols-2 gap-1.5">
         <div><dt className="text-slate-500">Base kV</dt><dd className="font-medium">{fixed(bus.base_kv, 1)}</dd></div>

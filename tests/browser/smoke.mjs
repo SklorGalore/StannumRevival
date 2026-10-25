@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -247,7 +247,7 @@ await page.getByLabel("Hops out").selectOption("1");
 page.once("dialog", (d) => d.accept()); // replace the edited drawing
 await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
-await page.getByText("Around").waitFor();
+await page.getByText(/^Around\b/).waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
 const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
 assert.equal(await studied.count(), 1, "studied bus highlighted");
@@ -556,6 +556,52 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await chip.getByRole("button", { name: "Show in Diagram" }).click();
   await page.locator(".react-flow__node-dcLink.selected").waitFor();
   await shot("dc-diff-back");
+}
+
+// Findings lead somewhere: on a case with limit violations, a check opens the
+// violations worst first, and "Draw around" opens the diagram on the element.
+// Selections are unlinked here, so this works without linking.
+if (STANNUM_VIOLATIONS) {
+  await queue(STANNUM_VIOLATIONS);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  const linkedToggle = page.getByRole("button", { name: "Linked", exact: true });
+  if (await linkedToggle.count()) await linkedToggle.click();
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.getByText("Operating limits").waitFor();
+  const voltage = page.getByTestId("check-buses");
+  const worst = (await voltage.getByRole("button", { name: /^Bus \d+$/ }).innerText()).trim();
+  const violations = Number((await voltage.locator("td").nth(1).innerText()).replace(/,/g, ""));
+  assert(violations > 0, "the case has voltage violations");
+  await shot("findings-overview");
+
+  await voltage.locator("td").nth(1).getByRole("button").click();
+  const only = page.getByLabel(/Voltage violations only/);
+  assert.equal(await only.isChecked(), true, "only violations listed");
+  await page.getByText(new RegExp(`^${violations} rows?$`)).waitFor();
+  const first = page.locator("table tbody tr:visible").first();
+  assert.equal((await first.locator("td").first().innerText()).trim(), worst.replace("Bus ", ""), "worst first");
+  await first.click();
+  await page.getByTestId("table-selection").filter({ hasText: worst }).waitFor();
+  await shot("findings-violations");
+
+  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.locator(".react-flow__node-bus.selected").first().waitFor();
+  await page.getByText(/^Around\b/).first().waitFor();
+  const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
+  assert.equal(await studied.count(), 1, "drawn around the worst bus");
+  await page.waitForTimeout(600); // centred after the fit
+  await shot("findings-drawn");
+
+  // The overview's location link draws straight from the check.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: "Overview" }).click();
+  const gen = page.getByTestId("check-generators");
+  if (Number((await gen.locator("td").nth(1).innerText()).replace(/,/g, "")) > 0) {
+    await gen.getByRole("button", { name: /^Draw a one-line around/ }).click();
+    await page.getByTestId("draw-request").waitFor({ state: "detached" });
+    await page.locator(".react-flow__node.selected").first().waitFor();
+  }
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

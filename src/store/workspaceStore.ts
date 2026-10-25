@@ -29,6 +29,10 @@ interface WorkspaceState {
   selection: SharedSelection | null;
   /** Select an element everywhere (only while linked); null clears the selection. */
   select: (element: string | null, from: ModuleId) => void;
+  /** A request to draw a one-line around an element; n tells repeat requests apart. */
+  drawRequest: { element: string; n: number } | null;
+  /** Open the diagram drawn around an element (selecting it too while linked). */
+  drawAround: (element: string, from: ModuleId) => void;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
 }
@@ -73,6 +77,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ selection: { element, from } });
   },
 
+  drawRequest: null,
+  drawAround: (element, from) => {
+    get().select(element, from);
+    set((s) => ({ drawRequest: { element, n: (s.drawRequest?.n ?? 0) + 1 }, module: "diagram" }));
+  },
+
   openCase: async (path) => {
     if (get().opening) return;
     const chosen = path ?? (await pickFile(CASE_FILTERS));
@@ -85,6 +95,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         caseVersion: s.caseVersion + 1,
         solveReport: null,
         selection: null,
+        drawRequest: null,
         opening: false,
         // A MATPOWER file has no topology, and a RAW file outside rs-power's
         // support may still have one: move to a module that can use it.
@@ -100,6 +111,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closeCase: async () => {
     await api.closeCase();
-    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null }));
+    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));
   },
 }));

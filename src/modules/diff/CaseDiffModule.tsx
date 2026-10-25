@@ -7,6 +7,7 @@ import { count } from "../../lib/analysis/format";
 import { Button, EmptyState, ErrorBanner, Notice, Panel, SearchBox, StatusPill, inputClass } from "../../ui/primitives";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { elementLabel, elementSection } from "../../lib/elements";
+import { DrawAroundButton } from "../../ui/DrawAround";
 
 const STATUSES: DiffStatus[] = ["added", "removed", "changed", "unchanged"];
 
@@ -172,6 +173,8 @@ export function CaseDiffModule({ active }: { active: boolean }) {
     [records, includeUnchanged, statusFilter]
   );
 
+  const detailElement = records.find((r) => r.index === selected)?.element ?? null;
+
   const fields = useMemo(
     () => (detail ? detail.fields.filter((f) => !changedOnly || f.status !== "unchanged").map((f, i) => ({ ...f, i })) : []),
     [detail, changedOnly]
@@ -317,10 +320,13 @@ export function CaseDiffModule({ active }: { active: boolean }) {
               eyebrow="Fields"
               title={detail ? <span className="font-mono">{detail.key}</span> : "Select a record"}
               actions={
-                <label className="flex items-center gap-1.5 text-xs text-slate-700">
-                  <input type="checkbox" checked={changedOnly} onChange={(e) => setChangedOnly(e.target.checked)} />
-                  Changed fields only
-                </label>
+                <>
+                  {detailElement && <DrawAroundButton element={detailElement} from="diff" />}
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                    <input type="checkbox" checked={changedOnly} onChange={(e) => setChangedOnly(e.target.checked)} />
+                    Changed fields only
+                  </label>
+                </>
               }
               bodyClassName="flex flex-col"
             >

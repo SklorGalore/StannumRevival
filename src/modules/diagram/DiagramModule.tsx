@@ -5,48 +5,77 @@ import { ComponentPalette } from "../../components/palette/ComponentPalette";
 import { DiagramCanvas } from "../../components/canvas/DiagramCanvas";
 import { PropertiesPanel } from "../../components/properties/PropertiesPanel";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
-import { useState } from "react";
-import { Wand2, X } from "lucide-react";
-import { GenerateDialog } from "../../components/dialogs/GenerateDialog";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
+import { useDiagramStore } from "../../store/diagramStore";
 import { elementLabel } from "../../lib/elements";
-import { generateCentre, useSharedSelection } from "./useSharedSelection";
+import { caseNetwork } from "../../lib/diagram/network";
+import { generateDiagram } from "../../lib/diagram/generate";
+import { centreBus, DrawAroundButton } from "../../ui/DrawAround";
+import { useSharedSelection } from "./useSharedSelection";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 
 /** Shown when the shared selection has no symbol in this drawing. */
 function NotDrawn({ element }: { element: string }) {
-  const canGenerate = useWorkspace((s) => !!s.caseSummary?.power.available);
-  const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState<string | null>(null);
-  const bus = generateCentre(element);
   if (hidden === element) return null;
   return (
-    <>
-      <div
-        className="absolute left-1/2 top-3 -translate-x-1/2 z-10 flex items-center gap-2 rounded-md border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-sm whitespace-nowrap"
-        data-testid="not-drawn"
-      >
-        <span>
-          <strong>{elementLabel(element)}</strong> isn't in this drawing.
-        </span>
-        {canGenerate && bus !== null && (
-          <button className="inline-flex items-center gap-1 font-medium text-teal-700 hover:underline" onClick={() => setOpen(true)}>
-            <Wand2 size={12} /> Generate around bus {bus}
-          </button>
-        )}
-        <button className="text-slate-400 hover:text-slate-700" onClick={() => setHidden(element)} aria-label="Dismiss">
-          <X size={12} />
-        </button>
-      </div>
-      {open && bus !== null && <GenerateDialog around={bus} onClose={() => setOpen(false)} />}
-    </>
+    <div
+      className="absolute left-1/2 top-3 -translate-x-1/2 z-10 flex items-center gap-2 rounded-md border border-slate-200 bg-white/95 px-3 py-1.5 text-xs text-slate-700 shadow-sm whitespace-nowrap"
+      data-testid="not-drawn"
+    >
+      <span>
+        <strong>{elementLabel(element)}</strong> isn't in this drawing.
+      </span>
+      <DrawAroundButton element={element} from="diagram" label={`Draw around bus ${centreBus(element)}`} />
+      <button className="text-slate-400 hover:text-slate-700" onClick={() => setHidden(element)} aria-label="Dismiss">
+        <X size={12} />
+      </button>
+    </div>
   );
+}
+
+/**
+ * Carry out "Draw around this" requests from other modules: replace the
+ * drawing (undoably) with the element's neighbourhood, keeping the hop count
+ * of the current local drawing.
+ */
+function useDrawRequest(): { busy: boolean; error: string | null; dismiss: () => void } {
+  const request = useWorkspace((s) => s.drawRequest);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!request) return;
+    const summary = useWorkspace.getState().caseSummary;
+    const bus = centreBus(request.element);
+    if (!summary?.power.available || bus === null) return;
+    let live = true;
+    setBusy(true);
+    setError(null);
+    const depth = useDiagramStore.getState().metadata.around?.depth ?? 2;
+    caseNetwork()
+      .then((net) => {
+        if (!net.buses.some((b) => b.id === bus && !b.star)) throw new Error(`Bus ${bus} isn't in the case network.`);
+        return generateDiagram(net, { kind: "around", bus, depth });
+      })
+      .then((out) => {
+        if (live) useDiagramStore.getState().replaceWithGenerated(out.nodes, out.edges, summary.name, { bus, depth });
+      })
+      .catch((e: Error) => live && setError(`Couldn't draw around ${elementLabel(request.element)}: ${e.message}`))
+      .finally(() => live && setBusy(false));
+    return () => {
+      live = false;
+    };
+  }, [request]);
+  return { busy, error, dismiss: () => setError(null) };
 }
 
 function Inner({ active }: { active: boolean }) {
   // Shortcuts (Delete, Ctrl+S) belong to the diagram only while it is visible.
   useKeyboardShortcuts(active);
   const missing = useSharedSelection();
+  const drawing = useDrawRequest();
   // Print style and exports are black on white whatever the app theme.
   const dark = useDarkCanvas();
   return (
@@ -58,7 +87,22 @@ function Inner({ active }: { active: boolean }) {
         </aside>
         <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
-          {missing && <NotDrawn element={missing} />}
+          {missing && !drawing.busy && <NotDrawn element={missing} />}
+          {(drawing.busy || drawing.error) && (
+            <div
+              className={`absolute left-1/2 top-3 -translate-x-1/2 z-10 flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs shadow-sm whitespace-nowrap ${
+                drawing.error ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white/95 text-slate-700"
+              }`}
+              data-testid="draw-request"
+            >
+              {drawing.error ?? "Drawing…"}
+              {drawing.error && (
+                <button className="opacity-60 hover:opacity-100" onClick={drawing.dismiss} aria-label="Dismiss">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
         </main>
         <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto">
           <PropertiesPanel />

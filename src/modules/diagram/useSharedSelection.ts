@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
-import { busElement, elementBus, parseElement } from "../../lib/elements";
+import { busElement, elementBus } from "../../lib/elements";
 import type { CaseRef, SLDEdge, SLDNode } from "../../store/types";
 
 const refOf = (x: SLDNode | SLDEdge | undefined) => (x?.data as { caseRef?: CaseRef } | undefined)?.caseRef;
@@ -19,31 +19,45 @@ export function publishDiagramSelection(item: SLDNode | SLDEdge) {
  */
 export function useSharedSelection(): string | null {
   const shared = useWorkspace((s) => s.selection);
+  // "Draw around this" from another module: select the element once its drawing is in.
+  const request = useWorkspace((s) => s.drawRequest);
   // A drawing opened or generated may now hold the selected element.
   const fitRequest = useDiagramStore((s) => s.fitRequest);
   const lastShared = useRef(shared);
+  const lastRequest = useRef(request);
+  const source = useRef<"shared" | "request">("shared");
   const { getZoom, setCenter } = useReactFlow();
   const [missing, setMissing] = useState<string | null>(null);
 
   useEffect(() => {
     // True when the selection changed; false when only the drawing did.
     const moved = lastShared.current !== shared;
+    const requested = lastRequest.current !== request;
     lastShared.current = shared;
+    lastRequest.current = request;
+    if (moved) source.current = "shared";
+    if (requested) {
+      source.current = "request";
+      // The new drawing is still being laid out; wait for it to arrive.
+      setMissing(null);
+      return;
+    }
     setMissing(null);
     const { nodes, edges, selectOnly } = useDiagramStore.getState();
-    if (!shared) return;
-    if (shared.from === "diagram") return;
+    const target =
+      source.current === "request" ? (request?.element ?? null) : shared && shared.from !== "diagram" ? shared.element : null;
+    if (!target) return;
     const byElement = (id: string) => ({
       nodes: nodes.filter((n) => refOf(n)?.element === id),
       edges: edges.filter((e) => refOf(e)?.element === id),
     });
-    let hit = byElement(shared.element);
+    let hit = byElement(target);
     // Loads are drawn on their bus; fall back to the bus for generators too.
-    const bus = elementBus(shared.element);
+    const bus = elementBus(target);
     if (!hit.nodes.length && !hit.edges.length && bus !== null) hit = byElement(busElement(bus));
     if (!hit.nodes.length && !hit.edges.length) {
       selectOnly([], []);
-      setMissing(shared.element);
+      if (source.current === "shared") setMissing(target);
       return;
     }
     const nodeIds = hit.nodes.map((n) => n.id);
@@ -74,7 +88,7 @@ export function useSharedSelection(): string | null {
     const timer = window.setTimeout(() => void setCenter(x, y, { zoom: Math.max(getZoom(), 0.8), duration: 250 }), moved ? 0 : 400);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shared, fitRequest, getZoom, setCenter]);
+  }, [shared, request, fitRequest, getZoom, setCenter]);
 
   return missing;
 }
@@ -91,10 +105,4 @@ function halfway(points: { x: number; y: number }[]): { x: number; y: number } {
     left -= lengths[i];
   }
   return points[points.length - 1];
-}
-
-/** The bus to generate a drawing around for an element. */
-export function generateCentre(element: string): number | null {
-  const e = parseElement(element);
-  return e ? e.buses[0] : null;
 }

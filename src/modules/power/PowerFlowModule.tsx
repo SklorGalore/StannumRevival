@@ -27,7 +27,8 @@ import {
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
-import { busElement, elementBus, parseElement } from "../../lib/elements";
+import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
+import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "sensitivities" | "warnings";
 
@@ -323,27 +324,51 @@ function SolvePanel({
   );
 }
 
-function Overview({ report }: { report: SolveReport }) {
+/** Where a click on the overview leads: a table, optionally narrowed to its problems. */
+type Jump = { tab: "buses" | "generators" | "branches"; problems: boolean; element?: string };
+
+function Overview({ report, onJump }: { report: SolveReport; onJump: (j: Jump) => void }) {
   const l = report.limits;
-  const rows: [string, number, string, string][] = [
-    [
-      "Voltage limits",
-      l.voltage_violations,
-      l.worst_voltage ? `${fixed(l.worst_voltage[1], 4)} p.u. outside` : "—",
-      l.worst_voltage ? `Bus ${l.worst_voltage[0]}` : "—",
-    ],
-    [
-      "Generator Q limits",
-      l.reactive_violations,
-      l.worst_reactive ? `${fixed(l.worst_reactive[1])} MVAr outside` : "—",
-      l.worst_reactive ? `Bus ${l.worst_reactive[0]}` : "—",
-    ],
-    [
-      "Branch rating A",
-      l.branch_overloads,
-      l.worst_branch ? `${fixed(l.worst_branch[2], 1)}% loaded` : "—",
-      l.worst_branch ? `${l.worst_branch[0]} → ${l.worst_branch[1]}` : "—",
-    ],
+  // The worst generator and branch are reported by bus numbers; find their rows.
+  const worstGenerator = l.worst_reactive
+    ? report.generators
+        .filter((g) => g.bus === l.worst_reactive![0])
+        .reduce<GeneratorRow | null>((a, g) => (!a || g.q_violation > a.q_violation ? g : a), null)
+    : null;
+  const worstBranch = l.worst_branch
+    ? report.branches
+        .filter(
+          (b) =>
+            (b.from === l.worst_branch![0] && b.to === l.worst_branch![1]) ||
+            (b.from === l.worst_branch![1] && b.to === l.worst_branch![0])
+        )
+        .reduce<BranchRow | null>((a, b) => (!a || (b.loading_pct ?? 0) > (a.loading_pct ?? 0) ? b : a), null)
+    : null;
+  const rows: { check: string; n: number; worst: string; where: string | null; element: string | null; tab: Jump["tab"] }[] = [
+    {
+      check: "Voltage limits",
+      n: l.voltage_violations,
+      worst: l.worst_voltage ? `${fixed(l.worst_voltage[1], 4)} p.u. outside` : "—",
+      where: l.worst_voltage ? `Bus ${l.worst_voltage[0]}` : null,
+      element: l.worst_voltage ? busElement(l.worst_voltage[0]) : null,
+      tab: "buses",
+    },
+    {
+      check: "Generator Q limits",
+      n: l.reactive_violations,
+      worst: l.worst_reactive ? `${fixed(l.worst_reactive[1])} MVAr outside` : "—",
+      where: l.worst_reactive ? `Bus ${l.worst_reactive[0]}` : null,
+      element: worstGenerator?.element ?? (l.worst_reactive ? busElement(l.worst_reactive[0]) : null),
+      tab: "generators",
+    },
+    {
+      check: "Branch rating A",
+      n: l.branch_overloads,
+      worst: l.worst_branch ? `${fixed(l.worst_branch[2], 1)}% loaded` : "—",
+      where: l.worst_branch ? `${l.worst_branch[0]} → ${l.worst_branch[1]}` : null,
+      element: worstBranch?.element ?? null,
+      tab: "branches",
+    },
   ];
   return (
     <div className="p-4 flex flex-col gap-4 overflow-y-auto h-full">
@@ -385,14 +410,41 @@ function Overview({ report }: { report: SolveReport }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(([check, n, worst, where]) => (
-              <tr key={check} className="border-t border-slate-100">
-                <td className="px-3 py-2">{check}</td>
-                <td className={`px-3 py-2 text-right tabular-nums font-semibold ${n ? "text-amber-700" : "text-emerald-700"}`}>
-                  {n ? count(n) : "None"}
+            {rows.map((r) => (
+              <tr
+                key={r.check}
+                className={`border-t border-slate-100 ${r.n ? "cursor-pointer hover:bg-slate-50" : ""}`}
+                onClick={r.n ? () => onJump({ tab: r.tab, problems: true }) : undefined}
+                title={r.n ? `List the ${r.n} violation${r.n === 1 ? "" : "s"}, worst first` : undefined}
+                data-testid={`check-${r.tab}`}
+              >
+                <td className="px-3 py-2">{r.check}</td>
+                <td className={`px-3 py-2 text-right tabular-nums font-semibold ${r.n ? "text-amber-700" : "text-emerald-700"}`}>
+                  {r.n ? (
+                    <button
+                      type="button"
+                      className="underline decoration-amber-300 underline-offset-2 hover:decoration-amber-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onJump({ tab: r.tab, problems: true });
+                      }}
+                    >
+                      {count(r.n)}
+                    </button>
+                  ) : (
+                    "None"
+                  )}
                 </td>
-                <td className="px-3 py-2 tabular-nums">{worst}</td>
-                <td className="px-3 py-2">{where}</td>
+                <td className="px-3 py-2 tabular-nums">{r.worst}</td>
+                <td className="px-3 py-2">
+                  {r.element ? (
+                    <ElementLink element={r.element} from="power" onOpen={() => onJump({ tab: r.tab, problems: false, element: r.element! })}>
+                      {r.where}
+                    </ElementLink>
+                  ) : (
+                    (r.where ?? "—")
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -411,6 +463,10 @@ function TableTab<T>({
   rowClassName,
   element,
   matches,
+  selected,
+  onPick,
+  problem,
+  initialProblemsOnly = false,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -420,15 +476,26 @@ function TableTab<T>({
   rowClassName?: (r: T) => string;
   /** The shared id a row selects. */
   element: (r: T) => string;
-  /** Whether a row shows the shared selection; defaults to an exact id match. */
+  /** Whether a row shows the selection; defaults to an exact id match. */
   matches?: (r: T, selected: string) => boolean;
+  /** The element picked here or, while linked, anywhere. */
+  selected: string | null;
+  onPick: (element: string) => void;
+  /** Rows outside their limits, with the column that measures how far, worst first. */
+  problem?: { test: (r: T) => boolean; sortKey: string; label: string };
+  initialProblemsOnly?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const selected = useWorkspace((s) => s.selection?.element ?? null);
-  const select = useWorkspace((s) => s.select);
+  const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
+  const problemCount = useMemo(() => (problem ? rows.filter(problem.test).length : 0), [rows, problem]);
+  const shown = useMemo(
+    () => (problem && problemsOnly ? rows.filter(problem.test) : rows),
+    [rows, problem, problemsOnly]
+  );
   const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
+  const selectedRow = selected === null ? undefined : rows.find(isSelected);
   async function exportCsv() {
-    const filtered = filterRows(rows, columns, search);
+    const filtered = filterRows(shown, columns, search);
     const csv = toCsv(
       filtered.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)])))
     );
@@ -436,26 +503,58 @@ function TableTab<T>({
   }
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-white">
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-200 bg-white">
         <SearchBox value={search} onChange={setSearch} placeholder={placeholder} />
-        <Button variant="ghost" className="ml-auto" onClick={exportCsv}>
-          <Download size={13} /> Export CSV
-        </Button>
+        {problem && (
+          <label className={`flex items-center gap-1.5 text-xs ${problemCount ? "text-slate-700" : "text-slate-400"}`}>
+            <input
+              type="checkbox"
+              checked={problemsOnly}
+              disabled={!problemCount && !problemsOnly}
+              onChange={(e) => setProblemsOnly(e.target.checked)}
+            />
+            {problem.label} only ({count(problemCount)})
+          </label>
+        )}
+        <div className="ml-auto flex items-center gap-2 min-w-0">
+          {selectedRow && selected && (
+            <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
+              <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
+              <DrawAroundButton element={element(selectedRow)} from="power" />
+            </span>
+          )}
+          <Button variant="ghost" onClick={exportCsv}>
+            <Download size={13} /> Export CSV
+          </Button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 bg-white">
         <DataTable
-          rows={rows}
+          rows={shown}
           columns={columns}
           rowKey={rowKey}
           search={search}
           rowClassName={rowClassName}
           isSelected={isSelected}
-          onRowClick={(r) => select(element(r), "power")}
+          onRowClick={(r) => onPick(element(r))}
+          initialSort={problem && initialProblemsOnly ? { key: problem.sortKey, dir: "desc" } : null}
         />
       </div>
     </div>
   );
 }
+
+const BUS_PROBLEM = { test: (r: BusRow) => r.violation > 0, sortKey: "violation", label: "Voltage violations" };
+const GENERATOR_PROBLEM = {
+  test: (r: GeneratorRow) => r.online && r.q_violation > 0,
+  sortKey: "q_violation",
+  label: "Q limit violations",
+};
+const BRANCH_PROBLEM = {
+  test: (r: BranchRow) => r.online && (r.loading_pct ?? 0) > 100,
+  sortKey: "loading",
+  label: "Overloads",
+};
 
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
@@ -474,6 +573,22 @@ export function PowerFlowModule({ active }: { active: boolean }) {
 
   // Follow a selection made elsewhere by showing the table that lists it.
   const selection = useWorkspace((s) => s.selection);
+  const linked = useWorkspace((s) => s.linked);
+  const select = useWorkspace((s) => s.select);
+  // Picked here; while linked, the shared selection wins.
+  const [picked, setPicked] = useState<string | null>(null);
+  const selected = linked ? (selection?.element ?? null) : picked;
+  const pick = (element: string) => {
+    setPicked(element);
+    select(element, "power");
+  };
+  // A click on the overview: which table to open, and whether to list only problems.
+  const [jump, setJump] = useState<{ n: number; problems: boolean }>({ n: 0, problems: false });
+  const onJump = (j: Jump) => {
+    if (j.element) pick(j.element);
+    setJump((p) => ({ n: p.n + 1, problems: j.problems }));
+    setTab(j.tab);
+  };
   useEffect(() => {
     if (!selection || selection.from === "power" || !report) return;
     const kind = parseElement(selection.element)?.kind;
@@ -487,6 +602,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setSensitivity(null);
     setError(null);
     setTab("overview");
+    setPicked(null);
+    setJump({ n: 0, problems: false });
   }, [caseVersion]);
 
   const power = summary?.power;
@@ -603,9 +720,14 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           <>
             <Tabs tabs={tabs} value={tab} onChange={setTab} />
             <div className="flex-1 min-h-0">
-              {tab === "overview" && report && <Overview report={report} />}
+              {tab === "overview" && report && <Overview report={report} onJump={onJump} />}
               {tab === "buses" && report && (
                 <TableTab
+                  key={`buses-${jump.n}`}
+                  selected={selected}
+                  onPick={pick}
+                  problem={BUS_PROBLEM}
+                  initialProblemsOnly={jump.problems}
                   rows={report.buses}
                   columns={busColumns}
                   rowKey={(r) => r.id}
@@ -618,6 +740,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "generators" && report && (
                 <TableTab
+                  key={`generators-${jump.n}`}
+                  selected={selected}
+                  onPick={pick}
+                  problem={GENERATOR_PROBLEM}
+                  initialProblemsOnly={jump.problems}
                   rows={report.generators}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
@@ -629,6 +756,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "branches" && report && (
                 <TableTab
+                  key={`branches-${jump.n}`}
+                  selected={selected}
+                  onPick={pick}
+                  problem={BRANCH_PROBLEM}
+                  initialProblemsOnly={jump.problems}
                   rows={report.branches}
                   columns={branchColumns}
                   rowKey={(r) => r.index}
@@ -640,6 +772,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "dc" && report?.dc_lines && (
                 <TableTab
+                  selected={selected}
+                  onPick={pick}
                   rows={report.dc_lines}
                   columns={dcLineColumns}
                   rowKey={(r) => r.index}
