@@ -106,7 +106,14 @@ keeps that shape until you press **Reroute** in its properties.
 A generator, load or shunt dropped onto a bus bar, or dragged up until it
 touches one, hangs from the bar and is connected there.
 Breakers and disconnectors open and close on double-click. A selected bus has a
-grip on its right end for changing its length.
+grip on its far end for changing its length.
+
+**R** turns the selected symbols a quarter clockwise about their centres
+(**Shift+R** back, or the buttons under **Rotation** in the properties panel);
+terminals turn with the symbol and text stays upright. On a bus, **R** swaps it
+between horizontal and vertical: generators, loads and shunts sitting on it go
+round with it, and its other wires move to the side of the bar facing where
+they go. A symbol dropped beside a vertical bus turns to face it and goes on it.
 
 | Action | How |
 | --- | --- |
@@ -116,14 +123,14 @@ grip on its right end for changing its length.
 | Copy, cut, paste, duplicate | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D |
 | Select all / clear | Ctrl+A / Esc |
 | Nudge | Arrow keys (one grid step; Shift for 1 px) |
+| Rotate | R (clockwise) / Shift+R; on a bus, horizontal ⇄ vertical |
 | Align and space evenly | Bar over the canvas, shown with two or more symbols selected |
 
 **Print style** draws everything in black for printing and export. Diagrams
 save as `.sld` and export to SVG, PNG or PDF with a title block. Keyboard
 shortcuts act on the diagram only while it is showing.
 
-Not yet: shunts, switched devices and HVDC from the case, rotating symbols,
-movable labels, and selection shared with the other modules.
+Not yet: switched devices and HVDC from the case, and movable labels.
 
 ## Development
 

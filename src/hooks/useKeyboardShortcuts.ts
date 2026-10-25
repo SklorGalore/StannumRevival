@@ -39,6 +39,8 @@ export function useKeyboardShortcuts(enabled = true) {
       }
       if (e.key === "Delete" || e.key === "Backspace") return run(store.deleteSelected);
       if (e.key === "Escape") return store.clearSelection();
+      // R turns clockwise, Shift+R back.
+      if (key === "r" && !e.altKey) return run(() => store.rotateSelection(e.shiftKey ? -90 : 90));
       const arrow = ARROWS[e.key];
       if (arrow) {
         // One grid step, or a single unit with Shift for fine placement.

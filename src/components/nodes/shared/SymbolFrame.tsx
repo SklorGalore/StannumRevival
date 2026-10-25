@@ -1,0 +1,126 @@
+import { Handle, Position, useNodeId, useUpdateNodeInternals } from "@xyflow/react";
+import { useEffect, type ReactNode } from "react";
+import type { Rotation } from "../../../store/types";
+
+export type Side = "top" | "right" | "bottom" | "left";
+
+/** A connection point, in the symbol's own (unrotated) coordinates. */
+export interface Terminal {
+  id: string;
+  type: "source" | "target";
+  x: number;
+  y: number;
+  side: Side;
+}
+
+const SIDES: Side[] = ["top", "right", "bottom", "left"];
+const POSITION: Record<Side, Position> = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
+
+/** Size of a w×h symbol once turned. */
+export function rotatedSize(w: number, h: number, rotation: Rotation = 0) {
+  return rotation === 90 || rotation === 270 ? { w: h, h: w } : { w, h };
+}
+
+/** Where a point of a w×h symbol lands once turned clockwise by `rotation`. */
+export function rotatePoint(x: number, y: number, w: number, h: number, rotation: Rotation = 0) {
+  switch (rotation) {
+    case 90:
+      return { x: h - y, y: x };
+    case 180:
+      return { x: w - x, y: h - y };
+    case 270:
+      return { x: y, y: w - x };
+    default:
+      return { x, y };
+  }
+}
+
+export const rotateSide = (side: Side, rotation: Rotation = 0): Side =>
+  SIDES[(SIDES.indexOf(side) + rotation / 90) % 4];
+
+/** Places a handle with its outer edge on the terminal, inside the symbol:
+ *  React Flow ends a wire at the handle's outer edge (see index.css). */
+export function handleStyle(x: number, y: number, side: Side) {
+  const shift = { top: "-50%, 0", bottom: "-50%, -100%", left: "0, -50%", right: "-100%, -50%" }[side];
+  return { left: x, top: y, right: "auto", bottom: "auto", transform: `translate(${shift})` };
+}
+
+const TURN: Record<Rotation, (w: number, h: number) => string | undefined> = {
+  0: () => undefined,
+  90: (_w, h) => `translate(${h},0) rotate(90)`,
+  180: (w, h) => `translate(${w},${h}) rotate(180)`,
+  270: (w) => `translate(0,${w}) rotate(270)`,
+};
+
+/**
+ * Draws a symbol turned by `rotation` (clockwise, in 90° steps). The graphic
+ * and the terminals turn; the text stays upright. The label is laid out as if
+ * the symbol were upright, to its right (x from 0). Upright or upside down it
+ * stays there; turned on its side, the block moves under the symbol, centred,
+ * its top line (`labelTop`) just below it.
+ */
+export function SymbolFrame({
+  w,
+  h,
+  rotation = 0,
+  graphic,
+  label,
+  labelTop = 0,
+  terminals,
+  title,
+  onDoubleClick,
+}: {
+  w: number;
+  h: number;
+  rotation?: Rotation;
+  graphic: ReactNode;
+  /** Text lines at x = 0, using the symbol's own y coordinates. */
+  label?: ReactNode;
+  /** Top of the label block, in the symbol's own y coordinates. */
+  labelTop?: number;
+  terminals: Terminal[];
+  title?: string;
+  onDoubleClick?: () => void;
+}) {
+  const size = rotatedSize(w, h, rotation);
+  // Handles move when the symbol turns: re-measure so wires follow.
+  const id = useNodeId();
+  const updateInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    if (id) updateInternals(id);
+  }, [id, rotation, updateInternals]);
+  const sideways = rotation === 90 || rotation === 270;
+  // Sideways, the block is centred under the symbol (text-anchor inherits).
+  const labelAt = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
+  return (
+    <div className="node-wrapper relative" style={{ width: size.w, height: size.h }}>
+      <svg width={size.w} height={size.h} overflow="visible" style={{ display: "block" }} onDoubleClick={onDoubleClick}>
+        {title && <title>{title}</title>}
+        <g transform={TURN[rotation](w, h)}>{graphic}</g>
+        {label && (
+          <g transform={`translate(${labelAt.x},${labelAt.y})`} textAnchor={sideways ? "middle" : undefined}>
+            {label}
+          </g>
+        )}
+      </svg>
+      {terminals.map((t) => {
+        const p = rotatePoint(t.x, t.y, w, h, rotation);
+        const side = rotateSide(t.side, rotation);
+        return (
+          <Handle
+            key={t.id}
+            type={t.type}
+            id={t.id}
+            position={POSITION[side]}
+            style={handleStyle(p.x, p.y, side)}
+          />
+        );
+      })}
+    </div>
+  );
+}

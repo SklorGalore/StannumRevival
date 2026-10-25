@@ -3,6 +3,7 @@ import { immer } from "zustand/middleware/immer";
 import { nanoid } from "nanoid";
 import type { AlignMode, DiagramSnapshot, DiagramStore, SLDDiagram, SLDEdge, SLDNode, ConductorData } from "./types";
 import { defaultMetadata } from "./defaults";
+import { rotateSelected } from "../lib/diagram/rotate";
 
 const HISTORY_LIMIT = 100;
 /** Edits with the same key closer together than this are one undo step. */
@@ -15,7 +16,11 @@ let pasteCount = 0;
 
 /** Width and height a node occupies on the canvas. */
 function nodeSize(n: SLDNode): { w: number; h: number } {
-  if (n.type === "bus") return { w: (n.data as { length: number }).length, h: n.measured?.height ?? 6 };
+  if (n.type === "bus") {
+    const d = n.data as { length: number; orientation?: string; star?: boolean };
+    if (d.orientation === "vertical" && !d.star) return { w: n.measured?.width ?? 6, h: d.length };
+    return { w: d.length, h: n.measured?.height ?? 6 };
+  }
   return { w: n.measured?.width ?? n.width ?? 40, h: n.measured?.height ?? n.height ?? 40 };
 }
 
@@ -211,6 +216,17 @@ export const useDiagramStore = create<DiagramStore>()(
       set((s) => {
         for (const n of s.nodes)
           if (n.selected) n.position = { x: n.position.x + dx, y: n.position.y + dy };
+        s.isDirty = true;
+      });
+    },
+
+    rotateSelection: (turn) => {
+      if (!get().nodes.some((n) => n.selected)) return;
+      get().checkpoint();
+      const { nodes, edges, snapToGrid, gridSize } = get();
+      const next = rotateSelected(nodes, edges, turn, snapToGrid ? gridSize : 0);
+      set((s) => {
+        s.nodes = next as typeof s.nodes;
         s.isDirty = true;
       });
     },
