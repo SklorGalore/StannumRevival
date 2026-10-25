@@ -725,8 +725,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setJump((p) => ({ n: p.n + 1, problems: j.problems }));
     setTab(j.tab);
   };
+  // Follow each new selection once, not again whenever a new solve arrives.
+  const followed = useRef<typeof selection>(null);
   useEffect(() => {
-    if (!selection || selection.from === "power" || !report) return;
+    if (!selection || selection.from === "power" || !report || followed.current === selection) return;
+    followed.current = selection;
     const kind = parseElement(selection.element)?.kind;
     const next: Tab | null =
       kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;

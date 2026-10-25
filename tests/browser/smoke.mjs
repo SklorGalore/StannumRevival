@@ -645,7 +645,8 @@ if (STANNUM_VIOLATIONS) {
   await palette.getByRole("combobox").fill("solve");
   await palette.getByRole("option", { name: /Solve power flow/ }).waitFor();
   await page.keyboard.press("Enter");
-  await page.getByText("Converged").first().waitFor();
+  await page.getByRole("tab", { name: "Overview", selected: true }).waitFor();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
   await page.keyboard.press("Control+k");
   await palette.getByRole("combobox").fill("170");
   await palette.getByRole("option").first().filter({ hasText: /^Bus 170/ }).waitFor();
