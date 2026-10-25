@@ -760,6 +760,14 @@ if (STANNUM_VIOLATIONS) {
   await page.getByRole("tab", { name: /Branches/ }).click();
   await chips.getByText(/touching matching buses$/).waitFor();
   await shot("filter-chips");
+  // The same filters narrow the overview's charts; its checks stay whole-case.
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await chips.getByText(new RegExp(`^Charts show ${kept} of 300 buses`)).waitFor();
+  await page.getByText(`${kept} of 300 buses, lowest to highest`).waitFor();
+  await page.getByText("Touching matching buses, against rating A").waitFor();
+  await page.getByTestId("voltage-profile").scrollIntoViewIfNeeded();
+  await shot("overview-filtered");
+  await page.getByRole("tab", { name: /Branches/ }).click();
   await chips.getByRole("button", { name: /^Remove filter/ }).click();
   await chips.getByText("Applies to buses, generators and branches").waitFor();
 

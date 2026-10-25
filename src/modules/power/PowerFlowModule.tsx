@@ -496,7 +496,22 @@ function SolvePanel({
 /** Where a click on the overview leads: a table, optionally narrowed to its problems. */
 type Jump = { tab: "buses" | "generators" | "branches"; problems: boolean; element?: string };
 
-function Overview({ report, onJump }: { report: SolveReport; onJump: (j: Jump) => void }) {
+function Overview({
+  report,
+  passing,
+  onJump,
+}: {
+  report: SolveReport;
+  /** Buses passing the filter chips, or null when no filter applies. */
+  passing: Set<number> | null;
+  onJump: (j: Jump) => void;
+}) {
+  // The charts follow the filter chips; the checks above always cover the whole case.
+  const chartBuses = useMemo(() => (passing ? report.buses.filter((b) => passing.has(b.id)) : report.buses), [report, passing]);
+  const chartBranches = useMemo(
+    () => (passing ? report.branches.filter((b) => passing.has(b.from) || passing.has(b.to)) : report.branches),
+    [report, passing]
+  );
   const l = report.limits;
   const names = useMemo(() => new Map(report.buses.filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()])), [report]);
   // The worst generator and branch are reported by bus numbers; find their rows.
@@ -630,18 +645,23 @@ function Overview({ report, onJump }: { report: SolveReport; onJump: (j: Jump) =
         </table>
       </Panel>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Panel title="Voltage profile" eyebrow="Every bus, lowest to highest">
+        <Panel
+          title="Voltage profile"
+          eyebrow={passing ? `${count(chartBuses.length)} of ${count(report.buses.length)} buses, lowest to highest` : "Every bus, lowest to highest"}
+        >
           <div className="p-3">
+            {passing && !chartBuses.length && <p className="text-xs text-slate-500">No bus matches the filters.</p>}
             <VoltageProfile
-              buses={report.buses}
+              buses={chartBuses}
               onPick={(bus) => onJump({ tab: "buses", problems: false, element: busElement(bus) })}
             />
           </div>
         </Panel>
-        <Panel title="Most loaded branches" eyebrow="Against rating A">
+        <Panel title="Most loaded branches" eyebrow={passing ? "Touching matching buses, against rating A" : "Against rating A"}>
           <div className="p-3">
+            {passing && !chartBranches.length && <p className="text-xs text-slate-500">No branch touches a matching bus.</p>}
             <TopBranches
-              branches={report.branches}
+              branches={chartBranches}
               names={names}
               onPick={(element) => onJump({ tab: "branches", problems: false, element })}
             />
@@ -968,23 +988,27 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 setTab(t);
               }}
             />
-            {report && (tab === "buses" || tab === "generators" || tab === "branches") && (
+            {report && (tab === "overview" || tab === "buses" || tab === "generators" || tab === "branches") && (
               <FilterChips
                 fields={RESULT_BUS_FIELDS}
                 options={(field) => busFieldOptions(report.buses, field)}
                 rules={rules}
                 onRules={setRules}
                 note={
-                  filtered
+                  filtered && tab === "overview"
+                    ? `Charts show ${count(passing!.size)} of ${count(report.buses.length)} buses. The checks above them cover the whole case.`
+                    : filtered && tab !== "overview"
                     ? `${count(filtered[tab].length)} of ${count(report[tab].length)} ${tab}${
                         tab === "generators" ? " at matching buses" : tab === "branches" ? " touching matching buses" : ""
                       }`
-                    : "Applies to buses, generators and branches"
+                    : tab === "overview"
+                      ? "Narrows the voltage profile and the most loaded branches"
+                      : "Applies to buses, generators and branches"
                 }
               />
             )}
             <div className="flex-1 min-h-0">
-              {tab === "overview" && report && <Overview report={report} onJump={onJump} />}
+              {tab === "overview" && report && <Overview report={report} passing={passing} onJump={onJump} />}
               {tab === "buses" && report && (
                 <TableTab
                   key={`buses-${jump.n}`}
