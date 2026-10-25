@@ -98,6 +98,34 @@ export interface BranchRow {
   loading_pct: number | null;
 }
 
+/** A solved DC line, from its sending (rectifier) bus to its receiving (inverter) bus. */
+export interface DcLineRow {
+  index: number;
+  /** Shared element id, such as "dcline:101:205:DC1". */
+  element: string;
+  kind: DcLineKind;
+  from: number;
+  to: number;
+  from_name: string;
+  to_name: string;
+  online: boolean;
+  /** MW taken from the AC system at the sending end. */
+  pf: number;
+  /** MW delivered to the AC system at the receiving end. */
+  pt: number;
+  /** MVAr injected at each end; negative means absorbed. */
+  qf: number;
+  qt: number;
+  vf: number;
+  vt: number;
+  loss_mw: number;
+  qminf: number;
+  qmaxf: number;
+  qmint: number;
+  qmaxt: number;
+  q_violation: number;
+}
+
 export interface LimitSummary {
   voltage_violations: number;
   worst_voltage: [number, number] | null;
@@ -123,6 +151,8 @@ export interface SolveReport {
   buses: BusRow[];
   generators: GeneratorRow[];
   branches: BranchRow[];
+  /** Missing from older backends. */
+  dc_lines?: DcLineRow[];
 }
 
 export interface InjectionColumn {

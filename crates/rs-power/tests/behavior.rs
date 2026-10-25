@@ -89,6 +89,32 @@ fn dc_lines_match_paired_terminal_generators() {
 }
 
 #[test]
+fn dc_line_end_with_zero_width_q_range_injects_that_q() {
+    // The sending end has QMIN = QMAX = 12 MVAr (a VSC in power factor
+    // control); it should inject exactly that, with or without Q limits,
+    // leaving bus 5 a PQ bus. The receiving end still holds 1.0 p.u.
+    for enforce_q_limits in [false, true] {
+        let mut c = case();
+        c.dcline = Some(vec![vec![
+            5.0, 7.0, 1.0, 10.0, 10.0, 0.0, 0.0, 1.0, 1.0, 0.0, 20.0, 12.0, 12.0, -100.0, 100.0,
+            0.0, 0.0,
+        ]]);
+        let options = PowerFlowOptions {
+            enforce_q_limits,
+            ..Default::default()
+        };
+        let result = solve(&c, &options).unwrap();
+        assert_eq!(result.status, SolveStatus::Converged);
+        let solved = &result.case.dcline.as_ref().unwrap()[0];
+        assert_eq!(solved[5], 12.0);
+        let bus = |id| result.case.buses.iter().find(|b| b.id == id).unwrap();
+        assert_eq!(bus(5).kind, BusType::Pq);
+        assert!((bus(7).vm - 1.0).abs() < 1e-9);
+        assert!((bus(5).vm - 1.0).abs() > 1e-6, "bus 5 is not held at VF");
+    }
+}
+
+#[test]
 fn offline_dc_lines_are_preserved_and_invalid_lines_are_rejected() {
     let mut c = case();
     let line = vec![

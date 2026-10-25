@@ -6,7 +6,7 @@ use std::{collections::HashMap, path::Path};
 /// Options for RAW import. Defaults to MATPOWER-style conversion with warnings.
 #[derive(Clone, Debug, Default)]
 pub struct RawOptions {
-    /// Override revision detection (supported revisions: 23 through 33, and 35).
+    /// Override revision detection (supported revisions: 23 through 35).
     pub revision: Option<u32>,
     /// Reject lossy approximations and ignored equipment instead of warning.
     pub strict: bool,
@@ -14,6 +14,11 @@ pub struct RawOptions {
     /// lines into `case.dcline` rows. MATPOWER skips both, so this is off by
     /// default to keep conversions identical to MATPOWER 8.1.
     pub all_dc_lines: bool,
+    /// Give line-commutated converters (two-terminal and multi-terminal DC
+    /// rows) negative reactive limits, because they absorb reactive power.
+    /// MATPOWER writes the same estimates as positive, supplied limits, so
+    /// this is off by default to keep conversions identical to MATPOWER 8.1.
+    pub lcc_absorbs_reactive: bool,
 }
 
 /// A source-located diagnostic about RAW conversion.
@@ -267,7 +272,7 @@ fn section_names(rev: u32) -> Vec<&'static str> {
         names.push("fixed shunt");
     }
     names.extend(["generator", "branch"]);
-    if rev >= 35 {
+    if rev >= 34 {
         names.push("system switching device");
     }
     names.extend([
@@ -333,13 +338,13 @@ pub fn load_raw_with_options(
     log::debug!("read {} bytes from {}", bytes.len(), path.display());
     parse_raw_with_options(&String::from_utf8_lossy(&bytes), options)
 }
-/// Parse RAW revisions 23–33 and 35 using MATPOWER-style conversions. Warnings are
+/// Parse RAW revisions 23–35 using MATPOWER-style conversions. Warnings are
 /// available through `parse_raw_with_options`; this convenience API drops them.
 pub fn parse_raw(input: &str) -> Result<Case, Error> {
     Ok(parse_raw_with_options(input, &RawOptions::default())?.case)
 }
 
-/// Parse RAW revisions 23–33 and 35 with conversion diagnostics.
+/// Parse RAW revisions 23–35 with conversion diagnostics.
 ///
 /// Revision detection falls back to 23 when neither header nor comment identifies
 /// a revision. [`RawOptions::revision`] overrides detection. Strict mode rejects
@@ -391,9 +396,9 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         .revision
         .or(detected.filter(|rev| *rev != 0))
         .unwrap_or(23);
-    if !((23..=33).contains(&rev) || rev == 35) {
+    if !(23..=35).contains(&rev) {
         return Err(Error::Unsupported(format!(
-            "RAW revision {rev}; supported revisions are 23–33 and 35"
+            "RAW revision {rev}; supported revisions are 23–35"
         )));
     }
     log::debug!("selected RAW revision {rev} (detected={detected:?})");
@@ -418,7 +423,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     let names = section_names(rev);
     let mut sections: Vec<Vec<Record>> = vec![];
     let mut current = vec![];
-    let mut system_wide = rev >= 35;
+    let mut system_wide = rev >= 34;
     for (i, text) in lines {
         // Q terminates input, including any trailing sequence data.
         if text
@@ -637,14 +642,14 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     for r in section("branch") {
         let from = r.id(0)?;
         let to = r.integer(1, true)?;
-        let online = r.status(if rev >= 35 {
+        let online = r.status(if rev >= 34 {
             23
         } else if rev <= 27 {
             15
         } else {
             13
         })?;
-        let shunt = if rev >= 35 {
+        let shunt = if rev >= 34 {
             19
         } else if rev <= 27 {
             11
@@ -678,9 +683,9 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             r: r.num(3)?,
             x: r.num(4)?,
             b: r.num(5)?,
-            rate_a: r.num(if rev >= 35 { 7 } else { 6 })?,
-            rate_b: r.num(if rev >= 35 { 8 } else { 7 })?,
-            rate_c: r.num(if rev >= 35 { 9 } else { 8 })?,
+            rate_a: r.num(if rev >= 34 { 7 } else { 6 })?,
+            rate_b: r.num(if rev >= 34 { 8 } else { 7 })?,
+            rate_c: r.num(if rev >= 34 { 9 } else { 8 })?,
             tap: if rev <= 27 { r.optional(9, 0.0)? } else { 0.0 },
             shift: if rev <= 27 { r.optional(10, 0.0)? } else { 0.0 },
             online,
@@ -690,6 +695,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         });
     }
     convert_transformers(
+        rev,
         section("transformer"),
         &mut case,
         &mut branch_sources,
@@ -721,8 +727,20 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
-    for (i, rows) in sections.iter().enumerate() {
-        let name = names.get(i).copied().unwrap_or("additional section");
+    if options.lcc_absorbs_reactive
+        && let Some(lines) = &mut case.dcline
+    {
+        for (line, kind) in lines.iter_mut().zip(&dc_line_kinds) {
+            if *kind != DcLineKind::VoltageSourceConverter {
+                // [QMIN, QMAX] supplied becomes [-QMAX, -QMIN] absorbed, per end.
+                for col in [11, 13] {
+                    (line[col], line[col + 1]) = (-line[col + 1], -line[col]);
+                }
+            }
+        }
+    }
+    for (i, rows) in sections.iter().enumerate().take(names.len()) {
+        let name = names[i];
         if !matches!(
             name,
             "bus"
@@ -747,6 +765,17 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 format!("skipped {} records of {name} data", rows.len()),
             )?;
         }
+    }
+    // Sections past the revision's known list, such as the nested blocks of
+    // revision 34-35 substation data, are reported once in total.
+    let extra = sections.get(names.len()..).unwrap_or(&[]);
+    if let Some(r) = extra.iter().find_map(|rows| rows.first()) {
+        let count: usize = extra.iter().map(Vec::len).sum();
+        ctx.warn(
+            r.line,
+            true,
+            format!("skipped {count} records of additional section data"),
+        )?;
     }
     log::info!(
         "converted RAW revision {rev}: {} buses, {} generators, {} branches, {} warnings",
@@ -847,6 +876,7 @@ fn transformer_branch(
 }
 
 fn convert_transformers(
+    rev: u32,
     rows: &[Record],
     case: &mut Case,
     sources: &mut Vec<BranchSource>,
@@ -896,8 +926,15 @@ fn convert_transformers(
                     "transformer magnetizing admittance ignored, matching MATPOWER",
                 )?;
             }
+            // COD, TAB and CNXA on each winding record. Revision 34 widened the
+            // ratings to twelve and revision 35 added NODE after CONT.
+            let controls = match rev {
+                ..=33 => [6, 13, 16],
+                34 => [15, 22, 25],
+                _ => [15, 23, 26],
+            };
             for w in ws.iter().take(if kind == 0 { 1 } else { 3 }) {
-                for i in [6, 13, 16] {
+                for i in controls {
                     if w.optional(i, 0.0)? != 0.0 {
                         ctx.warn(w.line, true, "transformer controls, correction tables and connection angles ignored; supplied tap retained")?;
                         break;

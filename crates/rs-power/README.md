@@ -1,7 +1,7 @@
 # rs-power
 
 A Rust library for balanced, steady-state AC and DC power flow, with literal
-MATPOWER version-2 and PSS/E RAW revision 23–33 and 35 case loading. AC flow uses
+MATPOWER version-2 and PSS/E RAW revision 23–35 case loading. AC flow uses
 a sparse Newton–Raphson solver with optional generator reactive-limit enforcement.
 
 [Usage](#usage) · [Import and export](#import-and-export) ·
@@ -73,7 +73,7 @@ the destination; its stem must be a valid MATLAB function name.
 ### PSS/E RAW
 
 Load PSS/E `.raw` files with `load_raw("network.raw")?` or `parse_raw(&text)?`.
-Revisions 23–33 and 35 are supported, including comma/whitespace delimiters, quoted
+Revisions 23–35 are supported, including comma/whitespace delimiters, quoted
 names, mixed line endings, and revision detection from the header or its PSS/E
 comment. An unidentified revision defaults to 23. `Q` ends the input; it is
 optional after a section terminator. Trailing empty sections may be omitted.
@@ -88,7 +88,7 @@ approximations. Use the options API to inspect warnings or reject lossy imports:
 use rs_power::{load_raw_with_options, RawOptions};
 let imported = load_raw_with_options(
     "tests/fixtures/raw/revision_33.raw",
-    &RawOptions { revision: None, strict: false, all_dc_lines: false },
+    &RawOptions { strict: false, ..Default::default() },
 )?;
 for warning in &imported.warnings {
     eprintln!("line {}: {}", warning.line, warning.message);
@@ -136,6 +136,14 @@ row came from. Both are lossless approximations and warn:
   converter that holds the DC voltage (VCONV), which picks up the balance.
   Current-mode SETVL values are turned into MW with VCONV's scheduled DC
   voltage. The DC buses and DC links are not modelled.
+
+MATPOWER writes the reactive limits it estimates for line-commutated
+converters as positive (supplied) MVAr, although these converters absorb
+reactive power. Set `lcc_absorbs_reactive: true` to store them as
+`[-QMAX, -QMIN]` instead for two-terminal and multi-terminal rows; VSC rows are
+unchanged. When solving, a DC line end whose reactive range has zero width (a
+VSC in power factor control) injects that fixed MVAr rather than holding its
+bus voltage.
 
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
