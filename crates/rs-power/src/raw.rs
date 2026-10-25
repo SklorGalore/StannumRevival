@@ -2,7 +2,8 @@
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
     Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
-    VscAcControl, VscConverter, VscDcControl, VscLine,
+    MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, VscAcControl, VscConverter, VscDcControl,
+    VscLine,
 };
 use std::{collections::HashMap, path::Path};
 
@@ -63,6 +64,10 @@ pub struct RawImport {
     /// its full RAW data, for the detailed DC model. Only filled when
     /// [`RawOptions::all_dc_lines`] imports VSC rows.
     pub vsc_lines: Vec<VscLine>,
+    /// Every multi-terminal DC system with its full RAW data, for the
+    /// detailed DC model. Each converter names its `case.dcline` row. Only
+    /// filled when [`RawOptions::all_dc_lines`] imports multi-terminal rows.
+    pub mtdc: Vec<MtdcSystem>,
 }
 
 /// Which RAW section a `case.dcline` row came from.
@@ -748,6 +753,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     )?;
     let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
     let mut vsc_lines = vec![];
+    let mut mtdc = vec![];
     if options.all_dc_lines {
         let (vsc_rows, vsc_details) = convert_vsc(
             section("voltage source converter"),
@@ -761,12 +767,18 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 vsc_lines.push(detail);
             }
         }
+        let (mt_rows, systems) =
+            convert_multi_terminal(rev, section("multi-terminal DC"), &case, &indices, &mut ctx)?;
+        let mt_base = dc_line_names.len() + vsc_rows.len();
+        for mut system in systems {
+            for c in &mut system.converters {
+                c.row = c.row.map(|r| r + mt_base);
+            }
+            mtdc.push(system);
+        }
         for (kind, rows) in [
             (DcLineKind::VoltageSourceConverter, vsc_rows),
-            (
-                DcLineKind::MultiTerminal,
-                convert_multi_terminal(section("multi-terminal DC"), &case, &indices, &mut ctx)?,
-            ),
+            (DcLineKind::MultiTerminal, mt_rows),
         ] {
             for (name, row) in rows {
                 dc_line_names.push(name);
@@ -842,6 +854,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         dc_line_kinds,
         lcc_lines,
         vsc_lines,
+        mtdc,
     })
 }
 
@@ -1477,17 +1490,27 @@ fn convert_vsc(
 /// Each multi-terminal DC system becomes one lossless `dcline` row per
 /// scheduled converter, linking it to the converter that holds the DC
 /// voltage (VCONV), which then picks up the balance of the system. The DC
-/// buses and DC links between converters are not modelled.
+/// buses and DC links between converters are not modelled there. The full
+/// data of each system is returned too, for the detailed model, with each
+/// converter's row counted from the first row returned here.
 fn convert_multi_terminal(
+    rev: u32,
     rows: &[Record],
     case: &Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<Vec<(String, Vec<f64>)>, Error> {
+) -> Result<(Vec<NamedRow>, Vec<MtdcSystem>), Error> {
     if rows.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
+    let text = |rec: &Record, i: usize| {
+        rec.fields
+            .get(i)
+            .map(|s| s.trim().trim_matches(['\'', '"']).trim().to_string())
+            .unwrap_or_default()
+    };
     let mut out = vec![];
+    let mut systems = vec![];
     let mut i = 0;
     while i < rows.len() {
         let h = &rows[i];
@@ -1504,6 +1527,8 @@ fn convert_multi_terminal(
         let vconv = h.integer(5, true)?;
         let vconvn = h.optional(7, 0.0)?.abs() as u32;
         let converters = &rows[i + 1..i + 1 + nconv];
+        let dc_buses = &rows[i + 1 + nconv..i + 1 + nconv + ndcbs];
+        let dc_links = &rows[i + 1 + nconv + ndcbs..end];
         i = end;
         let Some(holder) = converters
             .iter()
@@ -1518,9 +1543,53 @@ fn convert_multi_terminal(
         let holder_bus = vconv;
         let holder_vm = terminal_vm(holder, holder_bus, case, indices)?;
         let mut pairs = std::collections::HashSet::new();
+        let mut system = MtdcSystem {
+            name: name.clone(),
+            control: match mode {
+                1 => LccControl::Power,
+                2 => LccControl::Current,
+                _ => LccControl::Blocked,
+            },
+            voltage_bus: vconv,
+            mode_switch_kv: h.optional(6, 0.0)?,
+            negative_voltage_bus: vconvn,
+            converters: Vec::with_capacity(nconv),
+            buses: Vec::with_capacity(ndcbs),
+            links: Vec::with_capacity(ndcln),
+        };
         for c in converters {
             let bus = c.integer(0, true)?;
+            let bridges = c.num(1)?;
+            if bridges < 1.0 || bridges.fract() != 0.0 || bridges > f64::from(u32::MAX) {
+                return Err(c.error("DC converter bridge count must be a positive integer"));
+            }
+            let code = c.optional(15, 1.0)?;
+            let mut detail = MtdcConverter {
+                converter: LccConverter {
+                    bus,
+                    bridges: bridges as u32,
+                    angle_max: c.num(2)?,
+                    angle_min: c.num(3)?,
+                    resistance: c.num(4)?,
+                    reactance: c.num(5)?,
+                    base_kv: c.num(6)?,
+                    ratio: c.optional(7, 1.0)?,
+                    tap: c.optional(8, 1.0)?,
+                    tap_max: c.optional(9, 1.5)?,
+                    tap_min: c.optional(10, 0.51)?,
+                    tap_step: c.optional(11, 0.00625)?,
+                    commutating_bus: 0,
+                    transformer: None,
+                    capacitor: 0.0,
+                },
+                setpoint: c.num(12)?,
+                participation: c.optional(13, 1.0)?,
+                margin: c.optional(14, 0.0)?,
+                code: code.clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32,
+                row: None,
+            };
             if bus == vconv || (vconvn != 0 && bus == vconvn) {
+                system.converters.push(detail);
                 continue;
             }
             let setvl = c.num(12)?;
@@ -1570,20 +1639,73 @@ fn convert_multi_terminal(
                 n += 1;
                 row_name = format!("{name}#{n}");
             }
+            detail.row = Some(out.len());
+            system.converters.push(detail);
             out.push((row_name, line));
+        }
+        for b in dc_buses {
+            system.buses.push(MtdcBus {
+                number: b.id(0)?,
+                ac_bus: b.optional(1, 0.0)?.abs() as u32,
+                second: b.optional(5, 0.0)?.abs() as u32,
+                name: text(b, 4),
+                ground_resistance: b.optional(6, 0.0)?,
+                area: b.optional(2, 1.0)?.abs() as u32,
+                zone: b.optional(3, 1.0)?.abs() as u32,
+                owner: b.optional(7, 1.0)?.abs() as u32,
+            });
+        }
+        for l in dc_links {
+            // Revision 31 added the metered end MET before RDC.
+            let shift = usize::from(rev >= 31);
+            let circuit = text(l, 2);
+            system.links.push(MtdcLink {
+                from: l.id(0)?,
+                to: l.integer(1, true)?,
+                circuit: if circuit.is_empty() {
+                    "1".into()
+                } else {
+                    circuit
+                },
+                metered_end: if shift == 1 && l.optional(3, 1.0)? >= 2.0 {
+                    2
+                } else {
+                    1
+                },
+                resistance: l.num(3 + shift)?,
+                inductance: l.optional(4 + shift, 0.0)?,
+            });
         }
         if vconvn != 0 {
             ctx.warn(
                 h.line,
                 true,
-                format!("multi-terminal DC line {name}: alternate voltage-controlling converter {vconvn} is held at 0 MW"),
+                format!("in the simplified DC model, multi-terminal DC line {name}: negative-pole voltage-controlling converter {vconvn} is held at 0 MW"),
             )?;
         }
+        let mut ignored = vec![];
+        if system.converters.iter().any(|c| c.margin != 0.0) {
+            ignored.push("DCPF and MARG order sharing");
+        }
+        if system.buses.iter().any(|b| b.ground_resistance != 0.0) {
+            ignored.push("RGRND");
+        }
+        if !ignored.is_empty() {
+            ctx.warn(
+                h.line,
+                false,
+                format!(
+                    "the detailed model of multi-terminal DC line {name} ignores {}",
+                    ignored.join(", ")
+                ),
+            )?;
+        }
+        systems.push(system);
     }
     ctx.warn(
         rows[0].line,
         true,
-        "multi-terminal DC lines are lossless, ignore their DC network, and link each converter to the DC voltage converter",
+        "in the simplified DC model, multi-terminal DC lines are lossless, ignore their DC network, and link each converter to the DC voltage converter",
     )?;
-    Ok(out)
+    Ok((out, systems))
 }

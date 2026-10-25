@@ -73,6 +73,7 @@ fn detailed(lines: Vec<LccLine>, adjust_taps: bool) -> PowerFlowOptions {
         dc_model: DcModel::Detailed {
             lines,
             vsc_lines: Vec::new(),
+            mtdc: Vec::new(),
             adjust_taps,
         },
         ..Default::default()

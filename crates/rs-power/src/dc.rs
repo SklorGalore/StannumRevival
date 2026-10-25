@@ -203,33 +203,7 @@ impl LccLine {
             return Err(format!("DC line {name}: invalid RCOMP or VCMOD"));
         }
         for (end, c) in [("rectifier", &self.rectifier), ("inverter", &self.inverter)] {
-            let finite = [
-                c.angle_max,
-                c.angle_min,
-                c.resistance,
-                c.reactance,
-                c.ratio,
-                c.tap,
-                c.tap_max,
-                c.tap_min,
-                c.tap_step,
-            ]
-            .iter()
-            .all(|x| x.is_finite());
-            if !finite
-                || c.bridges == 0
-                || c.ratio <= 0.0
-                || c.tap <= 0.0
-                || c.tap_min <= 0.0
-                || c.tap_min > c.tap_max
-                || c.tap_step < 0.0
-                || c.resistance < 0.0
-                || c.reactance < 0.0
-                || !(0.0..90.0).contains(&c.angle_min)
-                || c.angle_max < c.angle_min
-                || c.angle_max >= 90.0
-                || !(c.base_kv.is_finite() && c.base_kv >= 0.0)
-            {
+            if !c.is_valid() {
                 return Err(format!("DC line {name}: invalid {end} converter data"));
             }
         }
@@ -237,21 +211,55 @@ impl LccLine {
     }
 }
 
+impl LccConverter {
+    /// Whether the bridge, angle and tap data can be solved.
+    pub(crate) fn is_valid(&self) -> bool {
+        let c = self;
+        let finite = [
+            c.angle_max,
+            c.angle_min,
+            c.resistance,
+            c.reactance,
+            c.ratio,
+            c.tap,
+            c.tap_max,
+            c.tap_min,
+            c.tap_step,
+        ]
+        .iter()
+        .all(|x| x.is_finite());
+        finite
+            && c.bridges > 0
+            && c.ratio > 0.0
+            && c.tap > 0.0
+            && c.tap_min > 0.0
+            && c.tap_min <= c.tap_max
+            && c.tap_step >= 0.0
+            && c.resistance >= 0.0
+            && c.reactance >= 0.0
+            && (0.0..90.0).contains(&c.angle_min)
+            && c.angle_max >= c.angle_min
+            && c.angle_max < 90.0
+            && c.base_kv.is_finite()
+            && c.base_kv >= 0.0
+    }
+}
+
 /// Per-converter constants for one operating-point evaluation.
 #[derive(Clone, Copy, Debug)]
-struct Bridge {
+pub(crate) struct Bridge {
     /// No-load DC voltage in kV.
-    vdo: f64,
+    pub(crate) vdo: f64,
     /// Commutation drop per kA: `NB · 3/π · Xc`.
-    commutation: f64,
+    pub(crate) commutation: f64,
     /// Resistive drop per kA: `NB · 2 · Rc`.
-    resistive: f64,
+    pub(crate) resistive: f64,
     /// Cosine of the minimum angle.
-    cos_min: f64,
+    pub(crate) cos_min: f64,
 }
 
 impl Bridge {
-    fn new(c: &LccConverter, vm: f64, base_kv: f64, tap: f64) -> Self {
+    pub(crate) fn new(c: &LccConverter, vm: f64, base_kv: f64, tap: f64) -> Self {
         let nb = f64::from(c.bridges);
         Self {
             vdo: BRIDGE * nb * vm * base_kv * c.ratio / tap,
@@ -416,7 +424,7 @@ pub(crate) fn operating_point(
 }
 
 /// Round `tap` to the converter's tap steps and limits.
-fn step_tap(c: &LccConverter, tap: f64, round: fn(f64) -> f64) -> f64 {
+pub(crate) fn step_tap(c: &LccConverter, tap: f64, round: fn(f64) -> f64) -> f64 {
     // The limits themselves are reachable even when they are not a whole
     // number of steps apart.
     if tap >= c.tap_max {
@@ -463,23 +471,35 @@ pub(crate) fn adjust_taps(
     };
     if needed > 0.0 && unit.vdo > 0.0 {
         let cos_alpha = needed / (unit.vdo / taps[0]);
-        let (lo, hi) = (rect.angle_min.to_radians(), rect.angle_max.to_radians());
+        let hi = rect.angle_max.to_radians();
         let alpha = cos_alpha.clamp(-1.0, 1.0).acos();
         let in_range = solution.mode == LccMode::RectifierControl && alpha <= hi + 1e-9;
         if !in_range {
-            // The tap that puts α at the nearer bound, rounded towards the
-            // inside of the range. A larger tap lowers Vdo and so α; with a
-            // zero-width range, rounding down keeps α at or above its minimum.
-            let target = alpha.clamp(lo, hi);
-            let round = if alpha > hi && hi > lo {
-                f64::ceil
-            } else {
-                f64::floor
-            };
-            next[0] = step_tap(rect, unit.vdo * target.cos() / needed, round);
+            next[0] = band_tap(rect, unit.vdo, needed, alpha);
         }
     }
     next
+}
+
+/// The tap that brings a converter's angle (now `angle` radians, with the
+/// converter needing `needed` kV of internal voltage from `vdo` kV of no-load
+/// voltage at tap 1) into its range. A larger tap lowers Vdo and so the
+/// angle. The result is rounded towards the inside of the range; when one
+/// tap step is wider than the range, the angle stays above its hard minimum
+/// and may end a little above its nominal maximum.
+pub(crate) fn band_tap(c: &LccConverter, vdo: f64, needed: f64, angle: f64) -> f64 {
+    let (lo, hi) = (c.angle_min.to_radians(), c.angle_max.to_radians());
+    let target = angle.clamp(lo, hi);
+    let exact = vdo * target.cos() / needed;
+    let down = step_tap(c, exact, f64::floor);
+    if angle > hi && hi > lo {
+        let up = step_tap(c, exact, f64::ceil);
+        let reached = (needed * up / vdo).clamp(-1.0, 1.0).acos();
+        if reached >= lo - 1e-9 {
+            return up;
+        }
+    }
+    down
 }
 
 #[cfg(test)]
