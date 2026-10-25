@@ -219,7 +219,7 @@ export async function expandDrawing(
         primaryKV: kvOf(upper),
         secondaryKV: kvOf(lower),
         windingsUnknown: true,
-        caseRef: { kind: "branch", id: br.index },
+        caseRef: { kind: "branch", id: br.index, element: br.element },
         reversed,
         outOfService: !br.online || undefined,
       };
@@ -252,7 +252,7 @@ export async function expandDrawing(
         sourceHandle: tapOn(upper, lower.position),
         target: lower.id,
         targetHandle: tapOn(lower, upper.position),
-        data: conductor(kvOf(upper), { caseRef: { kind: "branch", id: br.index }, reversed }),
+        data: conductor(kvOf(upper), { caseRef: { kind: "branch", id: br.index, element: br.element }, reversed }),
       } as SLDEdge);
     }
   }

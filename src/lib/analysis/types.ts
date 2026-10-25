@@ -63,6 +63,9 @@ export interface BusRow {
 
 export interface GeneratorRow {
   index: number;
+  /** Shared element id, such as "generator:101:1". */
+  element: string;
+  machine_id: string;
   bus: number;
   bus_name: string;
   online: boolean;
@@ -77,6 +80,11 @@ export interface GeneratorRow {
 
 export interface BranchRow {
   index: number;
+  /** Shared element id, such as "line:101:102:1". */
+  element: string;
+  circuit: string;
+  /** 1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise. */
+  winding: number;
   from: number;
   to: number;
   online: boolean;
@@ -325,12 +333,16 @@ export interface NetworkBus {
 }
 export interface NetworkGenerator {
   index: number;
+  element: string;
   bus: number;
   online: boolean;
   pmax: number;
 }
 export interface NetworkBranch {
   index: number;
+  element: string;
+  circuit: string;
+  winding: number;
   from: number;
   to: number;
   online: boolean;

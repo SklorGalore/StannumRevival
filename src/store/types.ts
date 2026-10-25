@@ -7,6 +7,8 @@ export interface CaseRef {
   kind: "bus" | "gen" | "branch" | "load" | "shunt";
   /** Bus number for buses, loads and shunts; table index for generators and branches. */
   id: number;
+  /** Shared element id (see lib/elements.ts). Missing in diagrams saved before it existed. */
+  element?: string;
 }
 
 /** A connection point on a bus, at `x` px from its left end. */

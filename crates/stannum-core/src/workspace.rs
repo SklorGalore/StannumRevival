@@ -178,10 +178,11 @@ impl OpenCase {
     }
 
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
-        let case = &self.power_case()?.case;
+        let power = self.power_case()?;
         let start = Instant::now();
-        let result = rs_power::solve(case, &settings.options()).map_err(|e| e.to_string())?;
-        let report = power::report(&result, &settings, elapsed_ms(start));
+        let result =
+            rs_power::solve(&power.case, &settings.options()).map_err(|e| e.to_string())?;
+        let report = power::report(&result, &power.elements, &settings, elapsed_ms(start));
         self.solved = Some((result, settings));
         Ok(report)
     }

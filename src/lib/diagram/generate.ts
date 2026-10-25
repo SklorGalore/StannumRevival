@@ -18,6 +18,7 @@ import type {
   TransformerData,
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
+import { busElement } from "../elements";
 
 export type Scope =
   | { kind: "all" }
@@ -276,7 +277,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       label: genCount.get(g.bus)! > 1 ? `G ${g.bus}.${n}` : `G ${g.bus}`,
       nominalMW: g.pmax,
       voltageKV: kv(g.bus),
-      caseRef: { kind: "gen", id: g.index },
+      caseRef: { kind: "gen", id: g.index, element: g.element },
     };
     inject(g.bus, {
       node: { id, type: "generator", position: { x: 0, y: 0 }, data } as SLDNode,
@@ -293,7 +294,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         label: "Load",
         nominalMW: b.pd,
         nominalMVAR: b.qd,
-        caseRef: { kind: "load", id: b.id },
+        caseRef: { kind: "load", id: b.id, element: busElement(b.id) },
       };
       inject(b.id, {
         node: { id: `l${b.id}`, type: "load", position: { x: 0, y: 0 }, data } as SLDNode,
@@ -307,7 +308,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         label: b.bs < 0 ? "Reactor" : "Shunt",
         nominalMVAR: b.bs,
         nominalMW: b.gs,
-        caseRef: { kind: "shunt", id: b.id },
+        caseRef: { kind: "shunt", id: b.id, element: busElement(b.id) },
       };
       inject(b.id, {
         node: { id: `s${b.id}`, type: "shunt", position: { x: 0, y: 0 }, data } as SLDNode,
@@ -325,7 +326,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const [upper, lower] = reversed ? [br.to, br.from] : [br.from, br.to];
     bump(upper);
     bump(lower);
-    const ref = { kind: "branch" as const, id: br.index };
+    const ref = { kind: "branch" as const, id: br.index, element: br.element };
     const outOfService = !br.online || undefined;
     if (br.transformer) {
       const id = `t${br.index}`;
@@ -392,7 +393,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       bus: far,
       busName: farBus ? busLabel(farBus) : "",
       voltageKV: kv(inside),
-      caseRef: { kind: "branch", id: br.index },
+      caseRef: { kind: "branch", id: br.index, element: br.element },
       // Flow is read at the inside end, so "reversed" means inside is "to".
       reversed: inside === br.to || undefined,
       outOfService: !br.online || undefined,
@@ -403,7 +404,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       source: { node: `b${inside}` },
       target: { node: id, port: `${id}:p`, handle: "op-top" },
       data: conductor(kv(inside), {
-        caseRef: { kind: "branch", id: br.index },
+        caseRef: { kind: "branch", id: br.index, element: br.element },
         reversed: inside === br.to || undefined,
         outOfService: !br.online || undefined,
       }),
@@ -584,7 +585,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       taps: taps.get(`b${b.id}`) ?? [],
       star: b.star || undefined,
       focus: b.id === piece.focus || undefined,
-      caseRef: { kind: "bus", id: b.id },
+      caseRef: { kind: "bus", id: b.id, element: busElement(b.id) },
     };
     out.push({ id: `b${b.id}`, type: "bus", position: { x: n.x!, y: n.y! }, data } as SLDNode);
   }
