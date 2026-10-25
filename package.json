@@ -20,7 +20,7 @@
     "cytoscape": "^3.33.1",
     "cytoscape-fcose": "^2.2.0",
     "elkjs": "^0.11.1",
-    "immer": "^10",
+    "immer": "^11",
     "jspdf": "^2",
     "lucide-react": "^0.400.0",
     "nanoid": "^5",
