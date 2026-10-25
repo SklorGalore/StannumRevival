@@ -1,5 +1,6 @@
 import { useDiagramStore } from "../../../store/diagramStore";
 import type { SLDEdge } from "../../../store/types";
+import { LabelField } from "./LabelField";
 import { Field, Input, Select, SectionTitle } from "./FormField";
 
 export function EdgeForm({ edge }: { edge: SLDEdge }) {
@@ -56,6 +57,7 @@ export function EdgeForm({ edge }: { edge: SLDEdge }) {
           </span>
         </div>
       </Field>
+      <LabelField offset={d.labelOffset} onReset={() => update({ labelOffset: undefined })} />
       <Field label="Resistance R (pu)">
         <Input
           type="number"

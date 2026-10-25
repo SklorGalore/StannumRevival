@@ -41,11 +41,12 @@ export function rotateNode(n: SLDNode, turn: 90 | -90, grid = 0): SLDNode {
     const d = n.data as BusData;
     if (d.star) return n;
     const orientation = d.orientation === "vertical" ? "horizontal" : "vertical";
-    return { ...n, position, data: { ...d, orientation } } as SLDNode;
+    // Labels go back to their default spot for the new direction.
+    return { ...n, position, data: { ...d, orientation, labelOffset: undefined } } as SLDNode;
   }
   const from = ((n.data as { rotation?: Rotation }).rotation ?? 0) as number;
   const rotation = ((from + turn + 360) % 360) as Rotation;
-  return { ...n, position, data: { ...n.data, rotation } } as SLDNode;
+  return { ...n, position, data: { ...n.data, rotation, labelOffset: undefined } } as SLDNode;
 }
 
 /** Terminal of each symbol that can sit straight on a bus bar. */
@@ -76,7 +77,7 @@ export function rotateSelected(nodes: SLDNode[], edges: SLDEdge[], turn: 90 | -9
       const { p } = terminalOf(sym);
       if (Math.abs(p.x - at.x) > 2 || Math.abs(p.y - at.y) > 2) continue;
       const from = ((sym.data as { rotation?: Rotation }).rotation ?? 0) as number;
-      const turned = { ...sym, data: { ...sym.data, rotation: ((from + spin) % 360) as Rotation } } as SLDNode;
+      const turned = { ...sym, data: { ...sym.data, rotation: ((from + spin) % 360) as Rotation, labelOffset: undefined } } as SLDNode;
       const { w, h } = symbolSize(turned, true);
       const position = placeTerminal(tapPoint(bus, tap.x, tap.side), terminalOf(turned).side, w, h);
       out.set(sym.id, { ...turned, position } as SLDNode);

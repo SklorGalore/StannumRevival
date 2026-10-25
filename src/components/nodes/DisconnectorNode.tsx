@@ -28,6 +28,7 @@ export function DisconnectorNode({ id, data, selected }: NodeProps<DSNodeType>) 
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       title={`Double-click to ${closed ? "open" : "close"}`}
       onDoubleClick={() => updateNodeData(id, { state: closed ? "open" : "closed" })}

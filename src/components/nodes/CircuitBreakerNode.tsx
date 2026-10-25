@@ -26,6 +26,7 @@ export function CircuitBreakerNode({ id, data, selected }: NodeProps<CBNodeType>
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       title={`Double-click to ${data.state === "closed" ? "open" : "close"}`}
       onDoubleClick={() => updateNodeData(id, { state: data.state === "closed" ? "open" : "closed" })}

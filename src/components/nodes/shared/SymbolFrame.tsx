@@ -1,6 +1,9 @@
 import { Handle, Position, useNodeId, useUpdateNodeInternals } from "@xyflow/react";
 import { useEffect, type ReactNode } from "react";
-import type { Rotation } from "../../../store/types";
+import type { LabelOffset, Rotation } from "../../../store/types";
+import { useDiagramStore } from "../../../store/diagramStore";
+import { useInk } from "../../../lib/diagram/ink";
+import { Leader, useBBox, useLabelDrag } from "./labels";
 
 export type Side = "top" | "right" | "bottom" | "left";
 
@@ -62,7 +65,8 @@ const TURN: Record<Rotation, (w: number, h: number) => string | undefined> = {
  * and the terminals turn; the text stays upright. The label is laid out as if
  * the symbol were upright, to its right (x from 0). Upright or upside down it
  * stays there; turned on its side, the block moves under the symbol, centred,
- * its top line (`labelTop`) just below it.
+ * its top line (`labelTop`) just below it. Dragging the label moves it by
+ * `labelOffset`; once clear of the symbol a leader line ties it back.
  */
 export function SymbolFrame({
   w,
@@ -71,6 +75,7 @@ export function SymbolFrame({
   graphic,
   label,
   labelTop = 0,
+  labelOffset,
   terminals,
   title,
   onDoubleClick,
@@ -83,6 +88,7 @@ export function SymbolFrame({
   label?: ReactNode;
   /** Top of the label block, in the symbol's own y coordinates. */
   labelTop?: number;
+  labelOffset?: LabelOffset;
   terminals: Terminal[];
   title?: string;
   onDoubleClick?: () => void;
@@ -96,14 +102,32 @@ export function SymbolFrame({
   }, [id, rotation, updateInternals]);
   const sideways = rotation === 90 || rotation === 270;
   // Sideways, the block is centred under the symbol (text-anchor inherits).
-  const labelAt = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
+  const base = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
+  const off = labelOffset ?? { x: 0, y: 0 };
+  const labelAt = { x: base.x + off.x, y: base.y + off.y };
+  const ink = useInk();
+  const drag = useLabelDrag(labelOffset, (next) => id && useDiagramStore.getState().updateNodeData(id, { labelOffset: next }));
+  const [labelRef, labelBox] = useBBox<SVGGElement>([labelAt.x, labelAt.y, label, rotation]);
   return (
     <div className="node-wrapper relative" style={{ width: size.w, height: size.h }}>
       <svg width={size.w} height={size.h} overflow="visible" style={{ display: "block" }} onDoubleClick={onDoubleClick}>
         {title && <title>{title}</title>}
         <g transform={TURN[rotation](w, h)}>{graphic}</g>
+        {label && labelOffset && labelBox && (
+          <Leader
+            from={{ x: 0, y: 0, w: size.w, h: size.h }}
+            to={{ x: labelBox.x + labelAt.x, y: labelBox.y + labelAt.y, w: labelBox.w, h: labelBox.h }}
+            color={ink.muted}
+          />
+        )}
         {label && (
-          <g transform={`translate(${labelAt.x},${labelAt.y})`} textAnchor={sideways ? "middle" : undefined}>
+          <g
+            ref={labelRef}
+            transform={`translate(${labelAt.x},${labelAt.y})`}
+            textAnchor={sideways ? "middle" : undefined}
+            {...drag}
+          >
+            <title>Drag to move the label</title>
             {label}
           </g>
         )}

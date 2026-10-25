@@ -23,6 +23,7 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       graphic={
         <>

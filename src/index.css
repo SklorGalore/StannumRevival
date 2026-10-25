@@ -41,6 +41,13 @@
   pointer-events: none;
 }
 
+/* Labels of symbols, buses and wires can be dragged to a clearer spot. */
+.label-drag,
+.edge-label.label-drag {
+  pointer-events: all;
+  cursor: move;
+}
+
 .react-flow__handle:hover {
   background: #3b82f6;
 }

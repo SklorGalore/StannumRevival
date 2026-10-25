@@ -11,6 +11,9 @@ export interface CaseRef {
   element?: string;
 }
 
+/** How far a label has been dragged from where it is drawn by default. */
+export type LabelOffset = { x: number; y: number };
+
 /** Clockwise turn of a symbol, in degrees. Text stays upright. */
 export type Rotation = 0 | 90 | 180 | 270;
 
@@ -26,6 +29,8 @@ export interface BusTap {
 
 export interface BusData extends Record<string, unknown> {
   label: string;
+  /** Moves the bus's name and voltage. */
+  labelOffset?: LabelOffset;
   voltageKV: number;
   orientation: "horizontal" | "vertical";
   length: number;
@@ -41,6 +46,7 @@ export interface BusData extends Record<string, unknown> {
 export interface GeneratorData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   nominalMW: number;
   voltageKV: number;
   powerFactor: number;
@@ -51,6 +57,7 @@ export interface GeneratorData extends Record<string, unknown> {
 export interface LoadData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   nominalMW: number;
   nominalMVAR: number;
   loadType: "static" | "motor" | "composite";
@@ -62,6 +69,7 @@ export interface LoadData extends Record<string, unknown> {
 export interface ShuntData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   nominalMVAR: number;
   nominalMW: number;
   caseRef?: CaseRef;
@@ -70,6 +78,7 @@ export interface ShuntData extends Record<string, unknown> {
 export interface TransformerData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   ratingMVA: number;
   primaryKV: number;
   secondaryKV: number;
@@ -88,6 +97,7 @@ export interface TransformerData extends Record<string, unknown> {
 export interface CircuitBreakerData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   state: "open" | "closed" | "fault";
   ratingKV: number;
   ratingKA: number;
@@ -97,6 +107,7 @@ export interface CircuitBreakerData extends Record<string, unknown> {
 export interface DisconnectorData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   state: "open" | "closed";
   ratingKV: number;
   type: "gang-operated" | "single-pole";
@@ -105,6 +116,7 @@ export interface DisconnectorData extends Record<string, unknown> {
 export interface FuseData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   ratingKV: number;
   ratingA: number;
   type: "current-limiting" | "expulsion";
@@ -126,6 +138,8 @@ export interface ConductorData extends Record<string, unknown> {
   pinnedRoute?: boolean;
   /** Box reserved by the layout for this wire's results, used with `route`. */
   labelAt?: { x: number; y: number; width: number; height: number };
+  /** The flow text dragged this far from its spot, which follows the wire. */
+  labelOffset?: LabelOffset;
   caseRef?: CaseRef;
   /** The edge's source is the branch's "to" bus. */
   reversed?: boolean;
@@ -136,6 +150,7 @@ export interface ConductorData extends Record<string, unknown> {
 export interface OffPageData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
+  labelOffset?: LabelOffset;
   /** Bus at the far end, outside the drawing. */
   bus: number;
   busName: string;

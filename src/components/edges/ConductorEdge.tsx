@@ -6,6 +6,7 @@ import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
 import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
 import { SegmentGrips } from "./SegmentGrips";
+import { Leader, useBBox, useLabelDrag } from "../nodes/shared/labels";
 
 /** Wires meeting at each terminal, keyed "node/handle". */
 const degrees = new WeakMap<SLDEdge[], Map<string, number>>();
@@ -178,6 +179,11 @@ export function ConductorEdge({
   textAt ??= vertical
     ? { x: mid.x + 7, y: mid.y - (lines.length - 1) * 5.5 + 3, anchor: "start" }
     : { x: mid.x, y: mid.y - 6 - (lines.length - 1) * 11, anchor: "middle" };
+  // A dragged label keeps its distance from its spot as the wire moves.
+  const moved = data?.labelOffset;
+  if (moved) textAt = { ...textAt, x: textAt.x + moved.x, y: textAt.y + moved.y };
+  const drag = useLabelDrag(moved, (next) => useDiagramStore.getState().updateEdgeData(id, { labelOffset: next }));
+  const [textRef, textBox] = useBBox<SVGTextElement>([textAt.x, textAt.y, lines.join("|")]);
 
   return (
     <>
@@ -190,16 +196,22 @@ export function ConductorEdge({
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
       {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}
       {arrow && !offline && <path d={arrow} fill={overload ?? ink.result} />}
+      {moved && lines.length > 0 && (
+        <Leader from={{ x: mid.x, y: mid.y, w: 0, h: 0 }} to={textBox} color={ink.muted} />
+      )}
       {lines.length > 0 && (
         <text
+          ref={textRef}
+          {...drag}
           x={textAt.x}
           y={textAt.y}
           textAnchor={textAt.anchor}
           fontSize={9}
           fill={overload ?? (flow ? ink.result : ink.text)}
           fontWeight={overload ? 600 : 400}
-          className="edge-label"
+          className={`edge-label ${drag.className}`}
         >
+          <title>Drag to move the label</title>
           {lines.map((l, i) => (
             <tspan key={i} x={textAt.x} dy={i ? 11 : 0}>
               {l}

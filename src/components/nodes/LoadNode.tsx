@@ -22,6 +22,7 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
       w={W}
       h={H}
       rotation={data.rotation}
+      labelOffset={data.labelOffset}
       terminals={TERMINALS}
       graphic={
         isMotor ? (

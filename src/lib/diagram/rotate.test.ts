@@ -108,3 +108,10 @@ describe("tap sides after a turn", () => {
     expect((b.data as { taps: { side: string }[] }).taps[0].side).toBe("top");
   });
 });
+
+describe("labels on a turn", () => {
+  it("puts a moved label back at its default spot", () => {
+    const load = node("load", { labelOffset: { x: 30, y: 10 } });
+    expect((rotateNode(load, 90).data as { labelOffset?: unknown }).labelOffset).toBeUndefined();
+  });
+});

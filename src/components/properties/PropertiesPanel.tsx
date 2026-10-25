@@ -9,7 +9,8 @@ import { DisconnectorForm } from "./forms/DisconnectorForm";
 import { FuseForm } from "./forms/FuseForm";
 import { EdgeForm } from "./forms/EdgeForm";
 import { RotationField } from "./forms/RotationField";
-import type { SLDNode, SLDEdge, CaseRef } from "../../store/types";
+import { LabelField } from "./forms/LabelField";
+import type { SLDNode, SLDEdge, CaseRef, LabelOffset } from "../../store/types";
 import { elementLabel } from "../../lib/elements";
 
 export function PropertiesPanel() {
@@ -52,11 +53,25 @@ export function PropertiesPanel() {
 }
 
 function NodeForm({ node }: { node: SLDNode }) {
-  if (node.type === "bus") return <BusForm node={node} />;
+  const updateNodeData = useDiagramStore((s) => s.updateNodeData);
+  const label = (
+    <LabelField
+      offset={(node.data as { labelOffset?: LabelOffset }).labelOffset}
+      onReset={() => updateNodeData(node.id, { labelOffset: undefined })}
+    />
+  );
+  if (node.type === "bus")
+    return (
+      <>
+        <BusForm node={node} />
+        {label}
+      </>
+    );
   return (
     <>
       <SymbolForm node={node} />
       <RotationField node={node} />
+      {label}
     </>
   );
 }
