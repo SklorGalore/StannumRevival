@@ -168,9 +168,11 @@ fn memphis_revision_35_real_world_case() {
     assert_eq!(imported.case.branches.len(), 1382);
     assert_eq!(imported.case.dcline.as_ref().map_or(0, Vec::len), 0);
     assert_eq!(imported.case.labels["bus_name"].len(), 993);
-    assert_eq!(imported.warnings.len(), 435);
+    // The 61 switched shunts in voltage control go to `voltage_controls`
+    // without a warning.
+    assert_eq!(imported.warnings.len(), 374);
+    assert_eq!(imported.voltage_controls.switched_shunts.len(), 61);
     for message in [
-        "switched shunt frozen at BINIT",
         "remote generator regulation ignored",
         "wind-machine control ignored",
     ] {

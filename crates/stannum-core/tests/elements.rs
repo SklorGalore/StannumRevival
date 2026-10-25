@@ -239,3 +239,27 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
             .all(|d| d.detail.is_none() && d.vsc_detail.is_none() && d.loss_mw.abs() < 1e-9)
     );
 }
+
+#[test]
+fn solve_settings_switch_voltage_controls() {
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |switch_shunts: bool, adjust_transformer_taps: bool| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                enforce_q_limits: true,
+                switch_shunts,
+                adjust_transformer_taps,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let off = solve(false, false);
+    assert!(off.converged);
+    assert_eq!(off.voltage_control_passes, 0);
+    assert_eq!((off.shunts_switched, off.taps_moved), (0, 0));
+    let on = solve(true, true);
+    assert!(on.converged);
+    assert!(on.voltage_control_passes > 0);
+    assert!(on.shunts_switched + on.taps_moved > 0);
+}

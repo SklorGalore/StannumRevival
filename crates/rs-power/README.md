@@ -108,9 +108,11 @@ transformers (CW/CZ 1–3), adding star buses with MATPOWER's numbering and wind
 statuses. Impedance conversion uses the winding nominal voltage base, matching
 MATPOWER's `use_winding_baseV=1`, including its zero-NOMV behavior. ZIP loads are
 frozen at the supplied bus voltage. Switched shunts use BINIT, including offline
-records, as in MATPOWER. Transformer magnetizing admittance, tap controls,
-correction tables and wind control are ignored with warnings when present, and
-so is remote regulation unless `remote_regulation` is set (see below). Unsupported equipment sections are skipped with warnings, following
+records, as in MATPOWER; those in voltage control and transformer windings in
+voltage control are also listed in `RawImport::voltage_controls` (see below).
+Transformer magnetizing admittance, other tap controls, correction tables and
+wind control are ignored with warnings when present, and so is remote
+regulation unless `remote_regulation` is set. Unsupported equipment sections are skipped with warnings, following
 MATPOWER; ownership, zone, interchange and grouping metadata are not retained.
 Change-code files warn and are treated as standalone cases, never incremental
 updates. Unknown branch endpoints are retained with warnings; invalid transformer
@@ -170,6 +172,38 @@ On the Texas A&M SyntheticUSA case (82,000 buses, 2,730 remote-regulating
 generators) the reactive-limit solve diverged with local setpoints and
 converges with remote regulation, landing within 0.001 p.u. on average of
 the solved voltages saved in the case.
+
+### Switched shunts and transformer taps
+
+`RawImport::voltage_controls` lists the in-service switched shunts in voltage
+control (MODSW 1 discrete, 2 continuous, revision 30 and later) and the
+transformer windings in voltage control (COD 1). They act only when passed in
+`PowerFlowOptions::voltage_controls`, and only in AC solves; the case's
+`bs` and `tap` are their starting point either way.
+
+- A discrete shunt switches one block at a time, between Newton solves, while
+  its bus is outside VSWLO..VSWHI. A device that reverses direction twice is
+  held, so that it cannot hunt.
+- A continuous shunt holds the middle of its band within the blocks' range,
+  as a static var compensator does. It is solved as a reactive source and,
+  once it reaches an end of its range, becomes a fixed shunt there.
+- A tap steps by whole positions (NTP) within RMI..RMA while the controlled
+  bus (CONT) is outside VMI..VMA, aiming a little inside the nearer edge. The
+  step size comes from the measured voltage response; a tap that barely moves
+  its bus is held.
+- Shunts and taps move only once the generators' reactive limits have
+  settled, so they do not fight them. If the solve after a move fails, the
+  move is undone and the devices it moved are held.
+
+A shunt or tap whose bus is held by a generator stays put.
+`PowerFlowResult::switched_shunts` and `tap_ratios` give the final values in
+list order, and `voltage_control_passes` the number of passes that moved
+anything. Sensitivities treat the final shunts and taps as fixed.
+
+On SyntheticUSA (150 continuous shunts, 291 taps) the reactive-limit solve
+still converges with both on and the largest bus voltage error against the
+saved solution drops from 0.076 to 0.047 p.u. On the Memphis case (61
+continuous shunts) the mean error drops from 0.0013 to 0.00006 p.u.
 
 ### Detailed two-terminal DC model
 

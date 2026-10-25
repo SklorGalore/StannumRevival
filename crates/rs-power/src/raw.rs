@@ -2,7 +2,8 @@
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
     Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
-    VscAcControl, VscConverter, VscDcControl, VscLine,
+    ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl, VscConverter,
+    VscDcControl, VscLine,
 };
 use std::{collections::HashMap, path::Path};
 
@@ -63,6 +64,12 @@ pub struct RawImport {
     /// its full RAW data, for the detailed DC model. Only filled when
     /// [`RawOptions::all_dc_lines`] imports VSC rows.
     pub vsc_lines: Vec<VscLine>,
+    /// Switched shunts in voltage control (MODSW 1 or 2, in service, with a
+    /// valid band and blocks) and transformer windings with voltage-control
+    /// taps (COD 1), for [`crate::PowerFlowOptions::voltage_controls`].
+    /// Revisions 30 and later; MATPOWER freezes both, as the import still
+    /// does in `case`.
+    pub voltage_controls: VoltageControls,
 }
 
 /// Which RAW section a `case.dcline` row came from.
@@ -589,13 +596,22 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             b.bs += r.num(4)?;
         }
     }
+    let mut voltage_controls = VoltageControls::default();
     for r in section("switched shunt") {
-        let b = &mut case.buses[bus_index(r, 0)?];
-        if r.optional(1, 0.0)? != 0.0 {
+        let index = bus_index(r, 0)?;
+        let control = if rev >= 30 {
+            switched_shunt(rev, r, &indices, &case)?
+        } else {
+            None
+        };
+        let b = &mut case.buses[index];
+        if let Some(shunt) = control {
+            voltage_controls.switched_shunts.push(shunt);
+        } else if r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)? != 0.0 {
             ctx.warn(
                 r.line,
                 true,
-                "switched shunt frozen at BINIT; switching controls ignored",
+                "switched shunt frozen at BINIT; its switching control is not supported",
             )?;
         }
         if rev >= 32 && !r.status(if rev >= 35 { 4 } else { 3 })? {
@@ -738,6 +754,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &mut branch_sources,
         &indices,
         &mut ctx,
+        &mut voltage_controls.taps,
     )?;
     let (mut dc_line_names, lcc_lines) = convert_dc(
         rev,
@@ -842,7 +859,130 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         dc_line_kinds,
         lcc_lines,
         vsc_lines,
+        voltage_controls,
     })
+}
+
+/// The voltage control of a switched shunt record (revision 30 or later), if
+/// it has one that the solver can apply.
+fn switched_shunt(
+    rev: u32,
+    r: &Record,
+    indices: &HashMap<u32, usize>,
+    case: &Case,
+) -> Result<Option<SwitchedShunt>, Error> {
+    // Field positions: MODSW, STAT (none before 32), VSWHI, VSWLO, SWREM,
+    // BINIT, first N.
+    let [modsw, stat, vhi, vlo, rem, binit, first] = match rev {
+        35.. => [2, 4, 5, 6, 7, 11, 12],
+        32..=34 => [1, 3, 4, 5, 6, 9, 10],
+        _ => [1, usize::MAX, 2, 3, 4, 7, 8],
+    };
+    let mode = match r.optional(modsw, 0.0)? {
+        1.0 => ShuntMode::Discrete,
+        2.0 => ShuntMode::Continuous,
+        _ => return Ok(None),
+    };
+    if stat != usize::MAX && !r.status(stat)? {
+        return Ok(None);
+    }
+    let (vmax, vmin) = (r.optional(vhi, 1.0)?, r.optional(vlo, 1.0)?);
+    if !(vmin > 0.0 && vmax >= vmin) {
+        return Ok(None);
+    }
+    // Revision 35 records carry S, N, B per block; earlier ones N, B.
+    let width = if rev >= 35 { 3 } else { 2 };
+    let mut blocks = Vec::new();
+    let mut at = first;
+    while at + width - 1 < r.fields.len() && blocks.len() < 8 {
+        let (status, n, b) = if rev >= 35 {
+            (
+                r.optional(at, 1.0)?,
+                r.optional(at + 1, 0.0)?,
+                r.optional(at + 2, 0.0)?,
+            )
+        } else {
+            (1.0, r.optional(at, 0.0)?, r.optional(at + 1, 0.0)?)
+        };
+        if status != 0.0 && n >= 1.0 && n.fract() == 0.0 && b != 0.0 {
+            blocks.push((n as u32, b));
+        }
+        at += width;
+    }
+    if blocks.is_empty() {
+        return Ok(None);
+    }
+    let remote = r.optional(rem, 0.0)?.abs();
+    let regulated_bus = if remote == 0.0 || remote == r.num(0)? {
+        None
+    } else {
+        indices.get(&(remote as u32)).map(|&i| case.buses[i].id)
+    };
+    Ok(Some(SwitchedShunt {
+        bus: r.id(0)?,
+        mode,
+        regulated_bus,
+        vmax,
+        vmin,
+        initial: r.num(binit)?,
+        blocks,
+        line: r.line,
+    }))
+}
+
+/// The voltage-control tap of a transformer winding record (COD 1), if any.
+/// `ratio_index` is the winding's WINDV field and `cod` its COD field.
+#[allow(clippy::too_many_arguments)]
+fn tap_control(
+    rev: u32,
+    w: &Record,
+    cod: usize,
+    branch: usize,
+    own_bus: u32,
+    tap: f64,
+    indices: &HashMap<u32, usize>,
+    case: &Case,
+) -> Result<Option<TapControl>, Error> {
+    if w.optional(cod, 0.0)? != 1.0 {
+        return Ok(None);
+    }
+    // CONT, (NODE in revision 35), RMA, RMI, VMA, VMI, NTP.
+    let skip = usize::from(rev >= 35);
+    let cont = w.optional(cod + 1, 0.0)?;
+    let [rma, rmi, vma, vmi, ntp] = [2, 3, 4, 5, 6].map(|k| cod + skip + k);
+    let (ratio_max, ratio_min) = (w.optional(rma, 1.1)?, w.optional(rmi, 0.9)?);
+    let (vmax, vmin) = (w.optional(vma, 1.1)?, w.optional(vmi, 0.9)?);
+    let positions = w.optional(ntp, 33.0)?;
+    let ratio = w.num(0)?;
+    let Some(&bus) = indices.get(&(cont.abs() as u32)) else {
+        return Ok(None);
+    };
+    if cont == 0.0
+        || ratio <= 0.0
+        || tap <= 0.0
+        || ratio_max <= ratio_min
+        || !(vmin > 0.0 && vmax >= vmin)
+        || positions < 2.0
+        || positions.fract() != 0.0
+    {
+        return Ok(None);
+    }
+    let regulated_bus = case.buses[bus].id;
+    Ok(Some(TapControl {
+        branch,
+        regulated_bus,
+        // A negative CONT puts a bus that is not a terminal on the winding's
+        // own side; the winding's own bus is on its own side too.
+        raises_voltage: regulated_bus == own_bus || cont < 0.0,
+        vmax,
+        vmin,
+        ratio,
+        ratio_max,
+        ratio_min,
+        positions: positions as u32,
+        tap_per_ratio: tap / ratio,
+        line: w.line,
+    }))
 }
 
 fn impedance(
@@ -932,6 +1072,7 @@ fn convert_transformers(
     sources: &mut Vec<BranchSource>,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
+    taps: &mut Vec<TapControl>,
 ) -> Result<(), Error> {
     let mut groups = [vec![], vec![]];
     let mut pos = 0;
@@ -985,8 +1126,10 @@ fn convert_transformers(
             };
             for w in ws.iter().take(if kind == 0 { 1 } else { 3 }) {
                 for i in controls {
-                    if w.optional(i, 0.0)? != 0.0 {
-                        ctx.warn(w.line, true, "transformer controls, correction tables and connection angles ignored; supplied tap retained")?;
+                    let value = w.optional(i, 0.0)?;
+                    // Voltage control (COD ±1) goes to `voltage_controls`.
+                    if value != 0.0 && !(i == controls[0] && value.abs() == 1.0) {
+                        ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
                         break;
                     }
                 }
@@ -1025,6 +1168,21 @@ fn convert_transformers(
                 let t = &case.buses[buses[1]];
                 let zi = impedance(z, 0, cz, ws[0].num(1)?, f, case.base_mva)?;
                 let tap = winding(&ws[0], cw, f)? / winding(&ws[1], cw, t)?;
+                if rev >= 30
+                    && let Some(control) = tap_control(
+                        rev,
+                        &ws[0],
+                        controls[0],
+                        case.branches.len(),
+                        f.id,
+                        tap,
+                        indices,
+                        case,
+                    )?
+                {
+                    taps.push(control);
+                }
+                let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
                 case.branches.push(transformer_branch(
                     r,
                     &ws[0],
@@ -1066,14 +1224,24 @@ fn convert_transformers(
                     sources.push(source(i as u8 + 1)?);
                     let b = &case.buses[buses[i]];
                     let online = status != 0 && status != [4, 2, 3][i];
+                    let tap = winding(&ws[i], cw, b)?;
+                    if rev >= 30
+                        && let Some(control) = tap_control(
+                            rev,
+                            &ws[i],
+                            controls[0],
+                            case.branches.len(),
+                            b.id,
+                            tap,
+                            indices,
+                            case,
+                        )?
+                    {
+                        taps.push(control);
+                    }
+                    let b = &case.buses[buses[i]];
                     case.branches.push(transformer_branch(
-                        r,
-                        &ws[i],
-                        b.id,
-                        id,
-                        star_z[i],
-                        winding(&ws[i], cw, b)?,
-                        online,
+                        r, &ws[i], b.id, id, star_z[i], tap, online,
                     )?);
                 }
                 let b = &case.buses[buses[0]];

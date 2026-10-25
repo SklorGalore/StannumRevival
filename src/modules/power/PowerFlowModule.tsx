@@ -284,6 +284,24 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
+      <label className="flex items-center gap-2 text-xs text-slate-700">
+        <input
+          type="checkbox"
+          checked={settings.switch_shunts && ac}
+          disabled={!ac}
+          onChange={(e) => setSettings({ ...settings, switch_shunts: e.target.checked })}
+        />
+        Switch shunts
+      </label>
+      <label className="flex items-center gap-2 text-xs text-slate-700">
+        <input
+          type="checkbox"
+          checked={settings.adjust_transformer_taps && ac}
+          disabled={!ac}
+          onChange={(e) => setSettings({ ...settings, adjust_transformer_taps: e.target.checked })}
+        />
+        Adjust transformer taps
+      </label>
       <Field label="Two-terminal and VSC DC lines">
         <select
           className={inputClass}
@@ -361,6 +379,15 @@ function Overview({ report }: { report: SolveReport }) {
             `${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}` +
             (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "") +
             (report.vsc_limit_passes ? `, ${report.vsc_limit_passes} VSC limit pass${report.vsc_limit_passes === 1 ? "" : "es"}` : "")
+          }
+        />
+        <Metric
+          label="Voltage controls"
+          value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
+          detail={
+            report.voltage_control_passes
+              ? `Moved, over ${report.voltage_control_passes} switching pass${report.voltage_control_passes === 1 ? "" : "es"}`
+              : "Moved from their starting values"
           }
         />
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />

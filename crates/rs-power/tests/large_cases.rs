@@ -152,6 +152,39 @@ fn synthetic_usa_detailed_lcc_model() {
 }
 
 #[test]
+#[ignore = "needs tests/large/SyntheticUSA.RAW"]
+fn synthetic_usa_voltage_controls() {
+    let imported = stannum_raw(&case_text("SyntheticUSA.RAW"));
+    let controls = &imported.voltage_controls;
+    assert_eq!(controls.switched_shunts.len(), 150);
+    assert_eq!(controls.taps.len(), 291);
+    let result = solve(
+        &imported.case,
+        &PowerFlowOptions {
+            enforce_q_limits: true,
+            dc_model: DcModel::Detailed {
+                lines: imported.lcc_lines.clone(),
+                vsc_lines: Vec::new(),
+                adjust_taps: true,
+            },
+            voltage_controls: controls.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    // With the shunts and taps working, no bus is more than 0.05 p.u. from
+    // the saved PowerWorld solution.
+    let (mean, angle) = voltage_error(&imported.case, &result.case);
+    assert!(mean < 0.001, "{mean}");
+    assert!(angle < 2.0, "{angle}");
+    let worst = (imported.case.buses.iter().zip(&result.case.buses))
+        .map(|(a, b)| (a.vm - b.vm).abs())
+        .fold(0.0, f64::max);
+    assert!(worst < 0.05, "{worst}");
+}
+
+#[test]
 #[ignore = "needs tests/large/Synthetic_East_West_US.RAW"]
 fn synthetic_east_west_revision_34() {
     let imported = stannum_raw(&case_text("Synthetic_East_West_US.RAW"));
