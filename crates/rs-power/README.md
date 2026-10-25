@@ -317,6 +317,15 @@ tolerance is `5e-6` MVAr. The iteration count includes all limit passes. A
 Newton step that would change any voltage magnitude by more than half is
 shortened so that none does; ordinary steps are far smaller and unaffected.
 
+With reactive limits (or continuous shunts), solves stop early at a 0.01 p.u.
+mismatch while generators may still switch between PV and PQ, and only
+violations larger than the remaining mismatch switch a generator then. Once
+nothing switches, the solve continues to the full tolerance and the limits
+are checked again, so the answer meets `tolerance`. A reference bus at its
+limit is switched only after a full-tolerance solve, since it keeps the
+active power it has at that moment, as in MATPOWER. On the 80,000-bus
+synthetic cases this cuts Newton iterations by about 40%.
+
 Always check `SolveStatus`. Reaching the iteration limit returns the final
 iterate, computed outputs and residual. Reactive-limit infeasibility is a
 separate status. Invalid inputs, unsupported topology, and numerical failures

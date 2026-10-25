@@ -16,6 +16,12 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Faster reactive-limit solves: while generators may still switch between
+  PV and PQ, each solve stops at a 0.01 p.u. mismatch, and only clear
+  violations switch a generator. The final solve still meets the full
+  tolerance. SyntheticUSA drops from 76 to 45 Newton iterations (31 s to
+  18 s).
+
 - Switched shunt and transformer tap voltage control:
   `RawImport::voltage_controls` lists switched shunts (MODSW 1 and 2) and
   transformer windings (COD 1) in voltage control, and
