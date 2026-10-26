@@ -85,15 +85,20 @@ round with it, and its other wires move to the side facing where they go.
 
 Any label can be dragged to a clearer spot: a symbol's text, a bus's name and
 voltage, or the flow figures on a wire. A label pulled clear gets a thin
-dashed leader back to its owner. **Reset label position** in the properties
-panel puts one back. Moved labels are saved and exported.
+dashed leader back to its owner. **Reset label position**, in the inspector's
+**Drawing** section, puts one back. Moved labels are saved and exported.
 
 ## Inspector
 
-Selecting a symbol opens its properties on the right: its case record, solved
-values, rotation, label controls and, for case elements, the
-[study](/StannumRevival/guide/studies/) actions. The symbol palette on the left
-collapses to give the drawing more room.
+Selecting a symbol drawn from the case opens the
+[element inspector](/StannumRevival/guide/shell/#element-inspector) on the
+right, the same one Power flow and Topology show: the element's results,
+limits, file data, connections and [study](/StannumRevival/guide/studies/)
+edits. The drawing's own fields (rotation, label position, the symbol's
+drawing values) are folded into its **Drawing** section. Symbols drawn by hand
+show those fields directly. A selected element this drawing doesn't include
+is inspected too, with **Draw around** to bring it in. The symbol palette on
+the left collapses to give the drawing more room.
 
 ## Saving and exporting
 

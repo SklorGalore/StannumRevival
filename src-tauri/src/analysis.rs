@@ -110,6 +110,15 @@ pub async fn diagram_network(
     with(state, |ws| ws.current()?.diagram_network()).await
 }
 
+/// One element's data and limits from the file, for the element inspector.
+#[tauri::command]
+pub async fn element_detail(
+    state: State<'_, SharedWorkspace>,
+    element: String,
+) -> Result<stannum_core::inspect::ElementDetail, String> {
+    with(state, move |ws| ws.current()?.element_detail(&element)).await
+}
+
 /// Serialized inside the lock: the snapshot borrows the parsed case.
 #[tauri::command]
 pub async fn topology_snapshot(

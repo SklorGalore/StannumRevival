@@ -45,6 +45,7 @@ pub fn run() {
             analysis::sensitivity_responses,
             analysis::export_matpower,
             analysis::diagram_network,
+            analysis::element_detail,
             analysis::topology_snapshot,
             analysis::topology_set_merge,
             analysis::topology_shortest_path,
