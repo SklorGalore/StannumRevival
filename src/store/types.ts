@@ -36,7 +36,8 @@ export interface BusData extends Record<string, unknown> {
   length: number;
   /** Generated buses carry one tap per connection; hand-drawn ones use defaults. */
   taps?: BusTap[];
-  /** Star point of a three-winding transformer: drawn as a small junction. */
+  /** Star point of a three-winding transformer: drawn as a small junction.
+   *  Only in drawings made before the one-symbol transformer (transformer3). */
   star?: boolean;
   /** The bus a local drawing is centred on. */
   focus?: boolean;
@@ -93,6 +94,36 @@ export interface TransformerData extends Record<string, unknown> {
   windingsUnknown?: boolean;
   /** The case's "to" bus is on the primary (top) side. */
   reversed?: boolean;
+  outOfService?: boolean;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
+}
+
+/** One winding of a three-winding transformer and the terminal it leaves from. */
+export interface Transformer3Leg {
+  handle: "x3-a" | "x3-b" | "x3-c";
+  /** 1, 2 or 3, as in the case. */
+  winding: number;
+  /** The winding's bus. */
+  bus: number;
+  kv: number;
+  ratingMVA: number;
+  /** The winding's branch, so its flow is drawn on its wire. */
+  caseRef?: CaseRef;
+  outOfService?: boolean;
+}
+
+/** A three-winding transformer drawn as one symbol, standing in for the
+ *  case's internal star bus and its three windings. */
+export interface Transformer3Data extends Record<string, unknown> {
+  label: string;
+  rotation?: Rotation;
+  labelOffset?: LabelOffset;
+  /** Empty on one drawn by hand. */
+  legs: Transformer3Leg[];
+  /** The case's star bus the symbol stands for. */
+  star?: number;
+  caseRef?: CaseRef;
   outOfService?: boolean;
   /** The element a local drawing was made around: drawn with a halo. */
   focus?: boolean;
@@ -207,6 +238,7 @@ export type SLDNodeType =
   | "load"
   | "shunt"
   | "transformer"
+  | "transformer3"
   | "circuitBreaker"
   | "disconnector"
   | "fuse"
@@ -218,6 +250,7 @@ export type GeneratorNode = Node<GeneratorData, "generator">;
 export type LoadNode = Node<LoadData, "load">;
 export type ShuntNode = Node<ShuntData, "shunt">;
 export type TransformerNode = Node<TransformerData, "transformer">;
+export type Transformer3Node = Node<Transformer3Data, "transformer3">;
 export type CircuitBreakerNode = Node<CircuitBreakerData, "circuitBreaker">;
 export type DisconnectorNode = Node<DisconnectorData, "disconnector">;
 export type FuseNode = Node<FuseData, "fuse">;
@@ -230,6 +263,7 @@ export type SLDNode =
   | LoadNode
   | ShuntNode
   | TransformerNode
+  | Transformer3Node
   | CircuitBreakerNode
   | DisconnectorNode
   | FuseNode
@@ -309,6 +343,8 @@ export interface DiagramStore {
   fitRequest: number;
   /** "mono" draws everything black, for printing. */
   colorMode: "voltage" | "mono";
+  /** The drawing is locked against changes (see setLocked). Shared by both drawing styles. */
+  locked: boolean;
   /** Undo/redo history of the drawing (nodes and edges only). */
   past: DiagramSnapshot[];
   future: DiagramSnapshot[];
@@ -335,6 +371,9 @@ export interface DiagramStore {
   rotateSelection: (turn: 90 | -90) => void;
   align: (how: AlignMode) => void;
   toggleColorMode: () => void;
+  /** Lock the drawing: symbols and wires can still be selected and
+   *  inspected, but not moved, edited, deleted or rewired. */
+  setLocked: (locked: boolean) => void;
   updateNodeData: (id: string, data: Partial<SLDNode["data"]>) => void;
   updateEdgeData: (id: string, data: Partial<ConductorData>) => void;
   addNode: (node: SLDNode) => void;

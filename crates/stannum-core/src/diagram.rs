@@ -101,8 +101,9 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             base_kv: b.base_kv,
             area: b.area,
             kind: kind_label(b.kind),
-            pd: b.pd,
-            qd: b.qd,
+            // What the load draws at the file's voltage.
+            pd: b.load().0,
+            qd: b.load().1,
             gs: b.gs,
             bs: b.bs,
         })

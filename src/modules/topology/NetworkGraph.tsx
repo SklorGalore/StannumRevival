@@ -38,9 +38,21 @@ const DARK: typeof LIGHT = {
   outline: "#cbd5e1",
 };
 
+/** The one-line's three-winding transformer symbol (three overlapping
+ *  circles), as an image for a three-winding transformer's junction. */
+const winding3Glyph = (stroke: string) =>
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="${stroke}" stroke-width="2.4">` +
+      `<circle cx="20" cy="14.5" r="8.5"/><circle cx="14" cy="24.5" r="8.5"/><circle cx="26" cy="24.5" r="8.5"/></svg>`
+  );
+
 const styleFor = (colors: typeof LIGHT): StylesheetJson => [
   { selector: "node", style: { "background-color": colors.node, width: 25, height: 25, label: "data(label)", color: colors.text, "font-size": 11, "text-valign": "bottom", "text-margin-y": 6, "border-width": 2, "border-color": colors.surface, "min-zoomed-font-size": 9 } },
   { selector: "node.junction", style: { shape: "diamond", "background-color": colors.surface, "border-color": colors.junction, width: 18, height: 18 } },
+  // A three-winding transformer is drawn with its one-line symbol rather
+  // than as a bare junction.
+  { selector: "node.winding3", style: { shape: "ellipse", "border-width": 0, width: 30, height: 30, label: "", "background-image": winding3Glyph(colors.text), "background-width": "100%", "background-height": "100%", "background-position-x": "50%", "background-position-y": "50%" } },
   { selector: "edge", style: { width: 1.7, "line-color": colors.edge, "curve-style": "bezier" } },
   { selector: "edge.transformer", style: { "line-style": "dashed" } },
   { selector: "edge.switch", style: { "line-style": "dotted" } },
@@ -54,6 +66,7 @@ const styleFor = (colors: typeof LIGHT): StylesheetJson => [
   // Coloured buses are a little larger and outlined so pale colours still read.
   { selector: "node[fill]", style: { "background-color": "data(fill)", width: 32, height: 32, "border-color": colors.outline, "border-width": 1.5 } },
   { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
+  { selector: "node.winding3[fill]", style: { width: 30, height: 30, "border-width": 0 } },
   { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
   { selector: "node[halo]", style: { "underlay-color": "data(halo)", "underlay-opacity": 0.48, "underlay-padding": 5 } },
   { selector: "edge[halo]", style: { "underlay-color": "data(halo)", "underlay-opacity": 0.6, "underlay-padding": 4 } },
@@ -123,6 +136,7 @@ export function NetworkGraph({
   marks,
   focus,
   onRecentre,
+  locked = false,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
@@ -136,6 +150,8 @@ export function NetworkGraph({
   focus?: number | null;
   /** Double-clicking a bus asks to centre the view on it. */
   onRecentre?: (bus: number) => void;
+  /** Buses can't be dragged about; tapping still selects. */
+  locked?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -143,6 +159,8 @@ export function NetworkGraph({
   inspect.current = onInspect;
   const recentre = useRef(onRecentre);
   recentre.current = onRecentre;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const dark = useTheme((s) => s.theme === "dark");
   const palette = useRef(dark ? DARK : LIGHT);
   palette.current = dark ? DARK : LIGHT;
@@ -167,7 +185,7 @@ export function NetworkGraph({
             members: n.member_buses?.length ? n.member_buses : n.bus !== null ? [n.bus] : [],
             equipment: n.equipment_id,
           },
-          classes: n.bus === null ? "junction" : "bus",
+          classes: n.bus === null ? (kinds.get(n.equipment_id ?? "") === "transformer" ? "junction winding3" : "junction") : "bus",
         })),
         ...graph.edges.map((e) => ({
           data: { id: e.id, source: e.source, target: e.target, equipment: e.equipment_id },
@@ -193,12 +211,17 @@ export function NetworkGraph({
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));
     cy.on("mouseout", "node, edge", (ev) => ev.target.removeClass("hovered"));
     cy.on("zoom", () => refreshLabels(cy));
+    cy.autoungrabify(lockedRef.current);
     cyRef.current = cy;
     return () => {
       cy.destroy();
       cyRef.current = null;
     };
   }, [graph, snapshot]);
+
+  useEffect(() => {
+    cyRef.current?.autoungrabify(locked);
+  }, [locked]);
 
   // Selection highlights without re-layout.
   useEffect(() => {

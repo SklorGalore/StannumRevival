@@ -60,9 +60,20 @@ function busResults(report: SolveReport, bus: number, withLoad: boolean): Elemen
       row("Generation", gens.reduce((s, g) => s + g.qg, 0), "Mvar", 1)
     );
   }
+  const groups: ResultGroup[] = [{ title: "", rows }];
+  if (withLoad && b.load_parts) {
+    const { p, q } = b.load_parts;
+    groups.push({
+      title: "Load by type",
+      rows: ["Constant power", "Constant current", "Constant impedance"].flatMap((label, k) => [
+        row(label, p[k], "MW", 1),
+        row(label, q[k], "Mvar", 1),
+      ]),
+    });
+  }
   const headline =
     b.vm > b.vmax ? `${fixed(b.vm, 3)} p.u., above ${fixed(b.vmax, 2)}` : b.vm < b.vmin ? `${fixed(b.vm, 3)} p.u., below ${fixed(b.vmin, 2)}` : `${fixed(b.vm, 3)} p.u.`;
-  return { headline, tone, loading: null, groups: [{ title: "", rows }], offline: b.kind === "Isolated" };
+  return { headline, tone, loading: null, groups, offline: b.kind === "Isolated" };
 }
 
 /** The latest solve's results for an element, or null when the solve doesn't list it. */
@@ -75,7 +86,7 @@ export function elementResults(report: SolveReport, element: string): ElementRes
     case "load": {
       // Power flow sums loads per bus, so a load shows its bus.
       const r = busResults(report, elementBus(element)!, true);
-      return r && { ...r, groups: [{ title: `Bus ${e.buses[0]}`, rows: r.groups[0].rows }] };
+      return r && { ...r, groups: [{ title: `Bus ${e.buses[0]}`, rows: r.groups[0].rows }, ...r.groups.slice(1)] };
     }
     case "generator": {
       const g = report.generators.find((x) => x.element === element);

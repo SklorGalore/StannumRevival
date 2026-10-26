@@ -728,6 +728,27 @@ if (STANNUM_RAW_DC) {
   );
   await shot("diagram-mtdc");
 
+  // A three-winding transformer is one symbol, not its internal star bus
+  // with a two-winding symbol per winding. One hop around bus 3004 reaches
+  // it through bus 3002; its other two windings end in a marker each.
+  await page.getByRole("button", { name: "From case" }).click();
+  await page.getByLabel(/Around a bus/).check();
+  await page.getByRole("combobox", { name: "Bus number" }).fill("3004");
+  await page.getByLabel("Hops out").selectOption("1");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  const t3 = page.locator(".react-flow__node-transformer3");
+  await t3.first().waitFor();
+  assert.equal(await t3.count(), 1, "one three-winding symbol around bus 3004");
+  assert.match(await t3.innerText(), /T 3002-3001-3011/, "named by its windings' buses");
+  assert.equal(await page.locator('.react-flow__node[data-id="b100003"]').count(), 0, "star bus not drawn");
+  assert.equal(await page.locator('.react-flow__node[data-id="o51"], .react-flow__node[data-id="o52"]').count(), 2, "a marker per winding leaving the drawing");
+  assert.doesNotMatch(await page.getByTestId("voltage-legend").innerText(), /(^|\s)1(,| kV)/, "no 1 kV star bus in the legend");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  await shot("diagram-three-winding");
+
   // Power flow lists every DC line; with Q limits on, the case converges and
   // the line-commutated converters absorb reactive power. Two-terminal lines
   // use the detailed converter model: the rectifier holds the order.
@@ -1110,6 +1131,58 @@ if (STANNUM_VIOLATIONS) {
   await shot("tables-matpower");
   await page.getByTestId("tables-drawer").getByRole("button", { name: "Hide tables" }).click();
 }
+
+// Records: every record type of the open case with every field, sorted,
+// filtered, and picked into the inspector and onto the diagram.
+await queue(STANNUM_RAW);
+await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Records", exact: true }).click();
+const recordTypes = page.getByTestId("record-types");
+await recordTypes.getByRole("button", { name: /^Buses/ }).waitFor();
+const records = page.getByTestId("records-table");
+const recordRows = records.locator("tbody tr:not([data-spacer])");
+await recordRows.first().waitFor();
+assert.equal(await recordRows.count(), 5, "five buses");
+for (const field of ["I", "NAME", "BASKV", "IDE", "AREA", "ZONE", "VM", "VA", "EVLO"])
+  await records.getByRole("columnheader", { name: field, exact: true }).waitFor();
+// Sort by base kV, highest first.
+const kvHeader = records.getByRole("columnheader", { name: "BASKV", exact: true });
+await kvHeader.click();
+await kvHeader.click();
+const kvIndex = await records.locator("thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent.trim() === "BASKV"));
+const kvs = (await recordRows.locator(`td:nth-child(${kvIndex + 1})`).allInnerTexts()).map(Number);
+assert.deepEqual(kvs, [...kvs].sort((a, b) => b - a), "sorted by base kV, highest first");
+await shot("records-buses");
+// A filter chip on any field.
+const recordChips = page.getByTestId("records-module").getByTestId("filter-chips");
+await recordChips.getByRole("button", { name: "Add filter" }).click();
+const recordEditor = page.getByRole("dialog", { name: "Edit filter" });
+await recordEditor.getByLabel("Filter field").selectOption({ label: "BASKV" });
+await recordEditor.getByLabel("Filter operator").selectOption("lte");
+await recordEditor.getByLabel("Filter value").fill("100");
+await recordEditor.getByRole("button", { name: "Done" }).click();
+await recordChips.getByTestId("filter-chip").filter({ hasText: "BASKV ≤ 100" }).waitFor();
+await recordChips.getByText(/^\d+ of 5 buses$/).waitFor();
+for (const kv of await recordRows.locator(`td:nth-child(${kvIndex + 1})`).allInnerTexts()) assert.equal(kv.trim(), "69");
+await shot("records-filtered");
+await recordChips.getByRole("button", { name: /^Remove filter/ }).click();
+// Loads, and a pick that opens the inspector, then Draw around.
+await recordTypes.getByRole("button", { name: /^Loads/ }).click();
+await records.getByRole("columnheader", { name: "PL", exact: true }).waitFor();
+await recordRows.first().click();
+const recordInspector = page.getByTestId("records-inspector");
+await recordInspector.getByTestId("inspector-title").filter({ hasText: /^Load / }).waitFor();
+await shot("records-inspector");
+await recordInspector.getByRole("button", { name: "Draw around" }).click();
+await page.locator(".react-flow__node-bus").first().waitFor();
+// A MATPOWER case lists the power flow model's tables.
+await queue(STANNUM_MATPOWER);
+await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Records", exact: true }).click();
+await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
+await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
+assert.equal(await recordRows.count(), 9, "nine buses in case9");
+await shot("records-matpower");
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();

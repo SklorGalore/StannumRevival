@@ -104,6 +104,26 @@ const busColumns: Column<BusRow>[] = [
   },
 ];
 
+const LOAD_PART_NAMES = ["constant power", "constant current", "constant impedance"];
+
+/** Pd and Qd split into constant power (P), current (I) and impedance (Z)
+ * parts at the solved voltage; shown when some bus has voltage-dependent load. */
+const loadPartColumns: Column<BusRow>[] = (["p", "q"] as const).flatMap((side) =>
+  ["P", "I", "Z"].map((short, k) => {
+    const value = (r: BusRow) => (r.load_parts ? r.load_parts[side][k] : k === 0 ? r[side === "p" ? "pd" : "qd"] : 0);
+    return {
+      key: `load_${side}_${short}`,
+      header: `${side === "p" ? "Pd" : "Qd"} ${short} (${side === "p" ? "MW" : "MVAr"})`,
+      title: `${side === "p" ? "Active" : "Reactive"} load drawn as ${LOAD_PART_NAMES[k]} at the solved voltage`,
+      value,
+      render: (r: BusRow) => fixed(value(r)),
+      align: "right" as const,
+    };
+  })
+);
+
+const busColumnsWithLoadParts: Column<BusRow>[] = busColumns.flatMap((c) => (c.key === "qd" ? [c, ...loadPartColumns] : [c]));
+
 const generatorColumns: Column<GeneratorRow>[] = [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "bus", header: "Bus", value: (r) => r.bus, align: "right" },
@@ -861,6 +881,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
     [report]
   );
+  const busCols = useMemo(
+    () => (report?.buses.some((b) => b.load_parts) ? busColumnsWithLoadParts : busColumns),
+    [report]
+  );
   const setReport = useWorkspace((s) => s.setSolveReport);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1203,7 +1227,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.buses ?? report.buses}
-                  columns={busColumns}
+                  columns={busCols}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
                   exportName="buses.csv"

@@ -138,13 +138,13 @@ pub fn from_power(power: &PowerCase) -> Case {
     let loads = case
         .buses
         .iter()
-        .filter(|b| !star.contains(&b.id) && (b.pd != 0.0 || b.qd != 0.0))
+        .filter(|b| !star.contains(&b.id) && (b.load() != (0.0, 0.0)))
         .map(|b| Injection {
             id: format!("load:{}:1", b.id),
             bus: b.id as i32,
             status: 1,
-            p_mw: b.pd,
-            q_mvar: b.qd,
+            p_mw: b.load().0,
+            q_mvar: b.load().1,
             source: record(
                 "LOAD",
                 &[("PL", b.pd.to_string()), ("QL", b.qd.to_string())],

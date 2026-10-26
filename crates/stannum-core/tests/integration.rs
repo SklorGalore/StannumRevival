@@ -626,3 +626,145 @@ fn the_report_sends_its_tables_as_columns() {
     assert!((vm - report.buses[0].vm).abs() <= 5e-7);
     assert_eq!(json["generators"]["online"][0], true);
 }
+
+#[test]
+fn every_row_field_has_a_column() {
+    // A field added to a row struct must also be added to its column list
+    // in `power::wire`, or the frontend never sees it.
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus_zip.raw")).unwrap();
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(SolveSettings::default())
+        .unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let keys = |v: &serde_json::Value| {
+        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        k.retain(|k| k != "count");
+        k.sort();
+        k
+    };
+    let rows = [
+        ("buses", serde_json::to_value(&report.buses[0]).unwrap()),
+        (
+            "generators",
+            serde_json::to_value(&report.generators[0]).unwrap(),
+        ),
+        (
+            "branches",
+            serde_json::to_value(&report.branches[0]).unwrap(),
+        ),
+    ];
+    for (table, row) in rows {
+        assert_eq!(keys(&json[table]), keys(&row), "{table}");
+    }
+    let parts = json["buses"]["load_parts"].as_array().unwrap();
+    assert!(
+        parts.iter().any(|p| !p.is_null()),
+        "ZIP load parts are sent"
+    );
+}
+
+#[test]
+fn zip_loads_vary_with_voltage_and_show_their_parts() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus_zip.raw")).unwrap();
+    let case = ws.current_mut().unwrap();
+    let bus = |id: u32| {
+        let power = case.power.as_ref().unwrap();
+        power
+            .case
+            .buses
+            .iter()
+            .find(|b| b.id == id)
+            .unwrap()
+            .clone()
+    };
+    // Bus 2: 30 + j10 of each part; YQ -10 is inductive, so it consumes.
+    let b = bus(2);
+    assert_eq!((b.pd, b.pd_i, b.pd_z), (30.0, 30.0, 30.0));
+    assert_eq!((b.qd, b.qd_i, b.qd_z), (10.0, 10.0, 10.0));
+    assert!(
+        !case
+            .power
+            .as_ref()
+            .unwrap()
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("ZIP")),
+        "ZIP loads are modelled, not approximated"
+    );
+
+    let tight = || SolveSettings {
+        tolerance_mva: 1e-6,
+        ..SolveSettings::default()
+    };
+    let report = case.solve(tight()).unwrap();
+    assert!(report.converged);
+    let row = report.buses.iter().find(|r| r.id == 2).unwrap();
+    let parts = row.load_parts.as_ref().expect("bus 2 has ZIP parts");
+    let vm = row.vm;
+    assert!((vm - 1.0).abs() > 1e-3, "the bus sits off 1 p.u.");
+    assert_eq!(parts.p[0], 30.0);
+    assert!((parts.p[1] - 30.0 * vm).abs() < 1e-9);
+    assert!((parts.p[2] - 30.0 * vm * vm).abs() < 1e-9);
+    assert!((row.pd - parts.p.iter().sum::<f64>()).abs() < 1e-9);
+    assert!((row.qd - parts.q.iter().sum::<f64>()).abs() < 1e-9);
+    // A bus with only constant power has no parts to show.
+    assert!(
+        report
+            .buses
+            .iter()
+            .find(|r| r.id == 5)
+            .unwrap()
+            .load_parts
+            .is_none()
+    );
+    // Generation balances the load drawn at the solved voltages plus losses.
+    let balance = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
+    assert!(balance.abs() < 1e-4, "{balance}");
+
+    // The inspector shows the parts as filed, for the load and its bus.
+    let detail = case.element_detail("load:2:1").unwrap();
+    let field = |d: &stannum_core::inspect::ElementDetail, label: &str, unit: &str| {
+        d.data[0]
+            .fields
+            .iter()
+            .find(|f| f.label == label && f.unit == unit)
+            .map(|f| f.value.clone())
+    };
+    use stannum_core::inspect::Value::Number;
+    assert_eq!(field(&detail, "Constant power", "MW"), Some(Number(30.0)));
+    assert_eq!(
+        field(&detail, "Constant current at 1 p.u.", "Mvar"),
+        Some(Number(10.0))
+    );
+    assert_eq!(
+        field(&detail, "Constant impedance at 1 p.u.", "Mvar"),
+        Some(Number(10.0))
+    );
+    let detail = case.element_detail("bus:4").unwrap();
+    assert_eq!(
+        field(&detail, "Constant impedance at 1 p.u.", "MW"),
+        Some(Number(20.0))
+    );
+
+    // A study load edit keeps each part's share.
+    case.set_edits(vec![stannum_core::study::Edit::Load {
+        bus: 2,
+        mw: 45.0,
+        mvar: 15.0,
+    }])
+    .unwrap();
+    let edited = case.solve(tight()).unwrap();
+    let parts = edited
+        .buses
+        .iter()
+        .find(|r| r.id == 2)
+        .unwrap()
+        .load_parts
+        .clone()
+        .unwrap();
+    assert!(parts.p[0] > 0.0 && parts.p[1] > 0.0 && parts.p[2] > 0.0);
+}

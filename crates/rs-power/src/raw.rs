@@ -28,6 +28,12 @@ pub struct RawOptions {
     /// MATPOWER applies every setpoint at the generator's own bus, so this
     /// is off by default to keep conversions identical to MATPOWER 8.1.
     pub remote_regulation: bool,
+    /// Keep loads' constant-current (IP, IQ) and constant-impedance (YP, YQ)
+    /// parts in [`Bus::pd_i`], [`Bus::qd_i`], [`Bus::pd_z`] and
+    /// [`Bus::qd_z`], so power flow varies them with voltage. MATPOWER
+    /// converts them to constant power at the bus voltage in the file, so
+    /// this is off by default to keep conversions identical to MATPOWER 8.1.
+    pub zip_loads: bool,
 }
 
 /// A source-located diagnostic about RAW conversion.
@@ -554,6 +560,10 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             vmin: if have_limits { r.num(10)? } else { 0.9 },
             pd: if rev == 23 { r.num(2)? } else { 0.0 },
             qd: if rev == 23 { r.num(3)? } else { 0.0 },
+            pd_i: 0.0,
+            qd_i: 0.0,
+            pd_z: 0.0,
+            qd_z: 0.0,
             gs: if rev <= 30 { r.num(4)? } else { 0.0 },
             bs: if rev <= 30 { r.num(5)? } else { 0.0 },
             extra: vec![],
@@ -584,15 +594,26 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             let iq = r.optional(8, 0.0)?;
             let yp = r.optional(9, 0.0)?;
             let yq = r.optional(10, 0.0)?;
-            if [ip, iq, yp, yq].iter().any(|n| *n != 0.0) {
-                ctx.warn(
-                    r.line,
-                    true,
-                    "ZIP load converted to constant power at the input bus voltage",
-                )?;
+            b.pd += r.num(5)?;
+            b.qd += r.num(6)?;
+            if options.zip_loads {
+                // PSS/E YQ is positive for capacitive load; `qd_z` is
+                // consumption, positive for inductive load.
+                b.pd_i += ip;
+                b.qd_i += iq;
+                b.pd_z += yp;
+                b.qd_z -= yq;
+            } else {
+                if [ip, iq, yp, yq].iter().any(|n| *n != 0.0) {
+                    ctx.warn(
+                        r.line,
+                        true,
+                        "ZIP load converted to constant power at the input bus voltage",
+                    )?;
+                }
+                b.pd += ip * b.vm + yp * b.vm * b.vm;
+                b.qd += iq * b.vm - yq * b.vm * b.vm;
             }
-            b.pd += r.num(5)? + ip * b.vm + yp * b.vm * b.vm;
-            b.qd += r.num(6)? + iq * b.vm - yq * b.vm * b.vm;
         }
     }
     for r in section("fixed shunt") {
@@ -1268,6 +1289,10 @@ fn convert_transformers(
                     },
                     pd: 0.0,
                     qd: 0.0,
+                    pd_i: 0.0,
+                    qd_i: 0.0,
+                    pd_z: 0.0,
+                    qd_z: 0.0,
                     gs: 0.0,
                     bs: 0.0,
                     area: b.area,

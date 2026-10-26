@@ -1,6 +1,8 @@
 mod analysis;
+mod splash;
 
 use base64::{engine::general_purpose, Engine as _};
+use tauri::Manager;
 
 #[tauri::command]
 async fn save_diagram(path: String, content: String) -> Result<(), String> {
@@ -84,14 +86,32 @@ pub fn run() {
         .manage(analysis::SharedWorkspace::default())
         .manage(analysis::ContingencyRun::default())
         .manage(analysis::SolveRun::default())
+        .manage(splash::Splash::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
+            splash::start(app.handle());
             Ok(())
+        })
+        .on_page_load(|webview, payload| {
+            if webview.label() == splash::SPLASH
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+            {
+                splash::page_loaded(webview.app_handle());
+            }
+        })
+        .on_window_event(|window, event| {
+            // Closing the splash early still brings up the app.
+            if window.label() == splash::SPLASH {
+                if let tauri::WindowEvent::Destroyed = event {
+                    splash::reveal(window.app_handle());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             save_diagram,
             load_diagram,
             save_binary,
+            splash::app_ready,
             show_snap_layouts,
             analysis::open_case,
             analysis::close_case,
@@ -105,6 +125,8 @@ pub fn run() {
             analysis::export_matpower,
             analysis::diagram_network,
             analysis::element_detail,
+            analysis::case_records,
+            analysis::record_table,
             analysis::topology_snapshot,
             analysis::topology_set_merge,
             analysis::topology_shortest_path,

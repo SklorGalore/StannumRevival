@@ -15,6 +15,8 @@ import type {
   DiffSummary,
   ElementDetail,
   GraphData,
+  RecordBook,
+  RecordTable,
   Analysis,
   ResponseTable,
   SensitivitySummary,
@@ -45,6 +47,8 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   save_diagram: { label: "Saving file", done: "Saved file" },
   diagram_network: { label: "Reading the case network", quiet: true },
   element_detail: { label: "Reading an element", quiet: true },
+  case_records: { label: "Reading the case's records", quiet: true },
+  record_table: { label: "Reading records", quiet: true },
   topology_shortest_path: { label: "Finding a path", quiet: true },
 };
 
@@ -149,6 +153,8 @@ export const api = {
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
   elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),
+  caseRecords: () => call<RecordBook>("case_records"),
+  recordTable: (section: string) => call<RecordTable>("record_table", { section }),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>

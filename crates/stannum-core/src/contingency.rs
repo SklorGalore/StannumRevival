@@ -614,7 +614,7 @@ impl<'a> Context<'a> {
     /// already taken out.
     fn lost(&self, cut: &[usize], outage: &Outage) -> (f64, f64) {
         let case = self.case();
-        let load = cut.iter().map(|&b| case.buses[b].pd).sum();
+        let load = cut.iter().map(|&b| case.buses[b].load().0).sum();
         let ids: std::collections::HashSet<u32> = cut.iter().map(|&b| case.buses[b].id).collect();
         let generation = case
             .generators

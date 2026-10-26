@@ -33,7 +33,7 @@ including its approximations, with the extensions marked below.
 | Data | Conversion |
 | --- | --- |
 | Buses | Sorted by number; names kept. Type 4 is isolated. |
-| Loads | Summed per bus. Constant-current and constant-admittance components are frozen at the voltage in the file (constant power in the solve). |
+| Loads | Summed per bus. Constant-current (`IP`, `IQ`) and constant-admittance (`YP`, `YQ`) parts are kept, and the solve varies them with voltage. MATPOWER freezes them as constant power at the file's voltage. *Extension.* |
 | Fixed shunts | Summed into the bus shunt. |
 | Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in voltage control (MODSW 1, 2) are also kept for [voltage control](/StannumRevival/manual/voltage-controls/). *Extension.* |
 | Generators | One generator per record. `IREG` and `RMPCT` kept for [remote regulation](/StannumRevival/manual/remote-regulation/). *Extension.* |

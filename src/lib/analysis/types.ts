@@ -151,10 +151,20 @@ export interface BusRow {
   va: number;
   vmin: number;
   vmax: number;
+  /** Load drawn at the solved voltage, all parts together. */
   pd: number;
   qd: number;
+  /** The load split by how it varies with voltage, when any of it does. */
+  load_parts?: LoadParts | null;
   area: number;
   violation: number;
+}
+
+/** A bus's load at the solved voltage by part, in MW and Mvar:
+ * [constant power, constant current, constant impedance]. */
+export interface LoadParts {
+  p: [number, number, number];
+  q: [number, number, number];
 }
 
 export interface GeneratorRow {
@@ -756,4 +766,46 @@ export interface ContingencyProgress {
   phase: "idle" | "screening" | "ac";
   done: number;
   total: number;
+}
+
+/** Where the Records module's tables come from: the RAW file's own records, or the power flow model. */
+export type RecordSource = "raw" | "model";
+export type RecordColumnKind = "integer" | "number" | "text";
+
+export interface RecordSectionInfo {
+  /** "BUS" for RAW, "bus" for the model. */
+  id: string;
+  label: string;
+  count: number;
+  /** Records in the file that couldn't be listed. */
+  skipped: number;
+}
+
+export interface RecordBook {
+  source: RecordSource;
+  revision: number | null;
+  note: string | null;
+  sections: RecordSectionInfo[];
+}
+
+export interface RecordColumn {
+  name: string;
+  kind: RecordColumnKind;
+}
+
+export interface CaseRecord {
+  /** Line where the record starts in the file; 0 for model tables. */
+  line: number;
+  /** Shared element id, when the record is one (or sits at one bus). */
+  element: string | null;
+  cells: (number | string | null)[];
+}
+
+export interface RecordTable {
+  id: string;
+  label: string;
+  columns: RecordColumn[];
+  rows: CaseRecord[];
+  skipped: number;
+  note: string | null;
 }

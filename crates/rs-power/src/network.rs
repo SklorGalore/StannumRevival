@@ -19,6 +19,9 @@ pub(crate) struct Network {
     pub edges: Vec<Edge>,
     pub gens: Vec<Vec<usize>>,
     pub kinds: Vec<BusType>,
+    /// Constant-current load per bus in per unit at 1 p.u. voltage; the
+    /// load drawn is this times |V|. Constant-impedance load is in `y`.
+    pub current_loads: Vec<C>,
     pub islands: Vec<Vec<usize>>,
     pub references: Vec<usize>,
 }
@@ -43,7 +46,8 @@ impl Network {
                 return Err(invalid("bus IDs must be positive and unique"));
             }
             if [
-                b.pd, b.qd, b.gs, b.bs, b.vm, b.va, b.base_kv, b.vmax, b.vmin,
+                b.pd, b.qd, b.pd_i, b.qd_i, b.pd_z, b.qd_z, b.gs, b.bs, b.vm, b.va, b.base_kv,
+                b.vmax, b.vmin,
             ]
             .iter()
             .any(|x| !x.is_finite())
@@ -146,9 +150,13 @@ impl Network {
             adj[t].push(f);
             edges.push(edge);
         }
+        let mut current_loads = Vec::with_capacity(n);
         for (i, &e) in external.iter().enumerate() {
             let b = &case.buses[e];
-            *y[i].entry(i).or_default() += C::new(b.gs, b.bs) / case.base_mva;
+            // A constant-impedance load drawing pd_z + j·qd_z at 1 p.u. is a
+            // shunt admittance of pd_z − j·qd_z.
+            *y[i].entry(i).or_default() += C::new(b.gs + b.pd_z, b.bs - b.qd_z) / case.base_mva;
+            current_loads.push(C::new(b.pd_i, b.qd_i) / case.base_mva);
         }
         let mut seen = vec![false; n];
         let mut islands = Vec::new();
@@ -202,6 +210,7 @@ impl Network {
             edges,
             gens,
             kinds,
+            current_loads,
             islands,
             references,
         })
@@ -223,11 +232,17 @@ impl Network {
             .collect()
     }
 
+    /// Power each bus sends into the network and its voltage-dependent
+    /// load: branch flows, shunts and constant-impedance load through `y`,
+    /// plus constant-current load. Balances [`Self::injections`] at a solution.
     pub fn power(&self, v: &[C]) -> Vec<C> {
         self.y
             .iter()
             .enumerate()
-            .map(|(i, row)| v[i] * row.iter().map(|(&j, &y)| y * v[j]).sum::<C>().conj())
+            .map(|(i, row)| {
+                v[i] * row.iter().map(|(&j, &y)| y * v[j]).sum::<C>().conj()
+                    + self.current_loads[i] * v[i].norm()
+            })
             .collect()
     }
 }

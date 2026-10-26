@@ -93,6 +93,17 @@ function TransformerSymbol() {
   );
 }
 
+function Transformer3Symbol() {
+  return (
+    <Preview w={80} h={100}>
+      <path d="M40,0 V22 M20,74.4 V100 M60,74.4 V100" />
+      <circle cx={40} cy={38} r={16} />
+      <circle cx={27} cy={60} r={16} />
+      <circle cx={53} cy={60} r={16} />
+    </Preview>
+  );
+}
+
 function CBSymbol() {
   return (
     <Preview w={40} h={60}>
@@ -137,6 +148,7 @@ const CATEGORIES: PaletteCategory[] = [
     title: "Transformation",
     items: [
       { type: "transformer", label: "Transformer", symbol: <TransformerSymbol /> },
+      { type: "transformer3", label: "Three-winding", symbol: <Transformer3Symbol /> },
     ],
   },
   {

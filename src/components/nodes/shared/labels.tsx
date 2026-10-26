@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
+import { useDiagramStore } from "../../../store/diagramStore";
 
 export type Offset = { x: number; y: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -14,6 +15,9 @@ export const LABEL_SNAP = 5;
 export function useLabelDrag(offset: Offset | undefined, onMove: (next: Offset) => void) {
   const { getZoom } = useReactFlow();
   const start = useRef<{ x: number; y: number; from: Offset; last: Offset } | null>(null);
+  // A locked drawing's labels don't move; a click on one selects its symbol.
+  const locked = useDiagramStore((s) => s.locked);
+  if (locked) return { className: "" };
   return {
     className: "label-drag nodrag nopan",
     onPointerDown: (e: ReactPointerEvent<SVGElement>) => {

@@ -35,6 +35,18 @@ describe("palette search", () => {
     expect(searchElements(items, "line 14 ckt 2").map((i) => i.element)).toEqual(["line:14:149:2"]);
   });
 
+  it("lists a three-winding transformer once, by its windings' buses", () => {
+    const winding = (index: number, from: number, w: number) => ({
+      ...branch(index, from, 900), element: "transformer:1:14:149:T", circuit: "T", winding: w, transformer: true,
+    });
+    const three = paletteElements({ ...net, branches: [winding(3, 14, 1), winding(4, 1, 2), winding(5, 149, 3)] });
+    const t = three.filter((i) => i.element.startsWith("transformer"));
+    expect(t).toHaveLength(1);
+    expect(t[0].title).toBe("Transformer 14–1–149 circuit T");
+    expect(t[0].detail).not.toContain("900");
+    expect(searchElements(three, "149").map((i) => i.element)).toContain("transformer:1:14:149:T");
+  });
+
   it("returns nothing for an empty query", () => {
     expect(searchElements(items, "  ")).toEqual([]);
   });

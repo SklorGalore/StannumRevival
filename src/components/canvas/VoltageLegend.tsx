@@ -3,7 +3,7 @@ import { Panel } from "@xyflow/react";
 import { useDiagramStore } from "../../store/diagramStore";
 import { useInk } from "../../lib/diagram/ink";
 import { voltageLevel } from "../nodes/shared/voltageColor";
-import type { BusData } from "../../store/types";
+import type { BusData, Transformer3Data } from "../../store/types";
 
 /** Which colour stands for which base kV, for the voltages in the drawing. */
 export function VoltageLegend() {
@@ -17,6 +17,8 @@ export function VoltageLegend() {
     for (const n of nodes) {
       const kv = n.type === "bus" ? (n.data as BusData).voltageKV : 0;
       if (kv > 0) kvs.add(kv);
+      // A three-winding transformer's windings colour their own wires.
+      if (n.type === "transformer3") for (const l of (n.data as Transformer3Data).legs ?? []) if (l.kv > 0) kvs.add(l.kv);
     }
     // Group the case's voltages by the level that colours them.
     const byLevel = new Map<number, number[]>();

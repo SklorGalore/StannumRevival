@@ -107,7 +107,7 @@ normalizes negative metered-end branch IDs, and converts two- and three-winding
 transformers (CW/CZ 1–3), adding star buses with MATPOWER's numbering and winding
 statuses. Impedance conversion uses the winding nominal voltage base, matching
 MATPOWER's `use_winding_baseV=1`, including its zero-NOMV behavior. ZIP loads are
-frozen at the supplied bus voltage. Switched shunts use BINIT, including offline
+frozen at the supplied bus voltage, as in MATPOWER, unless `zip_loads` is set. Switched shunts use BINIT, including offline
 records, as in MATPOWER; those in voltage control and transformer windings in
 voltage control are also listed in `RawImport::voltage_controls` (see below).
 Transformer magnetizing admittance, other tap controls, correction tables and
@@ -516,7 +516,7 @@ Voltage-controlled buses without online generators are treated as PQ. DC flow
 requires nonzero active branch reactances and does not accept reactive-limit
 enforcement.
 
-OPF, continuation power flow, ZIP loads, alternative AC formulations, radial
+OPF, continuation power flow, alternative AC formulations, radial
 methods, three-phase models, extensions and language bindings
 are outside this release. Passing these reference tests does not establish
 compatibility with every MATPOWER case or numerical condition.
