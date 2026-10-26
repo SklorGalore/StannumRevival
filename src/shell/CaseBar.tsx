@@ -5,10 +5,11 @@ import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
 import { useWidth } from "../ui/useWidth";
+import { WindowControls, dragRegion } from "./WindowControls";
 
 const SHORTCUT = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
-/** The shared open case, shown above every analysis module. */
+/** The shared open case, shown above every analysis module. On Windows it is also the title bar. */
 export function CaseBar() {
   const summary = useWorkspace((s) => s.caseSummary);
   const opening = useWorkspace((s) => s.opening);
@@ -30,7 +31,7 @@ export function CaseBar() {
   const [ref, width] = useWidth<HTMLDivElement>(1440);
   const narrow = width < 1100;
   return (
-    <div ref={ref} className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white whitespace-nowrap">
+    <div ref={ref} {...dragRegion} className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white whitespace-nowrap">
       <FileText size={16} className="text-slate-400 shrink-0" />
       {summary ? (
         <div className="min-w-[10rem] flex-[1_1_0] flex items-baseline gap-2" data-case-summary>
@@ -105,6 +106,7 @@ export function CaseBar() {
           </Button>
         )}
       </div>
+      <WindowControls />
     </div>
   );
 }

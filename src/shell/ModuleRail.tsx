@@ -4,6 +4,7 @@ import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
 import logoUrl from "../assets/stannum-logo.svg";
 import logoSmallUrl from "../assets/stannum-logo-small.svg";
+import { dragRegion } from "./WindowControls";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
@@ -27,7 +28,7 @@ export function ModuleRail() {
       // The rail is dark in both themes, so it keeps the light palette's tints.
       className="force-light w-[84px] shrink-0 bg-[#0f2e30] text-teal-50 flex flex-col items-stretch py-3 gap-1 select-none"
     >
-      <div className="flex flex-col items-center gap-1 pb-3 mb-1 border-b border-white/10">
+      <div {...dragRegion} className="flex flex-col items-center gap-1 pb-3 mb-1 border-b border-white/10">
         <Logo />
         <span className="text-[11px] font-semibold tracking-wide">Stannum</span>
       </div>
