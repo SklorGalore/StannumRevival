@@ -2041,7 +2041,7 @@ fn write_mtdc_rows(
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let started = std::time::Instant::now();
     log::info!(
-        "Starting {} power flow: {} buses, {} generators, {} branches; {} start, tolerance {:.0e} pu, up to {} Newton iterations per pass, generator Q limits {}",
+        "Starting {} power flow: {} buses, {} generators, {} branches; {} start, mismatch tolerance {} MVA ({:.0e} pu), up to {} Newton iterations per pass, generator Q limits {}",
         if opt.model == Model::Dc { "DC" } else { "AC" },
         input.buses.len(),
         input.generators.len(),
@@ -2050,6 +2050,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             Initialization::Case => "case voltage",
             Initialization::Flat => "flat",
         },
+        mva(opt.tolerance * input.base_mva),
         opt.tolerance,
         opt.max_iterations,
         if opt.enforce_q_limits {
@@ -2281,7 +2282,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         }
     }
     log::info!(
-        "Finished {} power flow: {}, {} Newton iterations in total{}, largest mismatch {:.2e} pu, {} ms",
+        "Finished {} power flow: {}, {} Newton iterations in total{}, largest mismatch {} MVA ({:.2e} pu), {} ms",
         if opt.model == Model::Dc { "DC" } else { "AC" },
         match result.status {
             SolveStatus::Converged => "converged",
@@ -2294,15 +2295,33 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         } else {
             format!(" ({} passes)", passes.join(", "))
         },
+        mva(result.residual * input.base_mva),
         result.residual,
         started.elapsed().as_millis()
     );
     Ok(result)
 }
 
+/// A mismatch in MVA for the log: plain decimals for everyday sizes such as
+/// 0.1, scientific notation for the tiny ones a tight solve reaches.
+fn mva(x: f64) -> String {
+    if x == 0.0 || (1e-3..1e4).contains(&x.abs()) {
+        format!("{}", (x * 1e6).round() / 1e6)
+    } else {
+        format!("{x:.2e}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_mva_reads_plainly() {
+        assert_eq!(mva(0.1), "0.1");
+        assert_eq!(mva(1e-8 * 100.0), "1.00e-6");
+        assert_eq!(mva(0.0), "0");
+    }
 
     #[test]
     fn analytical_jacobian_matches_central_differences() {

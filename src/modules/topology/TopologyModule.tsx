@@ -499,7 +499,7 @@ export function TopologyModule({ active }: { active: boolean }) {
     tab === "buses" ? selection.bus : tab === "equipment" ? selection.equipment : undefined;
 
   return (
-    <div className="h-full flex flex-col gap-3 p-3 overflow-hidden" aria-busy={busy}>
+    <div className="h-full flex flex-col gap-3 p-3 overflow-y-auto" aria-busy={busy}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 flex-1 min-w-0">
           <Metric label={derived ? "Buses" : "RAW buses"} value={count(c.buses.length)} detail={`${count(a.original_active_buses)} active · ${count(a.excluded_buses)} excluded`} />
@@ -537,7 +537,7 @@ export function TopologyModule({ active }: { active: boolean }) {
           <strong>Topology coverage is limited.</strong> {warnings.map((d) => `${d.message} (${d.section})`).join(" · ")}
         </Notice>
       )}
-      <div className="flex-1 min-h-0 grid grid-cols-[1fr_300px] grid-rows-[minmax(0,1.6fr)_minmax(0,1fr)] gap-3">
+      <div className="flex-1 min-h-[440px] grid grid-cols-[1fr_300px] grid-rows-[minmax(0,1.6fr)_minmax(0,1fr)] gap-3">
         <Panel
           eyebrow="Network view"
           title={scope?.title ?? "Network"}
