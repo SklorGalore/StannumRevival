@@ -55,7 +55,7 @@ export function StudyPanel({ onShow, report, stale }: { onShow: (element: string
   const remove = useStudy((s) => s.remove);
   const clear = useStudy((s) => s.clear);
   return (
-    <div className="p-4 flex flex-col gap-3 overflow-y-auto h-full">
+    <div className="p-4 flex flex-col gap-3 overflow-y-auto h-full [&>*]:shrink-0">
       {error && <ErrorBanner>{error}</ErrorBanner>}
       <Panel
         className="shrink-0"

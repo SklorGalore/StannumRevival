@@ -213,7 +213,7 @@ function LogDrawer({ height, onClose }: { height: number; onClose: () => void })
 
   const tool = "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100";
   return (
-    <section aria-label="Log" className="flex flex-col min-h-0" style={{ height }}>
+    <section aria-label="Log" className="flex flex-col min-h-0" style={{ height: `min(${height}px, 70vh)` }}>
       <header className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200">
         <div role="radiogroup" aria-label="Show" className="flex rounded-md border border-slate-300 overflow-hidden">
           {FILTERS.map((f) => (

@@ -39,6 +39,7 @@ import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
 import type { FilterRule } from "../../lib/filters";
+import { toleranceMva, tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "study" | "warnings";
@@ -383,6 +384,7 @@ function SolvePanel({
   onExport: (solved: boolean) => void;
 }) {
   const ac = settings.model === "ac";
+  const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -422,15 +424,16 @@ function SolvePanel({
           <option value="flat">Flat start (1 p.u.)</option>
         </select>
       </Field>
-      <Field label="Tolerance (p.u.)">
+      <Field label="Mismatch tolerance (MVA)">
         <input
           className={inputClass}
           type="number"
           step="any"
           min={0}
-          value={settings.tolerance}
+          value={toleranceMva(settings.tolerance, baseMva)}
           disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, tolerance: Number(e.target.value) })}
+          onChange={(e) => setSettings({ ...settings, tolerance: tolerancePu(Number(e.target.value), baseMva) })}
+          title={`${sig(settings.tolerance)} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
       <Field label="Newton iterations per pass">
@@ -573,7 +576,7 @@ function Overview({
     },
   ];
   return (
-    <div className="p-4 flex flex-col gap-4 overflow-y-auto h-full">
+    <div className="p-4 flex flex-col gap-4 overflow-y-auto h-full [&>*]:shrink-0">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Metric
           label="Status"
