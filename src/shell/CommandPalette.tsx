@@ -9,7 +9,8 @@ import {
   GitCompareArrows,
   Link2,
   Moon,
-  Network,
+  Layers,
+  Table2,
   PencilRuler,
   Play,
   Search,
@@ -23,6 +24,7 @@ import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceSt
 import { useLog } from "../store/logStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
+import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
 
@@ -37,7 +39,6 @@ interface Command {
 const MODULE_COMMANDS: { id: ModuleId; title: string; icon: ReactNode }[] = [
   { id: "diagram", title: "Go to Diagram", icon: <PencilRuler size={14} /> },
   { id: "power", title: "Go to Power flow", icon: <Zap size={14} /> },
-  { id: "topology", title: "Go to Topology", icon: <Network size={14} /> },
   { id: "diff", title: "Go to Case diff", icon: <GitCompareArrows size={14} /> },
 ];
 
@@ -69,6 +70,32 @@ function useCommands(): Command[] {
             keywords: `split view pane beside ${m.id === SPLIT_PARTNER[module] ? "default" : ""}`,
             run: () => w.setSplit(m.id),
           });
+    if (summary?.topology.available) {
+      // Topology lives in the Diagram: its tables drawer and its layers.
+      const showDiagram = () => {
+        if (w.module !== "diagram" && w.split !== "diagram") w.setModule("diagram");
+      };
+      list.push({
+        id: "tables",
+        title: "Show topology tables",
+        icon: <Table2 size={14} />,
+        keywords: "topology buses islands critical connections bridges equipment diagnostics nodal",
+        run: () => {
+          showDiagram();
+          useLayers.getState().setTables(true);
+        },
+      });
+      list.push({
+        id: "layers",
+        title: "Show layers",
+        icon: <Layers size={14} />,
+        keywords: "topology islands bridges cut buses articulation shortest path filters colours fields nodal",
+        run: () => {
+          showDiagram();
+          useLayers.getState().setPanel(true);
+        },
+      });
+    }
     if (summary) {
       list.push({
         id: "link",

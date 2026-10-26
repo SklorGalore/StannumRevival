@@ -1,12 +1,13 @@
-import jsPDF from "jspdf";
 import type { DiagramMetadata } from "../../store/types";
 
-export function exportPDF(
+/** Builds the PDF. jsPDF loads on first export, so it stays out of the startup bundle. */
+export async function exportPDF(
   pngBase64: string,
   metadata: DiagramMetadata,
   orientation: "landscape" | "portrait" = "landscape",
   pageSize: "a4" | "a3" | "letter" = "a3"
-): Uint8Array {
+): Promise<Uint8Array> {
+  const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation, unit: "mm", format: pageSize, compress: true });
 
   const pw = doc.internal.pageSize.getWidth();
@@ -52,5 +53,5 @@ export function exportPDF(
   );
   doc.text("Stannum", pw - 57, tbY + 19);
 
-  return doc.output("arraybuffer") as unknown as Uint8Array;
+  return new Uint8Array(doc.output("arraybuffer"));
 }

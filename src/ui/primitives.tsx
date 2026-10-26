@@ -1,4 +1,6 @@
-import type { ReactNode, ButtonHTMLAttributes } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes } from "react";
+import { OverflowMenu } from "./OverflowMenu";
+import { useWidth } from "./useWidth";
 import { AlertTriangle, Search } from "lucide-react";
 
 export function Button({
@@ -52,6 +54,38 @@ export function Panel({
   );
 }
 
+/** Which tabs fit in `room` px, in order, always keeping the current one. */
+export function fitTabs(widths: number[], current: number, room: number, more: number): boolean[] {
+  const total = widths.reduce((a, b) => a + b, 0);
+  if (total <= room) return widths.map(() => true);
+  let left = room - more - (widths[current] ?? 0);
+  let full = false;
+  return widths.map((w, i) => {
+    if (i === current) return true;
+    if (full || w > left) {
+      full = true;
+      return false;
+    }
+    left -= w;
+    return true;
+  });
+}
+
+const tabClass = (on: boolean) =>
+  `shrink-0 whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors disabled:opacity-40 ${
+    on ? "border-teal-600 text-teal-800" : "border-transparent text-slate-500 hover:text-slate-800"
+  }`;
+
+function TabCount({ count }: { count?: number }) {
+  if (count === undefined) return null;
+  return <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-px text-[10px] text-slate-600">{count.toLocaleString()}</span>;
+}
+
+/**
+ * A row of tabs. Tabs that don't fit the pane (side by side, a narrow window)
+ * move into a "More" menu at the end instead of spilling over their
+ * neighbours; the open tab always stays in the row.
+ */
 export function Tabs<T extends string>({
   tabs,
   value,
@@ -61,29 +95,54 @@ export function Tabs<T extends string>({
   value: T;
   onChange: (id: T) => void;
 }) {
+  const [rowRef, width] = useWidth<HTMLDivElement>(100000);
+  const measure = useRef<HTMLDivElement>(null);
+  const [widths, setWidths] = useState<number[]>([]);
+  useLayoutEffect(() => {
+    const el = measure.current;
+    if (!el) return;
+    const next = [...el.children].map((c) => (c as HTMLElement).offsetWidth + 2); // + the gap
+    setWidths((old) => (old.length === next.length && old.every((w, i) => w === next[i]) ? old : next));
+  });
+  const current = Math.max(0, tabs.findIndex((t) => t.id === value));
+  // The row's side padding, and room for the More button.
+  const fits = widths.length === tabs.length ? fitTabs(widths, current, width - 16, 76) : tabs.map(() => true);
+  const hidden = tabs.filter((_, i) => !fits[i]);
   return (
-    <div role="tablist" className="flex items-center gap-0.5 border-b border-slate-200 px-2 bg-white">
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          role="tab"
-          aria-selected={t.id === value}
-          disabled={t.disabled}
-          onClick={() => onChange(t.id)}
-          className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors disabled:opacity-40 ${
-            t.id === value
-              ? "border-teal-600 text-teal-800"
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          {t.label}
-          {t.count !== undefined && (
-            <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-px text-[10px] text-slate-600">
-              {t.count.toLocaleString()}
+    <div ref={rowRef} role="tablist" className="relative flex items-center gap-0.5 border-b border-slate-200 px-2 bg-white overflow-hidden">
+      {tabs.map(
+        (t, i) =>
+          fits[i] && (
+            <button key={t.id} role="tab" aria-selected={t.id === value} disabled={t.disabled} onClick={() => onChange(t.id)} className={tabClass(t.id === value)}>
+              {t.label}
+              <TabCount count={t.count} />
+            </button>
+          )
+      )}
+      {hidden.length > 0 && (
+        <OverflowMenu
+          label="More"
+          showLabel
+          items={hidden.map((t) => ({
+            id: t.id,
+            label: t.label,
+            badge: <TabCount count={t.count} />,
+            disabled: t.disabled,
+            onClick: () => onChange(t.id),
+          }))}
+        />
+      )}
+      {/* Every tab at its natural width, out of sight, to decide what fits. */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-0 overflow-hidden invisible pointer-events-none">
+        <div ref={measure} className="flex w-max gap-0.5">
+          {tabs.map((t) => (
+            <span key={t.id} className={`${tabClass(false)} inline-block`}>
+              {t.label}
+              <TabCount count={t.count} />
             </span>
-          )}
-        </button>
-      ))}
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

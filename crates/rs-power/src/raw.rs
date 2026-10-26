@@ -143,7 +143,9 @@ impl Context<'_> {
             log::error!("strict RAW conversion rejected line {line}: {message}");
             return Err(Error::Unsupported(format!("RAW line {line}: {message}")));
         }
-        log::warn!("RAW conversion warning at line {line} (lossy={lossy}): {message}");
+        // One line per record would flood the log (Texas 2k has 1,099 of the
+        // same); callers summarise the list, which is returned in full.
+        log::debug!("RAW conversion warning at line {line} (lossy={lossy}): {message}");
         self.warnings.push(RawWarning { line, message });
         Ok(())
     }

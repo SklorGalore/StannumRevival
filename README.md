@@ -7,9 +7,9 @@ React. Stannum brings four tools into one app that shares a single open case:
 
 | Module | What it does | Engine |
 |---|---|---|
-| **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own | React Flow + [ELK](https://eclipse.dev/elk/) |
+| **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own; draw the network graph with topology layers and tables | React Flow + [ELK](https://eclipse.dev/elk/), Cytoscape |
 | **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](crates/rs-power) |
-| **Topology** | Islands, bridges, articulation buses, shortest paths and a network graph | [nodal](crates/nodal) |
+| Topology (in Diagram) | Islands, bridges, cut buses and shortest paths, as layers on either drawing and as tables | [nodal](crates/nodal) |
 | **Case diff** | Exact record-by-record comparison of two RAW cases | Rust port of [case-diff](https://github.com/SklorGalore/case-diff) |
 
 All analysis runs locally in native Rust. Case files never leave your machine.
@@ -18,7 +18,7 @@ All analysis runs locally in native Rust. Case files never leave your machine.
 cover every module and the solver models behind them. Their source is in
 [`docs-site/`](docs-site).
 
-![Topology module: metrics, network graph with a traced path, inspector and bus table](docs/screenshots/topology.png)
+![Diagram, Network style: bridges and cut buses ringed, a shortest path in blue, and the Layers panel](docs/screenshots/topology.png)
 
 | Power flow | Case diff |
 |---|---|
@@ -76,14 +76,13 @@ value or input order. "How to read these results" explains the sign conventions.
 
 ### Topology
 
-Shows RAW bus, line, transformer, island, bridge and articulation-bus counts, a
-Cytoscape network graph and an inspector. Start from a bus's 2-hop
-neighborhood, widen it, show a whole island, or show the full network (up to
-500 nodes). **Path** finds the fewest equipment hops between two buses.
-Tables cover buses, islands, critical connections, equipment and parser
-diagnostics; all export to CSV, and **Export JSON** saves the parsed case,
-analysis and current path. **Merge zero-impedance branches** treats
-zero-impedance lines as a single node.
+The case's topology is part of the Diagram. **Layers** draws it on the Network
+and One-line styles alike: bridges and cut buses, islands, zero-impedance
+groups (optionally merged into one node), the fewest equipment hops between
+two buses, and filters and colours by field. **Tables** opens a drawer under
+the drawing with buses, islands, critical connections, equipment and parser
+diagnostics; picking a row selects the element in the drawing, all tables
+export to CSV, and **JSON** saves the parsed case, analysis and current path.
 
 ### Case diff
 
@@ -229,7 +228,7 @@ crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topol
 src-tauri/                Desktop shell; src/analysis.rs exposes the core as commands
 src/
   shell/                  Module rail, case bar, drag-and-drop
-  modules/                diagram/, power/, topology/, diff/
+  modules/                diagram/, power/, diff/ (topology/ holds the shared graph and field code)
   lib/analysis/           Typed command wrappers and result types
   ui/                     Shared table and form components
   components/, store/     The diagram editor (from StannumSLD)

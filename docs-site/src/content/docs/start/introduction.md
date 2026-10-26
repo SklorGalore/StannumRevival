@@ -20,13 +20,12 @@ work on the same open case.
 
 | Module | What it does |
 | --- | --- |
-| [Diagram](/StannumRevival/guide/diagram/) | Generate one-lines from the case, with power flow results on them, or draw, edit and export your own. |
+| [Diagram](/StannumRevival/guide/diagram/) | Generate one-lines from the case, with power flow results on them, or draw, edit and export your own. Draw the network graph, with [topology](/StannumRevival/guide/topology/) layers (islands, bridges, cut buses, shortest paths) and tables. |
 | [Power flow](/StannumRevival/guide/power-flow/) | AC and DC power flow, operating-limit checks, result tables, sensitivities and studies. |
-| [Topology](/StannumRevival/guide/topology/) | Islands, bridges, articulation buses, shortest paths and a network graph. |
 | [Case diff](/StannumRevival/guide/case-diff/) | Exact record-by-record comparison of two RAW cases. |
 
 Selecting an element in one module selects it in the others, so a bus you
-spot in a violation table can be shown in the diagram, the topology graph and
+spot in a violation table can be shown in the one-line, the network graph and
 the case diff with one click. Two modules can sit [side by
 side](/StannumRevival/guide/side-by-side/) with their selections linked.
 
