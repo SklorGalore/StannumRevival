@@ -104,7 +104,7 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 whitespace-normal" onClick={onClose}>
       <div
         role="dialog"
         aria-label="Generate from case"
