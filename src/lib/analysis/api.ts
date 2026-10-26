@@ -8,6 +8,7 @@ import type {
   DiffRecordDetail,
   DiffRecordRow,
   DiffSummary,
+  ElementDetail,
   GraphData,
   Analysis,
   ResponseTable,
@@ -34,6 +35,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   diff_compare: { label: "Comparing cases", done: "Compared cases" },
   save_diagram: { label: "Saving file", done: "Saved file" },
   diagram_network: { label: "Reading the case network", quiet: true },
+  element_detail: { label: "Reading an element", quiet: true },
   topology_shortest_path: { label: "Finding a path", quiet: true },
 };
 
@@ -122,6 +124,7 @@ export const api = {
     call<void>("export_matpower", { path, solved }),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
+  elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>

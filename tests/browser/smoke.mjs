@@ -104,15 +104,31 @@ await page.getByRole("tab", { name: /Branches/ }).click();
 const line45 = page.locator("table:visible tbody tr:not([data-spacer])").nth(1);
 assert.equal((await line45.locator("td").nth(1).innerText()).trim(), "4");
 await line45.click();
-await page.getByTestId("table-selection").getByRole("button", { name: "Take out" }).click();
+// The element inspector opens beside the table: results, limits and the
+// file's data for the line, with the study actions.
+const inspector = page.getByTestId("power-inspector");
+await inspector.getByTestId("inspector-title").filter({ hasText: "Line 4–5 circuit 1" }).waitFor();
+await inspector.getByTestId("inspector-headline").filter({ hasText: /% of rate A/ }).waitFor();
+await inspector.getByTestId("inspector-limits").getByText("Rate A").waitFor();
+await inspector.getByTestId("inspector-data").getByText("Reactance").first().waitFor();
+await shot("inspector-power-line");
+await inspector.getByRole("button", { name: "Take out" }).click();
 await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
 await line45.locator("td", { hasText: /^Offline$/ }).waitFor();
 assert.equal((await line45.locator("td").nth(7).innerText()).trim(), "0.00", "no flow on the outaged line");
-await page.getByTestId("table-selection").getByRole("button", { name: "Put back" }).waitFor();
+await inspector.getByRole("button", { name: "Put back" }).waitFor();
+await inspector.getByTestId("inspector-status").filter({ hasText: "Out in this study" }).waitFor();
+await inspector.getByTestId("inspector-edits").getByText("Line 4–5 circuit 1 out of service").waitFor();
+await shot("inspector-power-outage");
+// A terminal bus in the inspector opens that bus, in its table.
+await inspector.getByRole("button", { name: /^Bus 4\b/ }).click();
+await inspector.getByTestId("inspector-title").filter({ hasText: /^Bus 4$/ }).waitFor();
+await page.getByRole("tab", { name: /^Buses/, selected: true }).waitFor();
+await inspector.getByTestId("inspector-connected").getByText("Line 4–5 circuit 1").waitFor();
 // Redispatch a generator too.
 await page.getByRole("tab", { name: /Generators/ }).click();
 await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
-await page.getByTestId("table-selection").getByRole("button", { name: "Set output" }).click();
+await inspector.getByRole("button", { name: "Set output" }).click();
 await page.getByRole("dialog", { name: "Set output" }).getByLabel("MW").fill("120");
 await page.getByRole("button", { name: "Apply to study" }).click();
 await page.getByTestId("study-badge").filter({ hasText: "2 edits" }).waitFor();
@@ -299,8 +315,12 @@ await page.getByRole("button", { name: "Open", exact: true }).click();
 await page.locator(".react-flow__node-generator").first().waitFor();
 assert.equal(await labelAt(), movedLabel, "a saved drawing reopens with the label where it was put");
 await page.locator(".react-flow__node-generator").first().click({ position: { x: 20, y: 30 } });
+// A symbol from the case is inspected as its case element; the drawing's own
+// fields, label reset included, are folded into the Drawing section.
+await page.getByTestId("inspector").getByRole("button", { name: /^Drawing/, expanded: false }).click();
 await page.getByRole("button", { name: "Reset label position" }).click();
 assert.equal(await labelAt(), homeLabel, "reset puts the label back");
+await page.getByTestId("inspector").getByRole("button", { name: /^Drawing/, expanded: true }).click();
 await page.keyboard.press("Escape");
 
 // A local drawing one hop around bus 4: the studied bus is highlighted and
@@ -722,15 +742,28 @@ if (STANNUM_VIOLATIONS) {
   assert.equal((await first.locator("td").first().innerText()).trim(), worst.replace("Bus ", ""), "worst first");
   await first.click();
   await page.getByTestId("table-selection").filter({ hasText: worst }).waitFor();
+  await page.getByTestId("power-inspector").getByTestId("inspector-headline").filter({ hasText: /below|above/ }).waitFor();
   await shot("findings-violations");
 
-  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByTestId("power-inspector").getByRole("button", { name: /Draw around/ }).click();
   await page.locator(".react-flow__node-bus.selected").first().waitFor();
   await page.getByText(/^Around\b/).first().waitFor();
   const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
   assert.equal(await studied.count(), 1, "drawn around the worst bus");
   await page.waitForTimeout(600); // centred after the fit
   await shot("findings-drawn");
+
+  // The diagram inspects the same element as Power flow did: its results and
+  // case data first, the drawing's own fields folded underneath.
+  const drawnInspector = page.getByTestId("inspector");
+  await drawnInspector.getByTestId("inspector-title").filter({ hasText: worst }).waitFor();
+  await drawnInspector.getByTestId("inspector-headline").filter({ hasText: /below|above/ }).waitFor();
+  const drawingSection = drawnInspector.getByTestId("inspector-drawing").getByRole("button", { name: /Drawing/ });
+  assert.equal(await drawingSection.getAttribute("aria-expanded"), "false", "drawing fields folded");
+  await shot("inspector-diagram");
+  await drawingSection.click();
+  await drawnInspector.getByTestId("inspector-drawing").getByText(/Bus|Label|Name/).first().waitFor();
+  await drawingSection.click();
 
   // A drawing from the case keeps the components palette folded, and the
   // inspector only appears with a selection, so the drawing gets the room.

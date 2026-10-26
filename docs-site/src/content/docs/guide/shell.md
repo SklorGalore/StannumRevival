@@ -34,6 +34,35 @@ other module, so each module is ready at that element when you switch to it.
 [Side by side](/StannumRevival/guide/side-by-side/) turns linking on while it
 is open.
 
+## Element inspector
+
+Select an element in Diagram, Power flow or Topology and the same inspector
+opens on the right:
+
+- **Header**: what the element is, its buses (each a link), whether it is in
+  service (or out in this study), the latest solve's headline, such as
+  "123.0% of rate A", and the actions: **Draw around**, **Take out** or **Put
+  back**, **Set output**, **Set load**.
+- **Results**: flows at each end, losses and loading for a branch (one group
+  per winding of a three-winding transformer); voltage, angle, load and
+  generation for a bus; output against the reactive range for a generator.
+  Values outside their limits are red.
+- **Limits**: ratings A, B and C, voltage limits, or a generator's MW and Mvar
+  range, from the file.
+- **Case data**: the file's parameters, such as resistance and reactance in
+  per unit and in ohms, transformer ratio and phase shift, or a generator's
+  setpoints.
+- **Connected**: for a bus, its branches, generators, DC lines and loads.
+  Click one to inspect it.
+- **Study**: the [study](/StannumRevival/guide/studies/) edits that touch the
+  element.
+
+Topology adds a **Topology** section (degree, island, bridges and articulation
+buses, the RAW record), and the diagram adds a folded **Drawing** section.
+Sections fold with a click, and stay as you left them.
+
+![The element inspector beside the Power flow branch table](../../../assets/screens/inspector.png)
+
 ## Findings are links
 
 Wherever Stannum reports something about an element, the report leads to it:

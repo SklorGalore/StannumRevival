@@ -40,6 +40,7 @@ import { useWidth } from "../../ui/useWidth";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
+import { ElementInspector } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
@@ -708,6 +709,7 @@ function TableTab<T>({
   onPick,
   problem,
   initialProblemsOnly = false,
+  inspector = false,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -725,6 +727,8 @@ function TableTab<T>({
   /** Rows outside their limits, with the column that measures how far, worst first. */
   problem?: { test: (r: T) => boolean; sortKey: string; label: string };
   initialProblemsOnly?: boolean;
+  /** The element inspector is open beside the table, so the actions live there. */
+  inspector?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
@@ -766,8 +770,12 @@ function TableTab<T>({
           {selectedRow && selected && (
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
-              <DrawAroundButton element={element(selectedRow)} from="power" />
-              <StudyActions element={element(selectedRow)} />
+              {!inspector && (
+                <>
+                  <DrawAroundButton element={element(selectedRow)} from="power" />
+                  <StudyActions element={element(selectedRow)} />
+                </>
+              )}
             </span>
           )}
           <Button variant="ghost" className="whitespace-nowrap" onClick={exportCsv}>
@@ -803,6 +811,12 @@ const BRANCH_PROBLEM = {
   label: "Overloads",
 };
 
+/** The table that lists an element. */
+function tabFor(element: string): Tab | null {
+  const kind = parseElement(element)?.kind;
+  return kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
+}
+
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
@@ -816,6 +830,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
   const showSettings = settingsOpen ?? width >= 960;
+  // The inspector takes a column only where the tables keep room beside it.
+  const showInspector = width >= 900;
   const branchCols = useMemo(
     // Name columns only when the case names its buses (MATPOWER doesn't).
     () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
@@ -850,9 +866,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   useEffect(() => {
     if (!selection || selection.from === "power" || !report || followed.current === selection) return;
     followed.current = selection;
-    const kind = parseElement(selection.element)?.kind;
-    const next: Tab | null =
-      kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
+    const next = tabFor(selection.element);
     if (next) setTab(next);
   }, [selection, report]);
 
@@ -1139,6 +1153,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`buses-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.buses ?? report.buses}
@@ -1156,6 +1171,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`generators-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.generators ?? report.generators}
@@ -1172,6 +1188,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`branches-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.branches ?? report.branches}
@@ -1187,6 +1204,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 <TableTab
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   rows={report.dc_lines}
                   columns={dcLineColumns}
                   rowKey={(r) => r.index}
@@ -1220,6 +1238,23 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           </>
         )}
       </div>
+      {selected && showInspector && (
+        <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="power-inspector">
+          <ElementInspector
+            element={selected}
+            from="power"
+            onPick={(e) => {
+              pick(e);
+              const next = tabFor(e);
+              if (next && report) setTab(next);
+            }}
+            onClose={() => {
+              setPicked(null);
+              select(null, "power");
+            }}
+          />
+        </aside>
+      )}
     </div>
   );
 }

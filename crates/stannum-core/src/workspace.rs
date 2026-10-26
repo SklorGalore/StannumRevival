@@ -525,6 +525,18 @@ impl OpenCase {
         Ok(crate::diagram::network(self.power_case()?))
     }
 
+    /// One element's data and limits from the file, for the element inspector.
+    pub fn element_detail(&self, element: &str) -> Result<crate::inspect::ElementDetail, String> {
+        let power = self.power.as_ref().map_err(|e| e.clone())?;
+        let topology = self
+            .topology
+            .as_ref()
+            .ok()
+            .filter(|t| !t.derived)
+            .map(|t| &t.case);
+        crate::inspect::element(power, topology, element)
+    }
+
     fn topology_state(&self) -> Result<&TopologyState, String> {
         self.topology.as_ref().map_err(|e| e.clone())
     }

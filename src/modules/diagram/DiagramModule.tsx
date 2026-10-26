@@ -3,7 +3,7 @@ import { Toolbar } from "../../components/layout/Toolbar";
 import { StatusBar } from "../../components/layout/StatusBar";
 import { ComponentPalette } from "../../components/palette/ComponentPalette";
 import { DiagramCanvas } from "../../components/canvas/DiagramCanvas";
-import { PropertiesPanel } from "../../components/properties/PropertiesPanel";
+import { PropertiesPanel, selectedCaseElement } from "../../components/properties/PropertiesPanel";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import { useEffect, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
@@ -90,10 +90,13 @@ function Inner({ active }: { active: boolean }) {
   const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
   const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
   const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
-  // The inspector only takes room while there is one thing to edit: a single
-  // symbol, or a single wire.
+  // The inspector only takes room while there is one thing to inspect: a
+  // single symbol, a single wire, or a selected element this drawing lacks.
   const hasSelection = useDiagramStore(
-    (s) => s.selectedNodeIds.length === 1 || (s.selectedNodeIds.length === 0 && s.selectedEdgeIds.length === 1)
+    (s) =>
+      s.selectedNodeIds.length === 1 ||
+      (s.selectedNodeIds.length === 0 && s.selectedEdgeIds.length === 1) ||
+      selectedCaseElement(s) !== null
   );
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
@@ -143,9 +146,9 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
-        {hasSelection && (
+        {(hasSelection || missing) && (
           <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="inspector">
-            <PropertiesPanel />
+            <PropertiesPanel missing={hasSelection ? null : missing} />
           </aside>
         )}
       </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Download, FolderOpen, Maximize2, Network, Route } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, saveTextExport } from "../../lib/analysis/api";
-import type { Equipment, GraphData, SourceRecord, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
+import type { GraphData, SourceRecord, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import {
   Button,
@@ -21,7 +21,7 @@ import { FieldPanel, GraphLegend } from "./FieldPanel";
 import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
 import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
 import { busElement, elementBus, parseElement } from "../../lib/elements";
-import { DrawAroundButton } from "../../ui/DrawAround";
+import { ElementInspector, InspectorSection } from "../../ui/ElementInspector";
 import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
 
 type Tab = "buses" | "islands" | "critical" | "equipment" | "diagnostics";
@@ -90,15 +90,14 @@ function SourceFields({ source }: { source: SourceRecord }) {
   );
 }
 
-function Inspector({
+/** What Topology adds to the shared inspector: the element's place in the graph. */
+function TopologySection({
   snapshot,
   selection,
-  onSelect,
   onNeighborhood,
 }: {
   snapshot: TopologySnapshot;
   selection: GraphSelection;
-  onSelect: (s: GraphSelection) => void;
   onNeighborhood: (bus: number, hops: number) => void;
 }) {
   const [hops, setHops] = useState(2);
@@ -109,63 +108,42 @@ function Inspector({
     if (!e) return null;
     const active = graph.edges.some((g) => g.equipment_id === e.id);
     const absorbed = graph.absorbed_equipment_ids.includes(e.id);
+    const bridge = a.bridges.some((b) => b.equipment_id === e.id);
     return (
-      <div className="p-3 text-xs">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Equipment</p>
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold capitalize">{e.kind} · circuit {e.circuit.trim()}</h3>
-          <DrawAroundButton element={e.id} from="topology" />
-        </div>
-        <p className="text-slate-500 break-all">{e.name.trim() || e.id}</p>
-        <p className="mt-1.5">
+      <InspectorSection id="topology" title="Topology">
+        <p>
           <span className={`rounded px-1.5 py-px text-[10px] font-semibold ${active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
             {active ? "In active graph" : absorbed ? "Absorbed inside merged node" : "Excluded from graph"}
           </span>
         </p>
-        <p className="mt-2 text-slate-500">Terminals</p>
-        <div className="flex flex-wrap gap-1 mt-0.5">
-          {e.buses.map((b, i) => (
-            <button key={`${b}-${i}`} className="rounded border border-slate-300 px-1.5 py-px hover:bg-slate-50" onClick={() => onSelect({ bus: b, equipment: null })}>
-              Bus {b}
-              {e.active_terminals[i] === false && " (open)"}
-            </button>
-          ))}
-        </div>
+        {bridge && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Bridge: taking it out splits its island.</p>}
+        {e.active_terminals.some((t) => !t) && (
+          <p className="mt-2 text-slate-600">
+            Open at {e.buses.filter((_, i) => e.active_terminals[i] === false).map((b) => `bus ${b}`).join(", ")}.
+          </p>
+        )}
         <SourceFields source={e.source} />
-      </div>
+      </InspectorSection>
     );
   }
 
   const node = selection.bus === null ? undefined : nodeForBus(graph, selection.bus);
   const representative = node?.bus ?? selection.bus;
   const bus = c.buses.find((b) => b.number === representative);
-  if (!bus)
-    return (
-      <div className="p-6 text-center text-xs text-slate-500">
-        Select a bus or connection in the graph or a table to inspect it.
-      </div>
-    );
+  if (!bus) return null;
   const members = node?.member_buses?.length ? node.member_buses : [bus.number];
-  const memberSet = new Set(members);
   const degree = a.degrees.find((d) => d.bus === bus.number);
-  const connected: Equipment[] = c.equipment.filter((e) => e.buses.some((n) => memberSet.has(n)));
-  const loads = c.loads.filter((i) => memberSet.has(i.bus));
-  const generators = c.generators.filter((i) => memberSet.has(i.bus));
   return (
-    <div className="p-3 text-xs">
-      <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Bus</p>
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold">
-          {members.length > 1 ? `Merged node ${bus.number} · ${members.length} buses` : `Bus ${bus.number}`}
-        </h3>
-        <DrawAroundButton element={busElement(bus.number)} from="topology" />
-      </div>
-      <p className="text-slate-600">{bus.name.trim()}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-1.5">
-        <div><dt className="text-slate-500">Base kV</dt><dd className="font-medium">{fixed(bus.base_kv, 1)}</dd></div>
-        <div><dt className="text-slate-500">Type</dt><dd className="font-medium">{bus.bus_type === 4 ? "Out of service" : `IDE ${bus.bus_type}`}</dd></div>
+    <InspectorSection id="topology" title="Topology">
+      {members.length > 1 && (
+        <p className="mb-1.5 text-slate-600">
+          Merged node of {members.length} buses: {members.join(", ")}
+        </p>
+      )}
+      <dl className="grid grid-cols-3 gap-1.5">
         <div><dt className="text-slate-500">Degree</dt><dd className="font-medium">{degree?.degree ?? "—"}</dd></div>
         <div><dt className="text-slate-500">Island</dt><dd className="font-medium">{degree?.island ?? "—"}</dd></div>
+        <div><dt className="text-slate-500">RAW type</dt><dd className="font-medium">{bus.bus_type === 4 ? "Out" : `IDE ${bus.bus_type}`}</dd></div>
       </dl>
       {a.articulation_buses.includes(bus.number) && (
         <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Articulation bus: removing it splits its island.</p>
@@ -184,29 +162,8 @@ function Inspector({
           <Button onClick={() => onNeighborhood(bus.number, hops)}>Show {hops}-hop neighborhood</Button>
         </div>
       )}
-      <p className="mt-3 font-medium text-slate-700">Connected equipment ({connected.length})</p>
-      <ul className="mt-1 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-        {connected.map((e) => (
-          <li key={e.id}>
-            <button className="w-full text-left rounded px-1.5 py-1 hover:bg-slate-50" onClick={() => onSelect({ bus: null, equipment: e.id })}>
-              <span className="capitalize">{e.kind}</span> {e.circuit.trim()}{" "}
-              <span className="text-slate-500">{e.buses.join(" ↔ ")}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 font-medium text-slate-700">
-        Loads ({loads.length}) / generators ({generators.length})
-      </p>
-      <ul className="mt-1 text-slate-600">
-        {[...loads.map((l) => ["Load", l] as const), ...generators.map((g) => ["Gen", g] as const)].map(([k, i]) => (
-          <li key={`${k}-${i.id}`}>
-            {k} {i.id} · {fixed(i.p_mw, 1)} MW · {fixed(i.q_mvar, 1)} MVAr {i.status === 1 ? "" : "(off)"}
-          </li>
-        ))}
-      </ul>
       <SourceFields source={bus.source} />
-    </div>
+    </InspectorSection>
   );
 }
 
@@ -235,6 +192,7 @@ export function TopologyModule({ active }: { active: boolean }) {
   const available = !!summary?.topology.available;
   const shared = useWorkspace((s) => s.selection);
   const select = useWorkspace((s) => s.select);
+  const focus = useWorkspace((s) => s.focus);
 
   /** Select here and in every other module. */
   function pick(next: GraphSelection) {
@@ -253,6 +211,20 @@ export function TopologyModule({ active }: { active: boolean }) {
     }
     const bus = elementBus(element);
     return bus !== null && s.case.buses.some((b) => b.number === bus) ? { selection: { bus, equipment: null }, bus } : null;
+  }
+
+  /** Inspect an element picked in the inspector: select it here, bringing it into view. */
+  function goTo(element: string) {
+    const found = snapshot ? locate(element, snapshot) : null;
+    if (!found || !snapshot) {
+      focus(element);
+      return;
+    }
+    pick(found.selection);
+    if (found.bus !== null && !inView(scope?.data, found.selection)) {
+      setPath(null);
+      setScope({ kind: "neighborhood", title: `Bus ${found.bus} · 2-hop neighborhood`, data: neighborhood(snapshot.graph, found.bus, 2) });
+    }
   }
 
   function inView(data: GraphData | undefined, target: GraphSelection): boolean {
@@ -497,6 +469,10 @@ export function TopologyModule({ active }: { active: boolean }) {
 
   const selectedKey =
     tab === "buses" ? selection.bus : tab === "equipment" ? selection.equipment : undefined;
+  // A merged node is inspected as the bus that stands for it.
+  const inspected =
+    selection.equipment ??
+    (selection.bus !== null && snapshot ? busElement(nodeForBus(snapshot.graph, selection.bus)?.bus ?? selection.bus) : null);
 
   return (
     <div className="h-full flex flex-col gap-3 p-3 overflow-y-auto" aria-busy={busy}>
@@ -616,15 +592,22 @@ export function TopologyModule({ active }: { active: boolean }) {
               }}
             />
           ) : (
-          <Inspector
-            snapshot={snapshot}
-            selection={selection}
-            onSelect={pick}
-            onNeighborhood={(bus, hops) => {
-              setPath(null);
-              setScope({ kind: "neighborhood", title: `Bus ${bus} · ${hops}-hop neighborhood`, data: neighborhood(snapshot.graph, bus, hops) });
-            }}
-          />
+          inspected ? (
+            <ElementInspector element={inspected} from="topology" onPick={goTo}>
+              <TopologySection
+                snapshot={snapshot}
+                selection={selection}
+                onNeighborhood={(bus, hops) => {
+                  setPath(null);
+                  setScope({ kind: "neighborhood", title: `Bus ${bus} · ${hops}-hop neighborhood`, data: neighborhood(snapshot.graph, bus, hops) });
+                }}
+              />
+            </ElementInspector>
+          ) : (
+            <div className="p-6 text-center text-xs text-slate-500">
+              Select a bus or connection in the graph or a table to inspect it.
+            </div>
+          )
           )}
           </div>
         </section>
