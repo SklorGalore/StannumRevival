@@ -54,9 +54,23 @@ their row with zero flow.
 ## Shunts and loads
 
 Bus shunts $G_s + jB_s$ are given in MW and Mvar consumed at 1 p.u. and enter
-the admittance matrix as $(G_s + jB_s)/S_\text{base}$. Loads are constant
-power: RAW constant-current and constant-admittance load components are
-frozen at the voltage supplied in the file.
+the admittance matrix as $(G_s + jB_s)/S_\text{base}$.
+
+Loads are voltage dependent (ZIP). A bus's load at voltage magnitude $|V|$ is
+
+$$
+S_d = (P_d + jQ_d) + (P_I + jQ_I)\,|V| + (P_Z + jQ_Z)\,|V|^2,
+$$
+
+with each part given in MW and Mvar consumed at 1 p.u.: constant power
+(RAW `PL`, `QL`), constant current (`IP`, `IQ`) and constant impedance
+(`YP`, and `YQ` negated, since PSS/E counts capacitive load as positive).
+The constant-impedance part enters the admittance matrix like a shunt,
+$(P_Z - jQ_Z)/S_\text{base}$. The constant-current part adds
+$(P_I + jQ_I)/S_\text{base}$ to the Jacobian's $\partial S/\partial |V|$
+diagonal, so Newton keeps converging quadratically. DC power flow takes
+every part at 1 p.u. MATPOWER cases have constant power only, and MATPOWER
+export writes each bus's load as drawn at its voltage.
 
 ## Admittance matrix
 

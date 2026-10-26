@@ -10,8 +10,8 @@ these that a case uses.
 
 - Optimal power flow, continuation power flow, contingency analysis (beyond
   manual [studies](/StannumRevival/guide/studies/)), short circuit and dynamics.
-- Voltage-dependent (ZIP) loads in the solve: RAW constant-current and
-  constant-admittance loads are frozen at the file's voltage.
+- PSS/E's low-voltage load conversion (`PQBRAK`): constant-power and
+  constant-current loads keep their characteristic at any voltage.
 - Alternative AC formulations (current injection, Cartesian), fast-decoupled
   and radial methods, three-phase models.
 - Enforcement of voltage, branch rating, angle-difference and generator P

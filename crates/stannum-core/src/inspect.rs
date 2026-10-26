@@ -86,6 +86,24 @@ fn rating(label: &str, v: f64) -> Field {
     }
 }
 
+/// A load's parts as filed, `[constant power, current, impedance]` in MW and
+/// Mvar consumed; current and impedance parts are at 1 p.u. voltage.
+fn zip_fields(p: [f64; 3], q: [f64; 3]) -> Vec<Field> {
+    let mut fields = vec![];
+    for (k, label) in [
+        "Constant power",
+        "Constant current at 1 p.u.",
+        "Constant impedance at 1 p.u.",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fields.push(num(label, p[k], "MW"));
+        fields.push(num(label, q[k], "Mvar"));
+    }
+    fields
+}
+
 /// Describe one element by its shared id, from the case as filed.
 pub fn element(
     power: &PowerCase,
@@ -124,20 +142,26 @@ pub fn element(
                 .ok_or_else(missing)?;
             detail.buses = vec![bus_ref(number)];
             detail.online = !matches!(b.kind, rs_power::BusType::Isolated);
+            let mut fields = vec![
+                text("Type", kind_label(b.kind)),
+                num("Base voltage", b.base_kv, "kV"),
+                num("Area", b.area as f64, ""),
+                num("Zone", b.zone as f64, ""),
+            ];
+            if b.has_voltage_dependent_load() {
+                fields.extend(zip_fields([b.pd, b.pd_i, b.pd_z], [b.qd, b.qd_i, b.qd_z]));
+            } else {
+                fields.extend([num("Load", b.pd, "MW"), num("Load", b.qd, "Mvar")]);
+            }
+            fields.extend([
+                num("Shunt conductance", b.gs, "MW"),
+                num("Shunt susceptance", b.bs, "Mvar"),
+                num("Voltage in file", b.vm, "p.u."),
+                num("Angle in file", b.va, "°"),
+            ]);
             detail.data = vec![Group {
                 title: String::new(),
-                fields: vec![
-                    text("Type", kind_label(b.kind)),
-                    num("Base voltage", b.base_kv, "kV"),
-                    num("Area", b.area as f64, ""),
-                    num("Zone", b.zone as f64, ""),
-                    num("Load", b.pd, "MW"),
-                    num("Load", b.qd, "Mvar"),
-                    num("Shunt conductance", b.gs, "MW"),
-                    num("Shunt susceptance", b.bs, "Mvar"),
-                    num("Voltage in file", b.vm, "p.u."),
-                    num("Angle in file", b.va, "°"),
-                ],
+                fields,
             }];
             detail.limits = vec![
                 num("Minimum voltage", b.vmin, "p.u."),
@@ -309,14 +333,35 @@ pub fn element(
             let record = topology.and_then(|t| t.loads.iter().find(|l| l.id == id));
             if let Some(l) = record {
                 detail.online = l.status == 1;
+                // RAW keeps the constant-current (IP, IQ) and constant-
+                // admittance (YP, YQ) parts beside PL and QL. YQ is positive
+                // for capacitive load, so it is negated to read as consumption.
+                let part = |key: &str| -> f64 {
+                    l.source
+                        .fields
+                        .get(key)
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(0.0)
+                };
+                let (ip, iq, yp, yq) = (part("IP"), part("IQ"), part("YP"), part("YQ"));
+                let fields = if [ip, iq, yp, yq].iter().any(|x| *x != 0.0) {
+                    zip_fields([l.p_mw, ip, yp], [l.q_mvar, iq, -yq])
+                } else {
+                    vec![num("Load", l.p_mw, "MW"), num("Load", l.q_mvar, "Mvar")]
+                };
                 detail.data = vec![Group {
                     title: String::new(),
-                    fields: vec![num("Load", l.p_mw, "MW"), num("Load", l.q_mvar, "Mvar")],
+                    fields,
                 }];
             } else {
+                let fields = if b.has_voltage_dependent_load() {
+                    zip_fields([b.pd, b.pd_i, b.pd_z], [b.qd, b.qd_i, b.qd_z])
+                } else {
+                    vec![num("Bus load", b.pd, "MW"), num("Bus load", b.qd, "Mvar")]
+                };
                 detail.data = vec![Group {
                     title: String::new(),
-                    fields: vec![num("Bus load", b.pd, "MW"), num("Bus load", b.qd, "Mvar")],
+                    fields,
                 }];
                 detail.note = Some(
                     "Power flow sums the loads at a bus, so these are the bus's totals."

@@ -16,6 +16,13 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Voltage-dependent (ZIP) loads. `Bus` gains constant-current (`pd_i`,
+  `qd_i`) and constant-impedance (`pd_z`, `qd_z`) parts, drawn in
+  proportion to |V| and |V|²; AC power flow, its Jacobian and sensitivities
+  include them, and DC power flow takes them at 1 p.u. `RawOptions::zip_loads`
+  keeps RAW IP/IQ/YP/YQ instead of MATPOWER's constant-power conversion.
+  MATPOWER export writes the load drawn at each bus's voltage. Checked
+  against pandapower on case30 with mixed loads.
 - Sensitivities follow remote regulation: with `enforce_q_limits`, a held
   bus keeps its magnitude and the generator buses holding it move, as in the
   solve, and reactive sharing between them is kept.

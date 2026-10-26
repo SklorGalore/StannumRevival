@@ -151,10 +151,20 @@ export interface BusRow {
   va: number;
   vmin: number;
   vmax: number;
+  /** Load drawn at the solved voltage, all parts together. */
   pd: number;
   qd: number;
+  /** The load split by how it varies with voltage, when any of it does. */
+  load_parts?: LoadParts | null;
   area: number;
   violation: number;
+}
+
+/** A bus's load at the solved voltage by part, in MW and Mvar:
+ * [constant power, constant current, constant impedance]. */
+export interface LoadParts {
+  p: [number, number, number];
+  q: [number, number, number];
 }
 
 export interface GeneratorRow {
