@@ -1,7 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { ShuntNode as ShuntNodeType } from "../../store/types";
 import { mvar, mw, useResults } from "../../lib/diagram/results";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { Ground } from "./shared/Ground";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
@@ -15,13 +15,14 @@ export function ShuntNode({ data, selected }: NodeProps<ShuntNodeType>) {
   const results = useResults();
   const ink = useInk();
   const row = data.caseRef?.kind === "shunt" ? results?.buses.get(data.caseRef.id) : undefined;
-  const stroke = selected ? SELECTED : ink.line;
+  const stroke = selected ? ink.selected : ink.line;
   const reactor = data.nominalMVAR < 0;
   // Shunt output scales with the square of the solved voltage.
   const scale = row ? row.vm * row.vm : 1;
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
       w={W}
       h={H}
       rotation={data.rotation}

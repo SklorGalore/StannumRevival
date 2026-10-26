@@ -71,7 +71,7 @@ export function ExportDialog({ onClose }: Props) {
         await saveBinaryFile(path, pngB64);
       } else {
         const pngB64 = await exportPNG(svgString, dpi);
-        const pdfBytes = exportPDF(pngB64, metadata);
+        const pdfBytes = await exportPDF(pngB64, metadata);
         const b64 = btoa(
           Array.from(pdfBytes)
             .map((b) => String.fromCharCode(b))

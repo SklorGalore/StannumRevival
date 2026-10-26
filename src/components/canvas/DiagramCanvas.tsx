@@ -29,7 +29,7 @@ import { nodeTypes } from "../nodes";
 import { edgeTypes } from "../edges";
 import { useDiagramStore } from "../../store/diagramStore";
 import { defaultsByType, defaultConductorData } from "../../store/defaults";
-import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap } from "../../store/types";
+import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap, OffPageData } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
 import {
   BAR,
@@ -418,7 +418,9 @@ export function DiagramCanvas() {
           const wire = edges.find((e) => e.source === node.id || e.target === node.id);
           const busNode = wire && nodes.find((n) => n.id === (wire.source === node.id ? wire.target : wire.source));
           const ref = (busNode?.data as BusData | undefined)?.caseRef;
-          if (ref?.kind === "bus") void expand(ref.id, [(node.data as { bus: number }).bus]);
+          // A bundled marker brings in every bus it leads to.
+          const data = node.data as OffPageData;
+          if (ref?.kind === "bus") void expand(ref.id, [...new Set((data.links ?? [data]).map((l) => l.bus))]);
         }}
         onSelectionDragStart={() => checkpoint()}
         isValidConnection={isValidConnection}

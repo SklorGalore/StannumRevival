@@ -66,9 +66,10 @@ $$
 \lVert F(x) \rVert_\infty < \varepsilon.
 $$
 
-The interface sets the tolerance in MVA and converts it on the case's base.
-Its default is 2 MVA, which is $0.02$ p.u. on 100 MVA. (PSS/E's default is
-0.1 MVA.) The solver library on its own defaults to $10^{-8}$ p.u., which
+The tolerance is set in MVA and converted to per unit on each case's own base
+at solve time, so the same setting allows the same MW and Mvar on every case.
+Its default is 2 MVA on any base: $0.02$ p.u. on 100 MVA, $0.002$ p.u. on
+1000 MVA. (PSS/E's default is 0.1 MVA.) The solver library on its own defaults to $10^{-8}$ p.u., which
 the reference checks use. The reported residual is this norm for the equations of the final
 solve, shown in both MVA and per unit.
 
@@ -134,7 +135,7 @@ tolerance of $0.01$ p.u. (1 MVA on 100 MVA) instead of the full tolerance, and
 only violations larger than the remaining mismatch count. Once nothing
 switches, the solve finishes at full tolerance and checks the limits again,
 so the answer always meets the requested tolerance. A requested tolerance at
-or above the loose one, such as the 2 MVA default, skips this stage: every
+or above the loose one, such as the 2 MVA default on a 100 MVA base, skips this stage: every
 pass already stops there, and limits are checked at face value. A reference bus at its
 limit is switched only after a full-tolerance solve, since it keeps the active
 power it has at that moment, as in MATPOWER. On the 80,000-bus synthetic

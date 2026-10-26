@@ -38,6 +38,15 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             ws.current_mut()?.set_edits(edits)?;
             Ok(Value::Null)
         }
+        "load_dc_grids" => to_json(ws.current_mut()?.load_dc_grids(&PathBuf::from(arg::<
+            String,
+        >(
+            args, "path",
+        )?))?),
+        "clear_dc_grids" => {
+            ws.current_mut()?.clear_dc_grids();
+            Ok(Value::Null)
+        }
         "calculate_sensitivities" => {
             let s: SolveSettings = arg(args, "settings")?;
             to_json(ws.current_mut()?.sensitivities(s)?)
@@ -51,6 +60,10 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             &PathBuf::from(arg::<String>(args, "path")?),
             arg(args, "solved")?,
         )?),
+        "element_detail" => to_json(
+            ws.current()?
+                .element_detail(&arg::<String>(args, "element")?)?,
+        ),
         "diagram_network" => to_json(ws.current()?.diagram_network()?),
         "topology_snapshot" => to_json(ws.current()?.topology_snapshot()?),
         "topology_set_merge" => to_json(

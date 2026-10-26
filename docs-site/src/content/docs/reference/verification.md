@@ -35,6 +35,18 @@ winding statuses, DC control modes and three upstream RAW fixtures.
 - Nodal power balance of solved cases.
 - Singular systems, invalid inputs and nonconvergence.
 
+## Meshed VSC grids
+
+The station model reproduces every converter in Tables II and III of Beerten,
+Cole and Belmans (2012) from its system-bus values. The DC network, droop
+control and converter limits are checked against hand solutions, and a demo
+case with three asynchronous AC grids and two meshed DC grids is checked for
+power balance and set-points. On that case and two variations of it the
+solver also agrees with MatACDC 1.0 (KU Leuven) to 10⁻⁷ MW, except where a
+converter reaches its limits, which Stannum meets exactly and MatACDC stops
+short of. See [Meshed VSC
+grids](/StannumRevival/manual/hvdc/vsc-grids/#verification).
+
 ## Large cases
 
 Optional tests (run with `--ignored`) solve large public cases that are not
@@ -52,5 +64,5 @@ checks their hashes.
 
 A browser smoke test drives the real interface in Chromium against the real
 Rust core on every pull request: opening MATPOWER and RAW cases, solving,
-sensitivities, studies, every module, side by side, the palette, the log, and
-DC lines. The screenshots in this documentation come from that test.
+sensitivities, studies, every module, side by side, the palette, the log, DC
+lines and VSC grids. The screenshots in this documentation come from that test.

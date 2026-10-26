@@ -11,8 +11,11 @@ load, and see what it does.
 
 ## Making edits
 
-Edits are made where the element is shown: in the Power flow tables' row
-details or the diagram's properties panel.
+Edits are made where the element is shown: in the
+[element inspector](/StannumRevival/guide/shell/#element-inspector) in any
+module, or in a Power flow table's selection bar when the pane is too narrow
+for the inspector. The inspector's **Study** section lists the edits that
+touch the element, each with a button to remove it.
 
 | Edit | Applies to |
 | --- | --- |
@@ -46,5 +49,5 @@ bus voltages that moved, largest first.
 
 ## Scope
 
-Studies change what Power flow and the diagram's results show. Topology and
-Case diff always show the file as it is.
+Studies change what Power flow and the diagram's results show. The topology
+layers and tables, and Case diff, always show the file as it is.

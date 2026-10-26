@@ -1,0 +1,158 @@
+// Layers: topology findings and field rules drawn on the Diagram, in either
+// style. Each layer marks elements by their shared id (a bus number, or a
+// branch's element id); the Network style and the One-line style both draw
+// the same marks. Result layers (loading, voltage, contingencies) are meant
+// to join this model later.
+import type { TopoPath, TopologySnapshot } from "../analysis/types";
+import { createColorPresentation, type ColorSettings } from "../../modules/topology/fields/field-colors";
+import { matchesBus, matchesEquipment, type FilterRule } from "../../modules/topology/fields/field-view";
+
+export type LayerId = "fields" | "islands" | "merged" | "critical" | "path";
+
+/** How one layer marks an element. Later layers win where they overlap. */
+export interface Mark {
+  /** Fill of a bus, or stroke of a branch. */
+  color?: string;
+  /** A ring drawn around the element. */
+  halo?: string;
+  /** Drawn heavier (a path). */
+  bold?: boolean;
+  /** Filtered out: faded in the one-line, hidden in the network. */
+  dim?: boolean;
+  /** Why it is marked, shown on hover. */
+  note?: string;
+}
+
+export interface LayerMarks {
+  buses: Map<number, Mark>;
+  /** Branches by shared element id. */
+  elements: Map<string, Mark>;
+  /** Graph nodes that aren't buses (three-winding junctions), by node id. */
+  nodes: Map<string, Mark>;
+}
+
+export interface LegendEntry {
+  label: string;
+  color: string;
+  kind: "fill" | "halo" | "line" | "gradient";
+  /** For a gradient: the other end's colour. */
+  to?: string;
+}
+
+export interface LayerLegend {
+  id: LayerId;
+  title: string;
+  entries: LegendEntry[];
+}
+
+/** Colours shared by both drawing styles. */
+export const LAYER_COLORS = {
+  critical: "#b45309",
+  path: "#2563eb",
+  merged: "#7c3aed",
+};
+
+/** Island colours, largest island first. */
+const ISLAND_COLORS = ["#0072b2", "#e69f00", "#009e73", "#d55e00", "#56b4e9", "#cc79a7", "#f0e442", "#333333"];
+
+export const LAYER_ORDER: LayerId[] = ["fields", "islands", "merged", "critical", "path"];
+
+export const LAYER_TITLES: Record<LayerId, string> = {
+  critical: "Bridges and cut buses",
+  islands: "Islands",
+  merged: "Zero-impedance groups",
+  path: "Shortest path",
+  fields: "Filters and colours",
+};
+
+export interface LayerInput {
+  on: Record<LayerId, boolean>;
+  path: TopoPath | null;
+  rules: FilterRule[];
+  colors: ColorSettings;
+}
+
+function empty(): LayerMarks {
+  return { buses: new Map(), elements: new Map(), nodes: new Map() };
+}
+
+function put<K>(map: Map<K, Mark>, key: K, mark: Mark) {
+  const old = map.get(key);
+  map.set(key, old ? { ...old, ...mark, note: [old.note, mark.note].filter(Boolean).join(" · ") || undefined } : mark);
+}
+
+/** One layer's marks and legend. */
+export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput): { marks: LayerMarks; legend: LegendEntry[] } {
+  const marks = empty();
+  const legend: LegendEntry[] = [];
+  const { analysis: a, graph } = s;
+  if (id === "critical") {
+    for (const b of a.bridges) put(marks.elements, b.equipment_id, { halo: LAYER_COLORS.critical, note: "Bridge: taking it out splits its island" });
+    for (const bus of a.articulation_buses) put(marks.buses, bus, { halo: LAYER_COLORS.critical, note: "Cut bus: losing it splits its island" });
+    for (const node of a.synthetic_articulations) put(marks.nodes, node, { halo: LAYER_COLORS.critical });
+    legend.push({ label: `${a.bridges.length} bridges`, color: LAYER_COLORS.critical, kind: "line" });
+    legend.push({ label: `${a.articulation_buses.length} cut buses`, color: LAYER_COLORS.critical, kind: "halo" });
+  } else if (id === "islands") {
+    const islands = [...a.islands].sort((x, y) => y.buses.length - x.buses.length);
+    islands.forEach((island, i) => {
+      const color = ISLAND_COLORS[i % ISLAND_COLORS.length];
+      for (const bus of island.buses) put(marks.buses, bus, { color, note: `Island ${island.id}` });
+      if (i < 8) legend.push({ label: `Island ${island.id} · ${island.buses.length} buses`, color, kind: "fill" });
+    });
+    if (islands.length > 8) legend.push({ label: `+${islands.length - 8} more islands`, color: "#94a3b8", kind: "fill" });
+  } else if (id === "merged") {
+    const groups = graph.zero_impedance_groups.filter((g) => g.length > 1);
+    for (const g of groups)
+      for (const bus of g) put(marks.buses, bus, { halo: LAYER_COLORS.merged, note: `Tied by zero-impedance branches to ${g.filter((b) => b !== bus).join(", ")}` });
+    legend.push({ label: `${groups.length} groups of buses tied by zero impedance`, color: LAYER_COLORS.merged, kind: "halo" });
+  } else if (id === "path" && input.path) {
+    for (const bus of input.path.buses) put(marks.buses, bus, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
+    for (const e of input.path.equipment_ids) put(marks.elements, e, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
+    legend.push({ label: `${input.path.buses[0]} → ${input.path.buses[input.path.buses.length - 1]}, ${input.path.hops} hops`, color: LAYER_COLORS.path, kind: "line" });
+  } else if (id === "fields") {
+    const rules = input.rules;
+    if (rules.length) {
+      for (const bus of s.case.buses) if (!matchesBus(s, bus.number, rules)) put(marks.buses, bus.number, { dim: true });
+      for (const e of s.case.equipment) if (!matchesEquipment(s, e.id, rules)) put(marks.elements, e.id, { dim: true });
+      legend.push({ label: `${rules.length} filter${rules.length === 1 ? "" : "s"}: others faded or hidden`, color: "#94a3b8", kind: "fill" });
+    }
+    const p = createColorPresentation(s, input.colors);
+    const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+    for (const [id, color] of Object.entries(p.nodeColors)) {
+      const node = nodes.get(id);
+      const members = node?.member_buses?.length ? node.member_buses : node?.bus != null ? [node.bus] : [];
+      for (const bus of members) put(marks.buses, bus, { color });
+    }
+    const edges = new Map(graph.edges.map((e) => [e.id, e.equipment_id]));
+    for (const [id, color] of Object.entries(p.edgeColors)) {
+      const eq = edges.get(id);
+      if (eq) put(marks.elements, eq, { color });
+    }
+    for (const l of p.legends) {
+      if (l.gradient) legend.push({ label: `${l.label} ${round(l.gradient.min)}–${round(l.gradient.max)}`, color: l.gradient.low, to: l.gradient.high, kind: "gradient" });
+      else for (const e of l.entries.slice(0, 10)) legend.push({ label: `${l.label}: ${e.label}`, color: e.color, kind: l.target === "bus" ? "fill" : "line" });
+    }
+  }
+  return { marks, legend };
+}
+
+function round(n: number): string {
+  return Math.abs(n) >= 100 ? n.toFixed(0) : Number(n.toPrecision(3)).toString();
+}
+
+/** Every layer that is on, merged in order, with a legend per layer. */
+export function resolveLayers(s: TopologySnapshot, input: LayerInput): { marks: LayerMarks; legends: LayerLegend[] } {
+  const marks = empty();
+  const legends: LayerLegend[] = [];
+  for (const id of LAYER_ORDER) {
+    if (!input.on[id]) continue;
+    const one = layerMarks(id, s, input);
+    for (const [k, m] of one.marks.buses) put(marks.buses, k, m);
+    for (const [k, m] of one.marks.elements) put(marks.elements, k, m);
+    for (const [k, m] of one.marks.nodes) put(marks.nodes, k, m);
+    if (one.legend.length) legends.push({ id, title: LAYER_TITLES[id], entries: one.legend });
+  }
+  return { marks, legends };
+}
+
+export const NO_MARKS: LayerMarks = empty();

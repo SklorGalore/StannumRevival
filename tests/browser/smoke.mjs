@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_VSC_CASE, STANNUM_VSC_GRIDS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -104,15 +104,31 @@ await page.getByRole("tab", { name: /Branches/ }).click();
 const line45 = page.locator("table:visible tbody tr:not([data-spacer])").nth(1);
 assert.equal((await line45.locator("td").nth(1).innerText()).trim(), "4");
 await line45.click();
-await page.getByTestId("table-selection").getByRole("button", { name: "Take out" }).click();
+// The element inspector opens beside the table: results, limits and the
+// file's data for the line, with the study actions.
+const inspector = page.getByTestId("power-inspector");
+await inspector.getByTestId("inspector-title").filter({ hasText: "Line 4–5 circuit 1" }).waitFor();
+await inspector.getByTestId("inspector-headline").filter({ hasText: /% of rate A/ }).waitFor();
+await inspector.getByTestId("inspector-limits").getByText("Rate A").waitFor();
+await inspector.getByTestId("inspector-data").getByText("Reactance").first().waitFor();
+await shot("inspector-power-line");
+await inspector.getByRole("button", { name: "Take out" }).click();
 await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
 await line45.locator("td", { hasText: /^Offline$/ }).waitFor();
 assert.equal((await line45.locator("td").nth(7).innerText()).trim(), "0.00", "no flow on the outaged line");
-await page.getByTestId("table-selection").getByRole("button", { name: "Put back" }).waitFor();
+await inspector.getByRole("button", { name: "Put back" }).waitFor();
+await inspector.getByTestId("inspector-status").filter({ hasText: "Out in this study" }).waitFor();
+await inspector.getByTestId("inspector-edits").getByText("Line 4–5 circuit 1 out of service").waitFor();
+await shot("inspector-power-outage");
+// A terminal bus in the inspector opens that bus, in its table.
+await inspector.getByRole("button", { name: /^Bus 4\b/ }).click();
+await inspector.getByTestId("inspector-title").filter({ hasText: /^Bus 4$/ }).waitFor();
+await page.getByRole("tab", { name: /^Buses/, selected: true }).waitFor();
+await inspector.getByTestId("inspector-connected").getByText("Line 4–5 circuit 1").waitFor();
 // Redispatch a generator too.
 await page.getByRole("tab", { name: /Generators/ }).click();
 await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
-await page.getByTestId("table-selection").getByRole("button", { name: "Set output" }).click();
+await inspector.getByRole("button", { name: "Set output" }).click();
 await page.getByRole("dialog", { name: "Set output" }).getByLabel("MW").fill("120");
 await page.getByRole("button", { name: "Apply to study" }).click();
 await page.getByTestId("study-badge").filter({ hasText: "2 edits" }).waitFor();
@@ -134,32 +150,45 @@ await page.getByRole("tab", { name: /Study/ }).click();
 await page.getByRole("button", { name: "Clear all" }).click();
 await page.getByTestId("study-badge").waitFor({ state: "detached" });
 
-// Topology on a RAW v35 case.
+// Topology on a RAW v35 case: the Diagram's Network style, its tables and
+// its layers.
 await queue(STANNUM_RAW);
 await page.getByRole("button", { name: "Open another…" }).click();
-await page.getByRole("button", { name: "Topology", exact: true }).click();
-await page.getByText("Articulation buses").first().waitFor();
-await page.locator("canvas").first().waitFor();
-const firstBus = await page.locator("table tbody tr td").first().innerText();
-const busNumbers = await page.locator("table tbody tr td:first-child").allInnerTexts();
-await page.getByLabel("From bus").fill(firstBus);
-await page.getByLabel("To bus").fill(busNumbers[Math.min(5, busNumbers.length - 1)]);
-await page.getByRole("button", { name: "Path", exact: true }).click();
-await page.getByTestId("path-result").filter({ hasText: /hop|No active AC path/ }).waitFor();
-await shot("topology");
+await page.getByRole("button", { name: "Diagram", exact: true }).click();
+await page.getByRole("radio", { name: "Network" }).click();
+await page.locator('[data-testid="network-view"] canvas').first().waitFor();
+await page.getByRole("button", { name: "Tables", exact: true }).click();
+const tables = page.getByTestId("tables-drawer");
+await tables.getByRole("tab", { name: /Critical connections/ }).waitFor();
+await tables.locator("table tbody tr").first().waitFor();
+const firstBus = await tables.locator("table tbody tr td").first().innerText();
+const busNumbers = await tables.locator("table tbody tr td:first-child").allInnerTexts();
+await shot("diagram-tables");
+// The shortest path between two buses, drawn as a layer.
+await page.getByRole("button", { name: "Layers", exact: true }).click();
+const layers = page.getByTestId("layers-panel");
+await layers.getByLabel("From bus").fill(firstBus);
+await layers.getByLabel("To bus").fill(busNumbers[Math.min(4, busNumbers.length - 1)]);
+await layers.getByRole("button", { name: "Find" }).click();
+await layers.getByTestId("path-result").filter({ hasText: /hop|No active AC path/ }).waitFor();
+await shot("diagram-layers");
 
-// Filters and colour rules narrow the bus table and draw a legend.
-await page.getByRole("tab", { name: /Filters & colours/ }).click();
-await page.getByLabel("Colour buses by").selectOption("base_kv");
-await page.getByTestId("graph-legend").waitFor();
-await page.getByRole("button", { name: "Add filter" }).click();
-await page.getByLabel("Filter field").selectOption("number");
-await page.getByLabel("Filter operator").selectOption("eq");
-await page.getByLabel("Filter value").fill(firstBus);
-await page.getByTestId("filter-counts").filter({ hasText: /Showing 1 of/ }).waitFor();
-await page.getByRole("button", { name: "Clear all" }).click();
-await page.getByLabel("Colour buses by").selectOption("");
-await page.getByRole("tab", { name: "Selection" }).click();
+// Filters and colour rules narrow the tables and draw a legend.
+await layers.getByRole("button", { name: /Filters and colours/ }).click();
+await layers.getByLabel("Colour buses by").selectOption("base_kv");
+await page.getByTestId("layer-legend").filter({ hasText: "Filters and colours" }).waitFor();
+await layers.getByRole("button", { name: "Add filter" }).click();
+await layers.getByLabel("Filter field").selectOption("number");
+await layers.getByLabel("Filter operator").selectOption("eq");
+await layers.getByLabel("Filter value").fill(firstBus);
+await layers.getByTestId("filter-counts").filter({ hasText: /Showing 1 of/ }).waitFor();
+await page.waitForFunction(() => document.querySelectorAll('[data-testid="tables-drawer"] table tbody tr').length === 1);
+await layers.getByRole("button", { name: "Clear all" }).click();
+await layers.getByLabel("Colour buses by").selectOption("");
+await layers.getByRole("button", { name: "Hide layers" }).click();
+await tables.getByRole("button", { name: "Hide tables" }).click();
+await page.getByRole("radio", { name: "One-line" }).click();
+await page.getByTestId("style-switch-status").waitFor({ state: "detached" });
 
 // The same RAW case solves too.
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
@@ -189,6 +218,7 @@ await shot("case-diff");
 // solved above drawn on it.
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
 await page.getByRole("button", { name: "From case" }).click();
+page.once("dialog", (d) => d.accept()); // replace the network's one-line from above
 await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.locator(".react-flow__node-bus").first().waitFor();
@@ -197,11 +227,18 @@ await page.locator("svg text", { hasText: /\d\.\d{3} pu/ }).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
 
-// One selection, seen in every module: pick a bus in Topology, then follow
-// the chip to Power flow, Case diff and the diagram.
+// One selection, seen in every module: pick a bus in Power flow, then follow
+// the chip to Case diff and the diagram.
 // Linking is opt-in: until it is on, a pick stays in its own module.
 const chip = page.getByTestId("selection-chip");
-await page.getByRole("button", { name: "Topology", exact: true }).click();
+// The chip's "Show in" links fold into a menu when the case bar is short of room.
+async function showIn(target) {
+  const direct = chip.getByRole("button", { name: `Show in ${target}` });
+  if (await direct.count()) return direct.click();
+  await chip.getByRole("button", { name: "Show in" }).click();
+  await page.getByRole("menu", { name: "Show in" }).getByRole("menuitem", { name: target }).click();
+}
+await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await page.getByRole("tab", { name: /^Buses/ }).click();
 const busRow = page.locator("table:visible tbody tr").nth(2);
 const pickedBus = (await busRow.locator("td").first().innerText()).trim();
@@ -210,28 +247,29 @@ assert.equal(await chip.count(), 0, "unlinked selections stay local");
 await page.getByRole("button", { name: "Link selection" }).click();
 await busRow.click();
 await chip.filter({ hasText: `Bus ${pickedBus}` }).waitFor();
-await shot("selection-topology");
-const selectedFirstCell = () => page.locator("tr[aria-selected=true]:visible td").first().innerText();
-await chip.getByRole("button", { name: "Show in Power flow" }).click();
-assert.equal((await selectedFirstCell()).trim(), pickedBus);
 await shot("selection-power");
-await chip.getByRole("button", { name: "Show in Case diff" }).click();
+const selectedFirstCell = () => page.locator("tr[aria-selected=true]:visible td").first().innerText();
+await showIn("Case diff");
 await page.locator("tr[aria-selected=true]:visible").first().waitFor();
 assert.equal((await selectedFirstCell()).trim(), pickedBus);
 await page.getByText("Original lines").waitFor();
 await shot("selection-diff");
-await chip.getByRole("button", { name: "Show in Diagram" }).click();
+await showIn("Diagram");
 await page.locator(".react-flow__node-bus.selected").waitFor();
 assert.equal(await page.locator(".react-flow__node-bus.selected").count(), 1);
+// The Diagram's tables show the same bus selected.
+await page.getByRole("button", { name: "Tables", exact: true }).click();
+await page.getByTestId("tables-drawer").locator("tr[aria-selected=true]").waitFor();
+assert.equal((await page.getByTestId("tables-drawer").locator("tr[aria-selected=true] td").first().innerText()).trim(), pickedBus);
 await shot("selection-diagram");
+await page.getByTestId("tables-drawer").getByRole("button", { name: "Hide tables" }).click();
 
-// Back the other way: a symbol picked in the diagram is selected in Topology.
+// Back the other way: a symbol picked in the diagram is selected in Power flow.
 await page.locator(".react-flow__controls-fitview").click();
 await page.waitForTimeout(400);
 await page.locator(".react-flow__node-generator").first().click();
 await chip.filter({ hasText: /Generator/ }).waitFor();
-await chip.getByRole("button", { name: "Show in Topology" }).click();
-await page.getByRole("tab", { name: /^Buses/, selected: true }).waitFor();
+await showIn("Power flow");
 await page.locator("tr[aria-selected=true]:visible").first().waitFor();
 await shot("selection-from-diagram");
 await page.keyboard.press("Escape");
@@ -288,6 +326,13 @@ await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.svg"]);
 const svgOut = await page.evaluate(() => window.__files["/tmp/labels.svg"]);
 assert(svgOut.includes(`transform="${movedLabel}"`), "exported SVG keeps the moved label");
+// PDF export loads jsPDF on demand; check it still writes a PDF.
+await queue("/tmp/labels.pdf");
+await page.getByRole("button", { name: "Export", exact: true }).click();
+await page.locator("div.fixed button").filter({ hasText: /^PDF$/ }).click();
+await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
+await page.waitForFunction(() => window.__files["/tmp/labels.pdf"]);
+assert((await page.evaluate(() => window.__files["/tmp/labels.pdf"])).startsWith("%PDF-"), "PDF export writes a PDF");
 await queue("/tmp/labels.sld");
 await page.getByRole("button", { name: "Save As", exact: true }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.sld"]);
@@ -299,8 +344,12 @@ await page.getByRole("button", { name: "Open", exact: true }).click();
 await page.locator(".react-flow__node-generator").first().waitFor();
 assert.equal(await labelAt(), movedLabel, "a saved drawing reopens with the label where it was put");
 await page.locator(".react-flow__node-generator").first().click({ position: { x: 20, y: 30 } });
+// A symbol from the case is inspected as its case element; the drawing's own
+// fields, label reset included, are folded into the Drawing section.
+await page.getByTestId("inspector").getByRole("button", { name: /^Drawing/, expanded: false }).click();
 await page.getByRole("button", { name: "Reset label position" }).click();
 assert.equal(await labelAt(), homeLabel, "reset puts the label back");
+await page.getByTestId("inspector").getByRole("button", { name: /^Drawing/, expanded: true }).click();
 await page.keyboard.press("Escape");
 
 // A local drawing one hop around bus 4: the studied bus is highlighted and
@@ -313,22 +362,75 @@ await page.getByLabel("Hops out").selectOption("1");
 page.once("dialog", (d) => d.accept()); // replace the edited drawing
 await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
-await page.getByText(/^Around\b/).waitFor();
+await page.getByText(/^Around\b/).first().waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
 const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
 assert.equal(await studied.count(), 1, "studied bus highlighted");
+// Branches leaving one bus share a marker that counts them.
 const markers = page.locator(".react-flow__node-offPage");
-assert.equal(await markers.count(), 2, "markers toward buses 1 and 3");
+assert.equal(await markers.count(), 1, "one marker for the branches toward buses 1 and 3");
+assert.equal((await markers.getByTestId("off-page-count").textContent()).trim(), "2");
+await markers.filter({ hasText: "To 2 buses" }).waitFor();
 await page.waitForTimeout(400);
 const studiedAt = await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform);
 await markers.first().dblclick();
-await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 5);
 assert.equal(await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform), studiedAt, "expand moved bus 4");
+assert.equal(await markers.count(), 0, "both branches drawn, so the marker goes");
 await page.waitForTimeout(500); // wires go in a frame after the taps
 await shot("diagram-local");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "undo removes the expansion");
+// One bus brought in from the bundle's menu leaves a plain marker for the other.
+await markers.first().click({ button: "right" });
+const bringIn = page.getByRole("menuitem", { name: /^Bring in (?!all)/ });
+assert.equal(await bringIn.count(), 2, "each far bus offered");
+await bringIn.first().click();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+assert.equal(await markers.getByTestId("off-page-count").count(), 0, "the bundle is down to a single branch");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3);
+
+// The Network style draws the same neighbourhood as a bus-branch graph, and
+// switching keeps the focus bus, the hop count and the selection.
+const networkBus = (bus) =>
+  // Cytoscape keeps its instance on the container. Tap the bus through it: a
+  // mouse click could land on the selection card, wherever the layout put it.
+  page.evaluate((b) => {
+    const host = [...document.querySelectorAll('[data-testid="network-view"] div')].find((d) => d._cyreg);
+    host._cyreg.cy.nodes().filter((n) => n.data("bus") === b).emit("tap");
+  }, bus);
+await page.getByRole("radio", { name: "Network" }).click();
+const hopBar = page.getByTestId("network-hops");
+await hopBar.filter({ hasText: "Around Bus 4" }).filter({ hasText: "1 hop" }).filter({ hasText: "3 buses" }).waitFor();
+await page.locator('[data-testid="network-view"] canvas').first().waitFor();
+await page.waitForTimeout(300);
+await networkBus(5);
+await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
+await page.getByTestId("network-selection").getByTestId("element-inspector").filter({ hasText: "Network" }).waitFor();
+await hopBar.getByRole("button", { name: "One hop more" }).click();
+await hopBar.filter({ hasText: "2 hops" }).filter({ hasText: "5 buses" }).waitFor();
+await shot("diagram-network");
+await page.getByRole("radio", { name: "One-line" }).click();
+await page.getByTestId("style-switch-status").waitFor({ state: "detached" });
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 5);
+await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor();
+await page.locator('.react-flow__node-bus.selected[data-id="b5"]').waitFor();
+assert.equal(await page.locator(".react-flow__node.selected").count(), 1, "the bus bar, not its load, is selected");
+await page.waitForTimeout(600); // fit, then centre on the selection
+await shot("diagram-network-oneline");
+// And back: the network keeps the redrawn focus and the selection.
+await page.getByRole("radio", { name: "Network" }).click();
+await hopBar.filter({ hasText: "Around Bus 4" }).filter({ hasText: "2 hops" }).waitFor();
+await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
+// "Draw as one-line" from the selection redraws around it.
+await page.getByTestId("network-selection").getByRole("button", { name: "Draw as one-line" }).click();
+await page.getByRole("radio", { name: "One-line", checked: true }).waitFor();
+await page.getByTestId("style-switch-status").waitFor({ state: "detached" });
+await page.locator('.react-flow__node-bus.selected[data-id="b5"]').waitFor();
+await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor();
 
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 page.once("dialog", (d) => d.accept());
@@ -625,7 +727,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await dc.click();
   await chip.filter({ hasText: /DC line East link/ }).waitFor();
   await shot("dc-diff-picked");
-  await chip.getByRole("button", { name: "Show in Case diff" }).click();
+  await showIn("Case diff");
   const picked = page.locator("tr[aria-selected=true]:visible").first();
   await picked.waitFor();
   assert.match(await picked.innerText(), /East link/);
@@ -639,9 +741,35 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await chip.waitFor({ state: "detached" });
   await page.locator("section:has-text('Records') table tbody tr", { hasText: "East link" }).click();
   await chip.filter({ hasText: /DC line East link/ }).waitFor();
-  await chip.getByRole("button", { name: "Show in Diagram" }).click();
+  await showIn("Diagram");
   await page.locator(".react-flow__node-dcLink.selected").waitFor();
   await shot("dc-diff-back");
+}
+
+// VSC DC grids: attach a Stannum DC grid file to a case, solve, and read the
+// converters, DC buses and DC lines of each grid.
+if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
+  await queue(STANNUM_VSC_CASE);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByTestId("open-vsc-grids").click();
+  await queue(STANNUM_VSC_GRIDS);
+  await page.getByRole("button", { name: "Attach DC grid file…" }).click();
+  await page.getByTestId("dc-grid-file").getByText("two_area.dcgrid.json").waitFor();
+  await page.getByText("Solve to include these DC grids.").waitFor();
+  await shot("vsc-grids-attached");
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  const tab = page.getByTestId("vsc-grids");
+  await tab.getByText("AC/DC iterations").waitFor();
+  assert.equal(await tab.getByTestId("vsc-grid").count(), 2, "both DC grids reported");
+  await tab.getByRole("cell", { name: "Offshore", exact: true }).first().waitFor();
+  await tab.getByRole("cell", { name: "DC slack" }).waitFor();
+  await tab.getByRole("cell", { name: "Droop" }).first().waitFor();
+  await shot("vsc-grids");
+  await tab.getByTestId("vsc-grid").nth(1).scrollIntoViewIfNeeded();
+  await shot("vsc-grids-droop");
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.getByText("Converged").first().waitFor();
 }
 
 // Findings lead somewhere: on a case with limit violations, a check opens the
@@ -682,15 +810,28 @@ if (STANNUM_VIOLATIONS) {
   assert.equal((await first.locator("td").first().innerText()).trim(), worst.replace("Bus ", ""), "worst first");
   await first.click();
   await page.getByTestId("table-selection").filter({ hasText: worst }).waitFor();
+  await page.getByTestId("power-inspector").getByTestId("inspector-headline").filter({ hasText: /below|above/ }).waitFor();
   await shot("findings-violations");
 
-  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByTestId("power-inspector").getByRole("button", { name: /Draw around/ }).click();
   await page.locator(".react-flow__node-bus.selected").first().waitFor();
   await page.getByText(/^Around\b/).first().waitFor();
   const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
   assert.equal(await studied.count(), 1, "drawn around the worst bus");
   await page.waitForTimeout(600); // centred after the fit
   await shot("findings-drawn");
+
+  // The diagram inspects the same element as Power flow did: its results and
+  // case data first, the drawing's own fields folded underneath.
+  const drawnInspector = page.getByTestId("inspector");
+  await drawnInspector.getByTestId("inspector-title").filter({ hasText: worst }).waitFor();
+  await drawnInspector.getByTestId("inspector-headline").filter({ hasText: /below|above/ }).waitFor();
+  const drawingSection = drawnInspector.getByTestId("inspector-drawing").getByRole("button", { name: /Drawing/ });
+  assert.equal(await drawingSection.getAttribute("aria-expanded"), "false", "drawing fields folded");
+  await shot("inspector-diagram");
+  await drawingSection.click();
+  await drawnInspector.getByTestId("inspector-drawing").getByText(/Bus|Label|Name/).first().waitFor();
+  await drawingSection.click();
 
   // A drawing from the case keeps the components palette folded, and the
   // inspector only appears with a selection, so the drawing gets the room.
@@ -806,11 +947,52 @@ if (STANNUM_VIOLATIONS) {
   await page.locator("[data-pane=left] .react-flow__node-bus.selected").first().waitFor();
   await page.waitForTimeout(400);
   await shot("split-view");
+  // Half-width panes keep their chrome inside them: tabs and toolbar buttons
+  // that don't fit move into "More" menus instead of spilling over.
+  const spills = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-pane] [role=tablist], [data-pane] [data-testid=diagram-toolbar]")]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.getAttribute("role") ?? el.getAttribute("data-testid"))
+  );
+  assert.deepEqual(spills, [], "nothing overflows a half-width pane");
+  // The selected bus's inspector floats over the drawing rather than taking a column.
+  const floatBox = await page.locator("[data-pane=left] [data-testid=inspector]").boundingBox();
+  const canvasBox = await page.locator("[data-pane=left] .react-flow").boundingBox();
+  assert(floatBox.x < canvasBox.x + canvasBox.width, "the inspector floats over the drawing in a narrow pane");
   await right.getByRole("button", { name: "Swap sides" }).click();
   assert.equal(await page.locator("[data-pane=left]").getByRole("combobox", { name: "Left pane" }).inputValue(), "power");
   await page.locator("[data-pane=right]").getByRole("button", { name: "Close split view" }).click();
   await page.locator("[data-pane]").first().waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Link selection" }).waitFor();
+
+  // Drawn around a branch, a local drawing grows from both its ends (neither
+  // is the studied bus) and the branch itself is marked.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  const branchRow = page.locator("table:visible tbody tr:not([data-spacer])").first();
+  await branchRow.click();
+  await page.getByTestId("power-inspector").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByText(/^Around\b/).filter({ hasText: /Line|Transformer/ }).first().waitFor();
+  await page.getByTestId("draw-request").waitFor({ state: "detached" });
+  await page.getByTestId("focus-halo").first().waitFor();
+  assert.equal(await studied.count(), 0, "a branch has no studied bus");
+  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  await shot("around-branch");
+
+  // An empty drawing offers to draw around the worst violation.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  const prompt = page.getByTestId("draw-prompt");
+  await prompt.waitFor();
+  await prompt.getByRole("button", { name: new RegExp(`worst violation: ${worst}(?!\\d)`) }).waitFor();
+  await shot("draw-prompt");
+  await prompt.getByRole("button", { name: /worst violation/ }).click();
+  await prompt.waitFor({ state: "detached" });
+  await page.getByText(/^Around\b/).filter({ hasText: /\S/ }).first().waitFor();
+  await studied.first().waitFor();
+  assert.equal(await studied.count(), 1, "drawn around the worst bus");
 
   // Tables draw only the rows in view, carry bus names, and show loading and
   // limits as bars and marks.
@@ -864,12 +1046,13 @@ if (STANNUM_VIOLATIONS) {
   await chips.getByRole("button", { name: /^Remove filter/ }).click();
   await chips.getByText("Applies to buses, generators and branches").waitFor();
 
-  // MATPOWER has no RAW records, so Topology is built from the power flow model.
-  await page.getByRole("button", { name: "Topology", exact: true }).click();
+  // MATPOWER has no RAW records, so the topology is built from the power flow model.
+  await page.getByRole("button", { name: "Diagram", exact: true }).click();
+  await page.getByRole("button", { name: "Tables", exact: true }).click();
+  await page.getByTestId("tables-drawer").getByRole("tab", { name: /Diagnostics/ }).click();
   await page.getByText("Built from the power flow model.").waitFor();
-  await page.locator("canvas:visible").first().waitFor();
-  await page.getByText("Articulation buses").first().waitFor();
-  await shot("topology-matpower");
+  await shot("tables-matpower");
+  await page.getByTestId("tables-drawer").getByRole("button", { name: "Hide tables" }).click();
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

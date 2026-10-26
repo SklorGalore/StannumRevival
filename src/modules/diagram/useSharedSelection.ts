@@ -3,7 +3,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import { busElement, elementBus } from "../../lib/elements";
-import type { CaseRef, SLDEdge, SLDNode } from "../../store/types";
+import type { CaseRef, OffPageData, SLDEdge, SLDNode } from "../../store/types";
 
 const refOf = (x: SLDNode | SLDEdge | undefined) => (x?.data as { caseRef?: CaseRef } | undefined)?.caseRef;
 
@@ -48,7 +48,10 @@ export function useSharedSelection(): string | null {
       source.current === "request" ? (request?.element ?? null) : shared && shared.from !== "diagram" ? shared.element : null;
     if (!target) return;
     const byElement = (id: string) => ({
-      nodes: nodes.filter((n) => refOf(n)?.element === id),
+      // A bundled off-page marker stands for each of its branches.
+      nodes: nodes.filter(
+        (n) => refOf(n)?.element === id || (n.data as OffPageData).links?.some((l) => l.caseRef?.element === id)
+      ),
       edges: edges.filter((e) => refOf(e)?.element === id),
     });
     let hit = byElement(target);

@@ -25,8 +25,8 @@ describe("split view", () => {
     expect(useWorkspace.getState()).toMatchObject({ module: "diagram", split: "power" });
     useWorkspace.getState().setModule("power");
     expect(useWorkspace.getState().module).toBe("diagram");
-    useWorkspace.getState().setModule("topology");
-    expect(useWorkspace.getState()).toMatchObject({ module: "topology", split: "power" });
+    useWorkspace.getState().setModule("diff");
+    expect(useWorkspace.getState()).toMatchObject({ module: "diff", split: "power" });
   });
 
   it("swaps sides", () => {
