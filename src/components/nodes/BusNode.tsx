@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { BusNode as BusNodeType } from "../../store/types";
 import { useResults } from "../../lib/diagram/results";
@@ -6,9 +6,11 @@ import { useResultMarks, voltageBand } from "../../lib/diagram/detail";
 import { useInk } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import { busTaps } from "./shared/busTaps";
-import { handleStyle } from "./shared/SymbolFrame";
+import { handleStyle, LayerRing } from "./shared/SymbolFrame";
+import { useBusMark } from "../../store/layerStore";
 import { Leader, useBBox, useLabelDrag } from "./shared/labels";
 import { BAR, isVertical, tapFacing } from "../../lib/diagram/bus";
+import { useRemeasure } from "./shared/remeasure";
 
 const POSITION = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 const MIN_LENGTH = 40;
@@ -53,7 +55,8 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const length = data.length ?? 200;
   const vertical = isVertical(data);
   const ink = useInk();
-  const color = selected ? ink.selected : ink.voltage(data.voltageKV);
+  const layer = useBusMark(data.caseRef?.kind === "bus" ? data.caseRef.id : undefined);
+  const color = selected ? ink.selected : layer?.color && !ink.mono ? layer.color : ink.voltage(data.voltageKV);
   const results = useResults();
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
   const marks = useResultMarks();
@@ -61,9 +64,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const taps = busTaps(data);
   // Re-measure when taps come or go (expand, undo, paste) or the bus turns,
   // so wires can attach.
-  const updateInternals = useUpdateNodeInternals();
-  const tapKey = `${vertical}` + taps.map((t) => `${t.id}${t.side}${t.x}`).join();
-  useEffect(() => updateInternals(id), [tapKey, id, updateInternals]);
+  useRemeasure(`${vertical}` + taps.map((t) => `${t.id}${t.side}${t.x}`).join());
   // Fixed taps (from a generated layout or added by hand) must stay on the bar.
   const minLength = Math.max(MIN_LENGTH, ...(data.taps ?? []).map((t) => t.x + 20));
   const width = vertical ? BAR : length;
@@ -125,7 +126,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   );
 
   return (
-    <div className="node-wrapper relative" style={{ width, height }}>
+    <div className="node-wrapper relative" style={{ width, height, opacity: layer?.dim ? 0.25 : undefined }}>
       <svg width={width} height={height} overflow="visible" style={{ display: "block" }}>
         {data.focus && (
           // The studied bus of a local drawing.
@@ -143,6 +144,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
             <title>Studied bus</title>
           </rect>
         )}
+        {layer?.halo && <LayerRing w={width} h={height} mark={layer} />}
         {row && band && (
           // Voltage near (amber) or past (red) its limits, drawn at every zoom
           // so it can be found from far away.
@@ -159,7 +161,15 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
             data-testid="voltage-band"
           />
         )}
-        <rect x={0} y={0} width={width} height={height} fill={color} rx={1}>
+        <rect
+          x={vertical && layer?.bold ? -1.5 : 0}
+          y={!vertical && layer?.bold ? -1.5 : 0}
+          width={vertical && layer?.bold ? width + 3 : width}
+          height={!vertical && layer?.bold ? height + 3 : height}
+          fill={color}
+          rx={1}
+        >
+          {!row && layer?.note && <title>{layer.note}</title>}
           {row && (
             <title>
               {row.vm.toFixed(3)} pu {row.va.toFixed(1)}°{band === "past" ? " · outside limits" : band === "near" ? " · near a limit" : ""}

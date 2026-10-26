@@ -354,3 +354,13 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
 
 /** A wrapper for module-specific sections, so they look like the shared ones. */
 export { Section as InspectorSection };
+
+/**
+ * The inspector's column beside a canvas or table, or, in a narrow pane, a
+ * card floating over its right edge so the drawing keeps the width.
+ */
+export function inspectorClass(floating: boolean, top = "top-2"): string {
+  return floating
+    ? `absolute right-2 ${top} bottom-2 z-30 w-72 max-w-[calc(100%-1rem)] rounded-lg border border-slate-200 bg-white shadow-lg overflow-y-auto`
+    : "w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto";
+}

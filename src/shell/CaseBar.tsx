@@ -4,6 +4,7 @@ import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
+import { useWidth } from "../ui/useWidth";
 
 const SHORTCUT = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
@@ -24,15 +25,19 @@ export function CaseBar() {
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
 
+  // In a narrow window the buttons drop their labels and the selection's
+  // "Show in" links fold into a menu, rather than running into each other.
+  const [ref, width] = useWidth<HTMLDivElement>(1440);
+  const narrow = width < 1100;
   return (
-    <div className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white">
+    <div ref={ref} className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white whitespace-nowrap">
       <FileText size={16} className="text-slate-400 shrink-0" />
       {summary ? (
-        <div className="min-w-0 flex items-baseline gap-2">
-          <span className="text-sm font-semibold text-slate-800 truncate" title={summary.path}>
+        <div className="min-w-[10rem] flex-[1_1_0] flex items-baseline gap-2" data-case-summary>
+          <span className="min-w-0 max-w-full shrink-0 text-sm font-semibold text-slate-800 truncate" title={summary.path}>
             {summary.name}
           </span>
-          <span className="text-[11px] text-slate-500 truncate">
+          <span className="min-w-0 text-[11px] text-slate-500 truncate">
             {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${topo && !topo.derived ? ` v${topo.revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(
@@ -73,7 +78,7 @@ export function CaseBar() {
           }`}
           title={split ? "Back to one module at a time" : "Show two modules side by side, with linked selection"}
         >
-          <Columns2 size={13} /> Side by side
+          <Columns2 size={13} /> {!narrow && "Side by side"}
         </button>
         <button
           type="button"
@@ -82,11 +87,17 @@ export function CaseBar() {
           title="Find a bus, branch or generator, or run a command"
         >
           <Search size={13} />
-          <span>{summary ? "Find in case" : "Commands"}</span>
+          {!narrow && <span>{summary ? "Find in case" : "Commands"}</span>}
           <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-400">{SHORTCUT}</kbd>
         </button>
-        <Button variant="primary" onClick={() => openCase()} disabled={opening}>
-          <FolderOpen size={14} /> {summary ? "Open another…" : "Open case…"}
+        <Button
+          variant="primary"
+          onClick={() => openCase()}
+          disabled={opening}
+          aria-label={summary ? "Open another…" : "Open case…"}
+          title={summary ? "Open another case" : "Open a case"}
+        >
+          <FolderOpen size={14} /> {(!narrow || !summary) && (summary ? "Open another…" : "Open case…")}
         </Button>
         {summary && (
           <Button variant="ghost" onClick={() => closeCase()} title="Close case" aria-label="Close case">

@@ -9,7 +9,7 @@ then "Open"), or by dropping a `.raw` or `.m` file anywhere on the window.
 
 ## What each module can use
 
-| Format | Power flow | Diagram | Topology | Case diff |
+| Format | Power flow | Diagram | Topology (network, layers, tables) | Case diff |
 | --- | --- | --- | --- | --- |
 | PSS/E RAW revision 35 | Yes | Yes | Yes, from the RAW records | Yes |
 | PSS/E RAW revision 33 | Yes | Yes | Yes, built from the power flow model | Yes |

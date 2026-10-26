@@ -6,7 +6,8 @@ description: What Stannum is doing, every step it took, and a solver output wind
 The strip along the bottom of the window says what Stannum is doing: the step
 in progress with a running timer (opening, solving, comparing, drawing), or
 the latest message. A count appears on it when warnings or errors arrive that
-you haven't seen.
+you haven't seen. It counts the open case only: opening another case starts
+it again from zero.
 
 Click the strip or press <kbd>Ctrl</kbd>+<kbd>`</kbd> to open the log. Drag
 its top edge to resize it.
