@@ -59,12 +59,30 @@ pub fn apply(base: &PowerCase, edits: &[Edit]) -> Result<PowerCase, String> {
                     .iter_mut()
                     .find(|b| b.id == *bus)
                     .ok_or_else(|| format!("Bus {bus} isn't in this case."))?;
-                b.pd = *mw;
-                b.qd = *mvar;
+                set_load(b, *mw, *mvar);
             }
         }
     }
     Ok(power)
+}
+
+/// Make `bus` draw `mw` and `mvar` at its file voltage. Voltage-dependent
+/// parts keep their shares of the load; a load with nothing drawn becomes
+/// constant power.
+fn set_load(bus: &mut rs_power::Bus, mw: f64, mvar: f64) {
+    let (p, q) = bus.load();
+    if p != 0.0 {
+        let k = mw / p;
+        (bus.pd, bus.pd_i, bus.pd_z) = (bus.pd * k, bus.pd_i * k, bus.pd_z * k);
+    } else {
+        (bus.pd, bus.pd_i, bus.pd_z) = (mw, 0.0, 0.0);
+    }
+    if q != 0.0 {
+        let k = mvar / q;
+        (bus.qd, bus.qd_i, bus.qd_z) = (bus.qd * k, bus.qd_i * k, bus.qd_z * k);
+    } else {
+        (bus.qd, bus.qd_i, bus.qd_z) = (mvar, 0.0, 0.0);
+    }
 }
 
 /// A solve error in study terms: an outage that splits off part of the

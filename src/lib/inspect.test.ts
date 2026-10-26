@@ -34,6 +34,14 @@ describe("elementResults", () => {
     expect(r.tone).toBe("ok");
   });
 
+  it("splits a bus's load by how it varies with voltage", () => {
+    const parts = { p: [20, 18, 12] as [number, number, number], q: [5, 3, 2] as [number, number, number] };
+    const r = elementResults(report({ buses: [bus(7, 0.98, { load_parts: parts })] }), "load:7:1")!;
+    expect(r.groups.map((g) => g.title)).toEqual(["Bus 7", "Load by type"]);
+    expect(r.groups[1].rows.find((x) => x.label === "Constant current" && x.unit === "MW")).toMatchObject({ value: "18.0" });
+    expect(elementResults(report({ buses: [bus(7, 0.98)] }), "bus:7")!.groups).toHaveLength(1);
+  });
+
   it("says when a branch is out of service", () => {
     const r = elementResults(report({ branches: [branch({ online: false })] }), "line:1:2:1")!;
     expect(r).toMatchObject({ offline: true, headline: "Out of service", groups: [] });

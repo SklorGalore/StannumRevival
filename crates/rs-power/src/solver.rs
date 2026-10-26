@@ -468,6 +468,8 @@ pub(crate) fn layout_jacobian(
             if i == j {
                 da += C::i() * v[i] * current.conj();
                 dm += v[i] / v[i].norm() * current.conj();
+                // Constant-current load draws current_loads·|V|.
+                dm += net.current_loads[i];
             }
             if let Some(r) = at.angle[i] {
                 if let Some(c) = at.angle[j] {
@@ -1069,6 +1071,12 @@ fn allocate(
     }
 }
 
+/// Active power a bus draws at 1 p.u. voltage beyond its constant-power
+/// load: shunt conductance and constant-current and -impedance load.
+fn dc_shunt(b: &crate::Bus) -> f64 {
+    b.gs + b.pd_i + b.pd_z
+}
+
 fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let n = net.external.len();
     let vars: Vec<_> = (0..n).filter(|i| !net.references.contains(i)).collect();
@@ -1091,7 +1099,7 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         .injections(&case)
         .iter()
         .enumerate()
-        .map(|(i, s)| s.re - case.buses[net.external[i]].gs / case.base_mva)
+        .map(|(i, s)| s.re - dc_shunt(&case.buses[net.external[i]]) / case.base_mva)
         .collect();
     let mut coeffs = Vec::new();
     for e in &net.edges {
@@ -1141,7 +1149,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
     let residual = vars
         .iter()
         .map(|&i| {
-            (balance[i] - expected[i].re + case.buses[net.external[i]].gs / case.base_mva).abs()
+            (balance[i] - expected[i].re + dc_shunt(&case.buses[net.external[i]]) / case.base_mva)
+                .abs()
         })
         .fold(0.0_f64, f64::max);
     if !residual.is_finite() || residual >= opt.tolerance {
@@ -1154,7 +1163,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         let gens = &net.gens[reference];
         let other: f64 = gens.iter().skip(1).map(|&g| case.generators[g].pg).sum();
         let b = &case.buses[net.external[reference]];
-        case.generators[gens[0]].pg = balance[reference] * case.base_mva + b.pd + b.gs - other;
+        case.generators[gens[0]].pg =
+            balance[reference] * case.base_mva + b.pd + dc_shunt(b) - other;
     }
     for (i, &e) in net.external.iter().enumerate() {
         case.buses[e].vm = 1.0;
@@ -2361,6 +2371,10 @@ mod tests {
         case.branches[1].shift = 13.0;
         case.buses[4].gs = 3.0;
         case.buses[4].bs = 2.0;
+        // Constant-current and constant-impedance loads.
+        (case.buses[4].pd_i, case.buses[4].qd_i) = (40.0, 15.0);
+        (case.buses[6].pd_z, case.buses[6].qd_z) = (30.0, -10.0);
+        (case.buses[8].pd_i, case.buses[8].qd_z) = (-20.0, 25.0);
         let net = Network::new(&case).unwrap();
         let v: Vec<_> = (0..net.external.len())
             .map(|i| C::from_polar(0.95 + 0.01 * i as f64, 0.025 * i as f64))

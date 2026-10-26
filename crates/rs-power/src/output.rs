@@ -3,7 +3,9 @@ use std::{fmt::Write, path::Path};
 
 /// Serialize a case as literal MATPOWER version-2 assignments.
 ///
-/// Preserves row order, extra columns, costs and supported labels. Generator
+/// Preserves row order, extra columns, costs and supported labels. MATPOWER
+/// has no voltage-dependent loads, so constant-current and constant-impedance
+/// load is written as the constant power it draws at the bus's `vm`. Generator
 /// statuses are written as 0/1, matching the boolean representation in `Case`.
 /// Rejects ragged matrices, NaN and multiline labels. This checks format only;
 /// it does not validate network topology or physical inputs.
@@ -27,11 +29,12 @@ pub fn format_matpower(case: &Case) -> Result<String, Error> {
                 BusType::Reference => 3.0,
                 BusType::Isolated => 4.0,
             };
+            let (pd, qd) = b.load();
             let mut row = vec![
                 b.id as f64,
                 kind,
-                b.pd,
-                b.qd,
+                pd,
+                qd,
                 b.gs,
                 b.bs,
                 b.area as f64,

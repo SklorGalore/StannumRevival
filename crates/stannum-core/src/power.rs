@@ -65,10 +65,12 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
         // Line-commutated converters absorb reactive power, unlike MATPOWER's
         // positive estimates. Generators hold the remote buses they regulate.
+        // Loads keep their constant-current and constant-impedance parts.
         let options = rs_power::RawOptions {
             all_dc_lines: true,
             lcc_absorbs_reactive: true,
             remote_regulation: true,
+            zip_loads: true,
             ..Default::default()
         };
         let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
@@ -349,11 +351,33 @@ pub struct BusRow {
     pub va: f64,
     pub vmin: f64,
     pub vmax: f64,
+    /// Load drawn at the solved voltage, all parts together.
     pub pd: f64,
     pub qd: f64,
+    /// The load split by how it varies with voltage, when any of it does.
+    pub load_parts: Option<LoadParts>,
     pub area: u32,
     /// Distance outside [vmin, vmax] in p.u.; zero when within limits.
     pub violation: f64,
+}
+
+/// A bus's load at the solved voltage by part, in MW and Mvar:
+/// `[constant power, constant current, constant impedance]`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct LoadParts {
+    pub p: [f64; 3],
+    pub q: [f64; 3],
+}
+
+impl LoadParts {
+    /// The parts `bus` draws at voltage `vm`, or `None` when its load is all
+    /// constant power.
+    pub fn of(bus: &rs_power::Bus, vm: f64) -> Option<Self> {
+        bus.has_voltage_dependent_load().then_some(Self {
+            p: [bus.pd, bus.pd_i * vm, bus.pd_z * vm * vm],
+            q: [bus.qd, bus.qd_i * vm, bus.qd_z * vm * vm],
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -717,6 +741,7 @@ pub fn report(
                     limits.worst_voltage = Some((b.id, violation));
                 }
             }
+            let (pd, qd) = b.load();
             BusRow {
                 id: b.id,
                 name: name.clone(),
@@ -726,8 +751,9 @@ pub fn report(
                 va: b.va,
                 vmin: b.vmin,
                 vmax: b.vmax,
-                pd: b.pd,
-                qd: b.qd,
+                pd,
+                qd,
+                load_parts: LoadParts::of(b, b.vm),
                 area: b.area,
                 violation,
             }
@@ -927,7 +953,7 @@ pub fn report(
         .buses
         .iter()
         .filter(|b| b.kind != BusType::Isolated)
-        .map(|b| b.pd)
+        .map(|b| b.load().0)
         .sum();
     let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum::<f64>()
         + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>();

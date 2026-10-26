@@ -22,6 +22,18 @@ pub struct Bus {
     pub pd: f64,
     /// Reactive demand in MVAr.
     pub qd: f64,
+    /// Constant-current active load: MW at 1 p.u. voltage, scaling with |V|
+    /// (PSS/E IP). Not a MATPOWER column; see [`Bus::load_at`].
+    pub pd_i: f64,
+    /// Constant-current reactive load: MVAr consumed at 1 p.u. voltage,
+    /// scaling with |V| (PSS/E IQ; positive is inductive).
+    pub qd_i: f64,
+    /// Constant-impedance active load: MW at 1 p.u. voltage, scaling with
+    /// |V|² (PSS/E YP).
+    pub pd_z: f64,
+    /// Constant-impedance reactive load: MVAr consumed at 1 p.u. voltage,
+    /// scaling with |V|² (the negative of PSS/E YQ, so positive is inductive).
+    pub qd_z: f64,
     /// Shunt conductance: MW consumed at 1 p.u. voltage.
     pub gs: f64,
     /// Shunt susceptance: MVAr injected at 1 p.u. voltage.
@@ -42,6 +54,37 @@ pub struct Bus {
     pub vmin: f64,
     /// Additional numeric MATPOWER columns, retained without interpretation.
     pub extra: Vec<f64>,
+}
+
+impl Bus {
+    /// Total load in MW and MVAr at voltage magnitude `vm` (p.u.): the
+    /// constant-power part `pd`/`qd`, plus the constant-current part times
+    /// `vm`, plus the constant-impedance part times `vm²`.
+    pub fn load_at(&self, vm: f64) -> (f64, f64) {
+        (
+            self.pd + self.pd_i * vm + self.pd_z * vm * vm,
+            self.qd + self.qd_i * vm + self.qd_z * vm * vm,
+        )
+    }
+
+    /// Total load in MW and MVAr at the bus's stored voltage `vm`.
+    pub fn load(&self) -> (f64, f64) {
+        self.load_at(self.vm)
+    }
+
+    /// Whether any load at this bus depends on voltage.
+    pub fn has_voltage_dependent_load(&self) -> bool {
+        [self.pd_i, self.qd_i, self.pd_z, self.qd_z]
+            .iter()
+            .any(|x| *x != 0.0)
+    }
+
+    /// Replace the voltage-dependent load with the constant power it draws
+    /// at the stored voltage `vm`, as MATPOWER does on RAW import.
+    pub fn freeze_load(&mut self) {
+        (self.pd, self.qd) = self.load();
+        (self.pd_i, self.qd_i, self.pd_z, self.qd_z) = (0.0, 0.0, 0.0, 0.0);
+    }
 }
 
 /// A generator in MATPOWER column order, with power in MW/MVAr.
