@@ -2,6 +2,8 @@ import { GitCompareArrows, Monitor, Moon, Network, PencilRuler, Sun, Zap } from 
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
+import logoUrl from "../assets/stannum-logo.svg";
+import logoSmallUrl from "../assets/stannum-logo-small.svg";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "Single-line diagram editor" },
@@ -10,17 +12,9 @@ export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: stri
   { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Exact RAW case comparison (case-diff)" },
 ];
 
+/** The Stannum mark. Below 40 px it switches to the heavier small-size drawing. */
 export function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true">
-      <rect width="512" height="512" rx="104" fill="#0f3d3e" />
-      <g fill="none" stroke="#8fd3c9" strokeWidth="22" strokeLinecap="round">
-        <path d="M136 152h240M136 360h240M196 152v208M316 152v208" />
-      </g>
-      <circle cx="196" cy="256" r="30" fill="#f2b84b" />
-      <circle cx="316" cy="256" r="30" fill="#f2b84b" />
-    </svg>
-  );
+  return <img src={size < 40 ? logoSmallUrl : logoUrl} width={size} height={size} alt="" aria-hidden="true" draggable={false} />;
 }
 
 export function ModuleRail() {

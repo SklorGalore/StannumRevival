@@ -124,7 +124,7 @@ function wireLabels(root: HTMLElement, routes: Map<string, Pt[]>, area: Area): B
  *  route, or whose ends have moved, get a new one once nothing is being
  *  dragged. A wire whose route was adjusted by hand keeps its shape and
  *  only has its ends moved. Routes are stored in `data.route`. */
-export function useWireRouting(root: RefObject<HTMLElement>) {
+export function useWireRouting(root: RefObject<HTMLElement | null>) {
   const flow = useStoreApi();
   const nodes = useDiagramStore((s) => s.nodes);
   const edges = useDiagramStore((s) => s.edges);

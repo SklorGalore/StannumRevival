@@ -341,7 +341,12 @@ fn study_edits_change_what_is_solved() {
     let mut ws = Workspace::default();
     ws.open(&fixture("case9.m")).unwrap();
     let case = ws.current_mut().unwrap();
-    let base = case.solve(SolveSettings::default()).unwrap();
+    // Results are compared to 1e-6, so solve tighter than the 2 MVA default.
+    let tight = || SolveSettings {
+        tolerance: 1e-8,
+        ..SolveSettings::default()
+    };
+    let base = case.solve(tight()).unwrap();
     // A line on the ring, so taking it out leaves every bus connected.
     let line = base
         .branches
@@ -363,7 +368,7 @@ fn study_edits_change_what_is_solved() {
         },
     ])
     .unwrap();
-    let out = case.solve(SolveSettings::default()).unwrap();
+    let out = case.solve(tight()).unwrap();
     assert!(out.converged);
     let row = out.branches.iter().find(|b| b.element == element).unwrap();
     assert!(
@@ -391,7 +396,7 @@ fn study_edits_change_what_is_solved() {
         mw: 100.0,
     }])
     .unwrap();
-    let redispatched = case.solve(SolveSettings::default()).unwrap();
+    let redispatched = case.solve(tight()).unwrap();
     assert!((redispatched.generators[1].pg - 100.0).abs() < 1e-6);
 
     // Cutting generator 2's only line leaves an island the solver can't take.
@@ -400,16 +405,17 @@ fn study_edits_change_what_is_solved() {
         online: false,
     }])
     .unwrap();
-    let err = case.solve(SolveSettings::default()).unwrap_err();
+    let err = case.solve(tight()).unwrap_err();
     assert!(
         err.starts_with("The study's outages split the network"),
         "{err}"
     );
 
-    // No edits: back to the file.
+    // No edits: back to the file. This solve starts from the redispatched
+    // one, so it agrees with the first to the solver's tolerance.
     case.set_edits(vec![]).unwrap();
-    let again = case.solve(SolveSettings::default()).unwrap();
-    assert!((again.total_losses_mw - base.total_losses_mw).abs() < 1e-9);
+    let again = case.solve(tight()).unwrap();
+    assert!((again.total_losses_mw - base.total_losses_mw).abs() < 1e-6);
 }
 
 #[test]
@@ -421,6 +427,8 @@ fn last_solution_start_resumes_the_previous_solve() {
     let last = SolveSettings {
         start: StartChoice::Last,
         enforce_q_limits: true,
+        // Tight enough that a 1 MW load edit needs Newton steps.
+        tolerance: 1e-8,
         ..SolveSettings::default()
     };
     // Nothing solved yet: the case voltages, like "From case".
@@ -455,12 +463,43 @@ fn last_solution_start_resumes_the_previous_solve() {
         case.solve(last.clone()).unwrap().iterations,
         cold.iterations
     );
-    // Nor does a study edit, which changes the case.
+    // After a study edit the last solve is still the starting point.
+    case.solve(last.clone()).unwrap();
     case.set_edits(vec![stannum_core::study::Edit::Load {
         bus: first.buses[1].id,
         mw: first.buses[1].pd + 1.0,
         mvar: first.buses[1].qd,
     }])
     .unwrap();
-    assert!(case.solve(last).unwrap().iterations > 0);
+    let edited = case.solve(last.clone()).unwrap();
+    let edited_cold = case
+        .solve(SolveSettings {
+            start: StartChoice::Case,
+            ..last.clone()
+        })
+        .unwrap();
+    assert!(edited.converged && edited.iterations > 0);
+    assert!(edited.iterations < edited_cold.iterations);
+    for (a, b) in edited.buses.iter().zip(&edited_cold.buses) {
+        assert!((a.vm - b.vm).abs() < 1e-6);
+    }
+    // Clearing the study goes back to the base case, again from the last solve.
+    case.set_edits(vec![]).unwrap();
+    assert!(case.solve(last).unwrap().converged);
+}
+
+#[test]
+fn every_solve_starts_from_the_last_one_by_default() {
+    use stannum_core::power::StartChoice;
+    assert_eq!(SolveSettings::default().start, StartChoice::Last);
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    assert!(case.solve(SolveSettings::default()).unwrap().iterations > 0);
+    assert_eq!(case.solve(SolveSettings::default()).unwrap().iterations, 0);
+    let flat = SolveSettings {
+        start: StartChoice::Flat,
+        ..SolveSettings::default()
+    };
+    assert!(case.solve(flat).unwrap().iterations > 0);
 }

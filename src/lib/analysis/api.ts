@@ -56,7 +56,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   model: "ac",
-  start: "case",
+  start: "last",
   // 2 MVA on a 100 MVA base.
   tolerance: 0.02,
   max_iterations: 10,
