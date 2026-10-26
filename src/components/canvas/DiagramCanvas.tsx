@@ -35,6 +35,7 @@ import {
   BAR,
   across,
   along,
+  gridAlong,
   isVertical,
   outward,
   placeTerminal,
@@ -206,29 +207,71 @@ export function DiagramCanvas() {
   );
 
   /** A generator, load or shunt whose terminal touches a bus bar snaps onto
-   *  it and is wired there. Returns false when it isn't on a bus. */
+   *  it and is wired there. One already wired to a bus (dragged off it, or
+   *  along it) moves its wire to the new spot, so it can always go back on.
+   *  Returns false when it isn't on a bus, or is wired to something else. */
   const attachToBus = useCallback(
     (nodeId: string, reach: number) => {
       const { nodes: all, edges: wires, gridSize } = useDiagramStore.getState();
       const node = all.find((n) => n.id === nodeId);
       const handle = node && ON_BUS[node.type ?? ""];
       if (!node || !handle) return false;
-      if (wires.some((e) => (e.target === nodeId && e.targetHandle === handle) || (e.source === nodeId && e.sourceHandle === handle)))
-        return false;
+      const wired = wires.find(
+        (e) => (e.target === nodeId && e.targetHandle === handle) || (e.source === nodeId && e.sourceHandle === handle)
+      );
+      const wiredEnd = wired && (wired.source === nodeId ? "target" : "source");
+      const wiredBus = wired && all.find((n) => n.id === wired[wiredEnd!]);
+      if (wired && wiredBus?.type !== "bus") return false;
       const terminal = terminalOf(node);
       const hit = barUnder(all, terminal.p, terminal.side, reach);
       if (!hit) return false;
       const { bus, side } = hit;
-      const len = (bus.data as BusData).length ?? 200;
-      const x = Math.min(len, Math.max(0, Math.round(along(bus, terminal.p) / gridSize) * gridSize));
+      const x = gridAlong(bus, terminal.p, gridSize);
       // Hang the symbol from the side of the bar its terminal faces.
       const { w, h } = symbolSize(node);
       const position = placeTerminal(tapPoint(bus, x, side), terminal.side, w, h);
-      useDiagramStore.getState().setNodes(all.map((n) => (n.id === nodeId ? ({ ...n, position } as SLDNode) : n)));
-      wireToBus(useDiagramStore.getState().nodes.find((n) => n.id === bus.id)!, x, side, nodeId, handle);
+      const placed = all.map((n) => (n.id === nodeId ? ({ ...n, position } as SLDNode) : n));
+      if (!wired) {
+        useDiagramStore.getState().setNodes(placed);
+        wireToBus(useDiagramStore.getState().nodes.find((n) => n.id === bus.id)!, x, side, nodeId, handle);
+        return true;
+      }
+      // Already wired to a bus: point the same wire (keeping its case link)
+      // at a tap here. The old tap goes if nothing else uses it.
+      const oldTapId = wired[`${wiredEnd!}Handle`];
+      const shared = wires.some(
+        (e) => e.id !== wired.id && ((e.source === wiredBus!.id && e.sourceHandle === oldTapId) || (e.target === wiredBus!.id && e.targetHandle === oldTapId))
+      );
+      const oldTaps = busTaps(wiredBus!.data as BusData);
+      const keepOld = shared || !oldTaps.some((t) => t.id === oldTapId) || !(wiredBus!.data as BusData).taps;
+      const tapsOf = (n: SLDNode) =>
+        n.id === wiredBus!.id && !keepOld ? oldTaps.filter((t) => t.id !== oldTapId) : busTaps(n.data as BusData);
+      const busTapsNow = tapsOf(bus);
+      let tap = busTapsNow.find((t) => t.side === side && Math.abs(t.x - x) < 1);
+      if (!tap && bus.id === wiredBus!.id && !keepOld) tap = { id: oldTapId!, x, side };
+      tap ??= { id: `bus-tap-${nanoid(6)}`, x, side };
+      const nextTaps = (n: SLDNode) => {
+        const list = tapsOf(n);
+        return n.id === bus.id && !list.some((t) => t.id === tap!.id) ? [...list, tap!] : list;
+      };
+      useDiagramStore.getState().setNodes(
+        placed.map((n) =>
+          n.id === bus.id || (n.id === wiredBus!.id && !keepOld) ? ({ ...n, data: { ...n.data, taps: nextTaps(n) } } as SLDNode) : n
+        )
+      );
+      const { route: _r, pinnedRoute: _p, labelAt: _l, ...data } = wired.data ?? ({} as NonNullable<SLDEdge["data"]>);
+      const moved = { ...wired, [wiredEnd!]: bus.id, [`${wiredEnd!}Handle`]: tap.id, data } as SLDEdge;
+      // The tap must be measured before the wire can attach to it.
+      requestAnimationFrame(() => {
+        updateNodeInternals([bus.id, wiredBus!.id]);
+        requestAnimationFrame(() => {
+          const { edges: now, setEdges: put } = useDiagramStore.getState();
+          put(now.map((e) => (e.id === wired.id ? moved : e)));
+        });
+      });
       return true;
     },
-    [wireToBus]
+    [wireToBus, updateNodeInternals]
   );
 
   const onConnect = useCallback(
@@ -301,8 +344,7 @@ export function DiagramCanvas() {
       const p = screenToFlowPosition(pointerPoint(event), { snapToGrid: false });
       const bus = busAt(all, p);
       if (!bus) return;
-      const len = (bus.data as BusData).length ?? 200;
-      const x = Math.min(len, Math.max(0, Math.round(along(bus, p) / gridSize) * gridSize));
+      const x = gridAlong(bus, p, gridSize);
       // The tap goes on the side facing the symbol, so the wire never crosses the bar.
       const side = sideToward(bus, centreOf(from));
       checkpoint();
@@ -472,6 +514,9 @@ export function DiagramCanvas() {
             variant={BackgroundVariant.Dots}
             gap={gridSize}
             size={1}
+            // React Flow draws each dot half a step from the grid point;
+            // this puts the dots on the points symbols and wires snap to.
+            offset={(gridSize + 1) / 2}
             color={dark ? "#334155" : "#cbd5e1"}
           />
         )}
