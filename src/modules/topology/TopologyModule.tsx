@@ -16,7 +16,8 @@ import {
   inputClass,
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
-import { NetworkGraph, type GraphSelection } from "./NetworkGraph";
+import type { GraphSelection } from "./NetworkGraph";
+import { NetworkGraph } from "./LazyNetworkGraph";
 import { FieldPanel, GraphLegend } from "./FieldPanel";
 import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
 import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
