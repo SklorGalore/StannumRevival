@@ -49,8 +49,9 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
   const row = data.caseRef?.kind === "branch" ? results?.branches.get(data.caseRef.id) : undefined;
   const flow = row ? branchFlow(row, data.reversed) : null;
   const overload = loadingColor(row?.loading_pct);
-  const outline = selected ? SELECTED : data.outOfService ? ink.off : overload ? ink.alert(overload) : ink.line;
-  const dash = data.outOfService ? "4 3" : undefined;
+  const offline = data.outOfService || (row && !row.online);
+  const outline = selected ? SELECTED : offline ? ink.off : overload ? ink.alert(overload) : ink.line;
+  const dash = offline ? "4 3" : undefined;
   const grounded = !data.windingsUnknown && data.groundingSecondary === "solidly" && secondaryWinding === "Wye";
 
   return (

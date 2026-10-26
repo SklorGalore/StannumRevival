@@ -329,3 +329,80 @@ fn derived_topology_keeps_three_winding_transformers_whole() {
         assert_eq!(e.active_terminals.len(), 3);
     }
 }
+
+#[test]
+fn study_edits_change_what_is_solved() {
+    use stannum_core::study::Edit;
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    let base = case.solve(SolveSettings::default()).unwrap();
+    // A line on the ring, so taking it out leaves every bus connected.
+    let line = base
+        .branches
+        .iter()
+        .filter(|b| b.from >= 4 && b.to >= 4)
+        .max_by(|a, b| a.loading_pct.partial_cmp(&b.loading_pct).unwrap())
+        .unwrap();
+    let element = line.element.clone();
+
+    case.set_edits(vec![
+        Edit::Status {
+            element: element.clone(),
+            online: false,
+        },
+        Edit::Load {
+            bus: 5,
+            mw: 125.0,
+            mvar: 60.0,
+        },
+    ])
+    .unwrap();
+    let out = case.solve(SolveSettings::default()).unwrap();
+    assert!(out.converged);
+    let row = out.branches.iter().find(|b| b.element == element).unwrap();
+    assert!(
+        !row.online && row.pf.abs() < 1e-9,
+        "the outaged line carries nothing"
+    );
+    assert!(
+        (out.total_load_mw - base.total_load_mw - 35.0).abs() < 1e-6,
+        "bus 5 load went from 90 to 125 MW"
+    );
+
+    // A bad edit is refused and the study stays as it was.
+    let err = case
+        .set_edits(vec![Edit::Status {
+            element: "line:1:99:1".into(),
+            online: false,
+        }])
+        .unwrap_err();
+    assert!(err.contains("line:1:99:1"));
+    assert_eq!(case.edits.len(), 2);
+
+    let unit = out.generators[1].element.clone();
+    case.set_edits(vec![Edit::Generation {
+        element: unit,
+        mw: 100.0,
+    }])
+    .unwrap();
+    let redispatched = case.solve(SolveSettings::default()).unwrap();
+    assert!((redispatched.generators[1].pg - 100.0).abs() < 1e-6);
+
+    // Cutting generator 2's only line leaves an island the solver can't take.
+    case.set_edits(vec![Edit::Status {
+        element: "line:2:8:1".into(),
+        online: false,
+    }])
+    .unwrap();
+    let err = case.solve(SolveSettings::default()).unwrap_err();
+    assert!(
+        err.starts_with("The study's outages split the network"),
+        "{err}"
+    );
+
+    // No edits: back to the file.
+    case.set_edits(vec![]).unwrap();
+    let again = case.solve(SolveSettings::default()).unwrap();
+    assert!((again.total_losses_mw - base.total_losses_mw).abs() < 1e-9);
+}

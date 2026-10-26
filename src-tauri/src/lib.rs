@@ -40,6 +40,7 @@ pub fn run() {
             analysis::close_case,
             analysis::case_summary,
             analysis::solve_power_flow,
+            analysis::set_study_edits,
             analysis::calculate_sensitivities,
             analysis::sensitivity_responses,
             analysis::export_matpower,

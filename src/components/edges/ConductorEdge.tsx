@@ -153,7 +153,8 @@ export function ConductorEdge({
   const flow = row ? branchFlow(row, data?.reversed) : null;
   const loading = loadingColor(row?.loading_pct);
   const overload = loading ? ink.alert(loading) : null;
-  const offline = data?.outOfService;
+  // Out in the file, or taken out in the study (the solve says so).
+  const offline = data?.outOfService || (row && !row.online);
 
   // A wire standing for a DC line (to an off-page marker) is drawn dashed in ink.
   const dc = data?.caseRef?.kind === "dcline";

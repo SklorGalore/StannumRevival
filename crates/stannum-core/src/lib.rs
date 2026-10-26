@@ -14,6 +14,7 @@ pub mod diff;
 pub mod elements;
 pub mod logbook;
 pub mod power;
+pub mod study;
 pub mod workspace;
 
 pub use workspace::{CaseSummary, OpenCase, Workspace};

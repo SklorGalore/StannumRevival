@@ -3,6 +3,7 @@
 
 use stannum_core::diff::{DiffSummary, RecordDetail, RecordRow};
 use stannum_core::power::{ResponseTable, SensitivitySummary, SolveReport, SolveSettings};
+use stannum_core::study::Edit;
 use stannum_core::{logbook, CaseSummary, Workspace};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -58,6 +59,15 @@ pub async fn solve_power_flow(
     settings: SolveSettings,
 ) -> Result<SolveReport, String> {
     with(state, move |ws| ws.current_mut()?.solve(settings)).await
+}
+
+/// Replace the study's edits; the next solve uses them.
+#[tauri::command]
+pub async fn set_study_edits(
+    state: State<'_, SharedWorkspace>,
+    edits: Vec<Edit>,
+) -> Result<(), String> {
+    with(state, move |ws| ws.current_mut()?.set_edits(edits)).await
 }
 
 #[tauri::command]

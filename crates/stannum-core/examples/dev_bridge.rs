@@ -33,6 +33,11 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             let s: SolveSettings = arg(args, "settings")?;
             to_json(ws.current_mut()?.solve(s)?)
         }
+        "set_study_edits" => {
+            let edits: Vec<stannum_core::study::Edit> = arg(args, "edits")?;
+            ws.current_mut()?.set_edits(edits)?;
+            Ok(Value::Null)
+        }
         "calculate_sensitivities" => {
             let s: SolveSettings = arg(args, "settings")?;
             to_json(ws.current_mut()?.sensitivities(s)?)

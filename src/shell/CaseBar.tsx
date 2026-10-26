@@ -1,4 +1,5 @@
-import { Columns2, FileText, FolderOpen, Search, X } from "lucide-react";
+import { Columns2, FileText, FlaskConical, FolderOpen, Search, X } from "lucide-react";
+import { useStudy } from "../store/studyStore";
 import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
@@ -17,6 +18,8 @@ export function CaseBar() {
   const module = useWorkspace((s) => s.module);
   const split = useWorkspace((s) => s.split);
   const setSplit = useWorkspace((s) => s.setSplit);
+  const edits = useStudy((s) => s.entries.length);
+  const showStudy = useStudy((s) => s.show);
 
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
@@ -42,6 +45,17 @@ export function CaseBar() {
         <span className="text-sm text-slate-500">
           {opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file, or drop one on the window."}
         </span>
+      )}
+      {summary && edits > 0 && (
+        <button
+          type="button"
+          onClick={showStudy}
+          className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+          title="Power flow is solving this case with study edits. Click to see them."
+          data-testid="study-badge"
+        >
+          <FlaskConical size={12} /> {edits} edit{edits === 1 ? "" : "s"}
+        </button>
       )}
       <SelectionChip />
       {openError && (
