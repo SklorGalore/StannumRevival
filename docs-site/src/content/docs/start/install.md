@@ -1,10 +1,11 @@
 ---
-title: Install and build
+title: Build from source
 description: Build and run Stannum from source on Windows, macOS or Linux.
 ---
 
-Stannum is a [Tauri 2](https://v2.tauri.app/) desktop app. Until packaged
-releases are published, build it from source.
+Stannum is a [Tauri 2](https://v2.tauri.app/) desktop app. To just use it,
+[download an installer](/StannumRevival/start/download/). Build it from
+source to work on it, or on a platform without an installer.
 
 ## Prerequisites
 
@@ -23,6 +24,9 @@ npm install
 npm run tauri dev      # run the desktop app
 npm run tauri build    # package an installer for this platform
 ```
+
+How releases are cut and signed is in
+[docs/releasing.md](https://github.com/SklorGalore/StannumRevival/blob/main/docs/releasing.md).
 
 ## Check a build
 

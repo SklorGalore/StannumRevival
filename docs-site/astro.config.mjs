@@ -27,7 +27,8 @@ export default defineConfig({
           label: "Start here",
           items: [
             { label: "What Stannum is", slug: "start/introduction" },
-            { label: "Install and build", slug: "start/install" },
+            { label: "Download", slug: "start/download" },
+            { label: "Build from source", slug: "start/install" },
             { label: "Open a case", slug: "start/open-a-case" },
           ],
         },

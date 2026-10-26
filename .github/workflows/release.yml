@@ -1,0 +1,139 @@
+name: Release
+
+# Builds installers for Windows, macOS (Apple silicon) and Linux.
+#
+# - Pushing a v* tag builds them and attaches them to a draft GitHub release
+#   whose notes are that version's section of CHANGELOG.md. Publish the draft
+#   by hand once the installers have been tried.
+# - Pull requests that change the release setup build the installers too, and
+#   keep them as workflow artifacts, so the setup is proven before a tag.
+# - Run it by hand (workflow_dispatch) for test installers from any branch.
+#
+# See docs/releasing.md for the whole procedure.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/release/**"
+      - "src-tauri/tauri*.conf.json"
+      - "src-tauri/icons/**"
+  workflow_dispatch:
+
+# The workflow only reads the repository. The publish job asks for more.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Check version and release notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check versions and changelog
+        id: check
+        shell: pwsh
+        env:
+          # Only a tag push is held to "tag matches version".
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: ./scripts/release/check-release.ps1 -Tag "$env:TAG" -NotesFile release-notes.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  build:
+    name: Installers (${{ matrix.name }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            bundles: msi,nsis
+            artifact: windows-x64
+          # macos-latest runners are Apple silicon, so this builds for arm64.
+          - name: macOS arm64
+            os: macos-latest
+            bundles: dmg
+            artifact: macos-arm64
+          # The oldest supported Ubuntu, so the Linux builds run on older glibc.
+          - name: Linux x64
+            os: ubuntu-22.04
+            bundles: deb,rpm,appimage
+            artifact: linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        shell: pwsh
+        timeout-minutes: 20
+        run: ./scripts/ci/install-tauri-deps.ps1 -CacheDir "$env:RUNNER_TEMP/tauri-apt" -ExtraPackages patchelf
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: release
+      - run: npm ci
+      # Signing is not set up yet, so the installers are unsigned. Tauri signs
+      # on its own when these secrets exist: APPLE_CERTIFICATE,
+      # APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
+      # APPLE_PASSWORD and APPLE_TEAM_ID for macOS; Windows needs a
+      # certificate thumbprint in tauri.windows.conf.json. See docs/releasing.md.
+      - name: Build installers
+        shell: pwsh
+        run: npm run tauri -- build --ci --bundles ${{ matrix.bundles }}
+      - name: Collect installers
+        shell: pwsh
+        run: ./scripts/release/collect-bundles.ps1 -OutDir installers
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installers-${{ matrix.artifact }}
+          path: installers/*
+          if-no-files-found: error
+
+  publish:
+    name: Draft GitHub release
+    if: github.ref_type == 'tag'
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: out
+      - name: Create the draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          $files = Get-ChildItem -Path out -Recurse -File |
+            Where-Object { $_.Directory.Name -like 'installers-*' } |
+            ForEach-Object FullName
+          $pre = if ($env:VERSION -match '-') { '--prerelease' } else { $null }
+          gh release create $env:TAG @files --draft --verify-tag $pre `
+            --title "Stannum $env:VERSION" --notes-file out/release-notes/release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }

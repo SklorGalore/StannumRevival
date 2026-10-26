@@ -1,0 +1,42 @@
+# Changelog
+
+All notable changes to Stannum are listed here. Each release's section is
+also its release notes on GitHub. Add a line under **Unreleased** in the same
+pull request as the change; `scripts/release/new-version.ps1` turns that
+section into the next version's when a release is cut (see
+[docs/releasing.md](docs/releasing.md)).
+
+## Unreleased
+
+The first packaged release. Everything below is new since Stannum was
+assembled from StannumSLD, rs-power, nodal and case-diff.
+
+### Added
+
+- Installers for Windows (.msi and setup .exe), macOS on Apple silicon (.dmg)
+  and Linux (.deb, .rpm and .AppImage), built by the release workflow when a
+  `v*` tag is pushed.
+- One shell for every module: a module rail, Ctrl+K command palette and
+  element search, side by side panes with linked selection, a log panel,
+  light and dark themes, an animated splash and Stannum's own title bar on
+  Windows.
+- Power flow: AC Newton and DC solves with generator reactive limits, remote
+  voltage regulation, switched shunts, transformer taps, ZIP loads, warm
+  starts from the last solution, and a Cancel button for long solves.
+- HVDC: two-terminal LCC and VSC lines, multi-terminal DC, and meshed VSC
+  grids solved together with the AC case.
+- Results you can see: result marks on the diagram, colour by loading,
+  voltage, sensitivity or the change from another solve, a voltage profile
+  and the most loaded branches on the overview, and tables with names,
+  loading bars and filter chips.
+- Contingencies: N-1 analysis with a linear screen and a full AC check of
+  the worst outages, ranked results linked to the diagram, and Trip and
+  compare from the inspector.
+- Diagram: one-lines generated around any element with compact local
+  layouts, a Network drawing style with topology layers (islands, bridges,
+  cut buses, paths), a shared element inspector, three-winding transformer
+  symbols, a snap grid, and PDF export.
+- Studies: outages, generator and load edits with saved solves to compare.
+- Records: every record type of the open case as a table, with cell editing.
+- Case diff: record-level comparison of two cases.
+- Documentation site with a user guide and technical manual.
