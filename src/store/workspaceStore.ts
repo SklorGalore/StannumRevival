@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { api, CASE_FILTERS, pickFile } from "../lib/analysis/api";
 import type { CaseSummary, SolveReport } from "../lib/analysis/types";
 
-export type ModuleId = "diagram" | "power" | "diff";
+export type ModuleId = "diagram" | "power" | "records" | "diff";
 
 /** One bus or piece of equipment selected across every module. */
 export interface SharedSelection {
@@ -14,7 +14,7 @@ export interface SharedSelection {
 }
 
 /** The module that goes beside another when split view opens without a choice. */
-export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", diff: "diagram" };
+export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", records: "diagram", diff: "diagram" };
 
 /** Bring a module into view: switch to it, unless split view already shows it. */
 export function showing(s: { module: ModuleId; split: ModuleId | null }, m: ModuleId): { module: ModuleId } {

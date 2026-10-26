@@ -7,8 +7,8 @@ description: The module rail, case bar, selection, linked selection, themes and 
 
 ## Module rail
 
-The dark teal rail on the left switches between **Diagram**, **Power flow**
-and **Case diff**. The case's topology is in the Diagram, as
+The dark teal rail on the left switches between **Diagram**, **Power flow**,
+**Records** and **Case diff**. The case's topology is in the Diagram, as
 [layers and tables](/StannumRevival/guide/topology/). Modules stay loaded when you switch away, so a
 solved case, a drawn diagram or a comparison is still there when you come
 back. The theme button at the bottom of the rail (it reads **System**,
