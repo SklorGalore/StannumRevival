@@ -30,6 +30,14 @@ pub enum Initialization {
     Case,
     /// Start each island at 1 p.u. and its reference-bus angle.
     Flat,
+    /// The case holds an earlier solution, such as [`PowerFlowResult::case`]:
+    /// start from its voltages like [`Initialization::Case`], and, with
+    /// reactive limits enforced, start generator buses whose units all sit
+    /// at a limit there as PQ buses, as the earlier solve left them. They
+    /// stay PQ, as after a reactive-limit pass, so solving the unchanged case
+    /// again takes no Newton steps; after a change to the case, use
+    /// [`Initialization::Case`] to look at every limit afresh.
+    Solution,
 }
 
 /// Solver settings; defaults to AC with a 1e-8 p.u. tolerance and 10 Newton steps.
@@ -1273,7 +1281,9 @@ fn solve_core(
         for &i in island {
             let b = &case.buses[net.external[i]];
             v[i] = match opt.initialization {
-                Initialization::Case => C::from_polar(b.vm, b.va.to_radians()),
+                Initialization::Case | Initialization::Solution => {
+                    C::from_polar(b.vm, b.va.to_radians())
+                }
                 Initialization::Flat => C::from_polar(1.0, reference_angle),
             };
         }
@@ -1291,10 +1301,19 @@ fn solve_core(
     // whose generators all start at a reactive limit start there as PQ
     // buses, which a solved case needs to converge; they return to holding
     // the remote voltage when the limit-check pass finds it on the wrong side.
+    // Starting from a solution, every generator bus at a limit starts there
+    // and stays there, as a limit pass leaves it, so the limits the earlier
+    // solve found need not be found again: releasing them all at once, with
+    // their regulated voltages already settled past the setpoints, can stop
+    // Newton converging.
     let mut released = vec![None; kinds.len()];
+    let warm = opt.initialization == Initialization::Solution;
     if opt.enforce_q_limits {
-        let mut started = 0;
-        for &i in &remote {
+        let (mut started, mut started_local) = (0, 0);
+        let local: Vec<usize> = (0..kinds.len())
+            .filter(|&i| warm && kinds[i] == BusType::Pv && remote.binary_search(&i).is_err())
+            .collect();
+        for i in remote.iter().copied().chain(local) {
             let at_limit = |g: &Generator| {
                 g.qg >= g.qmax - opt.q_limit_tolerance || g.qg <= g.qmin + opt.q_limit_tolerance
             };
@@ -1309,13 +1328,22 @@ fn solve_core(
                     gen_data.qg = gen_data.qg.clamp(gen_data.qmin, gen_data.qmax);
                 }
                 kinds[i] = BusType::Pq;
-                released[i] = Some(2 * upper >= gens.len());
-                started += 1;
+                if warm {
+                    started_local += 1;
+                } else {
+                    released[i] = Some(2 * upper >= gens.len());
+                    started += 1;
+                }
             }
         }
         if started > 0 {
             log::debug!(
                 "{started} remote-regulating generator buses start at their reactive limits"
+            );
+        }
+        if started_local > 0 {
+            log::info!(
+                "Starting from the last solution: {started_local} generator buses start at their reactive limits"
             );
         }
     }
@@ -2049,6 +2077,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         match opt.initialization {
             Initialization::Case => "case voltage",
             Initialization::Flat => "flat",
+            Initialization::Solution => "last solution",
         },
         mva(opt.tolerance * input.base_mva),
         opt.tolerance,
