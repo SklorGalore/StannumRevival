@@ -217,6 +217,13 @@ await shot("diagram");
 // the chip to Power flow, Case diff and the diagram.
 // Linking is opt-in: until it is on, a pick stays in its own module.
 const chip = page.getByTestId("selection-chip");
+// The chip's "Show in" links fold into a menu when the case bar is short of room.
+async function showIn(target) {
+  const direct = chip.getByRole("button", { name: `Show in ${target}` });
+  if (await direct.count()) return direct.click();
+  await chip.getByRole("button", { name: "Show in" }).click();
+  await page.getByRole("menu", { name: "Show in" }).getByRole("menuitem", { name: target }).click();
+}
 await page.getByRole("button", { name: "Topology", exact: true }).click();
 await page.getByRole("tab", { name: /^Buses/ }).click();
 const busRow = page.locator("table:visible tbody tr").nth(2);
@@ -228,15 +235,15 @@ await busRow.click();
 await chip.filter({ hasText: `Bus ${pickedBus}` }).waitFor();
 await shot("selection-topology");
 const selectedFirstCell = () => page.locator("tr[aria-selected=true]:visible td").first().innerText();
-await chip.getByRole("button", { name: "Show in Power flow" }).click();
+await showIn("Power flow");
 assert.equal((await selectedFirstCell()).trim(), pickedBus);
 await shot("selection-power");
-await chip.getByRole("button", { name: "Show in Case diff" }).click();
+await showIn("Case diff");
 await page.locator("tr[aria-selected=true]:visible").first().waitFor();
 assert.equal((await selectedFirstCell()).trim(), pickedBus);
 await page.getByText("Original lines").waitFor();
 await shot("selection-diff");
-await chip.getByRole("button", { name: "Show in Diagram" }).click();
+await showIn("Diagram");
 await page.locator(".react-flow__node-bus.selected").waitFor();
 assert.equal(await page.locator(".react-flow__node-bus.selected").count(), 1);
 await shot("selection-diagram");
@@ -246,7 +253,7 @@ await page.locator(".react-flow__controls-fitview").click();
 await page.waitForTimeout(400);
 await page.locator(".react-flow__node-generator").first().click();
 await chip.filter({ hasText: /Generator/ }).waitFor();
-await chip.getByRole("button", { name: "Show in Topology" }).click();
+await showIn("Topology");
 await page.getByRole("tab", { name: /^Buses/, selected: true }).waitFor();
 await page.locator("tr[aria-selected=true]:visible").first().waitFor();
 await shot("selection-from-diagram");
@@ -698,7 +705,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await dc.click();
   await chip.filter({ hasText: /DC line East link/ }).waitFor();
   await shot("dc-diff-picked");
-  await chip.getByRole("button", { name: "Show in Case diff" }).click();
+  await showIn("Case diff");
   const picked = page.locator("tr[aria-selected=true]:visible").first();
   await picked.waitFor();
   assert.match(await picked.innerText(), /East link/);
@@ -712,7 +719,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await chip.waitFor({ state: "detached" });
   await page.locator("section:has-text('Records') table tbody tr", { hasText: "East link" }).click();
   await chip.filter({ hasText: /DC line East link/ }).waitFor();
-  await chip.getByRole("button", { name: "Show in Diagram" }).click();
+  await showIn("Diagram");
   await page.locator(".react-flow__node-dcLink.selected").waitFor();
   await shot("dc-diff-back");
 }
@@ -918,6 +925,18 @@ if (STANNUM_VIOLATIONS) {
   await page.locator("[data-pane=left] .react-flow__node-bus.selected").first().waitFor();
   await page.waitForTimeout(400);
   await shot("split-view");
+  // Half-width panes keep their chrome inside them: tabs and toolbar buttons
+  // that don't fit move into "More" menus instead of spilling over.
+  const spills = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-pane] [role=tablist], [data-pane] [data-testid=diagram-toolbar]")]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.getAttribute("role") ?? el.getAttribute("data-testid"))
+  );
+  assert.deepEqual(spills, [], "nothing overflows a half-width pane");
+  // The selected bus's inspector floats over the drawing rather than taking a column.
+  const floatBox = await page.locator("[data-pane=left] [data-testid=inspector]").boundingBox();
+  const canvasBox = await page.locator("[data-pane=left] .react-flow").boundingBox();
+  assert(floatBox.x < canvasBox.x + canvasBox.width, "the inspector floats over the drawing in a narrow pane");
   await right.getByRole("button", { name: "Swap sides" }).click();
   assert.equal(await page.locator("[data-pane=left]").getByRole("combobox", { name: "Left pane" }).inputValue(), "power");
   await page.locator("[data-pane=right]").getByRole("button", { name: "Close split view" }).click();

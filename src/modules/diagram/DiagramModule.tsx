@@ -18,6 +18,8 @@ import { DrawPrompt } from "./DrawPrompt";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useDrawingStyle } from "../../store/drawingStyleStore";
 import { NetworkCanvas, NetworkInspector, NetworkToolbar } from "./network/NetworkView";
+import { inspectorClass } from "../../ui/ElementInspector";
+import { useWidth } from "../../ui/useWidth";
 
 /**
  * Keep the style's shared state in step with the rest of the app: a new case
@@ -165,10 +167,14 @@ function Inner({ active }: { active: boolean }) {
       (s.selectedNodeIds.length === 0 && s.selectedEdgeIds.length === 1) ||
       selectedCaseElement(s) !== null
   );
+  // In a narrow pane (side by side) the inspector floats over the canvas
+  // instead of taking a third of the width.
+  const [rowRef, rowWidth] = useWidth<HTMLDivElement>(1200);
+  const floating = rowWidth < 900;
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       {network ? <NetworkToolbar /> : <Toolbar />}
-      <div className="flex flex-1 min-h-0">
+      <div ref={rowRef} className="relative flex flex-1 min-h-0">
         {network ? null : paletteOpen ? (
           <aside className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
             <button
@@ -193,7 +199,7 @@ function Inner({ active }: { active: boolean }) {
             </button>
           </aside>
         )}
-        <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
+        <main className={`@container flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
           {!drawing.busy && !network && <DrawPrompt />}
           {missing && !drawing.busy && !blank && !network && <NotDrawn element={missing} />}
@@ -233,9 +239,9 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
-        {network && <NetworkInspector />}
+        {network && <NetworkInspector floating={floating} />}
         {!network && (hasSelection || missing) && (
-          <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="inspector">
+          <aside className={inspectorClass(floating)} data-testid="inspector">
             <PropertiesPanel missing={hasSelection ? null : missing} />
           </aside>
         )}

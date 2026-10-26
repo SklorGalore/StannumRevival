@@ -11,9 +11,11 @@ import { busElement } from "../../../lib/elements";
 import { count } from "../../../lib/analysis/format";
 import { centreBus } from "../../../ui/DrawAround";
 import { NetworkGraph } from "../../topology/NetworkGraph";
-import { ElementInspector, InspectorSection } from "../../../ui/ElementInspector";
+import { ElementInspector, InspectorSection, inspectorClass } from "../../../ui/ElementInspector";
 import { DISPLAY_LIMIT, locateElement, neighborhood, nodeForBus, type GraphSelection } from "../../topology/viewModel";
 import { showOneLine } from "./switchStyle";
+import { useWidth } from "../../../ui/useWidth";
+import { NARROW_LEFT } from "../../../components/canvas/CaseActions";
 import { StyleSwitch } from "./StyleSwitch";
 
 const NOTHING: GraphSelection = { bus: null, equipment: null };
@@ -61,21 +63,22 @@ export function NetworkToolbar() {
   const canDraw = useWorkspace((s) => !!s.caseSummary?.power.available);
   const snapshot = useTopology((s) => s.snapshot);
   const bus = selectionBus(element, snapshot) ?? focus?.bus ?? null;
+  const [ref, width] = useWidth<HTMLDivElement>(1440);
   return (
-    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto whitespace-nowrap shrink-0">
-      <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
-      <StyleSwitch />
+    <div ref={ref} className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-hidden whitespace-nowrap shrink-0">
+      {width >= 600 && <span className="shrink-0 font-semibold text-slate-700 text-sm mr-3">Diagram</span>}
+      <StyleSwitch compact={width < 520} />
       <div className="w-px h-5 bg-slate-200 mx-1" />
       <button
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100"
+        className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100"
         onClick={requestFit}
         title="Fit the network to the view"
       >
         <Maximize2 size={14} />
-        <span className="hidden sm:inline">Fit</span>
+        {width >= 520 && <span>Fit</span>}
       </button>
       <button
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed"
         disabled={!canDraw || bus === null || busy}
         onClick={() => bus !== null && drawOneLineAround(bus)}
         title={
@@ -102,6 +105,7 @@ export function NetworkCanvas({ visible }: { visible: boolean }) {
   const element = useDrawingStyle((s) => s.element);
   const setElement = useDrawingStyle((s) => s.setElement);
   const fit = useDrawingStyle((s) => s.fit);
+  const [ref, width] = useWidth<HTMLDivElement>(1200);
   const around = useDiagramStore((s) => s.metadata.around);
   const linked = useDiagramStore((s) => !!s.metadata.caseName && s.metadata.caseName === summary?.name);
 
@@ -158,7 +162,7 @@ export function NetworkCanvas({ visible }: { visible: boolean }) {
   else if (!graph.nodes.length) message = `Bus ${focus!.bus} isn't in service, so it has no network to draw.`;
 
   return (
-    <div className="absolute inset-0 bg-white" data-testid="network-view">
+    <div ref={ref} className="@container absolute inset-0 bg-white" data-testid="network-view">
       {message ? (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-500">{message}</div>
       ) : (
@@ -174,13 +178,13 @@ export function NetworkCanvas({ visible }: { visible: boolean }) {
           onRecentre={(bus) => setFocus({ bus, depth: focus?.depth ?? 2 })}
         />
       )}
-      {snapshot && focus && <HopBar snapshot={snapshot} buses={graph?.nodes.filter((n) => n.bus !== null).length ?? 0} />}
+      {snapshot && focus && <HopBar snapshot={snapshot} buses={graph?.nodes.filter((n) => n.bus !== null).length ?? 0} hint={width >= 760} />}
     </div>
   );
 }
 
 /** Which bus the network is drawn around, and how many hops. */
-function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number }) {
+function HopBar({ snapshot, buses, hint }: { snapshot: TopologySnapshot; buses: number; hint: boolean }) {
   const focus = useDrawingStyle((s) => s.focus)!;
   const setFocus = useDrawingStyle((s) => s.setFocus);
   const name = snapshot.case.buses.find((b) => b.number === focus.bus)?.name.trim();
@@ -188,12 +192,12 @@ function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number
   const btn = "p-1 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent";
   return (
     <div
-      className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600 whitespace-nowrap"
+      className={`${NARROW_LEFT} bottom-3 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600 whitespace-nowrap`}
       data-testid="network-hops"
     >
       <span className="px-1">
         Around <span className="font-semibold text-slate-800">Bus {focus.bus}</span>
-        {name && <span className="text-slate-500"> {name}</span>}
+        {name && hint && <span className="text-slate-500"> {name}</span>}
       </span>
       <span className="w-px h-4 bg-slate-200 mx-1" />
       <button className={btn} title="One hop fewer" aria-label="One hop fewer" disabled={focus.depth <= 1} onClick={() => step(-1)}>
@@ -207,7 +211,7 @@ function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number
       </button>
       <span className="w-px h-4 bg-slate-200 mx-1" />
       <span className="px-1 tabular-nums">{count(buses)} buses</span>
-      <span className="px-1 text-slate-400">Double-click a bus to centre on it</span>
+      {hint && <span className="px-1 text-slate-400">Double-click a bus to centre on it</span>}
     </div>
   );
 }
@@ -217,7 +221,7 @@ function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number
  * Network section: its topology facts and the actions that move between
  * styles. It takes the same column as the one-line's inspector.
  */
-export function NetworkInspector() {
+export function NetworkInspector({ floating = false }: { floating?: boolean }) {
   const element = useDrawingStyle((s) => s.element);
   const setElement = useDrawingStyle((s) => s.setElement);
   const caseVersion = useWorkspace((s) => s.caseVersion);
@@ -228,7 +232,7 @@ export function NetworkInspector() {
     useWorkspace.getState().select(next, "diagram");
   };
   return (
-    <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="network-selection">
+    <aside className={inspectorClass(floating)} data-testid="network-selection">
       <ElementInspector element={element} from="diagram" onPick={pick} onClose={() => setElement(null)}>
         <NetworkSection element={element} snapshot={snapshot} />
       </ElementInspector>
