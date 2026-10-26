@@ -252,3 +252,87 @@ fn memphis_switched_shunts_reproduce_the_case_voltages() {
     assert!(frozen > 0.001, "{frozen}");
     assert!(switched < 0.0002, "{switched}");
 }
+
+#[test]
+fn shunt_with_a_band_narrower_than_a_step_settles_nearest_the_band() {
+    // Bus 5 sits near 0.975 pu with nothing switched in, and one 60 Mvar block
+    // lifts it by about 0.03 pu, so a zero-width band (VSWLO = VSWHI) between
+    // the two can never be met. The shunt tries a step, sees that it jumped
+    // over the band, and holds whichever level lands nearer.
+    let case = case9();
+    let off = vm(&solve(&case, &PowerFlowOptions::default()).unwrap().case, 5);
+    let mut on_case = case.clone();
+    on_case.buses.iter_mut().find(|b| b.id == 5).unwrap().bs += 60.0;
+    let on = vm(
+        &solve(&on_case, &PowerFlowOptions::default()).unwrap().case,
+        5,
+    );
+    assert!(on - off > 0.01, "{off} {on}");
+    for (target, expected) in [
+        (off + 0.3 * (on - off), 0.0),
+        (off + 0.7 * (on - off), 60.0),
+    ] {
+        for initial in [0.0, 60.0] {
+            let mut s = shunt(5, ShuntMode::Discrete, (target, target), vec![(1, 60.0)]);
+            s.initial = initial;
+            let mut start = case.clone();
+            start.buses.iter_mut().find(|b| b.id == 5).unwrap().bs += initial;
+            let controls = VoltageControls {
+                switched_shunts: vec![s],
+                taps: vec![],
+            };
+            let result = solve(&start, &with(controls)).unwrap();
+            assert_eq!(result.status, SolveStatus::Converged);
+            assert_eq!(
+                result.switched_shunts[0], expected,
+                "target {target}, start {initial}"
+            );
+            // At most a trial step and a step back, never hunting until held.
+            assert!(
+                result.voltage_control_passes <= 2,
+                "target {target}, start {initial}: {} passes",
+                result.voltage_control_passes
+            );
+        }
+    }
+}
+
+#[test]
+fn psse_case3_zero_width_band_shunt_keeps_its_starting_block() {
+    // The shunt at bus 93002 has VSWLO = VSWHI = 0.99628 and one 1.44 Mvar
+    // block. It used to toggle on and off until held, ending off; the block
+    // in (as in the case) is nearer the setpoint.
+    let imported = rs_power::parse_raw_with_options(
+        include_str!("fixtures/raw/t_psse_case3.raw"),
+        &RawOptions {
+            remote_regulation: true,
+            all_dc_lines: true,
+            lcc_absorbs_reactive: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let controls = imported.voltage_controls.clone();
+    let k = controls
+        .switched_shunts
+        .iter()
+        .position(|s| s.bus == 93002)
+        .unwrap();
+    assert_eq!(
+        controls.switched_shunts[k].vmin,
+        controls.switched_shunts[k].vmax
+    );
+    let opt = PowerFlowOptions {
+        enforce_q_limits: true,
+        voltage_controls: controls,
+        ..Default::default()
+    };
+    let result = solve(&imported.case, &opt).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    assert_eq!(result.switched_shunts[k], 1.44);
+    assert!(
+        result.voltage_control_passes <= 2,
+        "{}",
+        result.voltage_control_passes
+    );
+}
