@@ -17,7 +17,8 @@ From a revision 35 RAW file:
   transformers and switching devices. Open switches and out-of-service
   connections do not connect buses.
 - **Three-winding transformers** get a synthetic **star junction** node, with
-  one edge per in-service winding.
+  one edge per in-service winding. The Diagram's Network style draws it with
+  the one-line's three-winding symbol.
 - **Parallel circuits** stay distinct: the graph keeps one edge per pair of
   nodes, carrying every connection between them, and each connection adds to
   the buses' **degree**.

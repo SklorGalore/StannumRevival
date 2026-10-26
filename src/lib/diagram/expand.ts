@@ -2,12 +2,13 @@
 // already drawn, without moving anything that is there.
 import { nanoid } from "nanoid";
 import type { CaseNetwork } from "../analysis/types";
-import type { BusData, BusTap, ConductorData, OffPageData, SLDEdge, SLDNode, TransformerData } from "../../store/types";
+import type { BusData, BusTap, ConductorData, OffPageData, SLDEdge, SLDNode, Transformer3Data, TransformerData } from "../../store/types";
 import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
 import { symbolSize } from "./sizes";
 import { gridAlong, isVertical } from "./bus";
 import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, offPageData, type Link } from "./generate";
+import { t3Terminal } from "./transformer3";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -33,12 +34,15 @@ function boxOf(n: SLDNode): Box {
 const overlaps = (a: Box, b: Box) =>
   a.x < b.x + b.w + GAP && b.x < a.x + a.w + GAP && a.y < b.y + b.h + GAP && b.y < a.y + a.h + GAP;
 
-/** Case bus number → its node on the drawing. */
+/** Case bus number → its node on the drawing. A three-winding transformer's
+ *  symbol stands for its star bus. */
 export function drawnBuses(nodes: SLDNode[]): Map<number, SLDNode> {
   const out = new Map<number, SLDNode>();
   for (const n of nodes) {
     const ref = (n.data as BusData).caseRef;
     if (n.type === "bus" && ref?.kind === "bus") out.set(ref.id, n);
+    const star = n.type === "transformer3" ? (n.data as Transformer3Data).star : undefined;
+    if (star != null) out.set(star, n);
   }
   return out;
 }
@@ -84,8 +88,9 @@ export async function expandDrawing(
   const drawnIds = new Set([...drawn.keys()].filter((b) => b !== anchor));
   const piece = await layoutPiece(net, { buses: fresh, anchor, root: anchor, byHop: true, drawn: drawnIds });
 
-  // Line the anchor's stand-in up with the real anchor bus.
-  const proxyId = `b${anchor}`;
+  // Line the anchor's stand-in up with the real anchor bus (or the
+  // three-winding transformer standing for an anchor star).
+  const proxyId = anchorNode.type === "transformer3" ? `x${anchor}` : `b${anchor}`;
   const proxy = piece.nodes.find((n) => n.id === proxyId)!;
   const dx = anchorNode.position.x - proxy.position.x;
   const dy = anchorNode.position.y - proxy.position.y;
@@ -121,6 +126,15 @@ export async function expandDrawing(
     tapIds.set(t.id, id);
     return { ...t, id };
   });
+  // A transformer stand-in may have its windings on other terminals than
+  // the symbol already drawn: wires keep to each winding's terminal.
+  if (proxy.type === "transformer3") {
+    const drawnLegs = (anchorNode.data as Transformer3Data).legs ?? [];
+    for (const l of (proxy.data as Transformer3Data).legs) {
+      const h = drawnLegs.find((d) => d.winding === l.winding)?.handle;
+      if (h) tapIds.set(l.handle, h);
+    }
+  }
 
   const newEdges: SLDEdge[] = piece.edges.map((e) => {
     const data = { ...(e.data as ConductorData) };
@@ -166,10 +180,7 @@ export async function expandDrawing(
   }
 
   const busNodes = new Map<number, SLDNode>(drawn);
-  for (const n of newNodes) {
-    const ref = (n.data as BusData).caseRef;
-    if (n.type === "bus" && ref?.kind === "bus") busNodes.set(ref.id, n);
-  }
+  for (const [id, n] of drawnBuses(newNodes)) busNodes.set(id, n);
   const extraTaps = new Map<string, BusTap[]>();
   extraTaps.set(anchorNode.id, addedTaps);
   const linkEdges: SLDEdge[] = [];
@@ -201,6 +212,30 @@ export async function expandDrawing(
       outOfService: !br.online || undefined,
       ...extra,
     });
+    // A winding of a three-winding transformer drawn earlier: a wire from
+    // its terminal to the bus.
+    const symbol = [a, b].find((n) => n.type === "transformer3");
+    if (symbol) {
+      const bus = symbol === a ? b : a;
+      const data = symbol.data as Transformer3Data;
+      const leg = data.legs.find((l) => l.caseRef?.kind === "branch" && l.caseRef.id === br.index);
+      if (!leg) return;
+      const t = t3Terminal(leg.handle, data.rotation);
+      const at = { x: symbol.position.x + t.x, y: symbol.position.y + t.y };
+      const symbolEnd = { node: symbol.id, handle: leg.handle };
+      const busEnd = { node: bus.id, handle: tapOn(bus, at) };
+      const [source, target] = upper === symbol ? [symbolEnd, busEnd] : [busEnd, symbolEnd];
+      linkEdges.push({
+        id: `e-br${br.index}`,
+        type: "conductor",
+        source: source.node,
+        sourceHandle: source.handle,
+        target: target.node,
+        targetHandle: target.handle,
+        data: conductor(leg.kv, { caseRef: linkRef(br), reversed }),
+      } as SLDEdge);
+      return;
+    }
     if (br.dc) {
       const id = `dc${br.dc.index}`;
       const pos = {

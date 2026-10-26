@@ -4,6 +4,7 @@ import { GeneratorForm } from "./forms/GeneratorForm";
 import { ShuntForm } from "./forms/ShuntForm";
 import { LoadForm } from "./forms/LoadForm";
 import { TransformerForm } from "./forms/TransformerForm";
+import { Transformer3Form } from "./forms/Transformer3Form";
 import { CircuitBreakerForm } from "./forms/CircuitBreakerForm";
 import { DisconnectorForm } from "./forms/DisconnectorForm";
 import { FuseForm } from "./forms/FuseForm";
@@ -115,6 +116,8 @@ function SymbolForm({ node }: { node: SLDNode }) {
       return <ShuntForm node={node} />;
     case "transformer":
       return <TransformerForm node={node} />;
+    case "transformer3":
+      return <Transformer3Form node={node} />;
     case "circuitBreaker":
       return <CircuitBreakerForm node={node} />;
     case "disconnector":

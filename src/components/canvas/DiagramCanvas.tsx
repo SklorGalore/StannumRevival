@@ -29,7 +29,7 @@ import { nodeTypes } from "../nodes";
 import { edgeTypes } from "../edges";
 import { useDiagramStore } from "../../store/diagramStore";
 import { defaultsByType, defaultConductorData } from "../../store/defaults";
-import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap, OffPageData } from "../../store/types";
+import type { SLDNode, SLDEdge, SLDNodeType, BusData, BusTap, OffPageData, Transformer3Data } from "../../store/types";
 import { busTaps } from "../nodes/shared/busTaps";
 import {
   BAR,
@@ -470,9 +470,12 @@ export function DiagramCanvas() {
           const wire = edges.find((e) => e.source === node.id || e.target === node.id);
           const busNode = wire && nodes.find((n) => n.id === (wire.source === node.id ? wire.target : wire.source));
           const ref = (busNode?.data as BusData | undefined)?.caseRef;
+          // A marker on a three-winding transformer grows from its star bus.
+          const star = busNode?.type === "transformer3" ? (busNode.data as Transformer3Data).star : undefined;
+          const anchor = star ?? (ref?.kind === "bus" ? ref.id : undefined);
           // A bundled marker brings in every bus it leads to.
           const data = node.data as OffPageData;
-          if (ref?.kind === "bus") void expand(ref.id, [...new Set((data.links ?? [data]).map((l) => l.bus))]);
+          if (anchor != null) void expand(anchor, [...new Set((data.links ?? [data]).map((l) => l.bus))]);
         }}
         onSelectionDragStart={() => checkpoint()}
         isValidConnection={isValidConnection}

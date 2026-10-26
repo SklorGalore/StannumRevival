@@ -3,6 +3,7 @@ import { GeneratorNode } from "./GeneratorNode";
 import { LoadNode } from "./LoadNode";
 import { ShuntNode } from "./ShuntNode";
 import { TransformerNode } from "./TransformerNode";
+import { Transformer3Node } from "./Transformer3Node";
 import { CircuitBreakerNode } from "./CircuitBreakerNode";
 import { DisconnectorNode } from "./DisconnectorNode";
 import { FuseNode } from "./FuseNode";
@@ -16,6 +17,7 @@ export const nodeTypes = {
   load: LoadNode,
   shunt: ShuntNode,
   transformer: TransformerNode,
+  transformer3: Transformer3Node,
   circuitBreaker: CircuitBreakerNode,
   disconnector: DisconnectorNode,
   fuse: FuseNode,
@@ -29,6 +31,7 @@ export {
   LoadNode,
   ShuntNode,
   TransformerNode,
+  Transformer3Node,
   CircuitBreakerNode,
   DisconnectorNode,
   FuseNode,
