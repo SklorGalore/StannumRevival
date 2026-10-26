@@ -9,8 +9,10 @@ use serde_json::{Value, json};
 use stannum_core::power::SolveSettings;
 use stannum_core::{Workspace, logbook};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 fn arg<T: serde::de::DeserializeOwned>(args: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null))
@@ -29,10 +31,6 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             Ok(Value::Null)
         }
         "case_summary" => to_json(ws.case.as_ref().map(|c| c.summary())),
-        "solve_power_flow" => {
-            let s: SolveSettings = arg(args, "settings")?;
-            to_json(ws.current_mut()?.solve(s)?)
-        }
         "set_study_edits" => {
             let edits: Vec<stannum_core::study::Edit> = arg(args, "edits")?;
             ws.current_mut()?.set_edits(edits)?;
@@ -102,7 +100,6 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
         ),
         "cancel_contingencies" => Ok(Value::Null),
         // Commands run one at a time here, so there is never a solve to stop.
-        "cancel_solve" => Ok(Value::Null),
         "contingency_progress" => to_json(stannum_core::contingency::Progress::default()),
         "contingency_summary" => to_json(ws.current()?.contingency_summary()),
         "contingency_rows" => to_json(
@@ -119,50 +116,92 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
     }
 }
 
+/// The open workspace, and the flag that stops the solve in progress. Each
+/// request runs on its own thread so "cancel_solve" can arrive mid-solve.
+#[derive(Default)]
+struct Bridge {
+    ws: Mutex<Workspace>,
+    solving: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+impl Bridge {
+    fn invoke(&self, command: &str, args: &Value) -> Result<Value, String> {
+        match command {
+            "cancel_solve" => {
+                if let Some(flag) = self.solving.lock().unwrap().as_ref() {
+                    flag.store(true, Ordering::Relaxed);
+                }
+                Ok(Value::Null)
+            }
+            "solve_power_flow" => {
+                let settings: SolveSettings = arg(args, "settings")?;
+                let flag = Arc::new(AtomicBool::new(false));
+                *self.solving.lock().unwrap() = Some(flag.clone());
+                let mut ws = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+                to_json(ws.current_mut()?.solve_cancellable(settings, Some(flag))?)
+            }
+            _ => dispatch(
+                &mut self.ws.lock().unwrap_or_else(|e| e.into_inner()),
+                command,
+                args,
+            ),
+        }
+    }
+}
+
+fn serve(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line)?;
+    let mut length = 0usize;
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line)? == 0 || line == "\r\n" {
+            break;
+        }
+        if let Some((k, v)) = line.split_once(':')
+            && k.eq_ignore_ascii_case("content-length")
+        {
+            length = v.trim().parse().unwrap_or(0);
+        }
+    }
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body)?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or_default();
+    let path = parts.next().unwrap_or_default();
+    let (status, payload) = if method == "OPTIONS" {
+        ("204 No Content", String::new())
+    } else if let Some(command) = path.strip_prefix("/invoke/") {
+        let args: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
+        match bridge.invoke(command, &args) {
+            Ok(v) => ("200 OK", v.to_string()),
+            Err(e) => ("500 Internal Server Error", Value::String(e).to_string()),
+        }
+    } else {
+        ("404 Not Found", String::new())
+    };
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        payload.len()
+    );
+    stream.write_all(response.as_bytes())
+}
+
 fn main() -> std::io::Result<()> {
     let addr = std::env::var("STANNUM_BRIDGE").unwrap_or_else(|_| "127.0.0.1:1421".into());
     logbook::install();
     let listener = TcpListener::bind(&addr)?;
     eprintln!("stannum dev bridge on http://{addr}");
-    let mut ws = Workspace::default();
+    let bridge = Arc::new(Bridge::default());
     for stream in listener.incoming() {
-        let mut stream = stream?;
-        let mut reader = BufReader::new(stream.try_clone()?);
-        let mut request_line = String::new();
-        reader.read_line(&mut request_line)?;
-        let mut length = 0usize;
-        loop {
-            let mut line = String::new();
-            if reader.read_line(&mut line)? == 0 || line == "\r\n" {
-                break;
+        let stream = stream?;
+        let bridge = bridge.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = serve(&bridge, stream) {
+                eprintln!("request failed: {e}");
             }
-            if let Some((k, v)) = line.split_once(':')
-                && k.eq_ignore_ascii_case("content-length")
-            {
-                length = v.trim().parse().unwrap_or(0);
-            }
-        }
-        let mut body = vec![0; length];
-        reader.read_exact(&mut body)?;
-        let mut parts = request_line.split_whitespace();
-        let method = parts.next().unwrap_or_default();
-        let path = parts.next().unwrap_or_default();
-        let (status, payload) = if method == "OPTIONS" {
-            ("204 No Content", String::new())
-        } else if let Some(command) = path.strip_prefix("/invoke/") {
-            let args: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
-            match dispatch(&mut ws, command, &args) {
-                Ok(v) => ("200 OK", v.to_string()),
-                Err(e) => ("500 Internal Server Error", Value::String(e).to_string()),
-            }
-        } else {
-            ("404 Not Found", String::new())
-        };
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
-            payload.len()
-        );
-        stream.write_all(response.as_bytes())?;
+        });
     }
     Ok(())
 }

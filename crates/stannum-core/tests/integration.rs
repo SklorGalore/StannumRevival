@@ -597,3 +597,32 @@ fn a_cancelled_solve_keeps_the_previous_results() {
     assert_eq!(err, stannum_core::workspace::SOLVE_CANCELLED);
     assert!(case.solved.is_some());
 }
+
+#[test]
+fn the_report_sends_its_tables_as_columns() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(SolveSettings::default())
+        .unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let buses = &json["buses"];
+    assert_eq!(buses["count"], 9);
+    assert_eq!(buses["id"].as_array().unwrap().len(), 9);
+    let branches = &json["branches"];
+    assert_eq!(branches["count"], report.branches.len());
+    for (i, row) in report.branches.iter().enumerate() {
+        assert_eq!(branches["element"][i], row.element.as_str());
+        let pf = branches["pf"][i].as_f64().unwrap();
+        assert!((pf - row.pf).abs() <= 5e-5, "rounded to 0.1 kW");
+        assert_eq!(
+            branches["loading_pct"][i].is_null(),
+            row.loading_pct.is_none()
+        );
+    }
+    let vm = buses["vm"][0].as_f64().unwrap();
+    assert!((vm - report.buses[0].vm).abs() <= 5e-7);
+    assert_eq!(json["generators"]["online"][0], true);
+}

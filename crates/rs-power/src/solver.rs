@@ -2248,8 +2248,10 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         &mut vsc_terminals,
         &setup,
     )
-    .inspect_err(|error| {
-        log::error!("{:?} power-flow solve failed: {error}", opt.model);
+    .inspect_err(|error| match error {
+        // Stopped on request: not a failure.
+        Error::Cancelled => log::info!("{:?} power-flow solve cancelled", opt.model),
+        _ => log::error!("{:?} power-flow solve failed: {error}", opt.model),
     })?;
     controls::finish(&setup, &mut result.case, &mut result.switched_shunts);
     let solved_vsc = std::mem::take(&mut result.vsc);

@@ -29,7 +29,7 @@ interface LogState {
   /** Start the badge afresh for a newly opened (or closed) case. */
   newCase: () => void;
   /** Mark the start of an operation; call the returned function when it ends. */
-  begin: (label: string) => (outcome: { error?: string; done?: string; quiet?: boolean }) => void;
+  begin: (label: string) => (outcome: { error?: string; done?: string; quiet?: boolean; cancelled?: boolean }) => void;
 }
 
 let key = 0;
@@ -74,10 +74,11 @@ export const useLog = create<LogState>((set, get) => ({
   begin: (label) => {
     const activity: Activity = { id: ++key, label, started: Date.now() };
     set((s) => ({ running: [...s.running, activity] }));
-    return ({ error, done, quiet }) => {
+    return ({ error, done, quiet, cancelled }) => {
       set((s) => ({ running: s.running.filter((a) => a.id !== activity.id) }));
       const took = duration(Date.now() - activity.started);
-      if (error) get().add("error", `${label} failed after ${took}: ${error}`);
+      if (cancelled) get().add("info", `${label} cancelled after ${took}`);
+      else if (error) get().add("error", `${label} failed after ${took}: ${error}`);
       else if (!quiet) get().add("info", `${done ?? label} (${took})`);
     };
   },
