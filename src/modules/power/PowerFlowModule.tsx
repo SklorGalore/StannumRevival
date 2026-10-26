@@ -40,7 +40,8 @@ import { useWidth } from "../../ui/useWidth";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
-import { ElementInspector } from "../../ui/ElementInspector";
+import { WarningsTab } from "./WarningsTab";
+import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
@@ -832,6 +833,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const showSettings = settingsOpen ?? width >= 960;
   // The inspector takes a column only where the tables keep room beside it.
   const showInspector = width >= 900;
+  const split = useWorkspace((s) => s.split);
   const branchCols = useMemo(
     // Name columns only when the case names its buses (MATPOWER doesn't).
     () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
@@ -1030,7 +1032,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   }
 
   return (
-    <div ref={rootRef} className="h-full flex" aria-hidden={!active}>
+    <div ref={rootRef} className="relative h-full flex" aria-hidden={!active}>
       {showSettings ? (
         <SolvePanel
           settings={settings}
@@ -1223,23 +1225,23 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
               {tab === "warnings" && (
-                <div className="h-full bg-white">
-                  <DataTable
-                    rows={warnings.map((w, i) => ({ ...w, i }))}
-                    rowKey={(w) => w.i}
-                    columns={[
-                      { key: "line", header: "Line", value: (w) => w.line, align: "right" },
-                      { key: "message", header: "Warning", value: (w) => w.message },
-                    ]}
-                  />
-                </div>
+                <WarningsTab
+                  warnings={warnings}
+                  onShow={(e) => {
+                    pick(e);
+                    const next = tabFor(e);
+                    if (next && report) setTab(next);
+                  }}
+                />
               )}
             </div>
           </>
         )}
       </div>
-      {selected && showInspector && (
-        <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="power-inspector">
+      {selected && (showInspector || (!split && selection?.from === "power")) && (
+        // In a narrow window it floats, clear of the tab bar. Side by side,
+        // the other pane's inspector shows the selection instead.
+        <aside className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
           <ElementInspector
             element={selected}
             from="power"

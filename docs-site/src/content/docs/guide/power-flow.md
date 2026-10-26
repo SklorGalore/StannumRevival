@@ -118,7 +118,12 @@ manual](/StannumRevival/manual/sensitivities/) gives the mathematics.
 ## Import warnings
 
 For RAW files, **Import warnings** lists everything the conversion
-approximated or skipped, with its line number.
+approximated or skipped. Warnings with the same message are grouped, most
+frequent first, with how many there are and which lines of the file they come
+from. Open a group to list each record with its line number and the branch or
+generator it describes; click the element to select it, or use
+**Draw around** beside it. The log gets one line per import naming the most
+common warning, not a line per record.
 
 ## Export MATPOWER
 

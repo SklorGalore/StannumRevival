@@ -22,6 +22,7 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
       w={W}
       h={H}
       focus={data.focus}

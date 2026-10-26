@@ -227,10 +227,7 @@ impl OpenCase {
                     elapsed_ms(start)
                 );
                 if !p.warnings.is_empty() {
-                    log::warn!(
-                        "{} conversion warnings while reading {name}; see Power flow for the list",
-                        p.warnings.len()
-                    );
+                    log::warn!("{}", warnings_summary(&p.warnings, &name));
                 }
             }
             Err(e) => log::warn!("Power flow can't use {name}: {e}"),
@@ -643,5 +640,66 @@ impl Workspace {
         self.comparison
             .as_ref()
             .ok_or_else(|| "Compare two files first.".into())
+    }
+}
+
+/// One log line for a case's conversion warnings: how many, and of how many
+/// kinds, naming the most common.
+fn warnings_summary(warnings: &[power::Warning], name: &str) -> String {
+    let mut kinds: Vec<(&str, usize)> = Vec::new();
+    for w in warnings {
+        match kinds.iter_mut().find(|(m, _)| *m == w.message) {
+            Some((_, n)) => *n += 1,
+            None => kinds.push((&w.message, 1)),
+        }
+    }
+    kinds.sort_by_key(|k| std::cmp::Reverse(k.1));
+    let total = warnings.len();
+    let plural = |n: usize, one: &str, many: &str| {
+        if n == 1 {
+            one.to_string()
+        } else {
+            many.to_string()
+        }
+    };
+    let (top, n) = kinds[0];
+    let what = format!(
+        "{total} conversion {}",
+        plural(total, "warning", "warnings")
+    );
+    let line = if kinds.len() == 1 {
+        format!("{what} while reading {name}, all \"{top}\"")
+    } else {
+        format!(
+            "{what} of {} kinds while reading {name}, most often \"{top}\" ({n})",
+            kinds.len()
+        )
+    };
+    line + "; see Power flow for the list"
+}
+
+#[cfg(test)]
+mod warnings_summary_tests {
+    use super::*;
+
+    fn w(message: &str) -> power::Warning {
+        power::Warning {
+            line: 1,
+            message: message.into(),
+            element: None,
+        }
+    }
+
+    #[test]
+    fn names_the_most_common_kind() {
+        let list = [w("a"), w("b"), w("b")];
+        assert_eq!(
+            warnings_summary(&list, "x.raw"),
+            "3 conversion warnings of 2 kinds while reading x.raw, most often \"b\" (2); see Power flow for the list"
+        );
+        assert_eq!(
+            warnings_summary(&[w("a")], "x.raw"),
+            "1 conversion warning while reading x.raw, all \"a\"; see Power flow for the list"
+        );
     }
 }

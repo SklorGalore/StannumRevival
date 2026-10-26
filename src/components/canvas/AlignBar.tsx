@@ -1,3 +1,4 @@
+import { NARROW_LEFT } from "./CaseActions";
 import {
   AlignStartVertical,
   AlignCenterVertical,
@@ -37,10 +38,9 @@ export function AlignBar() {
     <div
       role="toolbar"
       aria-label="Align selection"
-      className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 px-1.5 py-1
-                 rounded-lg border border-slate-200 bg-white shadow-sm"
+      className={`${NARROW_LEFT} top-3 z-10 flex items-center gap-0.5 px-1.5 py-1 rounded-lg border border-slate-200 bg-white shadow-sm`}
     >
-      <span className="text-[11px] text-slate-500 px-1.5">{count} selected</span>
+      <span className="text-[11px] text-slate-500 px-1.5 whitespace-nowrap">{count} selected</span>
       {GROUPS.map((group, i) => (
         <div key={i} className="flex items-center gap-0.5 pl-1 ml-1 border-l border-slate-200">
           {group.map((a) => (

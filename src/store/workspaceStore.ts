@@ -1,8 +1,9 @@
+import { useLog } from "./logStore";
 import { create } from "zustand";
 import { api, CASE_FILTERS, pickFile } from "../lib/analysis/api";
 import type { CaseSummary, SolveReport } from "../lib/analysis/types";
 
-export type ModuleId = "diagram" | "power" | "topology" | "diff";
+export type ModuleId = "diagram" | "power" | "diff";
 
 /** One bus or piece of equipment selected across every module. */
 export interface SharedSelection {
@@ -13,7 +14,7 @@ export interface SharedSelection {
 }
 
 /** The module that goes beside another when split view opens without a choice. */
-export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", topology: "diagram", diff: "diagram" };
+export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", diff: "diagram" };
 
 /** Bring a module into view: switch to it, unless split view already shows it. */
 export function showing(s: { module: ModuleId; split: ModuleId | null }, m: ModuleId): { module: ModuleId } {
@@ -143,6 +144,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const chosen = path ?? (await pickFile(CASE_FILTERS));
     if (!chosen) return;
     set({ opening: true, openError: null });
+    // The log's badge counts what this case raised, not every case so far.
+    useLog.getState().newCase();
     try {
       const summary = await api.openCase(chosen);
       set((s) => ({
@@ -152,11 +155,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         selection: null,
         drawRequest: null,
         opening: false,
-        // A MATPOWER file has no topology, and a RAW file outside rs-power's
-        // support may still have one: move to a module that can use it.
+        // A RAW file outside rs-power's support may still have a topology:
+        // move to the Diagram, which draws it as a network.
         module:
           s.module === "power" && !summary.power.available && summary.topology.available
-            ? "topology"
+            ? "diagram"
             : s.module,
       }));
     } catch (e) {
@@ -166,6 +169,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closeCase: async () => {
     await api.closeCase();
+    useLog.getState().newCase();
     set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));
   },
 }));

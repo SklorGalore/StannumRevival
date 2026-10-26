@@ -15,10 +15,9 @@ The switch at the start of the toolbar draws the same neighbourhood in two
 styles:
 
 - **One-line**: symbols, routed wires, results and editing (everything below).
-- **Network**: the bus-branch graph from [Topology](/StannumRevival/guide/topology/).
-  Buses are dots and branches are lines (transformers dashed), so it stays
-  quick and readable for hundreds of buses. Bridges and cut buses are
-  highlighted in amber, and the bus it is drawn around has a teal halo.
+- **Network**: the bus-branch graph of the case's topology. Buses are dots
+  and branches are lines (transformers dashed), so it stays quick and readable
+  for hundreds of buses. The bus it is drawn around has a teal halo.
 
 ![The Network style, two hops around a bus, with a bus selected](../../../assets/screens/diagram-network.png)
 
@@ -40,6 +39,14 @@ In the Network style:
 
 "Draw around" from another module and selections from linked modules move
 both styles.
+
+## Layers and tables
+
+**Layers** draws the case's topology on either style: bridges and cut buses,
+islands, zero-impedance groups, a shortest path, and filters and colours by
+field. **Tables** opens the topology tables (buses, islands, critical
+connections, equipment, diagnostics) in a drawer under the drawing. See
+[Topology](/StannumRevival/guide/topology/).
 
 ## Generating from the case
 

@@ -10,7 +10,7 @@ in one Cargo workspace and one repository.
 ```
 ┌──────────────────────────────── React interface (src/) ────────────────────────────────┐
 │  Module rail · case bar · palette · log dock · side by side                              │
-│  Diagram (React Flow + ELK)   Power flow   Topology (Cytoscape)   Case diff              │
+│  Diagram (React Flow + ELK; network: Cytoscape)   Power flow   Case diff                 │
 └──────────────────────────────────────┬──────────────────────────────────────────────────┘
                                        │ Tauri commands (src-tauri/src/analysis.rs)
 ┌──────────────────────────────────────┴───────── stannum-core ───────────────────────────┐

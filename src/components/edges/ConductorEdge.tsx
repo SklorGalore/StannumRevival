@@ -8,6 +8,7 @@ import type { SLDEdge } from "../../store/types";
 import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
 import { SegmentGrips } from "./SegmentGrips";
 import { Leader, useBBox, useLabelDrag } from "../nodes/shared/labels";
+import { useElementMark } from "../../store/layerStore";
 
 /** Wires meeting at each terminal, keyed "node/handle". */
 const degrees = new WeakMap<SLDEdge[], Map<string, number>>();
@@ -160,8 +161,9 @@ export function ConductorEdge({
   const dc = data?.caseRef?.kind === "dcline";
   // With results on, wires go neutral so only loading stands out.
   const base = dc ? ink.line : results ? ink.wire : ink.voltage(kv);
-  const stroke = selected ? ink.selected : offline ? ink.off : (overload ?? base);
-  const baseWidth = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
+  const layer = useElementMark(data?.caseRef?.element);
+  const stroke = selected ? ink.selected : offline ? ink.off : (overload ?? (layer?.color && !ink.mono ? layer.color : base));
+  const baseWidth = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0) + (layer?.bold ? 2 : 0);
   // Zoomed out, the wire's weight carries its loading instead of the text.
   const asMarks = marks && !!flow;
   const width = asMarks && flow ? flowWidth(row?.loading_pct, flow.p, maxFlow, baseWidth) : baseWidth;
@@ -195,7 +197,23 @@ export function ConductorEdge({
   const [textRef, textBox] = useBBox<SVGTextElement>([textAt.x, textAt.y, lines.join("|")]);
 
   return (
-    <>
+    <g opacity={layer?.dim ? 0.25 : undefined}>
+      {layer?.halo && (
+        // A layer's mark (a bridge): a dashed band along the wire.
+        <path
+          d={path}
+          fill="none"
+          stroke={ink.mono ? ink.line : layer.halo}
+          strokeOpacity={ink.mono ? 1 : 0.55}
+          strokeWidth={ink.mono ? 1 : 7}
+          strokeDasharray="8 4"
+          strokeLinejoin="round"
+          data-testid="layer-ring"
+          transform={ink.mono ? "translate(0,5)" : undefined}
+        >
+          {layer.note && <title>{layer.note}</title>}
+        </path>
+      )}
       {data?.focus && (
         // The branch a local drawing was made around.
         <path
@@ -250,6 +268,6 @@ export function ConductorEdge({
           ))}
         </text>
       )}
-    </>
+    </g>
   );
 }

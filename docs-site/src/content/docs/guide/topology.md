@@ -1,70 +1,84 @@
 ---
 title: Topology
-description: Islands, bridges, articulation buses, fewest-hop paths, the network graph, filters and colours.
+description: Islands, bridges, cut buses, fewest-hop paths, filters and colours, as layers on the Diagram, and the topology tables under it.
 ---
 
-![Topology: counts, the network graph with a traced path, inspector and bus table](../../../assets/screens/topology.png)
+![The Diagram's Network style with the Layers panel open, showing the shortest path from bus 1001 to bus 3001 with its cut buses ringed](../../../assets/screens/diagram-layers.png)
 
-Topology shows the network as a graph: buses and the equipment between them.
-At the top are counts of buses, lines, transformers, islands, bridges and
-articulation buses.
+The network's topology (which buses are joined, and by what) lives in the
+[Diagram](/StannumRevival/guide/diagram/). Its findings are drawn as
+**layers** on either drawing style, and its tables sit in a **Tables** drawer
+under the drawing. There is no separate Topology module any more: what used to
+be there is now in these two places.
 
-## The graph
+## Layers
 
-The Cytoscape graph starts from a bus's two-hop neighbourhood. From there:
+**Layers** in the Diagram toolbar opens the Layers panel beside the drawing.
+Each layer has a switch, and every layer that is on is drawn on the Network
+style and the One-line style alike, with a key in the top-left corner of the
+drawing.
 
-- Select a bus and use **Show N-hop neighborhood** in the inspector to widen
-  or narrow the view (1 to 6 hops).
-- Pick an island in the **Islands** table to show all of it, or show the
-  **Full network** (up to 500 nodes).
-- Click a node or edge to select it and see it in the inspector.
-- **Fit view** brings the drawing back into frame.
+| Layer | Draws |
+| --- | --- |
+| **Bridges and cut buses** | A dashed amber ring around each bridge (a branch whose loss splits its island) and each cut bus (a bus whose loss splits one). On by default. |
+| **Islands** | Each island's buses in its own colour, largest island first. |
+| **Zero-impedance groups** | A purple ring around buses tied by zero-impedance branches. **Merge them into one node in the network** treats each group as one node, as PSS/E does. |
+| **Shortest path** | The fewest equipment hops between two buses, in blue and drawn heavier. |
+| **Filters and colours** | Field rules: filters, and colours by a field. |
 
-Three-winding transformers appear with a star point in the middle, so each
-winding is its own edge.
+### Shortest path
 
-The same graph is also the Diagram's
-[Network style](/StannumRevival/guide/diagram/#two-drawing-styles), where it
-shares its centre bus, hop count and selection with the one-line.
+Type two bus numbers and **Find**. Each piece of equipment crossed counts as
+one hop, so a three-winding transformer is one hop between any two of its
+windings. The Network style then shows just the path and its neighbours;
+**Back to bus …** returns to the neighbourhood. On the one-line, the path's
+buses and branches that are in the drawing turn blue.
 
-## Paths
+### Filters and colours
 
-**Path** finds the fewest equipment hops between two buses and highlights the
-route on the graph. Each piece of equipment crossed counts as one hop, so a
-three-winding transformer is one hop between any two of its windings.
+Filters narrow by the same field rules as Power flow, on buses or equipment.
+In the Network style, what doesn't match is hidden; on the one-line it is
+faded, so the drawing keeps its shape. The Tables drawer follows the filters
+too. Colours fill buses and branches by a field (for example base kV or area)
+with a palette, and the key shows the scale. Filters and colours are kept per
+case file, so reopening a case restores them.
+
+![Buses coloured by base kV in the Network style, with bridges, cut buses and the path's first hops](../../../assets/screens/diagram-layers-colours.png)
 
 ## Tables
 
+**Tables** in the Diagram toolbar opens a drawer under the drawing. Drag its
+top edge to make it taller or shorter.
+
+![The Tables drawer under the Network style, with a bridge picked from Critical connections](../../../assets/screens/diagram-tables.png)
+
 | Tab | Shows |
 | --- | --- |
-| **Buses** | Every bus with its degree (connections) and island |
+| **Buses** | Every bus with its connections and island, and whether it is a cut bus |
 | **Islands** | Each island's size and buses, largest first |
-| **Critical connections** | Bridges (equipment whose loss splits an island) and articulation buses (buses whose loss splits one) |
-| **Equipment** | Every line, transformer and switching device |
+| **Critical connections** | Bridges and cut buses |
+| **Equipment** | Every line, transformer and switching device, and whether it is in the network |
 | **Diagnostics** | Parser messages and notes on where the data came from |
 
-All tables export to CSV, and **Export JSON** saves the parsed case, the
-analysis and the current path.
+- Pick a row to select the element everywhere, and in the drawing: the
+  Network style moves to it, and the one-line selects its symbol (or offers to
+  draw around it).
+- Pick an island to show all of it in the Network style (up to 500 buses).
+- **CSV** saves the table as shown; **JSON** saves the parsed case, the
+  analysis and the current path.
 
-## Filters and colours
+## In the inspector
 
-The **Filters & colours** tab beside the inspector narrows the graph and
-tables with the same field rules as Power flow, on buses or equipment, and
-colours nodes by a field (for example base kV or area) with a palette.
-
-![Topology nodes coloured by base kV](../../../assets/screens/topology-colours.png)
-
-## Options
-
-**Merge zero-impedance branches** treats buses joined by zero-impedance lines
-(below the case's zero-impedance threshold, 0.0001 p.u. by default) as one node, as PSS/E does.
+Select a bus or branch in the Network style and the inspector's **Network**
+section adds its island and connections, whether it is a bridge or a cut bus,
+whether it is in the network (or inside a merged node), and its RAW record.
 
 ## Any case
 
 Topology reads revision 35 RAW files itself. For MATPOWER files and other RAW
-revisions it builds the graph from the power flow model; the diagnostics say
-so, and switching devices and original records aren't shown then.
+revisions it builds the network from the power flow model; the Diagnostics
+tab says so, and switching devices and original records aren't shown then.
 
-![Topology of a MATPOWER case, built from the power flow model](../../../assets/screens/topology-matpower.png)
+![The Diagnostics tab for a MATPOWER case, built from the power flow model](../../../assets/screens/tables-matpower.png)
 
 See [Topology analysis](/StannumRevival/manual/topology/) for the algorithms.
