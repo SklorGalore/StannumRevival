@@ -44,6 +44,10 @@ interface ContingencyState {
   detail: ContingencyDetail | null;
   /** Show the open outage on the diagram (the Contingency layer). */
   onDiagram: boolean;
+  /** The element being tripped from an inspector, while it solves. */
+  tripping: string | null;
+  /** "Trip and compare": take one element out of the latest solve and draw what changes. */
+  trip: (element: string) => Promise<ContingencyDetail>;
   run: (solve: SolveSettings, elements: string[] | null) => Promise<boolean>;
   cancel: () => void;
   loadMore: () => Promise<void>;
@@ -118,5 +122,17 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
     }
   },
   setOnDiagram: (onDiagram) => set({ onDiagram }),
-  clear: () => set({ summary: null, rows: [], open: null, detail: null, error: null, onDiagram: false }),
+  tripping: null,
+  async trip(element) {
+    set({ tripping: element });
+    try {
+      const detail = await api.tripAndCompare(element, get().choice.limitPct);
+      // Shown on its own, not as a row of the last run.
+      set({ detail, open: null, onDiagram: true });
+      return detail;
+    } finally {
+      set({ tripping: null });
+    }
+  },
+  clear: () => set({ summary: null, rows: [], open: null, detail: null, error: null, onDiagram: false, tripping: null }),
 }));

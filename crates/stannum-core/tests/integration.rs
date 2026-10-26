@@ -80,8 +80,16 @@ fn sensitivities_follow_the_sign_convention() {
     // Injecting at bus 5 raises its own angle.
     let own = angles.rows.iter().find(|r| r.label == "Bus 5").unwrap();
     assert!(own.value > 0.0);
+    assert_eq!(own.element, "bus:5");
     let flows = case.responses(column, "flow0", false).unwrap();
     assert_eq!(flows.rows.len(), 9);
+    // Each flow row names its branch, for drawing on the diagram.
+    assert!(
+        flows
+            .rows
+            .iter()
+            .all(|r| r.element.starts_with("line:") || r.element.starts_with("transformer:"))
+    );
     assert!(case.responses(column, "nonsense", true).is_err());
 }
 

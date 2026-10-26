@@ -36,6 +36,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
   contingency_detail: { label: "Opening a contingency", quiet: true },
+  trip_and_compare: { label: "Tripping and comparing", done: "Tripped and compared" },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
   load_dc_grids: { label: "Reading DC grid file", done: "Attached DC grid file" },
   clear_dc_grids: { label: "Detaching DC grid file", done: "Detached DC grid file" },
@@ -138,6 +139,7 @@ export const api = {
   contingencyRows: (offset: number, limit: number) =>
     call<ContingencyRow[]>("contingency_rows", { offset, limit }),
   contingencyDetail: (rank: number) => call<ContingencyDetail>("contingency_detail", { rank }),
+  tripAndCompare: (element: string, limitPct: number) => call<ContingencyDetail>("trip_and_compare", { element, limitPct }),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
   elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),

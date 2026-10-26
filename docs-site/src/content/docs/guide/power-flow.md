@@ -112,6 +112,9 @@ four branch-end flows. Results are in engineering or raw units, ordered by
 magnitude, signed value or input order. **How to read these results**
 explains the sign conventions, and the [technical
 manual](/StannumRevival/manual/sensitivities/) gives the mathematics.
+**Show on diagram** draws a one-line around the injection bus and colours it
+by the responses shown, with the Diagram's [Colour by result
+layer](/StannumRevival/guide/topology/#colour-by-result).
 
 ![Sensitivities of branch flows to an injection](../../../assets/screens/power-sensitivities.png)
 

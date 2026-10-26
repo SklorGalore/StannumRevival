@@ -297,6 +297,19 @@ pub async fn contingency_detail(
     with(state, move |ws| ws.current_mut()?.contingency_detail(rank)).await
 }
 
+/// Take one element out of the last AC solve and solve again.
+#[tauri::command]
+pub async fn trip_and_compare(
+    state: State<'_, SharedWorkspace>,
+    element: String,
+    limit_pct: f64,
+) -> Result<ContingencyDetail, String> {
+    with(state, move |ws| {
+        ws.current()?.trip_and_compare(&element, limit_pct)
+    })
+    .await
+}
+
 /// Log lines numbered above `since`, for the log panel to catch up.
 #[tauri::command]
 pub fn log_entries(since: u64) -> Vec<logbook::Entry> {

@@ -388,6 +388,8 @@ export interface SensitivitySummary {
 export interface SensitivityResponse {
   index: number;
   label: string;
+  /** Shared element id of the bus or branch. */
+  element: string;
   value: number;
   offline: boolean;
 }
