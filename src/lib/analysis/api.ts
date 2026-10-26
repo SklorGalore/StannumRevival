@@ -57,8 +57,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   model: "ac",
   start: "last",
-  // 2 MVA on a 100 MVA base.
-  tolerance: 0.02,
+  // The same MW and Mvar on every case, whatever its base.
+  tolerance_mva: 2,
   max_iterations: 10,
   enforce_q_limits: false,
   dc_model: "detailed",

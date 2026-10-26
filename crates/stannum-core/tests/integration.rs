@@ -343,7 +343,7 @@ fn study_edits_change_what_is_solved() {
     let case = ws.current_mut().unwrap();
     // Results are compared to 1e-6, so solve tighter than the 2 MVA default.
     let tight = || SolveSettings {
-        tolerance: 1e-8,
+        tolerance_mva: 1e-6,
         ..SolveSettings::default()
     };
     let base = case.solve(tight()).unwrap();
@@ -428,7 +428,7 @@ fn last_solution_start_resumes_the_previous_solve() {
         start: StartChoice::Last,
         enforce_q_limits: true,
         // Tight enough that a 1 MW load edit needs Newton steps.
-        tolerance: 1e-8,
+        tolerance_mva: 1e-6,
         ..SolveSettings::default()
     };
     // Nothing solved yet: the case voltages, like "From case".
@@ -502,4 +502,17 @@ fn every_solve_starts_from_the_last_one_by_default() {
         ..SolveSettings::default()
     };
     assert!(case.solve(flat).unwrap().iterations > 0);
+}
+
+#[test]
+fn the_default_tolerance_is_2_mva_on_any_base() {
+    let settings = SolveSettings::default();
+    assert_eq!(settings.tolerance_mva, 2.0);
+    // Per unit on each case's own base, so the MW and Mvar stay the same.
+    for (base, pu) in [(100.0, 0.02), (1000.0, 0.002), (10.0, 0.2)] {
+        let tol = settings.options(base).tolerance;
+        assert!((tol - pu).abs() < 1e-15, "{base} MVA base: {tol} p.u.");
+    }
+    // A case with no base falls back to 100 MVA.
+    assert_eq!(settings.options(0.0).tolerance, 0.02);
 }
