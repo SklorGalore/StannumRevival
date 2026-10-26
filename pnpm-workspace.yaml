@@ -1,0 +1,9 @@
+# npm (package-lock.json) is the package manager CI uses. This file only
+# makes `pnpm install` work too.
+#
+# pnpm 11+ fails the install when a dependency has a build script nobody has
+# approved. core-js (an optional dependency of jspdf, used for its HTML/SVG
+# export) has a postinstall that only prints a funding message, so it is
+# skipped rather than allowed.
+allowBuilds:
+  core-js: false
