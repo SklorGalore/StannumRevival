@@ -707,12 +707,13 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         "elk.direction": "DOWN",
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.spacing.nodeNode": String(NODE_GAP),
-        "elk.spacing.edgeNode": "18",
-        "elk.spacing.edgeEdge": "12",
+        // Wires at least a grid step apart stay apart when snapped to the grid.
+        "elk.spacing.edgeNode": String(GRID),
+        "elk.spacing.edgeEdge": String(GRID),
         "elk.spacing.labelNode": "8",
         "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-        "elk.layered.spacing.edgeNodeBetweenLayers": "18",
-        "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+        "elk.layered.spacing.edgeNodeBetweenLayers": String(GRID),
+        "elk.layered.spacing.edgeEdgeBetweenLayers": String(GRID),
         // Network simplex gives the tidiest drawing but takes 13 s on case300;
         // Brandes-Koepf takes 1.4 s there, at the cost of a wider drawing.
         "elk.layered.nodePlacement.strategy": buses.length > READABLE_BUSES ? "BRANDES_KOEPF" : "NETWORK_SIMPLEX",
@@ -773,16 +774,23 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
 
   const at = new Map<string, ElkNode>();
   for (const n of laid.children ?? []) at.set(n.id, n);
+  // The drawing lands on the editor's grid, so taps, terminals and the bends
+  // of the laid-out wires line up with the knees a hand-dragged wire snaps to.
+  const snap = (v: number) => Math.round(v / GRID) * GRID;
+  const shift = (id: string) => {
+    const n = at.get(id);
+    return n ? { x: snap(n.x!) - n.x!, y: snap(n.y!) - n.y! } : { x: 0, y: 0 };
+  };
 
   // Each wire that reaches a bus gets its own tap where the route lands.
   const taps = new Map<string, BusTap[]>();
   const tapFor = (busNode: string, p: ElkPoint): string => {
     const n = at.get(busNode)!;
-    const x = p.x - n.x!;
+    const x = snap(p.x) - snap(n.x!);
     const side: BusTap["side"] = p.y <= n.y! + BUS_BAR / 2 ? "top" : "bottom";
     const list = taps.get(busNode) ?? [];
     const id = `t${list.length}`;
-    list.push({ id, x: Math.min(Math.max(x, 0), n.width!), side });
+    list.push({ id, x: Math.min(Math.max(x, 0), snap(n.x! + n.width!) - snap(n.x!)), side });
     taps.set(busNode, list);
     return id;
   };
@@ -809,6 +817,18 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     onBar(s.target.node, route[route.length - 1]);
     const sourceHandle = s.source.handle ?? tapFor(s.source.node, route[0]);
     const targetHandle = s.target.handle ?? tapFor(s.target.node, route[route.length - 1]);
+    // Ends move with what they're on (a tap to its grid point); bends go
+    // to the nearest grid point. A route that doesn't survive is left for
+    // the wire router.
+    const end = (p: ElkPoint, node: string, onBus: boolean) => {
+      const d = shift(node);
+      return { x: onBus ? snap(p.x) : p.x + d.x, y: p.y + d.y };
+    };
+    const gridRoute = onGrid([
+      end(route[0], s.source.node, !s.source.handle),
+      ...route.slice(1, -1).map((p) => ({ x: snap(p.x), y: snap(p.y) })),
+      end(route[route.length - 1], s.target.node, !s.target.handle),
+    ]);
     edges.push({
       id: s.id,
       type: "conductor",
@@ -818,7 +838,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       targetHandle,
       data: {
         ...s.data,
-        route,
+        route: gridRoute,
         labelAt: label ? { x: label.x!, y: label.y!, width: label.width!, height: label.height! } : undefined,
         focus: focusOn(s.data.caseRef),
       },
@@ -840,7 +860,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       const focus = inj.node.type === "generator" && focusOn((inj.node.data as GeneratorData).caseRef);
       out.push({
         ...inj.node,
-        position: { x: n.x! + x - 20, y: n.y! + BUS_BAR },
+        position: { x: snap(n.x!) + x - 20, y: snap(n.y!) + BUS_BAR },
         ...(focus ? { data: { ...inj.node.data, focus } } : {}),
       } as SLDNode);
       edges.push({
@@ -860,21 +880,44 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       label: b.star ? "" : busLabel(b),
       voltageKV: b.base_kv,
       orientation: "horizontal",
-      length: n.width! + (injections.has(b.id) ? BAR_END : 0),
+      length: Math.max(
+        snap(n.x! + n.width! + (injections.has(b.id) ? BAR_END : 0)) - snap(n.x!),
+        ...(taps.get(`b${b.id}`) ?? []).map((t) => t.x)
+      ),
       taps: taps.get(`b${b.id}`) ?? [],
       star: b.star || undefined,
       focus: b.id === piece.focus || undefined,
       caseRef: { kind: "bus", id: b.id, element: busElement(b.id) },
     };
-    out.push({ id: `b${b.id}`, type: "bus", position: { x: n.x!, y: n.y! }, data } as SLDNode);
+    out.push({ id: `b${b.id}`, type: "bus", position: { x: snap(n.x!), y: snap(n.y!) }, data } as SLDNode);
   }
   for (const [id, node] of rfNodes) {
     const n = at.get(id)!;
     const focus = focusOn((node.data as { caseRef?: CaseRef }).caseRef);
-    out.push({ ...node, position: { x: n.x!, y: n.y! }, ...(focus ? { data: { ...node.data, focus } } : {}) } as SLDNode);
+    out.push({ ...node, position: { x: snap(n.x!), y: snap(n.y!) }, ...(focus ? { data: { ...node.data, focus } } : {}) } as SLDNode);
   }
 
   return { nodes: out, edges, buses: buses.length, boundary: boundary.length, links };
+}
+
+/** Pitch of the editor's drawing grid. */
+const GRID = 20;
+
+/** A route with repeated and in-line points dropped, or undefined when it
+ *  is no longer made of right angles. */
+function onGrid(points: { x: number; y: number }[]): { x: number; y: number }[] | undefined {
+  const out: { x: number; y: number }[] = [];
+  for (const p of points) {
+    const q = out[out.length - 1];
+    if (q && Math.abs(q.x - p.x) < 0.01 && Math.abs(q.y - p.y) < 0.01) continue;
+    const r = out[out.length - 2];
+    if (q && r && ((Math.abs(r.x - q.x) < 0.01 && Math.abs(q.x - p.x) < 0.01) || (Math.abs(r.y - q.y) < 0.01 && Math.abs(q.y - p.y) < 0.01)))
+      out.pop();
+    out.push(p);
+  }
+  for (let i = 1; i < out.length; i++)
+    if (Math.abs(out[i].x - out[i - 1].x) > 0.01 && Math.abs(out[i].y - out[i - 1].y) > 0.01) return undefined;
+  return out.length >= 2 ? out : undefined;
 }
 
 /** Bus → row index, from rows listed top to bottom. */

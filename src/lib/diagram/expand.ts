@@ -6,7 +6,7 @@ import type { BusData, BusTap, ConductorData, OffPageData, SLDEdge, SLDNode, Tra
 import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
 import { symbolSize } from "./sizes";
-import { isVertical } from "./bus";
+import { gridAlong, isVertical } from "./bus";
 import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, offPageData, type Link } from "./generate";
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -177,8 +177,7 @@ export async function expandDrawing(
   for (const br of piece.links) link(br);
 
   function tapOn(bus: SLDNode, toward: { x: number; y: number }): string {
-    const len = (bus.data as BusData).length ?? 200;
-    const x = Math.min(len, Math.max(0, Math.round((toward.x - bus.position.x) / 20) * 20));
+    const x = gridAlong(bus, toward, 20);
     const side: BusTap["side"] = toward.y > bus.position.y ? "bottom" : "top";
     const id = `x${nanoid(6)}`;
     const list = extraTaps.get(bus.id) ?? [];

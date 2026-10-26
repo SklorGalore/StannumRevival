@@ -85,3 +85,20 @@ export function placeTerminal(p: Point, side: Side, w: number, h: number): Point
       return { x: p.x - w / 2, y: p.y };
   }
 }
+
+/** Distance along the bar for a tap nearest `p` whose point lies on the
+ *  drawing grid (the grid wires and their knees snap to), not just a whole
+ *  number of steps from the bar's start. A bar that starts off the grid
+ *  still gets taps on it. Kept within the bar; a bar shorter than a step
+ *  just gets the nearest point on it. */
+export function gridAlong(bus: SLDNode, p: Point, grid: number): number {
+  const len = (bus.data as BusData).length ?? 200;
+  const at = Math.min(len, Math.max(0, along(bus, p)));
+  if (!(grid > 0)) return at;
+  const start = isVertical(bus.data as BusData) ? bus.position.y : bus.position.x;
+  const lo = Math.ceil(start / grid) * grid - start;
+  const hi = Math.floor((start + len) / grid) * grid - start;
+  if (lo > hi + 1e-6) return at;
+  const x = Math.round((start + at) / grid) * grid - start;
+  return Math.round(Math.min(hi, Math.max(lo, x)) * 100) / 100;
+}

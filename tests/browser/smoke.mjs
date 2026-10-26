@@ -561,6 +561,30 @@ await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").
 const onBus = await load.boundingBox();
 assert(Math.abs(onBus.y - (barNow.y + barNow.height)) < 3, "dragged load snaps onto the bar");
 await shot("diagram-on-bus");
+// Dragged off the bar it stays wired; dragged back on, it snaps on again
+// and its wire moves to the new spot rather than a second one being added.
+await page.mouse.move(onBus.x + onBus.width / 2, onBus.y + 40);
+await page.mouse.down();
+await page.mouse.move(onBus.x + onBus.width / 2 + 40, onBus.y + 200, { steps: 10 });
+await page.mouse.up();
+const loadY = async (ok) => {
+  for (let i = 0; i < 30 && !ok((await load.boundingBox()).y); i++) await page.waitForTimeout(100);
+  return (await load.boundingBox()).y;
+};
+assert((await loadY((y) => y > onBus.y + 100)) > onBus.y + 100, "load dragged off the bar");
+const offBus = await load.boundingBox();
+await page.mouse.move(offBus.x + offBus.width / 2, offBus.y + 40);
+await page.mouse.down();
+await page.mouse.move(barNow.x + 100, barNow.y + barNow.height + 40, { steps: 10 });
+await page.mouse.up();
+const back = await loadY((y) => Math.abs(y - (barNow.y + barNow.height)) < 3);
+assert(Math.abs(back - (barNow.y + barNow.height)) < 3, `load dragged back snaps onto the bar again (${back})`);
+// The wire moves to its new tap a couple of frames after the drop.
+await page.waitForTimeout(300);
+assert.equal(await page.locator(".react-flow__edge").count(), 2, "re-attached load keeps one wire");
+await page.waitForFunction(() =>
+  [...document.querySelectorAll(".react-flow__edge-path:not(.react-flow__edge-interaction)")].every((p) => p.getAttribute("d").split("L").length === 2)
+);
 
 // Rotation: R turns the selection a quarter. A turned bus runs vertically;
 // symbols dropped beside it turn to face it and sit on it, and a wire released
