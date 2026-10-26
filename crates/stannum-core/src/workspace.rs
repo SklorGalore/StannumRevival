@@ -36,6 +36,9 @@ pub struct OpenCase {
     pub power: Result<PowerCase, String>,
     pub topology: Result<TopologyState, String>,
     pub solved: Option<(PowerFlowResult, SolveSettings)>,
+    /// The last solve from before the study's edits changed, kept as a
+    /// starting point for the next solve.
+    pub before_edits: Option<(PowerFlowResult, SolveSettings)>,
     pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
@@ -122,6 +125,16 @@ pub fn decode_text(bytes: &[u8]) -> String {
             .0
             .into_owned(),
     }
+}
+
+/// A solve to start the next one from: converged and AC.
+fn resumable(solve: &Option<(PowerFlowResult, SolveSettings)>) -> Option<&PowerFlowResult> {
+    solve
+        .as_ref()
+        .filter(|(r, settings)| {
+            settings.model == power::ModelChoice::Ac && r.status == rs_power::SolveStatus::Converged
+        })
+        .map(|(r, _)| r)
 }
 
 fn elapsed_ms(start: Instant) -> f64 {
@@ -258,6 +271,7 @@ impl OpenCase {
             power,
             topology,
             solved: None,
+            before_edits: None,
             sensitivity: None,
             edits: vec![],
             edited: None,
@@ -308,7 +322,9 @@ impl OpenCase {
         }
         self.edits = edits;
         self.edited = edited;
-        self.solved = None;
+        if let Some(solved) = self.solved.take() {
+            self.before_edits = Some(solved);
+        }
         self.sensitivity = None;
         Ok(())
     }
@@ -318,17 +334,23 @@ impl OpenCase {
         let start = Instant::now();
         let cold = settings.options_for(power);
         let mut options = cold.clone();
-        let warm = match (&self.solved, settings.start) {
-            (Some((last, before)), power::StartChoice::Last)
-                if settings.model == power::ModelChoice::Ac
-                    && before.model == power::ModelChoice::Ac
-                    && last.status == rs_power::SolveStatus::Converged =>
+        // The last converged AC solve: of this case, else from before the
+        // study's edits changed.
+        let last = resumable(&self.solved)
+            .map(|r| (r, true))
+            .or_else(|| resumable(&self.before_edits).map(|r| (r, false)));
+        let warm = match (last, settings.start) {
+            (Some((last, same_case)), power::StartChoice::Last)
+                if settings.model == power::ModelChoice::Ac =>
             {
+                if !same_case {
+                    log::info!("Starting from the last solve, from before the study changed");
+                }
                 Some(power::warm_start(&power.case, last, &mut options))
             }
-            (_, power::StartChoice::Last) if settings.model == power::ModelChoice::Ac => {
+            (None, power::StartChoice::Last) if settings.model == power::ModelChoice::Ac => {
                 log::info!(
-                    "No converged AC solution of this case to start from; starting from the case voltages"
+                    "No converged AC solve to start from yet; starting from the case voltages"
                 );
                 None
             }
@@ -347,6 +369,7 @@ impl OpenCase {
             elapsed_ms(start),
         );
         self.solved = Some((result, settings));
+        self.before_edits = None;
         log_report(&report, solved_ms);
         Ok(report)
     }
