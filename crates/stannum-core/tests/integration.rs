@@ -1,7 +1,7 @@
 //! End-to-end checks of the three engines through the shared workspace.
 use stannum_core::Workspace;
 use stannum_core::diff::Status;
-use stannum_core::power::{ModelChoice, SolveSettings};
+use stannum_core::power::{DcModelChoice, ModelChoice, SolveSettings};
 use stannum_core::workspace::CaseFormat;
 use std::path::PathBuf;
 
@@ -502,4 +502,60 @@ fn every_solve_starts_from_the_last_one_by_default() {
         ..SolveSettings::default()
     };
     assert!(case.solve(flat).unwrap().iterations > 0);
+}
+
+#[test]
+fn matacdc_grids_attach_solve_and_detach() {
+    let grids = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../rs-power/tests/fixtures/matacdc/case14_two_grids.m");
+    let mut ws = Workspace::default();
+    ws.open(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rs-power/tests/fixtures/case14.m"))
+        .unwrap();
+    // Opening the DC file on its own explains what to do with it.
+    let mut other = Workspace::default();
+    let error = other.open(&grids).unwrap_err();
+    assert!(error.contains("MatACDC"), "{error}");
+
+    let case = ws.current_mut().unwrap();
+    let summary = case.attach_vsc_grids(&grids).unwrap();
+    let info = summary.power.info.unwrap().vsc_grids.unwrap();
+    assert_eq!(
+        (
+            info.file.as_str(),
+            info.grids,
+            info.converters,
+            info.branches
+        ),
+        ("case14_two_grids.m", 2, 6, 7)
+    );
+    // Detailed or simplified, the grids are solved in detail.
+    for dc_model in [DcModelChoice::Detailed, DcModelChoice::Simplified] {
+        let report = case
+            .solve(SolveSettings {
+                dc_model,
+                ..SolveSettings::default()
+            })
+            .unwrap();
+        assert!(report.converged);
+        let grids = report.vsc_grids.as_ref().unwrap();
+        assert_eq!(grids.converters.len(), 6);
+        assert!(grids.station_loss_mw > 1.0 && grids.branch_loss_mw > 0.0);
+        let balance = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
+        assert!(balance.abs() < 0.5, "balance off by {balance} MW");
+    }
+    // The second solve starts from the first.
+    let summary = case.detach_vsc_grids().unwrap();
+    assert!(summary.power.info.unwrap().vsc_grids.is_none());
+    let report = case.solve(SolveSettings::default()).unwrap();
+    assert!(report.vsc_grids.is_none());
+
+    // A DC case naming buses the AC case lacks is refused.
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let error = ws
+        .current_mut()
+        .unwrap()
+        .attach_vsc_grids(&grids)
+        .unwrap_err();
+    assert!(error.contains("AC bus"), "{error}");
 }

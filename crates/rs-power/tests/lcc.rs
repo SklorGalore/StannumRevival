@@ -75,6 +75,7 @@ fn detailed(lines: Vec<LccLine>, adjust_taps: bool) -> PowerFlowOptions {
             vsc_lines: Vec::new(),
             mtdc: Vec::new(),
             adjust_taps,
+            vsc_grids: None,
         },
         ..Default::default()
     }

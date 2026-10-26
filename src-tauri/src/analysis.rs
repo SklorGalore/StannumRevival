@@ -91,6 +91,23 @@ pub async fn sensitivity_responses(
     .await
 }
 
+/// Attach meshed VSC DC grids from a MatACDC DC case to the open case.
+#[tauri::command]
+pub async fn attach_vsc_grids(
+    state: State<'_, SharedWorkspace>,
+    path: String,
+) -> Result<CaseSummary, String> {
+    with(state, move |ws| {
+        ws.current_mut()?.attach_vsc_grids(&PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn detach_vsc_grids(state: State<'_, SharedWorkspace>) -> Result<CaseSummary, String> {
+    with(state, |ws| ws.current_mut()?.detach_vsc_grids()).await
+}
+
 #[tauri::command]
 pub async fn export_matpower(
     state: State<'_, SharedWorkspace>,

@@ -290,6 +290,32 @@ converter naming its `Case::dcline` row. Pass them as
   PSS/E) and link inductance. Import warns about margins and ground
   resistances.
 
+### Meshed VSC DC grids (MatACDC model)
+
+`load_matacdc` and `parse_matacdc` read a MatACDC DC case (`baseMVAac`,
+`baseMVAdc`, `pol`, `busdc`, `convdc`, `branchdc`) into `VscGrids`, which
+attach to an AC case as `DcModel::Detailed { vsc_grids: Some(..), .. }`. The
+AC case can be MATPOWER version 2, or version 1 as MatACDC's AC cases are.
+
+- Each converter station is a transformer, a filter bus and a phase reactor
+  between its AC bus and the converter, with losses `a + b·Ic + c·Ic²` on the
+  converter current (MatACDC's units: MW, kV and ohms).
+- On the DC side a converter holds its AC power, holds its DC bus voltage
+  (slack), or follows a DC voltage droop with an optional deadband. On the AC
+  side it holds a reactive power or its AC bus voltage. Every DC grid needs a
+  slack or droop converter; several grids and AC zones can share a case.
+- The solve is MatACDC's sequential method: AC Newton with the converters as
+  fixed injections, then the stations and DC grids, repeated until the slack
+  and droop converters' powers settle to the tolerance (at most 1e-6 p.u.).
+- `PowerFlowResult::vsc_grids` reports each converter's AC and converter-side
+  powers, voltages and losses, each DC bus voltage, and each DC branch flow.
+  The result case keeps its own loads and generators.
+- Not modelled: converter current and voltage limits, DC voltage limits,
+  MatACDC's infinite AC buses.
+- MatACDC may not be redistributed, so its own cases are not in this
+  repository. `tests/matacdc.rs` checks them against the results printed in
+  the MatACDC manual when `STANNUM_MATACDC` points at an unpacked copy.
+
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
 revision layouts, all transformer CW/CZ combinations, partial winding statuses,

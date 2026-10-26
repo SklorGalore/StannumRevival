@@ -2,7 +2,7 @@ use crate::{Branch, Bus, BusType, Case, Error, Generator};
 use std::{collections::HashMap, path::Path};
 
 #[derive(Clone, Debug, PartialEq)]
-enum Kind {
+pub(crate) enum Kind {
     Word(String),
     Number(f64),
     String(String),
@@ -10,14 +10,14 @@ enum Kind {
     Newline,
 }
 #[derive(Clone, Debug)]
-struct Token {
-    kind: Kind,
+pub(crate) struct Token {
+    pub(crate) kind: Kind,
     line: usize,
     column: usize,
     end_column: usize,
 }
 impl Token {
-    fn error(&self, message: impl Into<String>) -> Error {
+    pub(crate) fn error(&self, message: impl Into<String>) -> Error {
         Error::Parse {
             line: self.line,
             column: self.column,
@@ -26,7 +26,7 @@ impl Token {
     }
 }
 
-fn lex(input: &str) -> Result<Vec<Token>, Error> {
+pub(crate) fn lex(input: &str) -> Result<Vec<Token>, Error> {
     log::trace!("lexing MATPOWER input ({} bytes)", input.len());
     let chars: Vec<char> = input.chars().collect();
     let (mut i, mut line, mut col) = (0, 1, 1);
@@ -160,20 +160,20 @@ fn lex(input: &str) -> Result<Vec<Token>, Error> {
     Ok(out)
 }
 
-struct Parser {
-    tokens: Vec<Token>,
-    pos: usize,
+pub(crate) struct Parser {
+    pub(crate) tokens: Vec<Token>,
+    pub(crate) pos: usize,
 }
 impl Parser {
-    fn peek(&self) -> &Token {
+    pub(crate) fn peek(&self) -> &Token {
         &self.tokens[self.pos.min(self.tokens.len() - 1)]
     }
-    fn take(&mut self) -> Token {
+    pub(crate) fn take(&mut self) -> Token {
         let t = self.peek().clone();
         self.pos += 1;
         t
     }
-    fn expect(&mut self, kind: Kind) -> Result<(), Error> {
+    pub(crate) fn expect(&mut self, kind: Kind) -> Result<(), Error> {
         let t = self.take();
         if t.kind == kind {
             Ok(())
@@ -181,14 +181,55 @@ impl Parser {
             Err(t.error(format!("expected {kind:?}, found {:?}", t.kind)))
         }
     }
-    fn separators(&mut self) {
+    /// Skip a `function` line. Returns true for the version 1 form, whose
+    /// outputs are the case matrices, and false for `function mpc = name`
+    /// or no function line at all.
+    pub(crate) fn function_header(&mut self) -> Result<bool, Error> {
+        if self.peek().kind != Kind::Word("function".into()) {
+            return Ok(false);
+        }
+        self.take();
+        let version1 = if self.peek().kind == Kind::Symbol('[') {
+            self.take();
+            loop {
+                let t = self.take();
+                match t.kind {
+                    Kind::Symbol(']') => break,
+                    Kind::Word(_) | Kind::Symbol(',') => {}
+                    _ => return Err(t.error("expected function outputs")),
+                }
+            }
+            true
+        } else {
+            let t = self.take();
+            if !matches!(t.kind, Kind::Word(_)) {
+                return Err(t.error("expected function output"));
+            }
+            false
+        };
+        self.expect(Kind::Symbol('='))?;
+        let name = self.take();
+        if !matches!(name.kind, Kind::Word(_)) {
+            return Err(name.error("expected case function name"));
+        }
+        if self.peek().kind == Kind::Symbol('(') {
+            self.take();
+            self.expect(Kind::Symbol(')'))?;
+        }
+        if self.peek().kind == Kind::Symbol(';') {
+            self.take();
+        }
+        self.expect(Kind::Newline)?;
+        Ok(version1)
+    }
+    pub(crate) fn separators(&mut self) {
         while self.pos < self.tokens.len()
             && matches!(self.peek().kind, Kind::Newline | Kind::Symbol(';'))
         {
             self.pos += 1;
         }
     }
-    fn matrix(&mut self) -> Result<Vec<Vec<f64>>, Error> {
+    pub(crate) fn matrix(&mut self) -> Result<Vec<Vec<f64>>, Error> {
         self.expect(Kind::Symbol('['))?;
         let mut rows = Vec::new();
         let mut row = Vec::new();
@@ -232,7 +273,9 @@ impl Parser {
     }
 }
 
-/// Parse literal MATPOWER version-2 data, without executing MATLAB code.
+/// Parse literal MATPOWER data (version 2, or the older version 1 function
+/// that returns `baseMVA`, `bus`, `gen` and `branch`), without executing
+/// MATLAB code.
 ///
 /// Accepts numeric tables and supported string labels, preserving row order and
 /// extra columns. Expressions and unknown fields return source-located
@@ -249,27 +292,17 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
     let mut version = false;
     let mut labels = std::collections::BTreeMap::new();
     p.separators();
-    if p.peek().kind == Kind::Word("function".into()) {
-        p.take();
-        p.expect(Kind::Word("mpc".into()))?;
-        p.expect(Kind::Symbol('='))?;
-        let name = p.take();
-        if !matches!(name.kind, Kind::Word(_)) {
-            return Err(name.error("expected case function name"));
-        }
-        if p.peek().kind == Kind::Symbol('(') {
-            p.take();
-            p.expect(Kind::Symbol(')'))?;
-        }
-        if p.peek().kind == Kind::Symbol(';') {
-            p.take();
-        }
-        p.expect(Kind::Newline)?;
-    }
+    // Version 1 cases are functions returning the matrices themselves,
+    // `function [baseMVA, bus, gen, branch] = name`, assigned without `mpc.`.
+    let version1 = p.function_header()?;
     loop {
         p.separators();
         if p.pos >= p.tokens.len() {
             break;
+        }
+        if p.peek().kind == Kind::Word("return".into()) {
+            p.take();
+            continue;
         }
         if p.peek().kind == Kind::Word("end".into()) {
             p.take();
@@ -279,8 +312,10 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
             }
             break;
         }
-        p.expect(Kind::Word("mpc".into()))?;
-        p.expect(Kind::Symbol('.'))?;
+        if !version1 {
+            p.expect(Kind::Word("mpc".into()))?;
+            p.expect(Kind::Symbol('.'))?;
+        }
         let field = p.take();
         let Kind::Word(ref name) = field.kind else {
             return Err(field.error("expected case field"));
@@ -291,7 +326,7 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
                 if version {
                     return Err(field.error("duplicate version"));
                 }
-                p.expect(Kind::String("2".into()))?;
+                p.expect(Kind::String(if version1 { "1" } else { "2" }.into()))?;
                 version = true;
             }
             "baseMVA" => {
@@ -339,8 +374,17 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
         }
     }
     let missing = |s: &str| Error::InvalidCase(format!("missing {s}"));
-    if !version {
+    if !version && !version1 {
         return Err(missing("version = '2'"));
+    }
+    if version1 {
+        // MATPOWER's version 1 branch table stops at the status column; the
+        // conversion to version 2 adds unlimited angle differences.
+        if let Some(rows) = matrices.get_mut("branch") {
+            for r in rows.iter_mut().filter(|r| r.len() == 11) {
+                r.extend([-360.0, 360.0]);
+            }
+        }
     }
     let mut rows = |name: &str, min: usize| -> Result<Vec<Vec<f64>>, Error> {
         let data = matrices.remove(name).ok_or_else(|| missing(name))?;
@@ -462,14 +506,21 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
     Ok(case)
 }
 
-/// Read and parse a literal MATPOWER `.m` case.
+/// Read a case file as text. Bytes that are not UTF-8, such as Latin-1
+/// accents in older case comments, become replacement characters.
+pub(crate) fn read_text(path: &Path) -> Result<String, Error> {
+    Ok(String::from_utf8_lossy(&std::fs::read(path)?).into_owned())
+}
+
+/// Read and parse a literal MATPOWER `.m` case (version 2, or version 1 as
+/// MatACDC's AC cases use).
 ///
-/// Returns [`Error::Io`] on read failure (including invalid UTF-8), or errors
+/// Returns [`Error::Io`] on read failure, or errors
 /// from [`parse_matpower`].
 pub fn load_matpower(path: impl AsRef<Path>) -> Result<Case, Error> {
     let path = path.as_ref();
     log::info!("loading MATPOWER case from {}", path.display());
-    let input = std::fs::read_to_string(path)?;
+    let input = read_text(path)?;
     log::debug!("read {} bytes from {}", input.len(), path.display());
     parse_matpower(&input)
 }

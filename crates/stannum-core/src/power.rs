@@ -26,6 +26,9 @@ pub struct PowerCase {
     pub voltage_controls: rs_power::VoltageControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
+    /// Meshed VSC DC grids attached from a MatACDC DC case, with the file
+    /// name they came from.
+    pub vsc_grids: Option<(rs_power::VscGrids, String)>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -45,7 +48,13 @@ pub struct Warning {
 /// Parse MATPOWER (`.m`) or PSS/E RAW text.
 pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     if is_matpower {
-        let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
+        let case = rs_power::parse_matpower(text).map_err(|e| {
+            if text.contains("convdc") && text.contains("busdc") {
+                "This is a MatACDC DC grid case. Open its AC case first, then attach this file from Power flow.".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
         Ok(PowerCase {
             elements: Elements::from_matpower(&case),
             dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
@@ -55,6 +64,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: Vec::new(),
             voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
+            vsc_grids: None,
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -84,6 +94,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: import.vsc_lines,
             voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
+            vsc_grids: None,
             case: import.case,
             warnings: import
                 .warnings
@@ -191,7 +202,25 @@ impl SolveSettings {
                 vsc_lines: power.vsc_lines.clone(),
                 mtdc: power.mtdc.clone(),
                 adjust_taps: self.adjust_dc_taps,
+                vsc_grids: None,
             };
+        }
+        // VSC DC grids have no simplified form, so they are always detailed.
+        if self.model == ModelChoice::Ac
+            && let Some((grids, _)) = &power.vsc_grids
+        {
+            match &mut options.dc_model {
+                rs_power::DcModel::Detailed { vsc_grids, .. } => *vsc_grids = Some(grids.clone()),
+                simplified => {
+                    *simplified = rs_power::DcModel::Detailed {
+                        lines: Vec::new(),
+                        vsc_lines: Vec::new(),
+                        mtdc: Vec::new(),
+                        adjust_taps: false,
+                        vsc_grids: Some(grids.clone()),
+                    }
+                }
+            }
         }
         if self.model == ModelChoice::Ac {
             let controls = &power.voltage_controls;
@@ -302,6 +331,31 @@ pub struct CaseCounts {
     pub generators: usize,
     pub branches: usize,
     pub dc_lines: usize,
+}
+
+/// The VSC DC grids attached to a case.
+#[derive(Clone, Debug, Serialize)]
+pub struct VscGridsInfo {
+    pub file: String,
+    pub grids: usize,
+    pub dc_buses: usize,
+    pub converters: usize,
+    pub branches: usize,
+}
+
+pub fn vsc_grids_info(power: &PowerCase) -> Option<VscGridsInfo> {
+    power.vsc_grids.as_ref().map(|(g, file)| {
+        let mut numbers: Vec<u32> = g.buses.iter().map(|b| b.grid).collect();
+        numbers.sort_unstable();
+        numbers.dedup();
+        VscGridsInfo {
+            file: file.clone(),
+            grids: numbers.len(),
+            dc_buses: g.buses.len(),
+            converters: g.converters.len(),
+            branches: g.branches.len(),
+        }
+    })
 }
 
 pub fn counts(case: &Case) -> CaseCounts {
@@ -605,6 +659,146 @@ pub struct SolveReport {
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
     pub dc_systems: Vec<DcSystemReport>,
+    /// Meshed VSC DC grids attached from a MatACDC case.
+    pub vsc_grids: Option<VscGridReport>,
+}
+
+/// Solved VSC DC grids. Powers in MW and Mvar, positive into the AC grid.
+#[derive(Clone, Debug, Serialize)]
+pub struct VscGridReport {
+    /// The MatACDC file the grids came from.
+    pub file: String,
+    pub passes: usize,
+    pub converged: bool,
+    /// Converter station losses (transformer, reactor and valves) and DC
+    /// branch losses.
+    pub station_loss_mw: f64,
+    pub branch_loss_mw: f64,
+    pub converters: Vec<VscGridConverterRow>,
+    pub buses: Vec<VscGridBusRow>,
+    pub branches: Vec<VscGridBranchRow>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VscGridConverterRow {
+    pub dc_bus: u32,
+    pub ac_bus: u32,
+    pub ac_name: String,
+    pub grid: u32,
+    pub in_service: bool,
+    /// "power", "slack" or "droop".
+    pub dc_control: &'static str,
+    /// "q" or "v".
+    pub ac_control: &'static str,
+    pub ps_mw: f64,
+    pub qs_mvar: f64,
+    pub pc_mw: f64,
+    pub qc_mvar: f64,
+    pub vc: f64,
+    pub vc_deg: f64,
+    /// Valve loss from the loss formula.
+    pub loss_mw: f64,
+    /// Everything between the AC bus and the DC bus.
+    pub station_loss_mw: f64,
+    pub pdc_mw: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VscGridBusRow {
+    pub number: u32,
+    pub grid: u32,
+    pub ac_bus: u32,
+    pub vdc: f64,
+    pub kv: f64,
+    pub p_mw: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VscGridBranchRow {
+    pub from: u32,
+    pub to: u32,
+    pub in_service: bool,
+    pub from_mw: f64,
+    pub to_mw: f64,
+    pub loss_mw: f64,
+}
+
+fn vsc_grid_report(
+    grids: &rs_power::VscGrids,
+    file: &str,
+    s: &rs_power::VscGridSolution,
+    name_of: impl Fn(u32) -> String,
+) -> VscGridReport {
+    let grid_of = |dc_bus: u32| {
+        grids
+            .buses
+            .iter()
+            .find(|b| b.number == dc_bus)
+            .map_or(0, |b| b.grid)
+    };
+    let converters: Vec<VscGridConverterRow> = s
+        .converters
+        .iter()
+        .map(|c| VscGridConverterRow {
+            dc_bus: c.dc_bus,
+            ac_bus: c.ac_bus,
+            ac_name: name_of(c.ac_bus),
+            grid: grid_of(c.dc_bus),
+            in_service: c.in_service,
+            dc_control: match c.dc_control {
+                rs_power::GridDcControl::Power => "power",
+                rs_power::GridDcControl::Slack => "slack",
+                rs_power::GridDcControl::Droop => "droop",
+            },
+            ac_control: match c.ac_control {
+                rs_power::GridAcControl::ReactivePower => "q",
+                rs_power::GridAcControl::Voltage => "v",
+            },
+            ps_mw: c.ps_mw,
+            qs_mvar: c.qs_mvar,
+            pc_mw: c.pc_mw,
+            qc_mvar: c.qc_mvar,
+            vc: c.vc,
+            vc_deg: c.vc_deg,
+            loss_mw: c.loss_mw,
+            station_loss_mw: c.pdc_mw - c.ps_mw,
+            pdc_mw: c.pdc_mw,
+        })
+        .collect();
+    let branches: Vec<VscGridBranchRow> = s
+        .branches
+        .iter()
+        .map(|b| VscGridBranchRow {
+            from: b.from,
+            to: b.to,
+            in_service: b.in_service,
+            from_mw: b.from_mw,
+            to_mw: b.to_mw,
+            loss_mw: b.loss_mw,
+        })
+        .collect();
+    VscGridReport {
+        file: file.to_string(),
+        passes: s.passes,
+        converged: s.converged,
+        station_loss_mw: converters.iter().map(|c| c.station_loss_mw).sum(),
+        branch_loss_mw: branches.iter().map(|b| b.loss_mw).sum(),
+        converters,
+        buses: s
+            .buses
+            .iter()
+            .zip(&grids.buses)
+            .map(|(b, g)| VscGridBusRow {
+                number: b.number,
+                grid: b.grid,
+                ac_bus: g.ac_bus,
+                vdc: b.vdc,
+                kv: b.kv,
+                p_mw: b.p_mw,
+            })
+            .collect(),
+        branches,
+    }
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -653,6 +847,7 @@ pub fn report(
     elements: &Elements,
     dc_kinds: &[&'static str],
     controls: &rs_power::VoltageControls,
+    vsc_grids: Option<&(rs_power::VscGrids, String)>,
     settings: &SolveSettings,
     elapsed_ms: f64,
 ) -> SolveReport {
@@ -901,8 +1096,15 @@ pub fn report(
         .filter(|b| b.kind != BusType::Isolated)
         .map(|b| b.pd)
         .sum();
+    let vsc_grids = match (&result.vsc_grids, vsc_grids) {
+        (Some(s), Some((grids, file))) => Some(vsc_grid_report(grids, file, s, name_of)),
+        _ => None,
+    };
     let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum::<f64>()
-        + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>();
+        + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>()
+        + vsc_grids
+            .as_ref()
+            .map_or(0.0, |g| g.station_loss_mw + g.branch_loss_mw);
 
     let (status, converged) = match result.status {
         SolveStatus::Converged => ("Converged", true),
@@ -934,6 +1136,7 @@ pub fn report(
         branches,
         dc_lines,
         dc_systems,
+        vsc_grids,
     }
 }
 

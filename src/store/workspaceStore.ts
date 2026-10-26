@@ -64,6 +64,8 @@ interface WorkspaceState {
   drawAround: (element: string, from: ModuleId) => void;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
+  /** The open case changed in place (DC grids attached): new summary, old results dropped. */
+  caseChanged: (summary: CaseSummary) => void;
 }
 
 const LINKED_KEY = "stannum-linked-selection";
@@ -163,6 +165,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ opening: false, openError: (e as Error).message });
     }
   },
+
+  caseChanged: (summary) => set({ caseSummary: summary, solveReport: null }),
 
   closeCase: async () => {
     await api.closeCase();

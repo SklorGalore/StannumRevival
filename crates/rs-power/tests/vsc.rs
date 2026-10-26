@@ -72,6 +72,7 @@ fn detailed(vsc_lines: Vec<VscLine>, enforce_q_limits: bool) -> PowerFlowOptions
             vsc_lines,
             mtdc: Vec::new(),
             adjust_taps: true,
+            vsc_grids: None,
         },
         ..Default::default()
     }

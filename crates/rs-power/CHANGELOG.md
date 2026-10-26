@@ -16,6 +16,14 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Meshed VSC DC grids in MatACDC's model: `VscGrids` (read with
+  `load_matacdc` / `parse_matacdc`) attach to an AC case through
+  `DcModel::Detailed { vsc_grids, .. }`, with slack, droop (with deadband)
+  and power-controlled converters, several DC grids, and station losses.
+  Results are in `PowerFlowResult::vsc_grids`. MATPOWER version 1 cases
+  (`function [baseMVA, bus, gen, branch] = name`) now load too, and case
+  files that are not UTF-8 load with replacement characters.
+
 - Sensitivities follow remote regulation: with `enforce_q_limits`, a held
   bus keeps its magnitude and the generator buses holding it move, as in the
   solve, and reactive sharing between them is kept.

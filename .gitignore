@@ -17,6 +17,9 @@ src-tauri/gen/
 !/tests/large/cases.json
 !/tests/large/README.md
 
+# MatACDC, which may not be redistributed (fetched by scripts/fetch-matacdc.ps1)
+/tests/matacdc/
+
 # Docs site
 docs-site/.astro/
 

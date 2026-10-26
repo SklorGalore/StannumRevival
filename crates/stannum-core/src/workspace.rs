@@ -79,6 +79,8 @@ impl<T: Serialize> ModuleStatus<T> {
 pub struct PowerInfo {
     pub counts: power::CaseCounts,
     pub warnings: Vec<power::Warning>,
+    /// VSC DC grids attached from a MatACDC case.
+    pub vsc_grids: Option<power::VscGridsInfo>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -286,6 +288,7 @@ impl OpenCase {
             power: ModuleStatus::from(&self.power, |p| PowerInfo {
                 counts: power::counts(&p.case),
                 warnings: p.warnings.clone(),
+                vsc_grids: power::vsc_grids_info(p),
             }),
             topology: ModuleStatus::from(&self.topology, |t| TopologyInfo {
                 revision: t.case.revision,
@@ -302,6 +305,47 @@ impl OpenCase {
     fn power_case(&self) -> Result<&PowerCase, String> {
         let base = self.power.as_ref().map_err(|e| e.clone())?;
         Ok(self.edited.as_ref().unwrap_or(base))
+    }
+
+    /// Attach meshed VSC DC grids from a MatACDC DC case file, replacing any
+    /// attached before. The AC buses the converters use must be in the case.
+    pub fn attach_vsc_grids(&mut self, path: &Path) -> Result<CaseSummary, String> {
+        let base = self.power.as_mut().map_err(|e| e.clone())?;
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let grids = rs_power::parse_matacdc(&decode_text(&bytes)).map_err(|e| e.to_string())?;
+        grids.check(&base.case).map_err(|e| e.to_string())?;
+        let file = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        log::info!(
+            "Attached VSC DC grids from {file}: {} DC buses, {} converters, {} DC branches",
+            grids.buses.len(),
+            grids.converters.len(),
+            grids.branches.len()
+        );
+        base.vsc_grids = Some((grids, file));
+        self.refresh_after_dc_change()?;
+        Ok(self.summary())
+    }
+
+    /// Remove attached VSC DC grids.
+    pub fn detach_vsc_grids(&mut self) -> Result<CaseSummary, String> {
+        let base = self.power.as_mut().map_err(|e| e.clone())?;
+        if base.vsc_grids.take().is_some() {
+            log::info!("Detached the VSC DC grids");
+            self.refresh_after_dc_change()?;
+        }
+        Ok(self.summary())
+    }
+
+    /// Results describe a different case once its DC grids change.
+    fn refresh_after_dc_change(&mut self) -> Result<(), String> {
+        let edits = std::mem::take(&mut self.edits);
+        self.set_edits(edits)?;
+        self.solved = None;
+        self.before_edits = None;
+        Ok(())
     }
 
     /// Replace the study's edits. Results from before the change are dropped,
@@ -365,6 +409,7 @@ impl OpenCase {
             &power.dc_line_kinds,
             // Count moves from the file's settings, not from the last solve.
             &cold.voltage_controls,
+            power.vsc_grids.as_ref(),
             &settings,
             elapsed_ms(start),
         );

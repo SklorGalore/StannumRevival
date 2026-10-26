@@ -24,7 +24,7 @@ export interface CaseSummary {
   path: string;
   name: string;
   format: "matpower" | "raw";
-  power: ModuleStatus<{ counts: CaseCounts; warnings: RawWarning[] }>;
+  power: ModuleStatus<{ counts: CaseCounts; warnings: RawWarning[]; vsc_grids?: VscGridsInfo | null }>;
   topology: ModuleStatus<{
     /** RAW revision nodal read; 0 when built from the power flow model. */
     revision: number;
@@ -279,6 +279,66 @@ export interface SolveReport {
   dc_lines?: DcLineRow[];
   /** DC networks of the multi-terminal systems (detailed model). */
   dc_systems?: DcSystemReport[];
+  /** Meshed VSC DC grids attached from a MatACDC case. */
+  vsc_grids?: VscGridReport | null;
+}
+
+/** VSC DC grids attached to the open case from a MatACDC DC case file. */
+export interface VscGridsInfo {
+  file: string;
+  grids: number;
+  dc_buses: number;
+  converters: number;
+  branches: number;
+}
+
+/** Solved VSC DC grids; powers in MW and Mvar, positive into the AC grid. */
+export interface VscGridReport {
+  file: string;
+  passes: number;
+  converged: boolean;
+  station_loss_mw: number;
+  branch_loss_mw: number;
+  converters: VscGridConverterRow[];
+  buses: VscGridBusRow[];
+  branches: VscGridBranchRow[];
+}
+
+export interface VscGridConverterRow {
+  dc_bus: number;
+  ac_bus: number;
+  ac_name: string;
+  grid: number;
+  in_service: boolean;
+  dc_control: "power" | "slack" | "droop";
+  ac_control: "q" | "v";
+  ps_mw: number;
+  qs_mvar: number;
+  pc_mw: number;
+  qc_mvar: number;
+  vc: number;
+  vc_deg: number;
+  loss_mw: number;
+  station_loss_mw: number;
+  pdc_mw: number;
+}
+
+export interface VscGridBusRow {
+  number: number;
+  grid: number;
+  ac_bus: number;
+  vdc: number;
+  kv: number;
+  p_mw: number;
+}
+
+export interface VscGridBranchRow {
+  from: number;
+  to: number;
+  in_service: boolean;
+  from_mw: number;
+  to_mw: number;
+  loss_mw: number;
 }
 
 export interface InjectionColumn {

@@ -25,6 +25,8 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
   calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
+  attach_vsc_grids: { label: "Attaching VSC DC grids", done: "Attached VSC DC grids" },
+  detach_vsc_grids: { label: "Removing VSC DC grids", done: "Removed VSC DC grids" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
@@ -72,6 +74,7 @@ export const CASE_FILTERS = [
   { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
   { name: "MATPOWER", extensions: ["m"] },
 ];
+export const MATACDC_FILTERS = [{ name: "MatACDC DC case", extensions: ["m"] }];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 
 export async function pickFile(
@@ -114,6 +117,8 @@ export const api = {
     call<ResponseTable>("sensitivity_responses", { column, quantity, engineering }),
   exportMatpower: (path: string, solved: boolean) =>
     call<void>("export_matpower", { path, solved }),
+  attachVscGrids: (path: string) => call<CaseSummary>("attach_vsc_grids", { path }),
+  detachVscGrids: () => call<CaseSummary>("detach_vsc_grids"),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
 

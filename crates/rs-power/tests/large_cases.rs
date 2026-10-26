@@ -109,6 +109,7 @@ fn synthetic_usa_detailed_lcc_model() {
                 vsc_lines: Vec::new(),
                 mtdc: Vec::new(),
                 adjust_taps: true,
+                vsc_grids: None,
             },
             ..Default::default()
         },
@@ -142,6 +143,7 @@ fn synthetic_usa_detailed_lcc_model() {
                 vsc_lines: Vec::new(),
                 mtdc: Vec::new(),
                 adjust_taps: true,
+                vsc_grids: None,
             },
             ..Default::default()
         },
@@ -169,6 +171,7 @@ fn synthetic_usa_voltage_controls() {
                 vsc_lines: Vec::new(),
                 mtdc: Vec::new(),
                 adjust_taps: true,
+                vsc_grids: None,
             },
             voltage_controls: controls.clone(),
             ..Default::default()

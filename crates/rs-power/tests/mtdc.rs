@@ -27,6 +27,7 @@ fn detailed(imported: &RawImport, enforce_q_limits: bool, adjust_taps: bool) -> 
             vsc_lines: imported.vsc_lines.clone(),
             mtdc: imported.mtdc.clone(),
             adjust_taps,
+            vsc_grids: None,
         },
         ..Default::default()
     }

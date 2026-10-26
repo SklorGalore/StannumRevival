@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, Zap } from "lucide-react";
+import { Cable, Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
-import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, DEFAULT_SOLVE_SETTINGS, MATACDC_FILTERS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
   DcLineKind,
   DcLineRow,
@@ -13,6 +13,7 @@ import type {
   LccDetail,
   SolveReport,
   SolveSettings,
+  VscGridReport,
 } from "../../lib/analysis/types";
 import { count, fixed, sig, toCsv } from "../../lib/analysis/format";
 import {
@@ -42,7 +43,7 @@ import type { FilterRule } from "../../lib/filters";
 import { toleranceMva, tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "study" | "warnings";
+type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "vscgrid" | "sensitivities" | "study" | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -364,6 +365,140 @@ function DcNetworkTab({ systems }: { systems: DcSystemReport[] }) {
   );
 }
 
+const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`;
+
+const DC_CONTROL_LABEL: Record<VscGridReport["converters"][number]["dc_control"], string> = {
+  power: "Power",
+  slack: "DC slack",
+  droop: "Droop",
+};
+
+const vscConverterColumns: Column<VscGridReport["converters"][number]>[] = [
+  { key: "dc_bus", header: "DC bus", value: (c) => c.dc_bus, align: "right" },
+  {
+    key: "ac_bus",
+    header: "AC bus",
+    value: (c) => c.ac_bus,
+    render: (c) => (c.ac_name ? `${c.ac_bus} ${c.ac_name}` : String(c.ac_bus)),
+    align: "right",
+  },
+  { key: "grid", header: "Grid", value: (c) => c.grid, align: "right" },
+  {
+    key: "control",
+    header: "Control",
+    title: "DC side, then AC side: holds Q or the AC bus voltage",
+    value: (c) => (c.in_service ? `${DC_CONTROL_LABEL[c.dc_control]} · ${c.ac_control === "v" ? "V" : "Q"}` : "Out of service"),
+  },
+  { key: "ps", header: "Ps (MW)", title: "Active power into the AC bus", value: (c) => c.ps_mw, render: (c) => fixed(c.ps_mw), align: "right" },
+  { key: "qs", header: "Qs (Mvar)", title: "Reactive power into the AC bus", value: (c) => c.qs_mvar, render: (c) => fixed(c.qs_mvar), align: "right" },
+  { key: "vc", header: "Uc (p.u.)", title: "Converter voltage magnitude", value: (c) => c.vc, render: (c) => fixed(c.vc, 4), align: "right" },
+  { key: "vc_deg", header: "δc (°)", title: "Converter voltage angle", value: (c) => c.vc_deg, render: (c) => fixed(c.vc_deg, 2), align: "right" },
+  { key: "loss", header: "Valve loss (MW)", title: "From the converter loss formula a + b·Ic + c·Ic²", value: (c) => c.loss_mw, render: (c) => fixed(c.loss_mw, 3), align: "right" },
+  { key: "station", header: "Station loss (MW)", title: "Transformer, reactor and valve losses together", value: (c) => c.station_loss_mw, render: (c) => fixed(c.station_loss_mw, 3), align: "right" },
+  { key: "pdc", header: "Pdc (MW)", title: "Power taken from the DC grid", value: (c) => c.pdc_mw, render: (c) => fixed(c.pdc_mw), align: "right" },
+];
+
+const vscBusColumns: Column<VscGridReport["buses"][number]>[] = [
+  { key: "number", header: "DC bus", value: (b) => b.number, align: "right" },
+  { key: "grid", header: "Grid", value: (b) => b.grid, align: "right" },
+  { key: "ac_bus", header: "AC bus", value: (b) => b.ac_bus, render: (b) => (b.ac_bus ? String(b.ac_bus) : "—"), align: "right" },
+  { key: "vdc", header: "Udc (p.u.)", value: (b) => b.vdc, render: (b) => fixed(b.vdc, 5), align: "right" },
+  { key: "kv", header: "Udc (kV)", value: (b) => b.kv, render: (b) => fixed(b.kv, 2), align: "right" },
+  { key: "p", header: "Pdc (MW)", title: "Power the converter here takes from the DC grid", value: (b) => b.p_mw, render: (b) => fixed(b.p_mw), align: "right" },
+];
+
+const vscBranchColumns: Column<VscGridReport["branches"][number]>[] = [
+  { key: "from", header: "From", value: (b) => b.from, align: "right" },
+  { key: "to", header: "To", value: (b) => b.to, align: "right" },
+  { key: "from_mw", header: "P from (MW)", value: (b) => b.from_mw, render: (b) => (b.in_service ? fixed(b.from_mw) : "Out"), align: "right" },
+  { key: "to_mw", header: "P to (MW)", value: (b) => b.to_mw, render: (b) => (b.in_service ? fixed(b.to_mw) : "Out"), align: "right" },
+  { key: "loss", header: "Loss (MW)", value: (b) => b.loss_mw, render: (b) => fixed(b.loss_mw, 3), align: "right" },
+];
+
+/** Converters, DC buses and DC branches of the attached VSC DC grids. */
+function VscGridTab({ grids }: { grids: VscGridReport }) {
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="vsc-grids">
+      <Panel
+        title={`VSC DC grids from ${grids.file}`}
+        eyebrow={`Station loss ${fixed(grids.station_loss_mw, 3)} MW · DC branch loss ${fixed(grids.branch_loss_mw, 3)} MW · ${plural(grids.passes, "AC/DC pass", "AC/DC passes")}${grids.converged ? "" : " · converter powers did not settle"}`}
+      >
+        <div className="space-y-3 p-3">
+          <div>
+            <h3 className="text-xs font-semibold text-slate-600 mb-1">Converter stations</h3>
+            <DataTable rows={grids.converters} columns={vscConverterColumns} rowKey={(c) => c.dc_bus} />
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-600 mb-1">DC buses</h3>
+              <DataTable rows={grids.buses} columns={vscBusColumns} rowKey={(b) => b.number} />
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-slate-600 mb-1">DC branches</h3>
+              <DataTable rows={grids.branches} columns={vscBranchColumns} rowKey={(b) => grids.branches.indexOf(b)} />
+            </div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+/** Attach or remove meshed VSC DC grids from a MatACDC DC case file. */
+function VscGridAttach({ busy, ac }: { busy: string | null; ac: boolean }) {
+  const info = useWorkspace((s) => s.caseSummary?.power.info?.vsc_grids ?? null);
+  const caseChanged = useWorkspace((s) => s.caseChanged);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function change(work: () => Promise<Awaited<ReturnType<typeof api.detachVscGrids>>>) {
+    setWorking(true);
+    setError(null);
+    try {
+      caseChanged(await work());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setWorking(false);
+    }
+  }
+  const attach = async () => {
+    const path = await pickFile(MATACDC_FILTERS);
+    if (path) await change(() => api.attachVscGrids(path));
+  };
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="vsc-grid-attach">
+      <p className="text-[11px] font-medium text-slate-600">VSC DC grids</p>
+      {info ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700">
+          <div className="flex items-start justify-between gap-1">
+            <span className="font-medium break-all">{info.file}</span>
+            <button
+              type="button"
+              className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200"
+              onClick={() => change(() => api.detachVscGrids())}
+              disabled={!!busy || working}
+              title="Remove the VSC DC grids"
+              aria-label="Remove the VSC DC grids"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <p className="text-slate-500">
+            {plural(info.grids, "grid", "grids")} · {plural(info.converters, "converter", "converters")} ·{" "}
+            {plural(info.branches, "DC branch", "DC branches")}
+          </p>
+          {!ac && <p className="text-amber-700 mt-1">Solved with AC power flow only.</p>}
+        </div>
+      ) : (
+        <Button variant="ghost" className="justify-start" onClick={attach} disabled={!!busy || working}>
+          <Cable size={13} /> Attach MatACDC case…
+        </Button>
+      )}
+      {error && <p className="text-xs text-red-700">{error}</p>}
+    </div>
+  );
+}
+
 function SolvePanel({
   settings,
   setSettings,
@@ -495,6 +630,7 @@ function SolvePanel({
         />
         Adjust DC converter taps
       </label>
+      <VscGridAttach busy={busy} ac={ac} />
       <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
         <Play size={14} /> {busy === "solve" ? "Solving…" : "Solve"}
       </Button>
@@ -964,6 +1100,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.dc_systems?.length
         ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
         : []),
+      ...(report?.vsc_grids
+        ? [{ id: "vscgrid" as const, label: "VSC grids", count: report.vsc_grids.converters.length, disabled: false }]
+        : []),
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
@@ -1164,6 +1303,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 />
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
+              {tab === "vscgrid" && report?.vsc_grids && <VscGridTab grids={report.vsc_grids} />}
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
               )}

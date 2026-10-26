@@ -6,6 +6,7 @@ use crate::{
     mtdc::{self, MtdcMode, MtdcSolution, MtdcSystem},
     network::Network,
     vsc::{self, DcState, VscAcControl, VscLine, VscSolution},
+    vsc_grid::{VscGridSolution, VscGrids},
 };
 use faer::{
     Mat,
@@ -92,6 +93,10 @@ pub enum DcModel {
         /// Detailed multi-terminal DC systems, each naming the
         /// `case.dcline` rows of its converters.
         mtdc: Vec<MtdcSystem>,
+        /// Meshed VSC DC grids in MatACDC's model (see [`VscGrids`]), solved
+        /// sequentially with the AC network. They have no `case.dcline`
+        /// rows.
+        vsc_grids: Option<VscGrids>,
         /// Step converter taps between Newton solves to hold the scheduled
         /// DC voltage and keep firing angles in range (PSS/E's DC tap
         /// adjustment). When false, the taps stay at their case values.
@@ -164,6 +169,8 @@ pub struct PowerFlowResult {
     /// Operating points of the detailed multi-terminal DC systems, in the
     /// order given by [`DcModel::Detailed`]. Empty for the simplified model.
     pub mtdc: Vec<MtdcSolution>,
+    /// Operating point of the VSC DC grids in [`DcModel::Detailed`], if any.
+    pub vsc_grids: Option<VscGridSolution>,
 }
 
 fn linear(
@@ -1176,6 +1183,7 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
         mtdc: Vec::new(),
+        vsc_grids: None,
     })
 }
 
@@ -1858,6 +1866,7 @@ fn finish_ac(
                 DcTerminal::Lcc(_) => None,
             })
             .collect(),
+        vsc_grids: None,
     })
 }
 
@@ -2069,6 +2078,18 @@ fn write_mtdc_rows(
 /// reactive-limit infeasibility return an `Ok` result with a non-converged
 /// [`SolveStatus`].
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
+    if let DcModel::Detailed {
+        vsc_grids: Some(grids),
+        ..
+    } = &opt.dc_model
+        && opt.model == Model::Ac
+    {
+        let mut inner = opt.clone();
+        if let DcModel::Detailed { vsc_grids, .. } = &mut inner.dc_model {
+            *vsc_grids = None;
+        }
+        return crate::vsc_grid::solve(input, &inner, grids, solve);
+    }
     let started = std::time::Instant::now();
     log::info!(
         "Starting {} power flow: {} buses, {} generators, {} branches; {} start, mismatch tolerance {} MVA ({:.0e} pu), up to {} Newton iterations per pass, generator Q limits {}",
@@ -2105,6 +2126,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             vsc_lines,
             mtdc,
             adjust_taps,
+            ..
         } if opt.model == Model::Ac => {
             let mut seen = vec![false; rows];
             let mut claim = |row: usize, name: &str| {

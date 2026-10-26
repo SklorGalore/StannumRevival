@@ -508,7 +508,7 @@ fn solve_network(
 }
 
 /// Solve `a · x = b` in place by Gaussian elimination with partial pivoting.
-fn dense_solve(a: &mut [f64], mut b: Vec<f64>, m: usize) -> Option<Vec<f64>> {
+pub(crate) fn dense_solve(a: &mut [f64], mut b: Vec<f64>, m: usize) -> Option<Vec<f64>> {
     let scale = a.iter().fold(0.0f64, |w, v| w.max(v.abs())).max(1e-300);
     for col in 0..m {
         let pivot =

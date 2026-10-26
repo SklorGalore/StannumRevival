@@ -31,7 +31,10 @@ these that a case uses.
   `IF`/`IT`/`ID`, separate commutating buses (`IC`), `DCVMIN`.
 - VSC: remote voltage regulation (`REMOT`, `RMPCT`).
 - Multi-terminal: `DCPF`/`MARG` order sharing, `RGRND`.
-- Meshed VSC networks and droop control; a unified AC/DC Newton.
+- Meshed VSC grids: converter current and voltage limits, DC voltage limits,
+  MatACDC's infinite AC buses. Meshed VSC grids come only from MatACDC DC
+  cases, not from RAW files.
+- A unified AC/DC Newton.
 - Sensitivities with detailed DC models.
 
 ## Data
