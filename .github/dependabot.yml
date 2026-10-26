@@ -31,6 +31,19 @@ updates:
     open-pull-requests-limit: 5
     labels: [dependencies, javascript]
 
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      docs-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 3
+    labels: [dependencies, documentation]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

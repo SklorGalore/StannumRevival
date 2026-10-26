@@ -35,6 +35,24 @@ The branch does not need to be up to date with `main` before merging, so
 parallel PRs don't have to keep re-running CI. If two PRs conflict, GitHub
 shows it and the later one needs `main` merged in.
 
+## Documentation
+
+The user guide and technical manual live in [`docs-site/`](docs-site), an
+[Astro Starlight](https://starlight.astro.build/) site published to
+<https://sklorgalore.github.io/StannumRevival/>. Change the docs in the same PR
+as the feature they describe. The **Docs** workflow builds the site on PRs that
+touch it and publishes it when they merge; it is not a required check.
+
+```sh
+cd docs-site
+npm ci
+npm run dev     # preview at http://localhost:4321/StannumRevival/
+```
+
+Screenshots for the docs come from the browser smoke test
+(`STANNUM_SHOTS=dir`); copy the ones a page uses into
+`docs-site/src/assets/screens/`.
+
 ## Repository settings
 
 The rules above are stored in the repository and applied with
@@ -59,6 +77,8 @@ It sets:
 - **Actions**: the `GITHUB_TOKEN` is read-only by default, workflows can't
   approve PRs, only GitHub-owned, verified and listed actions can run, and
   workflows from outside contributors wait for approval.
+- **Pages**: the documentation site is published by the **Docs** workflow
+  rather than from a branch.
 
 When a ruleset JSON changes, re-run the script. If you rename a CI job, update
 the required check names in `.github/rulesets/` in the same PR, or PRs will

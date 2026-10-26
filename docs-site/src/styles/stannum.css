@@ -1,0 +1,95 @@
+/* Stannum's shell colours: the dark teal module rail, teal accents, slate
+   greys and the amber of the logo. Starlight reads these custom properties. */
+
+:root {
+  --stannum-rail: #0f2e30;
+  --stannum-mint: #8fd3c9;
+  --stannum-amber: #f2b84b;
+}
+
+/* Dark theme (Starlight's default). */
+:root {
+  --sl-color-accent-low: #0f3d3e;
+  --sl-color-accent: #14b8a6; /* teal-500 */
+  --sl-color-accent-high: #5eead4; /* teal-300 */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e2e8f0;
+  --sl-color-gray-2: #cbd5e1;
+  --sl-color-gray-3: #94a3b8;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #334155;
+  --sl-color-gray-6: #1e293b;
+  --sl-color-black: #0b1416;
+  --sl-color-bg-nav: var(--stannum-rail);
+  --sl-color-bg-sidebar: #0d2426;
+}
+
+/* Light theme. */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #ccfbf1; /* teal-100 */
+  --sl-color-accent: #0d9488; /* teal-600 */
+  --sl-color-accent-high: #115e59; /* teal-800 */
+  --sl-color-white: #0f172a;
+  --sl-color-gray-1: #1e293b;
+  --sl-color-gray-2: #334155;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: #94a3b8;
+  --sl-color-gray-5: #cbd5e1;
+  --sl-color-gray-6: #e2e8f0;
+  --sl-color-gray-7: #f1f5f9;
+  --sl-color-black: #ffffff;
+  --sl-color-bg-nav: var(--stannum-rail);
+  --sl-color-bg-sidebar: #f8fafc;
+}
+
+/* The header always sits on the rail colour, as the app's module rail does,
+   so in the light theme it keeps the dark theme's text colours. */
+.header {
+  border-bottom-color: #164e4f;
+}
+:root[data-theme="light"] .header {
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f0fdfa;
+  --sl-color-gray-2: #ccfbf1;
+  --sl-color-gray-3: #99c9c2;
+  --sl-color-gray-4: #5f8f8a;
+  --sl-color-gray-5: #1d5254;
+  --sl-color-gray-6: #133a3c;
+  --sl-color-black: #0f2e30;
+  --sl-color-text-accent: var(--stannum-mint);
+}
+.header .site-title {
+  color: #f0fdfa;
+}
+.header .site-title:hover {
+  color: var(--stannum-mint);
+}
+
+/* Keyboard keys, as the app shows them. */
+.sl-markdown-content kbd {
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.8em;
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--sl-color-gray-5);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--sl-color-gray-6);
+  white-space: nowrap;
+}
+
+/* Equations scroll on their own on narrow screens instead of the page. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+/* Screenshots get a hairline frame so light captures don't float. */
+.sl-markdown-content img {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 6px;
+}
+.sl-markdown-content .hero img,
+.sl-markdown-content img[src$=".svg"] {
+  border: none;
+}

@@ -12,6 +12,10 @@ React. Stannum brings four tools into one app that shares a single open case:
 
 All analysis runs locally in native Rust. Case files never leave your machine.
 
+**Documentation:** the [user guide and technical manual](https://sklorgalore.github.io/StannumRevival/)
+cover every module and the solver models behind them. Their source is in
+[`docs-site/`](docs-site).
+
 ![Topology module: metrics, network graph with a traced path, inspector and bus table](docs/screenshots/topology.png)
 
 | Power flow | Case diff |

@@ -16,3 +16,6 @@ src-tauri/gen/
 /tests/large/*
 !/tests/large/cases.json
 !/tests/large/README.md
+
+# Docs site
+docs-site/.astro/

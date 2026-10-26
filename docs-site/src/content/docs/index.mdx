@@ -1,0 +1,47 @@
+---
+title: Stannum
+description: A desktop workbench for power system engineers. Power flow, one-line diagrams, topology and case comparison on one open case.
+template: splash
+hero:
+  tagline: A desktop workbench for power system engineers. Open a PSS/E or MATPOWER case and investigate it from every side, locally, in native Rust.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Read the user guide
+      link: /StannumRevival/start/introduction/
+      icon: right-arrow
+    - text: Technical manual
+      link: /StannumRevival/manual/architecture/
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+![Power flow overview of a 300-bus case: convergence, totals, voltage profile and branch loading](../../assets/screens/overview-charts.png)
+
+<CardGrid>
+  <Card title="Power flow" icon="rocket">
+    Sparse Newton–Raphson AC flow with reactive limits, remote voltage
+    regulation, switched shunts, tap changers and detailed HVDC: two-terminal
+    LCC, VSC and multi-terminal DC. Linear DC flow, sensitivities, PTDF and
+    LODF.
+  </Card>
+  <Card title="Diagram" icon="pencil">
+    Generate one-lines from the case around any bus, with solved flows and
+    voltages on them, or draw and export your own.
+  </Card>
+  <Card title="Topology" icon="puzzle">
+    Islands, bridges, articulation buses, fewest-hop paths and an interactive
+    network graph.
+  </Card>
+  <Card title="Case diff" icon="document">
+    Exact, record-by-record comparison of two RAW cases, with no floating-point
+    tolerance to hide a change.
+  </Card>
+</CardGrid>
+
+## Where to start
+
+- New to Stannum? Start with [What Stannum is](/StannumRevival/start/introduction/) and [Open a case](/StannumRevival/start/open-a-case/).
+- Looking for a button or shortcut? The [user guide](/StannumRevival/guide/shell/) walks through every module.
+- Want to know what the solver does with your data? The [technical manual](/StannumRevival/manual/architecture/) gives the equations, control logic and what is not modelled.
