@@ -14,6 +14,7 @@ import { caseNetwork } from "../../lib/diagram/network";
 import { generateDiagram } from "../../lib/diagram/generate";
 import { centreBus, DrawAroundButton } from "../../ui/DrawAround";
 import { useSharedSelection } from "./useSharedSelection";
+import { DrawPrompt } from "./DrawPrompt";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useDrawingStyle } from "../../store/drawingStyleStore";
 import { NetworkCanvas, NetworkSelection, NetworkToolbar } from "./network/NetworkView";
@@ -87,10 +88,12 @@ function useDrawRequest(): { busy: boolean; error: string | null; dismiss: () =>
     caseNetwork()
       .then((net) => {
         if (!net.buses.some((b) => b.id === bus && !b.star)) throw new Error(`Bus ${bus} isn't in the case network.`);
-        return generateDiagram(net, { kind: "around", bus, depth });
+        // A branch is drawn from both its ends, and the element is marked.
+        return generateDiagram(net, { kind: "around", bus, depth, element: request.element });
       })
       .then((out) => {
-        if (live) useDiagramStore.getState().replaceWithGenerated(out.nodes, out.edges, summary.name, { bus, depth });
+        if (live)
+          useDiagramStore.getState().replaceWithGenerated(out.nodes, out.edges, summary.name, { bus, depth, element: request.element });
       })
       .catch((e: Error) => live && setError(`Couldn't draw around ${elementLabel(request.element)}: ${e.message}`))
       .finally(() => live && setBusy(false));
@@ -143,6 +146,8 @@ function Inner({ active }: { active: boolean }) {
   useKeyboardShortcuts(active && !network);
   const missing = useSharedSelection();
   const drawing = useDrawRequest();
+  // An empty canvas offers to draw instead (DrawPrompt).
+  const blank = useDiagramStore((s) => s.nodes.length === 0);
   // Print style and exports are black on white whatever the app theme.
   const dark = useDarkCanvas();
   // A drawing generated from the open case is studied, not built by hand:
@@ -187,7 +192,8 @@ function Inner({ active }: { active: boolean }) {
         )}
         <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
-          {missing && !drawing.busy && !network && <NotDrawn element={missing} />}
+          {!drawing.busy && !network && <DrawPrompt />}
+          {missing && !drawing.busy && !blank && !network && <NotDrawn element={missing} />}
           {(networkShown || network) && (
             <div className={network ? "absolute inset-0 z-20" : "hidden"}>
               <NetworkCanvas visible={active && network} />

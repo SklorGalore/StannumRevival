@@ -516,3 +516,58 @@ fn the_default_tolerance_is_2_mva_on_any_base() {
     // A case with no base falls back to 100 MVA.
     assert_eq!(settings.options(0.0).tolerance, 0.02);
 }
+
+#[test]
+fn dc_grid_file_attaches_to_a_case_and_solves() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("vsc_grids/two_area.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    let summary = case
+        .load_dc_grids(&fixture("vsc_grids/two_area.dcgrid.json"))
+        .unwrap();
+    assert_eq!(summary.grids.len(), 2);
+    assert_eq!(summary.grids[1].converters, 4);
+    assert!(case.summary().dc_grids.is_some());
+
+    let report = case.solve(SolveSettings::default()).unwrap();
+    assert!(report.converged);
+    let vsc = report.vsc_grids.as_ref().expect("VSC grid results");
+    assert!(vsc.converged && vsc.iterations > 1);
+    let [three, four] = &vsc.grids[..] else {
+        panic!()
+    };
+    assert_eq!(three.converters[0].dc_control, "slack");
+    assert_eq!(three.converters[1].ac_control, "voltage");
+    assert!((three.converters[2].ps_mw + 150.0).abs() < 1e-6);
+    assert!(four.converters.iter().all(|c| c.q_max_mvar.is_some()));
+    // Losses: generation covers load, AC losses and the DC grids' losses
+    // (to the 2 MVA tolerance at each bus).
+    let gap = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
+    assert!(gap.abs() < 0.5, "{gap}");
+
+    // A DC solve leaves the grids out; detaching them returns to plain AC.
+    let dc = SolveSettings {
+        model: ModelChoice::Dc,
+        ..SolveSettings::default()
+    };
+    assert!(case.solve(dc).unwrap().vsc_grids.is_none());
+    case.clear_dc_grids();
+    assert!(
+        case.solve(SolveSettings::default())
+            .unwrap()
+            .vsc_grids
+            .is_none()
+    );
+}
+
+#[test]
+fn a_dc_grid_file_that_does_not_fit_the_case_is_refused() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    let error = case
+        .load_dc_grids(&fixture("vsc_grids/two_area.dcgrid.json"))
+        .unwrap_err();
+    assert!(error.contains("AC bus 105 is not in the case"), "{error}");
+    assert!(case.dc_grids.is_none());
+}

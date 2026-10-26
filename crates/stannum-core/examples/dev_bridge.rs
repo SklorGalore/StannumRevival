@@ -38,6 +38,15 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             ws.current_mut()?.set_edits(edits)?;
             Ok(Value::Null)
         }
+        "load_dc_grids" => to_json(ws.current_mut()?.load_dc_grids(&PathBuf::from(arg::<
+            String,
+        >(
+            args, "path",
+        )?))?),
+        "clear_dc_grids" => {
+            ws.current_mut()?.clear_dc_grids();
+            Ok(Value::Null)
+        }
         "calculate_sensitivities" => {
             let s: SolveSettings = arg(args, "settings")?;
             to_json(ws.current_mut()?.sensitivities(s)?)

@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_VSC_CASE, STANNUM_VSC_GRIDS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -317,18 +317,32 @@ await page.getByText(/^Around\b/).waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
 const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
 assert.equal(await studied.count(), 1, "studied bus highlighted");
+// Branches leaving one bus share a marker that counts them.
 const markers = page.locator(".react-flow__node-offPage");
-assert.equal(await markers.count(), 2, "markers toward buses 1 and 3");
+assert.equal(await markers.count(), 1, "one marker for the branches toward buses 1 and 3");
+assert.equal((await markers.getByTestId("off-page-count").textContent()).trim(), "2");
+await markers.filter({ hasText: "To 2 buses" }).waitFor();
 await page.waitForTimeout(400);
 const studiedAt = await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform);
 await markers.first().dblclick();
-await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 5);
 assert.equal(await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform), studiedAt, "expand moved bus 4");
+assert.equal(await markers.count(), 0, "both branches drawn, so the marker goes");
 await page.waitForTimeout(500); // wires go in a frame after the taps
 await shot("diagram-local");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "undo removes the expansion");
+// One bus brought in from the bundle's menu leaves a plain marker for the other.
+await markers.first().click({ button: "right" });
+const bringIn = page.getByRole("menuitem", { name: /^Bring in (?!all)/ });
+assert.equal(await bringIn.count(), 2, "each far bus offered");
+await bringIn.first().click();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+assert.equal(await markers.getByTestId("off-page-count").count(), 0, "the bundle is down to a single branch");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3);
 
 // The Network style draws the same neighbourhood as a bus-branch graph, and
 // switching keeps the focus bus, the hop count and the selection.
@@ -682,6 +696,32 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await shot("dc-diff-back");
 }
 
+// VSC DC grids: attach a Stannum DC grid file to a case, solve, and read the
+// converters, DC buses and DC lines of each grid.
+if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
+  await queue(STANNUM_VSC_CASE);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByTestId("open-vsc-grids").click();
+  await queue(STANNUM_VSC_GRIDS);
+  await page.getByRole("button", { name: "Attach DC grid file…" }).click();
+  await page.getByTestId("dc-grid-file").getByText("two_area.dcgrid.json").waitFor();
+  await page.getByText("Solve to include these DC grids.").waitFor();
+  await shot("vsc-grids-attached");
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  const tab = page.getByTestId("vsc-grids");
+  await tab.getByText("AC/DC iterations").waitFor();
+  assert.equal(await tab.getByTestId("vsc-grid").count(), 2, "both DC grids reported");
+  await tab.getByRole("cell", { name: "Offshore", exact: true }).first().waitFor();
+  await tab.getByRole("cell", { name: "DC slack" }).waitFor();
+  await tab.getByRole("cell", { name: "Droop" }).first().waitFor();
+  await shot("vsc-grids");
+  await tab.getByTestId("vsc-grid").nth(1).scrollIntoViewIfNeeded();
+  await shot("vsc-grids-droop");
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.getByText("Converged").first().waitFor();
+}
+
 // Findings lead somewhere: on a case with limit violations, a check opens the
 // violations worst first, and "Draw around" opens the diagram on the element.
 // Selections are unlinked here, so this works without linking.
@@ -849,6 +889,35 @@ if (STANNUM_VIOLATIONS) {
   await page.locator("[data-pane=right]").getByRole("button", { name: "Close split view" }).click();
   await page.locator("[data-pane]").first().waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Link selection" }).waitFor();
+
+  // Drawn around a branch, a local drawing grows from both its ends (neither
+  // is the studied bus) and the branch itself is marked.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  const branchRow = page.locator("table:visible tbody tr:not([data-spacer])").first();
+  await branchRow.click();
+  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByText(/^Around\b/).filter({ hasText: /Line|Transformer/ }).first().waitFor();
+  await page.getByTestId("draw-request").waitFor({ state: "detached" });
+  await page.getByTestId("focus-halo").first().waitFor();
+  assert.equal(await studied.count(), 0, "a branch has no studied bus");
+  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  await shot("around-branch");
+
+  // An empty drawing offers to draw around the worst violation.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  const prompt = page.getByTestId("draw-prompt");
+  await prompt.waitFor();
+  await prompt.getByRole("button", { name: new RegExp(`worst violation: ${worst}(?!\\d)`) }).waitFor();
+  await shot("draw-prompt");
+  await prompt.getByRole("button", { name: /worst violation/ }).click();
+  await prompt.waitFor({ state: "detached" });
+  await page.getByText(/^Around\b/).filter({ hasText: /\S/ }).first().waitFor();
+  await studied.first().waitFor();
+  assert.equal(await studied.count(), 1, "drawn around the worst bus");
 
   // Tables draw only the rows in view, carry bus names, and show loading and
   // limits as bars and marks.

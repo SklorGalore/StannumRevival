@@ -5,6 +5,7 @@
 //! only reads RAW revision 35); the other modules keep working and the
 //! frontend shows why a module is unavailable.
 
+use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
 use crate::study::{self, Edit};
@@ -43,6 +44,8 @@ pub struct OpenCase {
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
     pub edited: Option<PowerCase>,
+    /// VSC DC grids from a DC grid file, solved with every AC solve.
+    pub dc_grids: Option<LoadedDcGrids>,
 }
 
 #[derive(Default)]
@@ -101,6 +104,8 @@ pub struct CaseSummary {
     pub topology: ModuleStatus<TopologyInfo>,
     /// RAW files can be used as a comparison baseline.
     pub diffable: bool,
+    /// The attached DC grid file, if any.
+    pub dc_grids: Option<DcGridsSummary>,
 }
 
 #[derive(Serialize)]
@@ -275,6 +280,7 @@ impl OpenCase {
             sensitivity: None,
             edits: vec![],
             edited: None,
+            dc_grids: None,
         }
     }
 
@@ -295,6 +301,7 @@ impl OpenCase {
                 titles: t.case.titles.clone(),
             }),
             diffable: self.format == CaseFormat::Raw,
+            dc_grids: self.dc_grids.as_ref().map(LoadedDcGrids::summary),
         }
     }
 
@@ -356,10 +363,52 @@ impl OpenCase {
             }
             _ => None,
         };
-        let result = rs_power::solve(warm.as_ref().unwrap_or(&power.case), &options)
-            .map_err(|e| study::explain(e.to_string(), &self.edits))?;
+        let input = warm.as_ref().unwrap_or(&power.case);
+        let grids = self
+            .dc_grids
+            .as_ref()
+            .filter(|_| settings.model == power::ModelChoice::Ac);
+        if self.dc_grids.is_some() && grids.is_none() {
+            log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
+        }
+        let (result, vsc) = match grids {
+            Some(file) => {
+                let acdc = rs_power::solve_dc_grids(
+                    input,
+                    &options,
+                    &file.grids,
+                    &rs_power::DcGridSettings::default(),
+                )
+                .map_err(|e| study::explain(e.to_string(), &self.edits))?;
+                let names = power::bus_names(&power.case);
+                let index: std::collections::HashMap<u32, usize> = power
+                    .case
+                    .buses
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| (b.id, i))
+                    .collect();
+                let vsc = dc_grids::report(file, &acdc, |bus| {
+                    index
+                        .get(&bus)
+                        .and_then(|&i| names.get(i))
+                        .cloned()
+                        .unwrap_or_default()
+                });
+                let mut ac = acdc.ac;
+                // The AC/DC iteration's outcome, not only the last AC solve's.
+                ac.status = acdc.status;
+                ac.iterations = acdc.ac_iterations;
+                (ac, Some(vsc))
+            }
+            None => (
+                rs_power::solve(input, &options)
+                    .map_err(|e| study::explain(e.to_string(), &self.edits))?,
+                None,
+            ),
+        };
         let solved_ms = elapsed_ms(start);
-        let report = power::report(
+        let mut report = power::report(
             &result,
             &power.elements,
             &power.dc_line_kinds,
@@ -368,10 +417,53 @@ impl OpenCase {
             &settings,
             elapsed_ms(start),
         );
+        if let Some(vsc) = vsc {
+            let lost: f64 = vsc
+                .grids
+                .iter()
+                .map(|g| g.line_loss_mw + g.converter_loss_mw)
+                .sum();
+            report.total_losses_mw += lost;
+            log::info!(
+                "VSC DC grids: {} after {} AC/DC iterations; {:.1} MW lost in converters and DC lines",
+                if vsc.converged {
+                    "converged"
+                } else {
+                    "not converged"
+                },
+                vsc.iterations,
+                lost
+            );
+            report.vsc_grids = Some(vsc);
+        }
         self.solved = Some((result, settings));
         self.before_edits = None;
         log_report(&report, solved_ms);
         Ok(report)
+    }
+
+    /// Attach a DC grid file; the next AC solve includes its grids. The file
+    /// is checked against the case first, and a bad file changes nothing.
+    pub fn load_dc_grids(&mut self, path: &Path) -> Result<DcGridsSummary, String> {
+        let loaded = LoadedDcGrids::read(path)?;
+        rs_power::check_dc_grids(&self.power_case()?.case, &loaded.grids)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let summary = loaded.summary();
+        log::info!(
+            "Attached {} with {} DC grid{} ({} converters); solve to include them",
+            summary.name,
+            summary.grids.len(),
+            if summary.grids.len() == 1 { "" } else { "s" },
+            summary.grids.iter().map(|g| g.converters).sum::<usize>()
+        );
+        self.dc_grids = Some(loaded);
+        Ok(summary)
+    }
+
+    pub fn clear_dc_grids(&mut self) {
+        if let Some(g) = self.dc_grids.take() {
+            log::info!("Detached {}", g.path.display());
+        }
     }
 
     pub fn sensitivities(

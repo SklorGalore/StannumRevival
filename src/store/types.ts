@@ -52,6 +52,8 @@ export interface GeneratorData extends Record<string, unknown> {
   powerFactor: number;
   groundingType: "solidly" | "resistance" | "reactance" | "ungrounded";
   caseRef?: CaseRef;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
 export interface LoadData extends Record<string, unknown> {
@@ -92,6 +94,8 @@ export interface TransformerData extends Record<string, unknown> {
   /** The case's "to" bus is on the primary (top) side. */
   reversed?: boolean;
   outOfService?: boolean;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
 export interface CircuitBreakerData extends Record<string, unknown> {
@@ -144,9 +148,23 @@ export interface ConductorData extends Record<string, unknown> {
   /** The edge's source is the branch's "to" bus. */
   reversed?: boolean;
   outOfService?: boolean;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
-/** Marks a branch that leaves the drawn part of the case. */
+/** One branch leaving the drawn part of the case. */
+export interface OffPageLink {
+  /** Bus at the far end, outside the drawing. */
+  bus: number;
+  busName: string;
+  caseRef?: CaseRef;
+  /** Flow is read at the inside end, and the inside end is the "to" bus. */
+  reversed?: boolean;
+  outOfService?: boolean;
+}
+
+/** Marks a branch that leaves the drawn part of the case, or (with `links`)
+ *  all the branches leaving one bus. */
 export interface OffPageData extends Record<string, unknown> {
   label: string;
   rotation?: Rotation;
@@ -158,6 +176,8 @@ export interface OffPageData extends Record<string, unknown> {
   caseRef?: CaseRef;
   reversed?: boolean;
   outOfService?: boolean;
+  /** Set on a bundled marker: every branch it stands for, `bus` being the first's. */
+  links?: OffPageLink[];
 }
 
 /** A two-terminal DC line: a converter at each end and the DC line between. */
@@ -175,6 +195,8 @@ export interface DcLinkData extends Record<string, unknown> {
   rotation?: Rotation;
   /** Two-terminal when left out. */
   dcKind?: "two_terminal" | "vsc" | "multi_terminal";
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
 // ── Typed React Flow unions ──────────────────────────────────────────────────
@@ -229,7 +251,16 @@ export interface DiagramMetadata {
   /** File name of the case this diagram was generated from, if any. */
   caseName?: string;
   /** For a local drawing: the studied bus and how many hops out it reaches. */
-  around?: { bus: number; depth: number };
+  around?: Around;
+}
+
+/** A local drawing: `depth` hops around `bus`, or around both ends of
+ *  `element` (a branch) when it is one. */
+export interface Around {
+  bus: number;
+  depth: number;
+  /** The element asked for, marked on the drawing. */
+  element?: string;
 }
 
 export interface SLDDiagram {
@@ -317,7 +348,7 @@ export interface DiagramStore {
     nodes: SLDNode[],
     edges: SLDEdge[],
     caseName: string,
-    around?: { bus: number; depth: number }
+    around?: Around
   ) => void;
   toggleResults: () => void;
   requestFit: () => void;

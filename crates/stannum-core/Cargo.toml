@@ -10,6 +10,7 @@ rs-power = { path = "../rs-power" }
 nodal = { path = "../nodal" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+num-complex = "0.4"
 encoding_rs = "0.8"
 thiserror = "2"
 log = "0.4"

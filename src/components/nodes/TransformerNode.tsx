@@ -58,6 +58,7 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
     <SymbolFrame
       w={W}
       h={H}
+      focus={data.focus}
       rotation={data.rotation}
       labelOffset={data.labelOffset}
       terminals={TERMINALS}
