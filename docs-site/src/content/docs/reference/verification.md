@@ -41,7 +41,10 @@ The station model reproduces every converter in Tables II and III of Beerten,
 Cole and Belmans (2012) from its system-bus values. The DC network, droop
 control and converter limits are checked against hand solutions, and a demo
 case with three asynchronous AC grids and two meshed DC grids is checked for
-power balance and set-points. See [Meshed VSC
+power balance and set-points. On that case and two variations of it the
+solver also agrees with MatACDC 1.0 (KU Leuven) to 10⁻⁷ MW, except where a
+converter reaches its limits, which Stannum meets exactly and MatACDC stops
+short of. See [Meshed VSC
 grids](/StannumRevival/manual/hvdc/vsc-grids/#verification).
 
 ## Large cases
