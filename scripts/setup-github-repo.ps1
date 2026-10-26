@@ -13,6 +13,8 @@ CONTRIBUTING.md describes:
 - Actions: GITHUB_TOKEN read-only by default, workflows may not approve
   PRs, only GitHub-owned, verified and listed actions may run, and runs
   from outside contributors wait for approval.
+- Pages: the documentation site is published by the Docs workflow
+  (build type "workflow"), not from a branch.
 - Rulesets: every .github/rulesets/*.json file is created, or updated in
   place when a ruleset with the same name already exists.
 
@@ -112,6 +114,8 @@ function Show-Audit {
         $w = Invoke-GhApi "repos/$Repo/actions/permissions/workflow"
         Write-Host "  actions allowed: $($a.allowed_actions); token default: $($w.default_workflow_permissions); can approve PRs: $($w.can_approve_pull_request_reviews)"
     } catch { Write-Host '  actions permissions: not visible' }
+    try { $pg = Invoke-GhApi "repos/$Repo/pages"; Write-Host "  pages: $($pg.build_type) at $($pg.html_url)" }
+    catch { Write-Host '  pages: not enabled' }
     $rulesets = @(Invoke-GhApi "repos/$Repo/rulesets")
     Write-Host "Rulesets: $($rulesets.Count)"
     foreach ($rs in $rulesets) { Write-Host "  $($rs.name) [$($rs.target), $($rs.enforcement)]" }
@@ -186,6 +190,16 @@ Invoke-Step 'Actions: outside contributors need approval before workflows run' {
     Invoke-GhApi "repos/$Repo/actions/permissions/fork-pr-contributor-approval" -Method PUT -Body @{
         approval_policy = 'all_external_contributors'
     } | Out-Null
+}
+
+Invoke-Step 'GitHub Pages: publish from the Docs workflow' {
+    $pages = $null
+    try { $pages = Invoke-GhApi "repos/$Repo/pages" } catch { }
+    if ($pages) {
+        Invoke-GhApi "repos/$Repo/pages" -Method PUT -Body @{ build_type = 'workflow' } | Out-Null
+    } else {
+        Invoke-GhApi "repos/$Repo/pages" -Method POST -Body @{ build_type = 'workflow' } | Out-Null
+    }
 }
 
 $existing = @{}

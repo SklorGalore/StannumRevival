@@ -1,0 +1,43 @@
+---
+title: What isn't modelled
+description: Known gaps in Stannum's models and data coverage.
+---
+
+Stannum aims to say plainly what it does not do. Import warnings name any of
+these that a case uses.
+
+## Power flow
+
+- Optimal power flow, continuation power flow, contingency analysis (beyond
+  manual [studies](/StannumRevival/guide/studies/)), short circuit and dynamics.
+- Voltage-dependent (ZIP) loads in the solve: RAW constant-current and
+  constant-admittance loads are frozen at the file's voltage.
+- Alternative AC formulations (current injection, Cartesian), fast-decoupled
+  and radial methods, three-phase models.
+- Enforcement of voltage, branch rating, angle-difference and generator P
+  limits (they are checked in results only).
+- Area interchange control.
+
+## Controls
+
+- Switched shunts in modes 3–6 (`MODSW`).
+- Transformer controls other than voltage (`COD` 2–5): reactive power, active
+  power, DC line and asymmetric controls.
+- Impedance correction tables and magnetizing admittance.
+
+## HVDC
+
+- LCC: capacitor-commutated converters (`XCAP`), the AC transformer named by
+  `IF`/`IT`/`ID`, separate commutating buses (`IC`), `DCVMIN`.
+- VSC: remote voltage regulation (`REMOT`, `RMPCT`).
+- Multi-terminal: `DCPF`/`MARG` order sharing, `RGRND`.
+- Meshed VSC networks and droop control; a unified AC/DC Newton.
+- Sensitivities with detailed DC models.
+
+## Data
+
+- FACTS, GNE devices, induction machines.
+- RAWX (the JSON form of RAW), RAW export.
+- Topology from RAW files other than revision 35 has no switching devices.
+- Case diff for revisions other than 33 and 35.
+- Diagram generation of switching devices.

@@ -1,0 +1,91 @@
+// @ts-check
+import { defineConfig } from "astro/config";
+import starlight from "@astrojs/starlight";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+
+// Published to GitHub Pages at https://sklorgalore.github.io/StannumRevival/.
+export default defineConfig({
+  site: "https://sklorgalore.github.io",
+  base: "/StannumRevival",
+  markdown: {
+    remarkPlugins: [remarkMath],
+    rehypePlugins: [rehypeKatex],
+  },
+  integrations: [
+    starlight({
+      title: "Stannum",
+      description: "Documentation for Stannum, a desktop workbench for power system engineers.",
+      logo: { src: "./src/assets/logo.svg" },
+      favicon: "/favicon.svg",
+      social: [{ icon: "github", label: "GitHub", href: "https://github.com/SklorGalore/StannumRevival" }],
+      editLink: { baseUrl: "https://github.com/SklorGalore/StannumRevival/edit/main/docs-site/" },
+      customCss: ["katex/dist/katex.min.css", "./src/styles/stannum.css"],
+      lastUpdated: true,
+      sidebar: [
+        {
+          label: "Start here",
+          items: [
+            { label: "What Stannum is", slug: "start/introduction" },
+            { label: "Install and build", slug: "start/install" },
+            { label: "Open a case", slug: "start/open-a-case" },
+          ],
+        },
+        {
+          label: "User guide",
+          items: [
+            { label: "The window", slug: "guide/shell" },
+            { label: "Find anything (Ctrl+K)", slug: "guide/command-palette" },
+            { label: "Log", slug: "guide/log" },
+            { label: "Side by side", slug: "guide/side-by-side" },
+            { label: "Studies", slug: "guide/studies" },
+            { label: "Diagram", slug: "guide/diagram" },
+            { label: "Power flow", slug: "guide/power-flow" },
+            { label: "Topology", slug: "guide/topology" },
+            { label: "Case diff", slug: "guide/case-diff" },
+            { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
+          ],
+        },
+        {
+          label: "Technical manual",
+          items: [
+            { label: "Architecture", slug: "manual/architecture" },
+            { label: "Network model", slug: "manual/network-model" },
+            { label: "AC Newton power flow", slug: "manual/ac-power-flow" },
+            { label: "DC (linear) power flow", slug: "manual/dc-power-flow" },
+            { label: "Generator reactive limits", slug: "manual/reactive-limits" },
+            { label: "Remote voltage regulation", slug: "manual/remote-regulation" },
+            { label: "Switched shunts and taps", slug: "manual/voltage-controls" },
+            { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
+            {
+              label: "HVDC",
+              items: [
+                { label: "Overview and simplified model", slug: "manual/hvdc/overview" },
+                { label: "Two-terminal LCC", slug: "manual/hvdc/lcc" },
+                { label: "Two-terminal VSC", slug: "manual/hvdc/vsc" },
+                { label: "Multi-terminal DC", slug: "manual/hvdc/mtdc" },
+              ],
+            },
+            { label: "Topology analysis", slug: "manual/topology" },
+            { label: "Case diff", slug: "manual/case-diff" },
+          ],
+        },
+        {
+          label: "File formats",
+          items: [
+            { label: "PSS/E RAW", slug: "reference/psse-raw" },
+            { label: "MATPOWER", slug: "reference/matpower" },
+          ],
+        },
+        {
+          label: "Reference",
+          items: [
+            { label: "Verification", slug: "reference/verification" },
+            { label: "What isn't modelled", slug: "reference/limitations" },
+            { label: "Glossary", slug: "reference/glossary" },
+          ],
+        },
+      ],
+    }),
+  ],
+});
