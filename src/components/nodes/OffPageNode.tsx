@@ -1,6 +1,6 @@
 import type { NodeProps } from "@xyflow/react";
 import type { OffPageNode as OffPageNodeType } from "../../store/types";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
@@ -12,7 +12,7 @@ const TERMINALS: Terminal[] = [{ id: "op-top", type: "source", x: CX, y: 0, side
  *  on the wire leading to it. */
 export function OffPageNode({ data, selected }: NodeProps<OffPageNodeType>) {
   const ink = useInk();
-  const stroke = selected ? SELECTED : data.outOfService ? ink.off : ink.line;
+  const stroke = selected ? ink.selected : data.outOfService ? ink.off : ink.line;
   return (
     <SymbolFrame
       w={W}

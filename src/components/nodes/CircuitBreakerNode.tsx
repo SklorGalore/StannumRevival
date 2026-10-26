@@ -1,7 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { CircuitBreakerNode as CBNodeType } from "../../store/types";
 import { useDiagramStore } from "../../store/diagramStore";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
@@ -18,7 +18,7 @@ const TERMINALS: Terminal[] = [
 export function CircuitBreakerNode({ id, data, selected }: NodeProps<CBNodeType>) {
   const updateNodeData = useDiagramStore((s) => s.updateNodeData);
   const ink = useInk();
-  const stroke = selected ? SELECTED : ink.line;
+  const stroke = selected ? ink.selected : ink.line;
   const fill = data.state === "closed" ? ink.line : data.state === "fault" ? ink.alert("#dc2626") : "white";
 
   return (

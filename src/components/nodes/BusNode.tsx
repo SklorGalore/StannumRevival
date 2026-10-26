@@ -3,7 +3,7 @@ import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps 
 import type { BusNode as BusNodeType } from "../../store/types";
 import { useResults } from "../../lib/diagram/results";
 import { useResultMarks, voltageBand } from "../../lib/diagram/detail";
-import { useInk, SELECTED } from "../../lib/diagram/ink";
+import { useInk } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import { busTaps } from "./shared/busTaps";
 import { handleStyle } from "./shared/SymbolFrame";
@@ -53,7 +53,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const length = data.length ?? 200;
   const vertical = isVertical(data);
   const ink = useInk();
-  const color = selected ? SELECTED : ink.voltage(data.voltageKV);
+  const color = selected ? ink.selected : ink.voltage(data.voltageKV);
   const results = useResults();
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
   const marks = useResultMarks();
@@ -91,7 +91,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
     return (
       <div className="node-wrapper relative" style={{ width: length, height: BAR }}>
         <svg width={length} height={BAR} overflow="visible" style={{ display: "block" }}>
-          <circle cx={length / 2} cy={BAR / 2} r={4} fill={selected ? SELECTED : ink.line} />
+          <circle cx={length / 2} cy={BAR / 2} r={4} fill={selected ? ink.selected : ink.line} />
         </svg>
         {tapHandles}
       </div>

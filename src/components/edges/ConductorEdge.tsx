@@ -2,7 +2,7 @@ import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import type { ConductorData } from "../../store/types";
 import { branchFlow, loadingColor, mvar, mw, useDrawnMaxFlow, useResults } from "../../lib/diagram/results";
 import { flowWidth, useResultMarks } from "../../lib/diagram/detail";
-import { useInk, SELECTED } from "../../lib/diagram/ink";
+import { useInk } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
 import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
@@ -160,7 +160,7 @@ export function ConductorEdge({
   const dc = data?.caseRef?.kind === "dcline";
   // With results on, wires go neutral so only loading stands out.
   const base = dc ? ink.line : results ? ink.wire : ink.voltage(kv);
-  const stroke = selected ? SELECTED : offline ? ink.off : (overload ?? base);
+  const stroke = selected ? ink.selected : offline ? ink.off : (overload ?? base);
   const baseWidth = (data?.conductorType === "transmission" ? 2 : 1.5) + (overload ? 1 : 0);
   // Zoomed out, the wire's weight carries its loading instead of the text.
   const asMarks = marks && !!flow;

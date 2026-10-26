@@ -2,7 +2,7 @@ import type { NodeProps } from "@xyflow/react";
 import type { GeneratorNode as GeneratorNodeType } from "../../store/types";
 import { mvar, mw, useResults } from "../../lib/diagram/results";
 import { useResultMarks } from "../../lib/diagram/detail";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { Ground } from "./shared/Ground";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
@@ -35,7 +35,7 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
             cy={CY}
             r={R}
             fill="white"
-            stroke={selected ? SELECTED : marks && row?.online && row.q_violation > 0 ? ink.alert("#dc2626") : ink.line}
+            stroke={selected ? ink.selected : marks && row?.online && row.q_violation > 0 ? ink.alert("#dc2626") : ink.line}
             strokeWidth={STROKE}
           >
             {row && marks && <title>{row.online ? [mw(row.pg), ...(results?.ac ? [mvar(row.qg)] : [])].join(" · ") : "Offline"}</title>}

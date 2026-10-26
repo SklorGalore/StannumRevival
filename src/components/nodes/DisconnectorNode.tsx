@@ -1,7 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { DisconnectorNode as DSNodeType } from "../../store/types";
 import { useDiagramStore } from "../../store/diagramStore";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
@@ -18,7 +18,7 @@ const TERMINALS: Terminal[] = [
 export function DisconnectorNode({ id, data, selected }: NodeProps<DSNodeType>) {
   const updateNodeData = useDiagramStore((s) => s.updateNodeData);
   const ink = useInk();
-  const blade = selected ? SELECTED : ink.line;
+  const blade = selected ? ink.selected : ink.line;
   const closed = data.state === "closed";
   // Open: the blade swings 30° away from the upper contact.
   const end = closed ? { x: CX, y: TOP } : { x: CX + 12, y: TOP + 3 };
