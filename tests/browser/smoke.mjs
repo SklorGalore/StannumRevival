@@ -121,6 +121,29 @@ await inspector.getByTestId("inspector-headline").filter({ hasText: /% of rate A
 await inspector.getByTestId("inspector-limits").getByText("Rate A").waitFor();
 await inspector.getByTestId("inspector-data").getByText("Reactance").first().waitFor();
 await shot("inspector-power-line");
+// Trip and compare: take the line out of the latest solve, solve again,
+// and draw what changes around it on the diagram.
+await inspector.getByTestId("trip-and-compare").click();
+await page.getByText(/^Around\b/).first().waitFor();
+await page.getByTestId("layer-legend").filter({ hasText: "Out: Line 4–5 circuit 1" }).waitFor();
+const tripped = page.locator("[data-testid=trip-outcome]:visible");
+await tripped.getByText("If it trips").waitFor();
+await tripped.getByText(/Solved in AC|did not converge/).waitFor();
+await shot("trip-and-compare");
+// Colour the drawing by the latest solve's branch loading, then by voltage.
+await page.getByRole("button", { name: "Layers", exact: true }).click();
+const resultLayer = page.getByTestId("layers-panel").locator('[data-layer="results"]');
+await resultLayer.getByRole("checkbox").check();
+await page.getByTestId("layer-legend").filter({ hasText: "Colour by result" }).filter({ hasText: /under 50%|50–80%/ }).waitFor();
+await resultLayer.getByLabel("Result to colour by").selectOption("voltage");
+await page.getByTestId("layer-legend").filter({ hasText: /p\.u\.|0\.98–1\.02/ }).waitFor();
+await shot("diagram-colour-by-result");
+await resultLayer.getByRole("checkbox").uncheck();
+await tripped.getByRole("button", { name: "Clear" }).click();
+await tripped.waitFor({ state: "detached" });
+await page.getByRole("button", { name: "Hide layers" }).click();
+await page.getByRole("button", { name: "Power flow", exact: true }).click();
+await inspector.getByTestId("inspector-title").filter({ hasText: "Line 4–5 circuit 1" }).waitFor();
 await inspector.getByRole("button", { name: "Take out" }).click();
 await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
 await line45.locator("td", { hasText: /^Offline$/ }).waitFor();

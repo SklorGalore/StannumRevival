@@ -35,6 +35,10 @@ jobs:
         with:
           path: ~/.cache/tauri-apt
           key: tauri-apt-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ hashFiles('scripts/ci/install-tauri-deps.ps1') }}
+          # A new runner image misses the exact key; seed apt with the last
+          # image's packages so only the changed ones are downloaded.
+          restore-keys: |
+            tauri-apt-${{ runner.os }}-
       - name: Install Tauri system dependencies
         shell: pwsh
         timeout-minutes: 15

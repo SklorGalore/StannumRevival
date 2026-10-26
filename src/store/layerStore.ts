@@ -3,7 +3,7 @@
 // resolve to are kept here too, so every symbol can look up its own.
 import { create } from "zustand";
 import type { TopoPath } from "../lib/analysis/types";
-import { NO_MARKS, type LayerId, type LayerLegend, type LayerMarks, type Mark } from "../lib/diagram/layers";
+import { NO_MARKS, type LayerId, type LayerLegend, type LayerMarks, type Mark, type ResultMode, type SensitivityLayer } from "../lib/diagram/layers";
 import { defaultColorSettings, type ColorSettings } from "../modules/topology/fields/field-colors";
 import type { FilterRule } from "../modules/topology/fields/field-view";
 
@@ -24,6 +24,13 @@ interface LayerState {
   setRules: (rules: FilterRule[]) => void;
   colors: ColorSettings;
   setColors: (colors: ColorSettings) => void;
+  /** What the Results layer colours by, and the saved solve it compares with. */
+  resultMode: ResultMode;
+  compareWith: number | null;
+  setResults: (mode: ResultMode, compareWith?: number | null) => void;
+  /** A sensitivity column sent from Power flow to draw. */
+  sensitivity: SensitivityLayer | null;
+  showSensitivity: (s: SensitivityLayer | null) => void;
   /** The Layers panel beside the canvas. */
   panel: boolean;
   setPanel: (open: boolean) => void;
@@ -44,6 +51,7 @@ export const DEFAULT_LAYERS: Record<LayerId, boolean> = {
   merged: false,
   path: true,
   fields: true,
+  results: false,
   contingency: true,
 };
 
@@ -56,6 +64,13 @@ export const useLayers = create<LayerState>((set) => ({
   setRules: (rules) => set((s) => ({ rules, on: rules.length ? { ...s.on, fields: true } : s.on })),
   colors: defaultColorSettings(),
   setColors: (colors) => set((s) => ({ colors, on: { ...s.on, fields: true } })),
+  resultMode: "loading",
+  compareWith: null,
+  setResults: (resultMode, compareWith) =>
+    set((s) => ({ resultMode, compareWith: compareWith === undefined ? s.compareWith : compareWith, on: { ...s.on, results: true } })),
+  sensitivity: null,
+  showSensitivity: (sensitivity) =>
+    set((s) => (sensitivity ? { sensitivity, resultMode: "sensitivity", on: { ...s.on, results: true } } : { sensitivity })),
   panel: false,
   setPanel: (panel) => set({ panel }),
   tables: false,
@@ -64,7 +79,16 @@ export const useLayers = create<LayerState>((set) => ({
   legends: [],
   setResolved: (marks, legends) => set({ marks, legends }),
   reset: (fields) =>
-    set({ path: null, rules: fields?.rules ?? [], colors: fields?.colors ?? defaultColorSettings(), marks: NO_MARKS, legends: [] }),
+    set((s) => ({
+      path: null,
+      rules: fields?.rules ?? [],
+      colors: fields?.colors ?? defaultColorSettings(),
+      marks: NO_MARKS,
+      legends: [],
+      sensitivity: null,
+      compareWith: null,
+      resultMode: s.resultMode === "sensitivity" || s.resultMode === "change" ? "loading" : s.resultMode,
+    })),
 }));
 
 /** The mark for a bus, or undefined. */

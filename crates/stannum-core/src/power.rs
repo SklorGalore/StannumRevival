@@ -1148,6 +1148,8 @@ pub struct Response {
     /// Original row (state row or branch index), for stable "input order" sorting.
     pub index: usize,
     pub label: String,
+    /// Shared element id of the bus or branch, for drawing on the diagram.
+    pub element: String,
     pub value: f64,
     pub offline: bool,
 }
@@ -1175,6 +1177,7 @@ fn bus_label(names: &[String], case: &Case, id: u32) -> String {
 /// All responses to one injection column, in input order.
 pub fn responses(
     s: &PowerFlowSensitivity,
+    elements: &crate::elements::Elements,
     column: usize,
     quantity: Quantity,
     engineering: bool,
@@ -1198,6 +1201,7 @@ pub fn responses(
                 (q == quantity).then(|| Response {
                     index,
                     label: bus_label(&names, case, bus),
+                    element: format!("bus:{bus}"),
                     value: q.convert(
                         s.state_sensitivities[index][column],
                         case.base_mva,
@@ -1219,6 +1223,11 @@ pub fn responses(
                     bus_label(&names, case, br.from),
                     bus_label(&names, case, br.to)
                 ),
+                element: elements
+                    .branches
+                    .get(index)
+                    .map(|e| e.element.clone())
+                    .unwrap_or_default(),
                 value: s.branch_flow_sensitivities[index][column][component],
                 offline: !br.online,
             })

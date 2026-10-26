@@ -108,6 +108,10 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
                 .contingency_rows(arg(args, "offset")?, arg(args, "limit")?)?,
         ),
         "contingency_detail" => to_json(ws.current_mut()?.contingency_detail(arg(args, "rank")?)?),
+        "trip_and_compare" => to_json(
+            ws.current()?
+                .trip_and_compare(&arg::<String>(args, "element")?, arg(args, "limitPct")?)?,
+        ),
         "log_entries" => to_json(logbook::since(arg(args, "since")?)),
         other => Err(format!("unknown command {other}")),
     }

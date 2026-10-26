@@ -25,6 +25,8 @@ drawing.
 | **Zero-impedance groups** | A purple ring around buses tied by zero-impedance branches. **Merge them into one node in the network** treats each group as one node, as PSS/E does. |
 | **Shortest path** | The fewest equipment hops between two buses, in blue and drawn heavier. |
 | **Filters and colours** | Field rules: filters, and colours by a field. |
+| **Colour by result** | The latest solve's branch loading or bus voltage, the change since a saved solve, or a sensitivity. See below. |
+| **Contingency** | An outage from Power flow's Contingencies tab or **Trip and compare**. See [Contingencies](/StannumRevival/guide/contingencies/#on-the-diagram). |
 
 ### Shortest path
 
@@ -33,6 +35,30 @@ one hop, so a three-winding transformer is one hop between any two of its
 windings. The Network style then shows just the path and its neighbours;
 **Back to bus …** returns to the neighbourhood. On the one-line, the path's
 buses and branches that are in the drawing turn blue.
+
+### Colour by result
+
+Choose what to colour by:
+
+- **Branch loading**: each branch by its loading in % of rate A, in five bands
+  from green (under 50%) to red (over 100%, drawn heavier). Branches without
+  a rating stay uncoloured.
+- **Bus voltage**: each bus by its voltage, from dark blue (under 0.95 p.u.)
+  through grey (0.98 to 1.02) to red (over 1.05). Buses outside their own
+  limits are also ringed in amber.
+- **Change from a saved solve**: compares the latest solve with one saved in
+  the [study](/StannumRevival/guide/studies/). Branches carrying 5 MW or more
+  extra turn orange and 5 MW or more less blue; branches switched in or out
+  are ringed in red; buses whose voltage moved 0.01 p.u. or more are ringed
+  red (up) or blue (down).
+- **Sensitivity**: the column shown in Power flow's Sensitivities tab, after
+  **Show on diagram** there. Responses are coloured from blue (most negative)
+  through grey to red (most positive); responses under 1% of the largest stay
+  uncoloured.
+
+Hover an element for its value.
+
+![Colour by result: branch loading on a one-line around a 500 kV line](../../../assets/screens/colour-by-result.png)
 
 ### Filters and colours
 
