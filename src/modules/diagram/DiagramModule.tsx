@@ -17,7 +17,7 @@ import { useSharedSelection } from "./useSharedSelection";
 import { DrawPrompt } from "./DrawPrompt";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useDrawingStyle } from "../../store/drawingStyleStore";
-import { NetworkCanvas, NetworkSelection, NetworkToolbar } from "./network/NetworkView";
+import { NetworkCanvas, NetworkInspector, NetworkToolbar } from "./network/NetworkView";
 
 /**
  * Keep the style's shared state in step with the rest of the app: a new case
@@ -200,7 +200,6 @@ function Inner({ active }: { active: boolean }) {
           {(networkShown || network) && (
             <div className={network ? "absolute inset-0 z-20" : "hidden"}>
               <NetworkCanvas visible={active && network} />
-              <NetworkSelection />
             </div>
           )}
           {(styleBusy || styleError) && (
@@ -234,6 +233,7 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
+        {network && <NetworkInspector />}
         {!network && (hasSelection || missing) && (
           <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="inspector">
             <PropertiesPanel missing={hasSelection ? null : missing} />

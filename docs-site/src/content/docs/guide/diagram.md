@@ -29,9 +29,11 @@ replaced).
 
 In the Network style:
 
-- Click a bus or branch to select it. A card shows its island, connections,
-  and whether it is a bridge or a cut bus.
-- Double-click a bus, or **Centre here** on its card, to draw around it.
+- Click a bus or branch to inspect it in the same inspector as the one-line
+  (case data, results, limits, study edits). Its **Network** section adds its
+  island and connections, and whether it is a bridge or a cut bus.
+- Double-click a bus, or **Centre here** in its Network section, to draw
+  around it.
 - The bar at the bottom changes the hop count, up to six.
 - **Draw as one-line** switches to the one-line drawn around the selection,
   with the same hop count.

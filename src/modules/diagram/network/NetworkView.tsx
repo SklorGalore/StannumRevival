@@ -1,16 +1,17 @@
 // The Diagram's Network style: the topology graph (Cytoscape) drawn around a
 // bus, sharing the focus bus, hop count and selection with the One-line style.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, Minus, Plus, Spline, X } from "lucide-react";
+import { Maximize2, Minus, Plus, Spline } from "lucide-react";
 import { useWorkspace } from "../../../store/workspaceStore";
 import { useDiagramStore } from "../../../store/diagramStore";
 import { MAX_HOPS, useDrawingStyle } from "../../../store/drawingStyleStore";
 import { loadTopology, useTopology } from "../../../lib/analysis/topologyStore";
 import type { TopologySnapshot } from "../../../lib/analysis/types";
-import { busElement, elementLabel } from "../../../lib/elements";
-import { count, fixed } from "../../../lib/analysis/format";
+import { busElement } from "../../../lib/elements";
+import { count } from "../../../lib/analysis/format";
 import { centreBus } from "../../../ui/DrawAround";
 import { NetworkGraph } from "../../topology/NetworkGraph";
+import { ElementInspector, InspectorSection } from "../../../ui/ElementInspector";
 import { DISPLAY_LIMIT, locateElement, neighborhood, nodeForBus, type GraphSelection } from "../../topology/viewModel";
 import { showOneLine } from "./switchStyle";
 import { StyleSwitch } from "./StyleSwitch";
@@ -212,89 +213,69 @@ function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number
 }
 
 /**
- * What is selected in the network, floating over its top right corner: its
- * topology facts and the actions that move between styles. (The shared element inspector, M6 PR 6.1, replaces this.)
+ * The shared element inspector for what is selected in the network, with a
+ * Network section: its topology facts and the actions that move between
+ * styles. It takes the same column as the one-line's inspector.
  */
-export function NetworkSelection() {
+export function NetworkInspector() {
   const element = useDrawingStyle((s) => s.element);
   const setElement = useDrawingStyle((s) => s.setElement);
+  const caseVersion = useWorkspace((s) => s.caseVersion);
+  const snapshot = useTopology((s) => (s.version === caseVersion ? s.snapshot : null));
+  if (!element || !snapshot || !locateElement(element, snapshot)) return null;
+  const pick = (next: string) => {
+    setElement(next);
+    useWorkspace.getState().select(next, "diagram");
+  };
+  return (
+    <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="network-selection">
+      <ElementInspector element={element} from="diagram" onPick={pick} onClose={() => setElement(null)}>
+        <NetworkSection element={element} snapshot={snapshot} />
+      </ElementInspector>
+    </aside>
+  );
+}
+
+/** Islands, bridges and cut buses for the selection, and Centre here / Draw as one-line. */
+function NetworkSection({ element, snapshot }: { element: string; snapshot: TopologySnapshot }) {
   const focus = useDrawingStyle((s) => s.focus);
   const setFocus = useDrawingStyle((s) => s.setFocus);
   const busy = useDrawingStyle((s) => s.busy);
-  const caseVersion = useWorkspace((s) => s.caseVersion);
   const canDraw = useWorkspace((s) => !!s.caseSummary?.power.available);
-  const snapshot = useTopology((s) => (s.version === caseVersion ? s.snapshot : null));
-  if (!element || !snapshot) return null;
-  const found = locateElement(element, snapshot);
-  if (!found) return null;
-  const { case: c, analysis: a } = snapshot;
-  const pickBus = (bus: number) => {
-    setElement(busElement(bus));
-    useWorkspace.getState().select(busElement(bus), "diagram");
-  };
+  const found = locateElement(element, snapshot)!;
+  const { analysis: a } = snapshot;
   const bus = found.selection.bus ?? found.bus;
-  const row = "grid grid-cols-2 gap-1.5";
-  let body: React.ReactNode;
-  let eyebrow: string;
-  let title: string;
+  let facts: React.ReactNode;
   if (found.selection.equipment) {
-    const e = c.equipment.find((x) => x.id === found.selection.equipment)!;
-    const bridge = a.bridges.some((b) => b.equipment_id === e.id);
-    eyebrow = e.kind;
-    title = elementLabel(e.id);
-    body = (
-      <>
-        {e.name.trim() && <p className="text-slate-600">{e.name.trim()}</p>}
-        <p className="mt-2 text-slate-500">Terminals</p>
-        <div className="flex flex-wrap gap-1 mt-0.5">
-          {e.buses.map((b, i) => (
-            <button key={`${b}-${i}`} className="rounded border border-slate-300 px-1.5 py-px hover:bg-slate-50" onClick={() => pickBus(b)}>
-              Bus {b}
-              {e.active_terminals[i] === false && " (open)"}
-            </button>
-          ))}
-        </div>
-        {bridge && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Bridge: taking it out splits its island.</p>}
-      </>
+    const id = found.selection.equipment;
+    const bridge = a.bridges.some((b) => b.equipment_id === id);
+    facts = bridge ? (
+      <p className="rounded bg-amber-50 px-2 py-1 text-amber-900">Bridge: taking it out splits its island.</p>
+    ) : (
+      <p className="text-slate-500">Not a bridge: its island stays connected without it.</p>
     );
   } else {
-    const b = c.buses.find((x) => x.number === found.selection.bus);
-    const degree = a.degrees.find((d) => d.bus === found.selection.bus);
     const node = found.selection.bus !== null ? nodeForBus(snapshot.graph, found.selection.bus) : undefined;
-    eyebrow = "Bus";
-    title = node && node.member_buses.length > 1 ? `Merged node ${node.bus} · ${node.member_buses.length} buses` : `Bus ${found.selection.bus}`;
-    body = (
+    const degree = a.degrees.find((d) => d.bus === (node?.bus ?? found.selection.bus));
+    const cut = found.selection.bus !== null && a.articulation_buses.includes(node?.bus ?? found.selection.bus);
+    facts = (
       <>
-        {b?.name.trim() && <p className="text-slate-600">{b.name.trim()}</p>}
-        <dl className={`mt-2 ${row}`}>
-          <div><dt className="text-slate-500">Base kV</dt><dd className="font-medium">{b ? fixed(b.base_kv, 1) : "—"}</dd></div>
+        {node && node.member_buses.length > 1 && (
+          <p className="mb-1.5 text-slate-600">Merged node of {node.member_buses.length} buses: {node.member_buses.join(", ")}</p>
+        )}
+        <dl className="grid grid-cols-2 gap-1.5">
           <div><dt className="text-slate-500">Island</dt><dd className="font-medium">{degree?.island ?? "—"}</dd></div>
           <div><dt className="text-slate-500">Connections</dt><dd className="font-medium">{degree?.degree ?? "—"}</dd></div>
         </dl>
-        {found.selection.bus !== null && a.articulation_buses.includes(found.selection.bus) && (
-          <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Cut bus: losing it splits its island.</p>
-        )}
+        {cut && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Cut bus: losing it splits its island.</p>}
       </>
     );
   }
   return (
-    // Floats over the canvas, so picking something doesn't squeeze the graph.
-    <aside
-      className="absolute right-3 top-3 z-10 w-64 max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white/95 p-3 text-xs shadow-md"
-      data-testid="network-selection"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{eyebrow}</p>
-          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-        </div>
-        <button className="p-1 text-slate-400 hover:text-slate-700" onClick={() => setElement(null)} aria-label="Clear selection" title="Clear selection">
-          <X size={13} />
-        </button>
-      </div>
-      {body}
+    <InspectorSection id="network" title="Network">
+      {facts}
       {bus !== null && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {found.selection.bus !== null && focus?.bus !== bus && (
             <button className="rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50" onClick={() => setFocus({ bus, depth: focus?.depth ?? 2 })}>
               Centre here
@@ -312,6 +293,6 @@ export function NetworkSelection() {
           )}
         </div>
       )}
-    </aside>
+    </InspectorSection>
   );
 }

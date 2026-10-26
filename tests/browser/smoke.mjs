@@ -380,6 +380,7 @@ await page.locator('[data-testid="network-view"] canvas').first().waitFor();
 await page.waitForTimeout(300);
 await networkBus(5);
 await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
+await page.getByTestId("network-selection").getByTestId("element-inspector").filter({ hasText: "Network" }).waitFor();
 await hopBar.getByRole("button", { name: "One hop more" }).click();
 await hopBar.filter({ hasText: "2 hops" }).filter({ hasText: "5 buses" }).waitFor();
 await shot("diagram-network");
