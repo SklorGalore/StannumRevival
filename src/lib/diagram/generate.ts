@@ -14,19 +14,23 @@ import type {
   GeneratorData,
   LoadData,
   OffPageData,
+  OffPageLink,
   ShuntData,
   SLDEdge,
   SLDNode,
   TransformerData,
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
-import { busElement } from "../elements";
+import { busElement, elementLabel, parseElement } from "../elements";
 import { useLog } from "../../store/logStore";
+import { bestFold, hopGroups } from "./compact";
 
 export type Scope =
   | { kind: "all" }
   | { kind: "area"; area: number }
-  | { kind: "around"; bus: number; depth: number };
+  /** `depth` hops around `bus`, or around `element` when given: a branch is
+   *  drawn from both its ends, and a symbol on it is marked. */
+  | { kind: "around"; bus: number; depth: number; element?: string };
 
 /** Above this many buses a whole-case drawing stops being readable. */
 export const READABLE_BUSES = 150;
@@ -120,6 +124,16 @@ function adjacency(net: CaseNetwork): Map<number, Adjacent[]> {
   return adj;
 }
 
+/** The buses a local drawing grows from: the ends of a branch or DC line,
+ *  else the one bus. */
+export function centresOf(net: CaseNetwork, scope: Extract<Scope, { kind: "around" }>): number[] {
+  const e = scope.element ? parseElement(scope.element) : null;
+  const ends = e && (e.kind === "line" || e.kind === "transformer" || e.kind === "switch" || e.kind === "dcline") ? e.buses : [];
+  const known = new Set(net.buses.filter((b) => !b.star).map((b) => b.id));
+  const centres = [...new Set(ends.filter((b) => known.has(b)))];
+  return centres.length > 1 ? centres : [scope.bus];
+}
+
 /** Buses to draw for a scope. Star points of three-winding transformers
  *  come along with their windings so a transformer is never cut in half. */
 export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
@@ -133,8 +147,9 @@ export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
     return chosen;
   }
   // Breadth-first by hop count; passing through a star point is free.
-  const depth = new Map<number, number>([[scope.bus, 0]]);
-  const queue = [scope.bus];
+  const centres = centresOf(net, scope);
+  const depth = new Map<number, number>(centres.map((b) => [b, 0]));
+  const queue = [...centres];
   while (queue.length) {
     const id = queue.shift()!;
     const d = depth.get(id)!;
@@ -252,12 +267,22 @@ type EdgeSpec = {
 /** What to lay out: the buses, and how a local drawing is anchored. */
 export interface Piece {
   buses: Set<number>;
-  /** Bus the layout grows from: it goes in the top row. */
+  /** Bus the layout grows from (whole-case drawings: the top row). */
   root?: number;
-  /** Rows follow hop count from `root` (local drawings). */
+  /** Rows follow hop count from the centres (local drawings), folded to
+   *  the shape of the view. */
   byHop?: boolean;
+  /** Buses a local drawing grows from; `root` (or `anchor`) when left out. */
+  centres?: number[];
+  /** Share a single centre's neighbours between rows above and below it,
+   *  so the centre ends up in the middle of the drawing. */
+  twoSided?: boolean;
   /** The studied bus, drawn highlighted. */
   focus?: number;
+  /** Case element (see lib/elements) whose symbol or wire is highlighted. */
+  focusElement?: string;
+  /** Width over height of the view the drawing should fill. */
+  aspect?: number;
   /** A bus already on the drawing that new buses hang from (Expand). It is
    *  laid out only to anchor them: its injections keep their room on the bar
    *  but are not drawn again, and it gets no off-page markers. */
@@ -267,14 +292,42 @@ export interface Piece {
   drawn?: Set<number>;
 }
 
-export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<Generated> {
+/** Width over height of the diagram canvas on screen (or the window). */
+export function viewAspect(): number {
+  if (typeof document === "undefined") return 1.6;
+  const el = [...document.querySelectorAll<HTMLElement>(".react-flow")].find((e) => e.offsetWidth > 0 && e.offsetHeight > 0);
+  const w = el?.offsetWidth ?? window.innerWidth;
+  const h = el?.offsetHeight ?? window.innerHeight;
+  return h > 0 ? Math.min(4, Math.max(0.5, w / h)) : 1.6;
+}
+
+export async function generateDiagram(net: CaseNetwork, scope: Scope, aspect = viewAspect()): Promise<Generated> {
   const buses = selectBuses(net, scope);
-  const where = scope.kind === "around" ? ` around bus ${scope.bus} (${scope.depth} hops)` : scope.kind === "area" ? ` for area ${scope.area}` : "";
+  const where =
+    scope.kind === "around"
+      ? ` around ${scope.element && parseElement(scope.element)?.kind !== "bus" ? elementLabel(scope.element) : `bus ${scope.bus}`} (${scope.depth} hops)`
+      : scope.kind === "area"
+        ? ` for area ${scope.area}`
+        : "";
   const end = useLog.getState().begin(`Laying out a one-line${where}`);
   try {
-    const out = await (scope.kind !== "around"
-      ? layoutPiece(net, { buses })
-      : layoutPiece(net, { buses, root: scope.bus, byHop: true, focus: scope.bus }));
+    let out: Generated;
+    if (scope.kind !== "around") out = await layoutPiece(net, { buses, aspect });
+    else {
+      const centres = centresOf(net, scope);
+      const kind = scope.element ? parseElement(scope.element)?.kind : "bus";
+      out = await layoutPiece(net, {
+        buses,
+        root: centres[0],
+        centres,
+        byHop: true,
+        twoSided: true,
+        // A load is drawn on its bus, so the bus stands in for it.
+        focus: kind === "bus" || kind === "load" || !kind ? scope.bus : undefined,
+        focusElement: scope.element,
+        aspect,
+      });
+    }
     end({ done: `Drew a one-line${where}: ${out.buses} buses, ${out.nodes.length} symbols, ${out.boundary} off-page links` });
     return out;
   } catch (e) {
@@ -282,6 +335,37 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope): Promise<G
     throw e;
   }
 }
+
+/** What an off-page marker says: where its branch goes, or how many branches
+ *  a bundled marker stands for. */
+export function offPageLabel(links: OffPageLink[]): string {
+  const one = (l: OffPageLink) =>
+    (l.busName && l.busName !== `Bus ${l.bus}` ? `To ${l.busName} (${l.bus})` : `To Bus ${l.bus}`) +
+    (l.caseRef?.kind === "dcline" ? " by DC" : "");
+  if (links.length === 1) return one(links[0]);
+  const far = new Set(links.map((l) => l.bus)).size;
+  if (far === 1) return `${one(links[0])} ×${links.length}`;
+  return `To ${far} buses${far < links.length ? ` (${links.length} branches)` : ""}`;
+}
+
+/** Marker data for the branches leaving `inside` (one, or a bundle). */
+export function offPageData(links: OffPageLink[], voltageKV: number): OffPageData {
+  const [first] = links;
+  return {
+    label: offPageLabel(links),
+    bus: first.bus,
+    busName: first.busName,
+    voltageKV,
+    ...(links.length === 1
+      ? { caseRef: first.caseRef, reversed: first.reversed, outOfService: first.outOfService }
+      : { links, outOfService: links.every((l) => l.outOfService) || undefined }),
+  };
+}
+
+/** Estimated height of one folded row: a bus row and the row hanging below it. */
+const ROW_HEIGHT = 240;
+/** Space ELK keeps between neighbours in a row. */
+const NODE_GAP = 36;
 
 /** Lay out a set of buses with everything attached to them. */
 export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Generated> {
@@ -300,17 +384,6 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
   const boundary = crossing.filter((br) => !drawn.has(chosen.has(br.from) ? br.to : br.from));
   const links = crossing.filter((br) => drawn.has(chosen.has(br.from) ? br.to : br.from));
   const gens = net.generators.filter((g) => chosen.has(g.bus));
-  const level = levels(buses, inner, piece.root ?? anchor);
-  // Local drawings put each hop on its own row: buses on even rows, what
-  // hangs from them (machines, loads, transformers, markers) on the odd row below.
-  const row = (bus: number, below = false): Record<string, string> =>
-    piece.byHop ? { "elk.partitioning.partition": String(2 * (level.get(bus) ?? 0) + (below ? 1 : 0)) } : {};
-
-  const nodes: ElkNode[] = [];
-  const specs: EdgeSpec[] = [];
-  const rfNodes = new Map<string, SLDNode>();
-  const degree = new Map<number, number>();
-  const bump = (id: number) => degree.set(id, (degree.get(id) ?? 0) + 1);
   // Star points carry a nominal 1 kV; treat them as having no voltage of their own.
   const kv = (id: number) => {
     const b = busById.get(id);
@@ -387,210 +460,316 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     }
   }
 
-  for (const br of inner) {
-    // Draw each branch from the bus nearer the top of the drawing.
-    const [la, lb] = [level.get(br.from) ?? 0, level.get(br.to) ?? 0];
-    const reversed = lb < la || (lb === la && kv(br.to) > kv(br.from));
-    const [upper, lower] = reversed ? [br.to, br.from] : [br.from, br.to];
-    bump(upper);
-    bump(lower);
-    const ref = linkRef(br);
-    const outOfService = !br.online || undefined;
-    if (br.dc) {
-      const id = `dc${br.dc.index}`;
-      nodes.push({
-        id,
-        width: DC_LINK.w,
-        height: DC_LINK.h,
-        ports: [port(`${id}:a`, DC_LINK.w / 2, 0, "NORTH"), port(`${id}:b`, DC_LINK.w / 2, DC_LINK.h, "SOUTH")],
-        labels: [outside("DC", "H_RIGHT", SIDE_LABEL)],
-        layoutOptions: { ...fixedPorts, ...row(upper, true) },
-      });
-      const data = dcLinkData(br.dc, kv(upper), kv(lower), reversed);
-      rfNodes.set(id, { id, type: "dcLink", position: { x: 0, y: 0 }, data } as SLDNode);
-      specs.push({
-        id: `e-${id}-a`,
-        source: { node: `b${upper}` },
-        target: { node: id, port: `${id}:a`, handle: "dc-top" },
-        data: conductor(kv(upper), { outOfService }),
-      });
-      specs.push({
-        id: `e-${id}-b`,
-        source: { node: id, port: `${id}:b`, handle: "dc-bottom" },
-        target: { node: `b${lower}` },
-        data: conductor(kv(lower), { outOfService }),
-      });
-    } else if (br.transformer) {
-      const id = `t${br.index}`;
-      nodes.push({
-        id,
-        width: XFMR.w,
-        height: XFMR.h,
-        ports: [port(`${id}:hv`, XFMR.w / 2, 0, "NORTH"), port(`${id}:lv`, XFMR.w / 2, XFMR.h, "SOUTH")],
-        labels: [outside("T", "H_RIGHT", SIDE_LABEL)],
-        layoutOptions: { ...fixedPorts, ...row(upper, true) },
-      });
-      const data: TransformerData = {
-        ...defaultTransformerData,
-        label: `T ${upper}-${lower}`,
-        ratingMVA: br.rate_a,
-        primaryKV: kv(upper),
-        secondaryKV: kv(lower),
-        windingsUnknown: true,
-        caseRef: ref,
-        reversed: reversed || undefined,
-        outOfService,
-      };
-      rfNodes.set(id, { id, type: "transformer", position: { x: 0, y: 0 }, data } as SLDNode);
-      specs.push({
-        id: `e-${id}-hv`,
-        source: { node: `b${upper}` },
-        target: { node: id, port: `${id}:hv`, handle: "xfmr-primary" },
-        data: conductor(kv(upper), { outOfService }),
-      });
-      specs.push({
-        id: `e-${id}-lv`,
-        source: { node: id, port: `${id}:lv`, handle: "xfmr-secondary" },
-        target: { node: `b${lower}` },
-        data: conductor(kv(lower), { outOfService }),
-      });
-    } else {
-      specs.push({
-        id: `e-br${br.index}`,
-        source: { node: `b${upper}` },
-        target: { node: `b${lower}` },
-        data: conductor(kv(upper), { caseRef: ref, reversed: reversed || undefined, outOfService }),
-      });
-    }
-  }
-
+  // Branches leaving the drawing, by the bus they leave from. A bus with
+  // several gets one marker for all of them, so a local drawing isn't
+  // mostly off-page flags.
+  const outward = new Map<number, OffPageLink[]>();
   for (const br of boundary) {
     const inside = chosen.has(br.from) ? br.from : br.to;
     const far = inside === br.from ? br.to : br.from;
     const farBus = busById.get(far);
-    const farName = farBus ? busLabel(farBus) : `Bus ${far}`;
-    const via = br.dc ? " by DC" : "";
-    const text = farName === `Bus ${far}` ? `To ${farName}${via}` : `To ${farName} (${far})${via}`;
-    bump(inside);
-    const id = `o${br.index}`;
-    nodes.push({
-      id,
-      width: OFF_PAGE.w,
-      height: OFF_PAGE.h,
-      ports: [port(`${id}:p`, OFF_PAGE.w / 2, 0, "NORTH")],
-      labels: [outside(text, "H_RIGHT", Math.max(textWidth(text), SIDE_LABEL))],
-      layoutOptions: { ...fixedPorts, ...row(inside, true) },
-    });
-    const data: OffPageData = {
-      label: text,
+    const list = outward.get(inside) ?? [];
+    list.push({
       bus: far,
       busName: farBus ? busLabel(farBus) : "",
-      voltageKV: kv(inside),
       caseRef: linkRef(br),
       // Flow is read at the inside end, so "reversed" means inside is "to".
       reversed: inside === br.to || undefined,
       outOfService: !br.online || undefined,
-    };
-    rfNodes.set(id, { id, type: "offPage", position: { x: 0, y: 0 }, data } as SLDNode);
-    specs.push({
-      id: `e-${id}`,
-      source: { node: `b${inside}` },
-      target: { node: id, port: `${id}:p`, handle: "op-top" },
-      data: conductor(kv(inside), {
-        caseRef: linkRef(br),
-        reversed: inside === br.to || undefined,
-        outOfService: !br.online || undefined,
-      }),
     });
+    outward.set(inside, list);
   }
 
-  // On a bus carrying injections every wire gets a port on the side it
-  // leaves from; ELK orders them and packs them at the right end.
-  const ports = new Map<string, { id: string; side: "NORTH" | "SOUTH" }[]>();
-  const portOn = (end: EdgeSpec["source"], side: "NORTH" | "SOUTH") => {
-    if (end.port || !injections.has(Number(end.node.slice(1)))) return;
-    const list = ports.get(end.node) ?? [];
-    end.port = `${end.node}:w${list.length}`;
-    list.push({ id: end.port, side });
-    ports.set(end.node, list);
-  };
-  for (const s of specs) {
-    if (s.source.node.startsWith("b")) portOn(s.source, "SOUTH");
-    if (s.target.node.startsWith("b")) portOn(s.target, "NORTH");
+  // Wires at each bus, and how wide its bar is drawn for them.
+  const degree = new Map<number, number>();
+  const bump = (id: number) => degree.set(id, (degree.get(id) ?? 0) + 1);
+  for (const br of inner) {
+    bump(br.from);
+    bump(br.to);
   }
-
-  // Buses go first so ELK keeps them in case order where it can.
-  const busNodes: ElkNode[] = buses.map((b) => {
-    if (b.star) return { id: `b${b.id}`, width: 20, height: BUS_BAR, layoutOptions: row(b.id) };
-    const name = busLabel(b);
-    const sub = `${b.id} · ${b.base_kv} kV`;
-    const left = outside(name, "H_LEFT", Math.max(textWidth(name, 7), textWidth(sub, 6)));
+  for (const inside of outward.keys()) bump(inside);
+  const barWidth = (b: NetworkBus) => {
+    if (b.star) return 20;
     const inj = injections.get(b.id);
-    if (inj) {
-      const wires = ports.get(`b${b.id}`) ?? [];
+    const wires = degree.get(b.id) ?? 0;
+    return inj
+      ? roundUp(Math.max(100, inj.length * SLOT + wires * PORT_GAP), 20)
+      : Math.max(100, roundUp((wires + 1) * 44, 20));
+  };
+  const nameWidth = (b: NetworkBus) => Math.max(textWidth(busLabel(b), 7), textWidth(`${b.id} · ${b.base_kv} kV`, 6));
+
+  // Rows: hop rows folded to the view's shape for local drawings, else
+  // breadth-first levels that ELK is free to spread out.
+  let rowOf: Map<number, number>;
+  let fold: { groups: ReturnType<typeof hopGroups>["groups"]; width: (bus: number) => number; rows: number; estimate: { w: number; h: number } } | null =
+    null;
+  const aspect = piece.aspect ?? viewAspect();
+  if (piece.byHop) {
+    // How much row width each bus takes: its bar with name and results, or
+    // the symbols hanging below it, whichever is wider.
+    const below = new Map<number, number>();
+    const hang = (bus: number, w: number) => below.set(bus, (below.get(bus) ?? 0) + w);
+    for (const br of inner) {
+      if (!br.dc && !br.transformer) continue;
+      // Hangs from whichever end ends up higher; count half at each.
+      const w = (XFMR.w + SIDE_LABEL + NODE_GAP) / 2;
+      hang(br.from, w);
+      hang(br.to, w);
+    }
+    for (const [inside, list] of outward)
+      hang(inside, OFF_PAGE.w + Math.max(textWidth(offPageLabel(list)), SIDE_LABEL) + NODE_GAP);
+    const unit = new Map(
+      buses.map((b) => {
+        const bar = b.star ? 20 + NODE_GAP : nameWidth(b) + barWidth(b) + 84 + BAR_END + NODE_GAP;
+        return [b.id, Math.max(bar, below.get(b.id) ?? 0)];
+      })
+    );
+    const width = (bus: number) => unit.get(bus) ?? 100;
+    const centres = piece.centres ?? [piece.root ?? anchor ?? buses[0].id];
+    const { groups } = hopGroups(
+      buses.map((b) => b.id),
+      inner.map((br) => ({ a: br.from, b: br.to })),
+      centres,
+      width,
+      !!piece.twoSided
+    );
+    const fit = bestFold(groups, width, aspect, ROW_HEIGHT);
+    rowOf = rowsToMap(fit.rows);
+    fold = { groups, width, rows: fit.rows.length, estimate: { w: fit.width, h: fit.height } };
+  } else {
+    rowOf = levels(buses, inner, piece.root ?? anchor);
+  }
+
+  const build = (rowOf: Map<number, number>) => {
+    // Local drawings put each row on its own ELK partition: buses on even
+    // ones, what hangs from them (transformers, markers) on the odd one below.
+    const row = (bus: number, below = false): Record<string, string> =>
+      piece.byHop ? { "elk.partitioning.partition": String(2 * (rowOf.get(bus) ?? 0) + (below ? 1 : 0)) } : {};
+    const nodes: ElkNode[] = [];
+    const specs: EdgeSpec[] = [];
+    const rfNodes = new Map<string, SLDNode>();
+
+    for (const br of inner) {
+      // Draw each branch from the bus nearer the top of the drawing.
+      const [la, lb] = [rowOf.get(br.from) ?? 0, rowOf.get(br.to) ?? 0];
+      const reversed = lb < la || (lb === la && kv(br.to) > kv(br.from));
+      const [upper, lower] = reversed ? [br.to, br.from] : [br.from, br.to];
+      const ref = linkRef(br);
+      const outOfService = !br.online || undefined;
+      if (br.dc) {
+        const id = `dc${br.dc.index}`;
+        nodes.push({
+          id,
+          width: DC_LINK.w,
+          height: DC_LINK.h,
+          ports: [port(`${id}:a`, DC_LINK.w / 2, 0, "NORTH"), port(`${id}:b`, DC_LINK.w / 2, DC_LINK.h, "SOUTH")],
+          labels: [outside("DC", "H_RIGHT", SIDE_LABEL)],
+          layoutOptions: { ...fixedPorts, ...row(upper, true) },
+        });
+        const data = dcLinkData(br.dc, kv(upper), kv(lower), reversed);
+        rfNodes.set(id, { id, type: "dcLink", position: { x: 0, y: 0 }, data } as SLDNode);
+        specs.push({
+          id: `e-${id}-a`,
+          source: { node: `b${upper}` },
+          target: { node: id, port: `${id}:a`, handle: "dc-top" },
+          data: conductor(kv(upper), { outOfService }),
+        });
+        specs.push({
+          id: `e-${id}-b`,
+          source: { node: id, port: `${id}:b`, handle: "dc-bottom" },
+          target: { node: `b${lower}` },
+          data: conductor(kv(lower), { outOfService }),
+        });
+      } else if (br.transformer) {
+        const id = `t${br.index}`;
+        nodes.push({
+          id,
+          width: XFMR.w,
+          height: XFMR.h,
+          ports: [port(`${id}:hv`, XFMR.w / 2, 0, "NORTH"), port(`${id}:lv`, XFMR.w / 2, XFMR.h, "SOUTH")],
+          labels: [outside("T", "H_RIGHT", SIDE_LABEL)],
+          layoutOptions: { ...fixedPorts, ...row(upper, true) },
+        });
+        const data: TransformerData = {
+          ...defaultTransformerData,
+          label: `T ${upper}-${lower}`,
+          ratingMVA: br.rate_a,
+          primaryKV: kv(upper),
+          secondaryKV: kv(lower),
+          windingsUnknown: true,
+          caseRef: ref,
+          reversed: reversed || undefined,
+          outOfService,
+        };
+        rfNodes.set(id, { id, type: "transformer", position: { x: 0, y: 0 }, data } as SLDNode);
+        specs.push({
+          id: `e-${id}-hv`,
+          source: { node: `b${upper}` },
+          target: { node: id, port: `${id}:hv`, handle: "xfmr-primary" },
+          data: conductor(kv(upper), { outOfService }),
+        });
+        specs.push({
+          id: `e-${id}-lv`,
+          source: { node: id, port: `${id}:lv`, handle: "xfmr-secondary" },
+          target: { node: `b${lower}` },
+          data: conductor(kv(lower), { outOfService }),
+        });
+      } else {
+        specs.push({
+          id: `e-br${br.index}`,
+          source: { node: `b${upper}` },
+          target: { node: `b${lower}` },
+          data: conductor(kv(upper), { caseRef: ref, reversed: reversed || undefined, outOfService }),
+        });
+      }
+    }
+
+    for (const [inside, list] of outward) {
+      const data = offPageData(list, kv(inside));
+      const single = list.length === 1;
+      const br0 = boundary.find((br) => linkRef(br).id === list[0].caseRef?.id && linkRef(br).kind === list[0].caseRef?.kind)!;
+      // A single branch keeps the id it has always had; a bundle is named by its bus.
+      const id = single ? `o${br0.index}` : `ob${inside}`;
+      nodes.push({
+        id,
+        width: OFF_PAGE.w,
+        height: OFF_PAGE.h,
+        ports: [port(`${id}:p`, OFF_PAGE.w / 2, 0, "NORTH")],
+        labels: [outside(data.label, "H_RIGHT", Math.max(textWidth(data.label), SIDE_LABEL))],
+        layoutOptions: { ...fixedPorts, ...row(inside, true) },
+      });
+      rfNodes.set(id, { id, type: "offPage", position: { x: 0, y: 0 }, data } as SLDNode);
+      specs.push({
+        id: `e-${id}`,
+        source: { node: `b${inside}` },
+        target: { node: id, port: `${id}:p`, handle: "op-top" },
+        data: conductor(
+          kv(inside),
+          single
+            ? { caseRef: data.caseRef, reversed: data.reversed, outOfService: data.outOfService }
+            : { outOfService: data.outOfService }
+        ),
+      });
+    }
+
+    // On a bus carrying injections every wire gets a port on the side it
+    // leaves from; ELK orders them and packs them at the right end.
+    const ports = new Map<string, { id: string; side: "NORTH" | "SOUTH" }[]>();
+    const portOn = (end: EdgeSpec["source"], side: "NORTH" | "SOUTH") => {
+      if (end.port || !injections.has(Number(end.node.slice(1)))) return;
+      const list = ports.get(end.node) ?? [];
+      end.port = `${end.node}:w${list.length}`;
+      list.push({ id: end.port, side });
+      ports.set(end.node, list);
+    };
+    for (const s of specs) {
+      if (s.source.node.startsWith("b")) portOn(s.source, "SOUTH");
+      if (s.target.node.startsWith("b")) portOn(s.target, "NORTH");
+    }
+
+    // Buses go first so ELK keeps them in case order where it can; folded
+    // rows go in row order so each row keeps the order it was filled in.
+    const ordered = piece.byHop
+      ? [...buses].sort((a, b) => (rowOf.get(a.id) ?? 0) - (rowOf.get(b.id) ?? 0) || order(a.id) - order(b.id))
+      : buses;
+    const busNodes: ElkNode[] = ordered.map((b) => {
+      if (b.star) return { id: `b${b.id}`, width: 20, height: BUS_BAR, layoutOptions: row(b.id) };
+      const left = outside(busLabel(b), "H_LEFT", nameWidth(b));
+      const inj = injections.get(b.id);
+      if (inj) {
+        const wires = ports.get(`b${b.id}`) ?? [];
+        return {
+          id: `b${b.id}`,
+          width: barWidth(b),
+          height: BUS_BAR + Math.max(...inj.map((i) => i.height)),
+          layoutOptions: {
+            ...row(b.id),
+            "elk.portConstraints": "FIXED_SIDE",
+            "elk.portAlignment.default": "END",
+          },
+          ports: wires.map((w) => ({ id: w.id, width: 0, height: 0, layoutOptions: { "elk.port.side": w.side } })),
+          labels: [left, outside("pu", "H_RIGHT", 84 + BAR_END)],
+        };
+      }
       return {
         id: `b${b.id}`,
-        width: roundUp(Math.max(100, inj.length * SLOT + wires.length * PORT_GAP), 20),
-        height: BUS_BAR + Math.max(...inj.map((i) => i.height)),
-        layoutOptions: {
-          ...row(b.id),
-          "elk.portConstraints": "FIXED_SIDE",
-          "elk.portAlignment.default": "END",
-        },
-        ports: wires.map((w) => ({ id: w.id, width: 0, height: 0, layoutOptions: { "elk.port.side": w.side } })),
-        labels: [left, outside("pu", "H_RIGHT", 84 + BAR_END)],
+        width: barWidth(b),
+        height: BUS_BAR,
+        layoutOptions: row(b.id),
+        labels: [left, outside("pu", "H_RIGHT", 84)],
       };
-    }
-    const width = Math.max(100, roundUp(((degree.get(b.id) ?? 0) + 1) * 44, 20));
-    return {
-      id: `b${b.id}`,
-      width,
-      height: BUS_BAR,
-      layoutOptions: row(b.id),
-      labels: [left, outside("pu", "H_RIGHT", 84)],
+    });
+
+    const graph: ElkNode = {
+      id: "root",
+      layoutOptions: {
+        "elk.algorithm": "layered",
+        "elk.direction": "DOWN",
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.spacing.nodeNode": String(NODE_GAP),
+        "elk.spacing.edgeNode": "18",
+        "elk.spacing.edgeEdge": "12",
+        "elk.spacing.labelNode": "8",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+        "elk.layered.spacing.edgeNodeBetweenLayers": "18",
+        "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
+        // Network simplex gives the tidiest drawing but takes 13 s on case300;
+        // Brandes-Koepf takes 1.4 s there, at the cost of a wider drawing.
+        "elk.layered.nodePlacement.strategy": buses.length > READABLE_BUSES ? "BRANDES_KOEPF" : "NETWORK_SIMPLEX",
+        ...(piece.byHop ? { "elk.partitioning.activate": "true" } : {}),
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+        "elk.separateConnectedComponents": "true",
+        "elk.spacing.componentComponent": "80",
+        "elk.nodeLabels.placement": "OUTSIDE V_CENTER H_RIGHT",
+        "elk.edgeLabels.placement": "CENTER",
+        "elk.spacing.edgeLabel": "4",
+        "elk.spacing.portPort": String(PORT_GAP),
+      },
+      children: [...busNodes, ...nodes],
+      edges: specs.map(
+        (s): ElkExtendedEdge => ({
+          id: s.id,
+          sources: [s.source.port ?? s.source.node],
+          targets: [s.target.port ?? s.target.node],
+          // Reserve room for flow results on branches so they never overlap.
+          labels: s.data.caseRef ? [{ text: "flow", width: FLOW_LABEL.w, height: FLOW_LABEL.h }] : undefined,
+        })
+      ),
     };
-  });
-
-  const graph: ElkNode = {
-    id: "root",
-    layoutOptions: {
-      "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
-      "elk.edgeRouting": "ORTHOGONAL",
-      "elk.spacing.nodeNode": "36",
-      "elk.spacing.edgeNode": "18",
-      "elk.spacing.edgeEdge": "12",
-      "elk.spacing.labelNode": "8",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "18",
-      "elk.layered.spacing.edgeEdgeBetweenLayers": "12",
-      // Network simplex gives the tidiest drawing but takes 13 s on case300;
-      // Brandes-Koepf takes 1.4 s there, at the cost of a wider drawing.
-      "elk.layered.nodePlacement.strategy": buses.length > READABLE_BUSES ? "BRANDES_KOEPF" : "NETWORK_SIMPLEX",
-      ...(piece.byHop ? { "elk.partitioning.activate": "true" } : {}),
-      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
-      "elk.separateConnectedComponents": "true",
-      "elk.spacing.componentComponent": "80",
-      "elk.nodeLabels.placement": "OUTSIDE V_CENTER H_RIGHT",
-      "elk.edgeLabels.placement": "CENTER",
-      "elk.spacing.edgeLabel": "4",
-      "elk.spacing.portPort": String(PORT_GAP),
-    },
-    children: [...busNodes, ...nodes],
-    edges: specs.map(
-      (s): ElkExtendedEdge => ({
-        id: s.id,
-        sources: [s.source.port ?? s.source.node],
-        targets: [s.target.port ?? s.target.node],
-        // Reserve room for flow results on branches so they never overlap.
-        labels: s.data.caseRef
-          ? [{ text: "flow", width: FLOW_LABEL.w, height: FLOW_LABEL.h }]
-          : undefined,
-      })
-    ),
+    return { graph, specs, rfNodes };
   };
+  // Position of each bus in the fold, to keep rows in the order they were filled.
+  const orderOf = new Map<number, number>();
+  const order = (bus: number) => orderOf.get(bus) ?? 0;
+  const setOrder = (rows: Map<number, number>) => {
+    orderOf.clear();
+    let i = 0;
+    for (const [bus] of rows) orderOf.set(bus, i++);
+  };
+  setOrder(rowOf);
 
-  const laid = await layoutEngine().layout(graph);
+  let built = build(rowOf);
+  let laid = await layoutEngine().layout(built.graph);
+  if (fold && laid.width && laid.height) {
+    // The estimate of each row's size is rough: measure the real drawing and
+    // fold again if a different fold now fits the view better.
+    const scale = laid.width / Math.max(fold.estimate.w, 1);
+    const rowHeight = laid.height / Math.max(fold.rows, 1);
+    const refit = bestFold(fold.groups, fold.width, aspect, rowHeight, scale);
+    const next = rowsToMap(refit.rows);
+    if ([...next].some(([bus, r]) => rowOf.get(bus) !== r)) {
+      const before = Math.min(aspect / laid.width, 1 / laid.height);
+      setOrder(next);
+      const again = build(next);
+      const relaid = await layoutEngine().layout(again.graph);
+      if (relaid.width && relaid.height && Math.min(aspect / relaid.width, 1 / relaid.height) > before) {
+        rowOf = next;
+        built = again;
+        laid = relaid;
+      } else setOrder(rowOf);
+    }
+  }
+  const { specs, rfNodes } = built;
 
   const at = new Map<string, ElkNode>();
   for (const n of laid.children ?? []) at.set(n.id, n);
@@ -608,6 +787,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     return id;
   };
 
+  const focusOn = (ref: CaseRef | undefined) => (!!piece.focusElement && ref?.element === piece.focusElement) || undefined;
   const edges: SLDEdge[] = [];
   const routed = new Map((laid.edges ?? []).map((e) => [e.id, e as ElkExtendedEdge]));
   for (const s of specs) {
@@ -640,6 +820,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         ...s.data,
         route,
         labelAt: label ? { x: label.x!, y: label.y!, width: label.width!, height: label.height! } : undefined,
+        focus: focusOn(s.data.caseRef),
       },
     } as SLDEdge);
   }
@@ -656,7 +837,12 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       busTaps.push({ id: tap, x, side: "bottom" });
       taps.set(`b${bus}`, busTaps);
       // The symbol's terminal touches the underside of the bar.
-      out.push({ ...inj.node, position: { x: n.x! + x - 20, y: n.y! + BUS_BAR } } as SLDNode);
+      const focus = inj.node.type === "generator" && focusOn((inj.node.data as GeneratorData).caseRef);
+      out.push({
+        ...inj.node,
+        position: { x: n.x! + x - 20, y: n.y! + BUS_BAR },
+        ...(focus ? { data: { ...inj.node.data, focus } } : {}),
+      } as SLDNode);
       edges.push({
         id: `e-${inj.node.id}`,
         type: "conductor",
@@ -684,8 +870,16 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
   }
   for (const [id, node] of rfNodes) {
     const n = at.get(id)!;
-    out.push({ ...node, position: { x: n.x!, y: n.y! } } as SLDNode);
+    const focus = focusOn((node.data as { caseRef?: CaseRef }).caseRef);
+    out.push({ ...node, position: { x: n.x!, y: n.y! }, ...(focus ? { data: { ...node.data, focus } } : {}) } as SLDNode);
   }
 
   return { nodes: out, edges, buses: buses.length, boundary: boundary.length, links };
+}
+
+/** Bus → row index, from rows listed top to bottom. */
+function rowsToMap(rows: number[][]): Map<number, number> {
+  const m = new Map<number, number>();
+  rows.forEach((r, i) => r.forEach((b) => m.set(b, i)));
+  return m;
 }

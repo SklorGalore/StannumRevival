@@ -27,6 +27,8 @@ export interface Ink {
   voltage: (kv: number) => string;
   /** Warning colour (overload, violation), or plain ink in print mode. */
   alert: (color: string) => string;
+  /** Halo around the element a local drawing was made around. */
+  halo: string;
 }
 
 const COLOR: Ink = {
@@ -40,6 +42,7 @@ const COLOR: Ink = {
   wire: "#334155",
   voltage: (kv) => (kv > 0 ? getVoltageColor(kv) : "#475569"),
   alert: (c) => c,
+  halo: "#f59e0b",
 };
 
 /** The colour palette on the dark theme's canvas. */
@@ -54,6 +57,7 @@ const DARK: Ink = {
   wire: "#94a3b8",
   voltage: (kv) => (kv > 0 ? getVoltageColor(kv, true) : "#cbd5e1"),
   alert: (c) => c,
+  halo: "#fbbf24",
 };
 
 const MONO: Ink = {
@@ -67,6 +71,7 @@ const MONO: Ink = {
   wire: "#000000",
   voltage: () => "#000000",
   alert: () => "#000000",
+  halo: "#000000",
 };
 
 /** Whether the diagram is drawn on the dark canvas: dark theme, not print style, not exporting. */

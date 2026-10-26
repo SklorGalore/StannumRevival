@@ -58,6 +58,7 @@ export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
     <SymbolFrame
       w={W}
       h={H}
+      focus={data.focus}
       rotation={data.rotation}
       terminals={TERMINALS}
       graphic={

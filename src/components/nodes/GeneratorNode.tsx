@@ -24,6 +24,7 @@ export function GeneratorNode({ data, selected }: NodeProps<GeneratorNodeType>) 
     <SymbolFrame
       w={W}
       h={H}
+      focus={data.focus}
       rotation={data.rotation}
       labelOffset={data.labelOffset}
       terminals={TERMINALS}

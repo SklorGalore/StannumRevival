@@ -2,12 +2,12 @@
 // already drawn, without moving anything that is there.
 import { nanoid } from "nanoid";
 import type { CaseNetwork } from "../analysis/types";
-import type { BusData, BusTap, ConductorData, SLDEdge, SLDNode, TransformerData } from "../../store/types";
+import type { BusData, BusTap, ConductorData, OffPageData, SLDEdge, SLDNode, TransformerData } from "../../store/types";
 import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
 import { symbolSize } from "./sizes";
 import { isVertical } from "./bus";
-import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, type Link } from "./generate";
+import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, offPageData, type Link } from "./generate";
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -153,9 +153,17 @@ export async function expandDrawing(
   );
   const markerKey = (ref: { kind: string; id: number } | undefined) =>
     ref?.kind === "branch" ? `br${ref.id}` : ref?.kind === "dcline" ? `dc${ref.id}` : "";
-  const staleMarkers = new Set(
-    nodes.filter((n) => n.type === "offPage" && joined.has(markerKey(n.data.caseRef))).map((n) => n.id)
-  );
+  const staleMarkers = new Set<string>();
+  // A bundled marker keeps the branches still leaving the drawing.
+  const trimmedMarkers = new Map<string, OffPageData>();
+  for (const n of nodes) {
+    if (n.type !== "offPage") continue;
+    const data = n.data as OffPageData;
+    const rest = (data.links ?? [data]).filter((l) => !joined.has(markerKey(l.caseRef)));
+    if (!rest.length) staleMarkers.add(n.id);
+    else if (data.links && rest.length < data.links.length)
+      trimmedMarkers.set(n.id, { ...offPageData(rest, data.voltageKV), rotation: data.rotation, labelOffset: data.labelOffset });
+  }
 
   const busNodes = new Map<number, SLDNode>(drawn);
   for (const n of newNodes) {
@@ -292,10 +300,19 @@ export async function expandDrawing(
 
   const keptNodes = nodes
     .filter((n) => !staleMarkers.has(n.id))
-    .map((n) => withTaps({ ...n, selected: false } as SLDNode));
+    .map((n) => {
+      const trimmed = trimmedMarkers.get(n.id);
+      return withTaps({ ...n, ...(trimmed ? { data: trimmed } : {}), selected: false } as SLDNode);
+    });
   const keptEdges = edges
     .filter((e) => !staleMarkers.has(e.source) && !staleMarkers.has(e.target))
-    .map((e) => ({ ...e, selected: false }));
+    .map((e) => {
+      // A bundle down to one branch: its wire carries that branch's flow again.
+      const trimmed = trimmedMarkers.get(e.target) ?? trimmedMarkers.get(e.source);
+      if (!trimmed) return { ...e, selected: false };
+      const { caseRef, reversed, outOfService } = trimmed;
+      return { ...e, selected: false, data: { ...(e.data as ConductorData), caseRef, reversed, outOfService } };
+    });
   return {
     nodes: [...keptNodes, ...newNodes.map(withTaps), ...linkNodes],
     edges: [...keptEdges, ...newEdges, ...linkEdges],
