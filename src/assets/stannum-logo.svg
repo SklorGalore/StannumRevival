@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Stannum</title>
+  <!-- Stannum mark: an S traced along the edges of a cube (a tin crystal cell),
+       fading from the far corner to the near edge. Amber ends are the two buses it joins. -->
+  <defs>
+    <linearGradient id="sn-a" gradientUnits="userSpaceOnUse" x1="391" y1="178" x2="256" y2="100"><stop offset="0" stop-color="#8fc9c0"/><stop offset="1" stop-color="#3f8781"/></linearGradient>
+    <linearGradient id="sn-b" gradientUnits="userSpaceOnUse" x1="256" y1="100" x2="121" y2="178"><stop offset="0" stop-color="#3f8781"/><stop offset="1" stop-color="#8fc9c0"/></linearGradient>
+    <linearGradient id="sn-c" gradientUnits="userSpaceOnUse" x1="121" y1="178" x2="256" y2="256"><stop offset="0" stop-color="#8fc9c0"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+    <linearGradient id="sn-d" gradientUnits="userSpaceOnUse" x1="256" y1="412" x2="121" y2="334"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c3e9e2"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#0f2e30"/>
+  <!-- cube: visible edges, then the three hidden edges dotted -->
+  <path d="M256 100L391 178V334L256 412L121 334V178Z M121 178L256 256L391 178 M256 256V412" fill="none" stroke="#2f6b68" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M256 100V256 M121 334L256 256 M391 334L256 256" fill="none" stroke="#2f6b68" stroke-width="8" stroke-dasharray="1 18" stroke-linecap="round"/>
+  <!-- the S, one segment per cube edge so each can carry its own depth -->
+  <g stroke-width="32" stroke-linecap="round">
+    <path d="M391 178L256 100" stroke="url(#sn-a)"/>
+    <path d="M256 100L121 178" stroke="url(#sn-b)"/>
+    <path d="M121 178L256 256" stroke="url(#sn-c)"/>
+    <path d="M256 256V412" stroke="#ffffff"/>
+    <path d="M256 412L121 334" stroke="url(#sn-d)"/>
+  </g>
+  <circle cx="391" cy="178" r="30" fill="#f2b84b"/>
+  <circle cx="121" cy="334" r="32" fill="#f2b84b"/>
+</svg>
