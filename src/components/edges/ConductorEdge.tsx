@@ -107,6 +107,7 @@ export function ConductorEdge({
   const marks = useResultMarks();
   const maxFlow = useDrawnMaxFlow(marks ? results : null);
   const ink = useInk();
+  const locked = useDiagramStore((s) => s.locked);
   const dotAtSource = useJunction(source, sourceHandleId);
   const dotAtTarget = useJunction(target, targetHandleId);
   const s = { x: sourceX, y: sourceY };
@@ -241,7 +242,7 @@ export function ConductorEdge({
           <title>{numbers.join(" · ")}</title>
         </path>
       )}
-      {selected && pts && <SegmentGrips id={id} points={pts} />}
+      {selected && !locked && pts && <SegmentGrips id={id} points={pts} />}
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
       {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}
       {arrow && !offline && <path d={arrow} fill={overload ?? ink.result} />}

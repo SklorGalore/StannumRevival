@@ -136,6 +136,7 @@ export function NetworkGraph({
   marks,
   focus,
   onRecentre,
+  locked = false,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
@@ -149,6 +150,8 @@ export function NetworkGraph({
   focus?: number | null;
   /** Double-clicking a bus asks to centre the view on it. */
   onRecentre?: (bus: number) => void;
+  /** Buses can't be dragged about; tapping still selects. */
+  locked?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -156,6 +159,8 @@ export function NetworkGraph({
   inspect.current = onInspect;
   const recentre = useRef(onRecentre);
   recentre.current = onRecentre;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const dark = useTheme((s) => s.theme === "dark");
   const palette = useRef(dark ? DARK : LIGHT);
   palette.current = dark ? DARK : LIGHT;
@@ -206,12 +211,17 @@ export function NetworkGraph({
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));
     cy.on("mouseout", "node, edge", (ev) => ev.target.removeClass("hovered"));
     cy.on("zoom", () => refreshLabels(cy));
+    cy.autoungrabify(lockedRef.current);
     cyRef.current = cy;
     return () => {
       cy.destroy();
       cyRef.current = null;
     };
   }, [graph, snapshot]);
+
+  useEffect(() => {
+    cyRef.current?.autoungrabify(locked);
+  }, [locked]);
 
   // Selection highlights without re-layout.
   useEffect(() => {

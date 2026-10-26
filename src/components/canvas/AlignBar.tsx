@@ -33,7 +33,8 @@ const GROUPS: { how: AlignMode; icon: React.ReactNode; title: string; min: numbe
 export function AlignBar() {
   const count = useDiagramStore((s) => s.selectedNodeIds.length);
   const align = useDiagramStore((s) => s.align);
-  if (count < 2) return null;
+  const locked = useDiagramStore((s) => s.locked);
+  if (count < 2 || locked) return null;
   return (
     <div
       role="toolbar"

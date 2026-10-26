@@ -58,6 +58,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const layer = useBusMark(data.caseRef?.kind === "bus" ? data.caseRef.id : undefined);
   const color = selected ? ink.selected : layer?.color && !ink.mono ? layer.color : ink.voltage(data.voltageKV);
   const results = useResults();
+  const locked = useDiagramStore((s) => s.locked);
   const row = data.caseRef ? results?.buses.get(data.caseRef.id) : undefined;
   const marks = useResultMarks();
   const band = row ? voltageBand(row) : null;
@@ -211,7 +212,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
           <Handle type="source" position={Position.Right} id="bus-right" className="bus-tap" style={{ top: BAR / 2 }} />
         </>
       )}
-      {selected && <ResizeGrip id={id} length={length} minLength={minLength} vertical={vertical} />}
+      {selected && !locked && <ResizeGrip id={id} length={length} minLength={minLength} vertical={vertical} />}
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { publishDiagramSelection } from "../../modules/diagram/useSharedSelection";
 import { useDarkCanvas } from "../../lib/diagram/ink";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   BackgroundVariant,
   ConnectionMode,
@@ -25,6 +26,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
+import { Lock, LockOpen } from "lucide-react";
 import { nodeTypes } from "../nodes";
 import { edgeTypes } from "../edges";
 import { useDiagramStore } from "../../store/diagramStore";
@@ -130,6 +132,17 @@ export function DiagramCanvas() {
   const addNode = useDiagramStore((s) => s.addNode);
   const setViewport = useDiagramStore((s) => s.setViewport);
   const fitRequest = useDiagramStore((s) => s.fitRequest);
+  // Locked: symbols and wires stay where they are and can't be edited, but
+  // can still be clicked, selected, inspected and right-clicked.
+  const locked = useDiagramStore((s) => s.locked);
+  const setLocked = useDiagramStore((s) => s.setLocked);
+  // React Flow marks draggable nodes "nopan" so the canvas leaves their
+  // clicks alone. Locked nodes aren't draggable, and without the mark a
+  // double-click on one zooms the canvas instead of reaching the node.
+  const shown = useMemo(
+    () => (locked ? nodes.map((n) => ({ ...n, className: n.className ? `${n.className} nopan` : "nopan" })) : nodes),
+    [nodes, locked]
+  );
   const dark = useDarkCanvas();
   const [menu, setMenu] = useState<{ x: number; y: number; node: SLDNode } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -286,6 +299,7 @@ export function DiagramCanvas() {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (useDiagramStore.getState().locked) return;
       checkpoint();
       // A wire from below that snapped to a tap on top of the bus (or the
       // reverse) would loop through the bar: use the facing side instead.
@@ -380,6 +394,7 @@ export function DiagramCanvas() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+      if (useDiagramStore.getState().locked) return;
       const type = event.dataTransfer.getData(
         "application/sld-node-type"
       ) as SLDNodeType;
@@ -441,16 +456,16 @@ export function DiagramCanvas() {
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
+    event.dataTransfer.dropEffect = useDiagramStore.getState().locked ? "none" : "move";
   }, []);
 
   return (
-    <div ref={wrapperRef} className="w-full h-full relative">
+    <div ref={wrapperRef} className={`w-full h-full relative${locked ? " diagram-is-locked" : ""}`}>
       <AlignBar />
       <LocalScopeBar />
       <NodeMenu menu={menu} onClose={closeMenu} />
       <ReactFlow
-        nodes={nodes as never[]}
+        nodes={shown as never[]}
         edges={edges as never[]}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -458,7 +473,7 @@ export function DiagramCanvas() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onNodeDragStart={() => checkpoint()}
-        onNodeDragStop={(_, node) => attachToBus(node.id, 20)}
+        onNodeDragStop={(_, node) => !locked && attachToBus(node.id, 20)}
         onNodeContextMenu={(e, node) => {
           if (!linked) return;
           e.preventDefault();
@@ -479,6 +494,11 @@ export function DiagramCanvas() {
         }}
         onSelectionDragStart={() => checkpoint()}
         isValidConnection={isValidConnection}
+        // React Flow's own lock also stops selection; this one leaves it on.
+        nodesDraggable={!locked}
+        nodesConnectable={!locked}
+        edgesReconnectable={!locked}
+        elementsSelectable
         onDrop={onDrop}
         onDragOver={onDragOver}
         nodeTypes={nodeTypes}
@@ -533,7 +553,18 @@ export function DiagramCanvas() {
             color={dark ? "#334155" : "#cbd5e1"}
           />
         )}
-        <Controls />
+        <Controls showInteractive={false}>
+          <ControlButton
+            onClick={() => setLocked(!locked)}
+            title={locked ? "Unlock the drawing" : "Lock the drawing: select and inspect, but don't move or edit"}
+            aria-label={locked ? "Unlock the drawing" : "Lock the drawing"}
+            aria-pressed={locked}
+            className={locked ? "diagram-locked" : undefined}
+            data-testid="diagram-lock"
+          >
+            {locked ? <Lock /> : <LockOpen />}
+          </ControlButton>
+        </Controls>
         <VoltageLegend />
         <MiniMap
           pannable
