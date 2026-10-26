@@ -254,6 +254,14 @@ struct ShuntState<'a> {
     value: f64,
     last: i8,
     reversals: u8,
+    /// The level the shunt last moved away from and the controlled voltage
+    /// it gave, so that a step back can be judged before it is taken.
+    previous: Option<(f64, f64)>,
+}
+
+/// How far (p.u.) `vm` is outside `vmin..=vmax`; zero inside.
+fn band_violation(vm: f64, vmin: f64, vmax: f64) -> f64 {
+    (vmin - vm).max(vm - vmax).max(0.0)
 }
 
 #[derive(Clone)]
@@ -329,6 +337,7 @@ impl<'a> Controller<'a> {
                 value: shunt.initial,
                 last: 0,
                 reversals: 0,
+                previous: None,
             })
             .collect();
         let mut held = std::collections::HashMap::<u32, usize>::new();
@@ -413,10 +422,43 @@ impl<'a> Controller<'a> {
                 (None, 0)
             };
             let Some(next) = next else { continue };
+            // A step back to the level just left means one step jumps right
+            // over the band (it is narrower than a step, or has no width at
+            // all, VSWLO = VSWHI). Both voltages are known by now, so settle
+            // on whichever level lands nearer the band and hold there, like
+            // a target with a deadband of one step, instead of hunting.
+            if let Some((level, v_level)) = s.previous
+                && s.last != 0
+                && s.last != dir
+                && (level - next).abs() < 1e-9
+            {
+                s.reversals = MAX_REVERSALS;
+                let here = band_violation(vm, s.shunt.vmin, s.shunt.vmax);
+                let there = band_violation(v_level, s.shunt.vmin, s.shunt.vmax);
+                let keep = if there < here { level } else { s.value };
+                log::info!(
+                    "  switched shunt at bus {}: one step jumps over the band {:.4}-{:.4} (bus {} at {:.4} pu with {:.1} Mvar, {:.4} pu with {:.1} Mvar); holding at {keep:.1} Mvar, nearer the band",
+                    s.shunt.bus,
+                    s.shunt.vmin,
+                    s.shunt.vmax,
+                    s.shunt.regulated_bus.unwrap_or(s.shunt.bus),
+                    vm,
+                    s.value,
+                    v_level,
+                    level,
+                );
+                if keep != s.value {
+                    case.buses[s.bus].bs += keep - s.value;
+                    s.value = keep;
+                    moved += 1;
+                }
+                continue;
+            }
             if s.last != 0 && s.last != dir {
                 s.reversals += 1;
             }
             s.last = dir;
+            s.previous = Some((s.value, vm));
             report(
                 moved,
                 format!(
