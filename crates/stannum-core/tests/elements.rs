@@ -183,6 +183,8 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
             .unwrap()
             .solve(stannum_core::power::SolveSettings {
                 enforce_q_limits,
+                // Each pass solves from the file, so the taps move again.
+                start: stannum_core::power::StartChoice::Case,
                 ..Default::default()
             })
             .unwrap();

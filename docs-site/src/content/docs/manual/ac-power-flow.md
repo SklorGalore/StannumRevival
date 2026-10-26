@@ -86,8 +86,18 @@ protects badly initialized solves from jumping to a low-voltage solution.
 
 ### Starting point
 
-**From case** starts at the voltages saved in the file. **Flat** starts every
-bus at 1 p.u. and its island's reference angle. Either way, buses held by
+By default each solve starts where the last converged AC solve ended: its bus
+voltages and generator reactive outputs, and the final positions of switched
+shunts, transformer taps and DC converter taps. Solving the same case again
+then takes no Newton steps, and a study edit such as an outage takes a few.
+Generators the last solve held at a reactive limit start there and stay
+there, as after a reactive-limit pass. Tick **Flat start** to check every
+limit from scratch. The first solve, or the first after
+a DC solve or a solve that did not converge, starts from the voltages saved
+in the file.
+
+**Flat start** starts every bus at 1 p.u. and its island's reference angle,
+with the controls at their file settings. In every case, buses held by
 generators start at the generators' voltage setpoints.
 
 ## Passes
