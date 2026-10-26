@@ -621,3 +621,27 @@ export type StudyEdit =
   | { kind: "status"; element: string; online: boolean }
   | { kind: "generation"; element: string; mw: number }
   | { kind: "load"; bus: number; mw: number; mvar: number };
+
+// ---- Element inspector ----------------------------------------------------
+
+/** One value from the file; text where it isn't a number (a type, "not rated"). */
+export interface DetailField {
+  label: string;
+  value: number | string;
+  unit: string;
+}
+
+/** One element as the file describes it (see stannum-core inspect.rs). */
+export interface ElementDetail {
+  element: string;
+  kind: string;
+  buses: { number: number; name: string; base_kv: number }[];
+  /** In service in the file, before study edits. */
+  online: boolean;
+  /** Parameters, one group per winding for a three-winding transformer. */
+  data: { title: string; fields: DetailField[] }[];
+  limits: DetailField[];
+  /** A bus's branches, generators and DC lines. */
+  connected: string[];
+  note: string | null;
+}
