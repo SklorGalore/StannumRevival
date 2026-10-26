@@ -138,7 +138,10 @@ fn yes() -> bool {
 pub struct SolveSettings {
     pub model: ModelChoice,
     pub start: StartChoice,
-    pub tolerance: f64,
+    /// Largest power mismatch allowed at any bus, in MVA. It converts to per
+    /// unit on each case's own base at solve time, so the same setting means
+    /// the same MW and Mvar on every case.
+    pub tolerance_mva: f64,
     pub max_iterations: usize,
     pub enforce_q_limits: bool,
     #[serde(default)]
@@ -154,10 +157,10 @@ pub struct SolveSettings {
     pub adjust_transformer_taps: bool,
 }
 
-/// Default mismatch tolerance in per unit: 2 MVA on the usual 100 MVA base.
-/// Looser than the solver library's own default, which suits reference
-/// checks rather than day-to-day studies.
-pub const DEFAULT_TOLERANCE: f64 = 0.02;
+/// Default mismatch tolerance: 2 MVA on any system base. Looser than the
+/// solver library's own default, which suits reference checks rather than
+/// day-to-day studies.
+pub const DEFAULT_TOLERANCE_MVA: f64 = 2.0;
 
 impl Default for SolveSettings {
     fn default() -> Self {
@@ -165,7 +168,7 @@ impl Default for SolveSettings {
         Self {
             model: ModelChoice::Ac,
             start: StartChoice::Last,
-            tolerance: DEFAULT_TOLERANCE,
+            tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,
@@ -180,7 +183,7 @@ impl SolveSettings {
     /// Solver options for `power`, using its LCC data when the detailed DC
     /// model is chosen and its voltage controls when they are switched on.
     pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
-        let mut options = self.options();
+        let mut options = self.options(power.case.base_mva);
         if self.dc_model == DcModelChoice::Detailed
             && (!power.lcc_lines.is_empty()
                 || !power.vsc_lines.is_empty()
@@ -205,8 +208,9 @@ impl SolveSettings {
         options
     }
 
-    /// Solver options without detailed DC line data.
-    pub fn options(&self) -> PowerFlowOptions {
+    /// Solver options without detailed DC line data, for a case on
+    /// `base_mva`.
+    pub fn options(&self, base_mva: f64) -> PowerFlowOptions {
         PowerFlowOptions {
             model: match self.model {
                 ModelChoice::Ac => Model::Ac,
@@ -217,13 +221,18 @@ impl SolveSettings {
                 StartChoice::Case | StartChoice::Last => Initialization::Case,
                 StartChoice::Flat => Initialization::Flat,
             },
-            tolerance: self.tolerance,
+            tolerance: tolerance_pu(self.tolerance_mva, base_mva),
             max_iterations: self.max_iterations,
             // Q limits only apply to AC; the solver rejects them for DC.
             enforce_q_limits: self.enforce_q_limits && self.model == ModelChoice::Ac,
             ..PowerFlowOptions::default()
         }
     }
+}
+
+/// `mva` in per unit on `base_mva`, taking 100 MVA when the base is missing.
+pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
+    mva / if base_mva > 0.0 { base_mva } else { 100.0 }
 }
 
 /// A copy of `case` that starts where `last`, an earlier converged AC solve,

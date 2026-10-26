@@ -46,7 +46,8 @@ export interface SolveSettings {
   /** "last" starts from the last converged AC solve, with its controls where
    * they ended, and falls back to the case voltages ("case") without one. */
   start: "case" | "flat" | "last";
-  tolerance: number;
+  /** Largest mismatch allowed at any bus, in MVA on every case's base. */
+  tolerance_mva: number;
   max_iterations: number;
   enforce_q_limits: boolean;
   /** Two-terminal DC lines: converter equations, or MATPOWER's lossless pair. */

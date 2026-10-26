@@ -39,7 +39,7 @@ import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
 import type { FilterRule } from "../../lib/filters";
-import { toleranceMva, tolerancePu } from "../../lib/analysis/tolerance";
+import { tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "study" | "warnings";
@@ -419,10 +419,10 @@ function SolvePanel({
           type="number"
           step="any"
           min={0}
-          value={toleranceMva(settings.tolerance, baseMva)}
+          value={settings.tolerance_mva}
           disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, tolerance: tolerancePu(Number(e.target.value), baseMva) })}
-          title={`${sig(settings.tolerance)} p.u. on the ${baseMva} MVA base`}
+          onChange={(e) => setSettings({ ...settings, tolerance_mva: Number(e.target.value) })}
+          title={`${sig(tolerancePu(settings.tolerance_mva, baseMva))} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
       <Field label="Newton iterations per pass">

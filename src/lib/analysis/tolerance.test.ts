@@ -3,8 +3,10 @@ import { DEFAULT_SOLVE_SETTINGS } from "./api";
 import { toleranceMva, tolerancePu } from "./tolerance";
 
 describe("mismatch tolerance in MVA", () => {
-  it("defaults to 2 MVA on a 100 MVA base", () => {
-    expect(toleranceMva(DEFAULT_SOLVE_SETTINGS.tolerance, 100)).toBe(2);
+  it("defaults to 2 MVA whatever the case's base", () => {
+    expect(DEFAULT_SOLVE_SETTINGS.tolerance_mva).toBe(2);
+    expect(tolerancePu(DEFAULT_SOLVE_SETTINGS.tolerance_mva, 100)).toBe(0.02);
+    expect(tolerancePu(DEFAULT_SOLVE_SETTINGS.tolerance_mva, 1000)).toBe(0.002);
   });
 
   it("converts on a 100 MVA base without float noise", () => {
