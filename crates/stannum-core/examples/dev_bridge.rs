@@ -101,6 +101,8 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
                 .run_contingencies(arg(args, "settings")?)?,
         ),
         "cancel_contingencies" => Ok(Value::Null),
+        // Commands run one at a time here, so there is never a solve to stop.
+        "cancel_solve" => Ok(Value::Null),
         "contingency_progress" => to_json(stannum_core::contingency::Progress::default()),
         "contingency_summary" => to_json(ws.current()?.contingency_summary()),
         "contingency_rows" => to_json(

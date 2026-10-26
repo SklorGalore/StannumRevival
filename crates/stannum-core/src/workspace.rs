@@ -17,6 +17,8 @@ use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, Topol
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -139,6 +141,9 @@ pub fn decode_text(bytes: &[u8]) -> String {
 }
 
 /// A solve to start the next one from: converged and AC.
+/// What a cancelled solve returns.
+pub const SOLVE_CANCELLED: &str = "Solve cancelled. The previous results are kept.";
+
 fn resumable(solve: &Option<(PowerFlowResult, SolveSettings)>) -> Option<&PowerFlowResult> {
     solve
         .as_ref()
@@ -449,10 +454,28 @@ impl OpenCase {
     }
 
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
+        self.solve_cancellable(settings, None)
+    }
+
+    /// [`Self::solve`], stopped early when `cancel` is set from another
+    /// thread. A cancelled solve keeps the previous results.
+    pub fn solve_cancellable(
+        &mut self,
+        settings: SolveSettings,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Result<power::SolveReport, String> {
         let power = self.power_case()?;
         let start = Instant::now();
         let cold = settings.options_for(power);
         let mut options = cold.clone();
+        options.cancel = cancel;
+        let failed = |e: rs_power::Error, edits: &[Edit]| match e {
+            rs_power::Error::Cancelled => {
+                log::info!("Solve cancelled; the previous results are kept");
+                SOLVE_CANCELLED.to_string()
+            }
+            e => study::explain(e.to_string(), edits),
+        };
         // The last converged AC solve: of this case, else from before the
         // study's edits changed.
         let last = resumable(&self.solved)
@@ -491,7 +514,7 @@ impl OpenCase {
                     &file.grids,
                     &rs_power::DcGridSettings::default(),
                 )
-                .map_err(|e| study::explain(e.to_string(), &self.edits))?;
+                .map_err(|e| failed(e, &self.edits))?;
                 let names = power::bus_names(&power.case);
                 let index: std::collections::HashMap<u32, usize> = power
                     .case
@@ -514,8 +537,7 @@ impl OpenCase {
                 (ac, Some(vsc))
             }
             None => (
-                rs_power::solve(input, &options)
-                    .map_err(|e| study::explain(e.to_string(), &self.edits))?,
+                rs_power::solve(input, &options).map_err(|e| failed(e, &self.edits))?,
                 None,
             ),
         };

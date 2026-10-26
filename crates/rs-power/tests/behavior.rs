@@ -535,3 +535,20 @@ fn tolerance_looser_than_the_staged_one_still_enforces_reactive_limits() {
         assert!(g.qg <= g.qmax + 1e-6 && g.qg >= g.qmin - 1e-6, "{g:?}");
     }
 }
+
+#[test]
+fn a_set_cancel_flag_stops_the_solve() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let flag = Arc::new(AtomicBool::new(false));
+    let options = PowerFlowOptions {
+        cancel: Some(flag.clone()),
+        ..Default::default()
+    };
+    assert!(solve(&case(), &options).is_ok());
+    flag.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        solve(&case(), &options),
+        Err(rs_power::Error::Cancelled)
+    ));
+}

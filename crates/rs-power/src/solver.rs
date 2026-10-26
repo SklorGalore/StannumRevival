@@ -64,6 +64,9 @@ pub struct PowerFlowOptions {
     /// Newton solves (AC only); empty by default. Continuous shunts keep to
     /// their susceptance range even when `enforce_q_limits` is false.
     pub voltage_controls: VoltageControls,
+    /// Set this flag from another thread to stop the solve: it returns
+    /// [`Error::Cancelled`] before its next Newton step. None by default.
+    pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// DC line model for AC solves.
@@ -109,7 +112,17 @@ impl Default for PowerFlowOptions {
             q_limit_tolerance: 5e-6,
             dc_model: DcModel::Simplified,
             voltage_controls: VoltageControls::default(),
+            cancel: None,
         }
+    }
+}
+
+impl PowerFlowOptions {
+    /// Whether [`Self::cancel`] has been set.
+    pub fn cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
     }
 }
 
@@ -853,6 +866,10 @@ fn newton(
         terminals.len()
     );
     for iteration in 0..=opt.max_iterations {
+        if opt.cancelled() {
+            log::info!("solve cancelled before Newton iteration {iteration}");
+            return Err(Error::Cancelled);
+        }
         let s = if terminals.is_empty() {
             base.clone()
         } else {

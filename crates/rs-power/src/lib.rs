@@ -69,4 +69,7 @@ pub enum Error {
     /// Singular system, failed factorization, or non-finite numerical result.
     #[error("numerical failure: {0}")]
     Numerical(String),
+    /// The solve was stopped through [`PowerFlowOptions::cancel`].
+    #[error("cancelled")]
+    Cancelled,
 }

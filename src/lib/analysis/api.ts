@@ -121,6 +121,8 @@ export const api = {
   caseSummary: () => call<CaseSummary | null>("case_summary"),
 
   solve: (settings: SolveSettings) => call<SolveReport>("solve_power_flow", { settings }),
+  /** Stops the solve in progress; it keeps the previous results. */
+  cancelSolve: () => invoke<void>("cancel_solve"),
   setStudyEdits: (edits: StudyEdit[]) => call<void>("set_study_edits", { edits }),
   loadDcGrids: (path: string) => call<DcGridsSummary>("load_dc_grids", { path }),
   clearDcGrids: () => call<void>("clear_dc_grids"),

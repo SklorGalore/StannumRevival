@@ -9,6 +9,7 @@ use stannum_core::power::{ResponseTable, SensitivitySummary, SolveReport, SolveS
 use stannum_core::study::Edit;
 use stannum_core::{logbook, CaseSummary, Workspace};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
@@ -56,12 +57,41 @@ pub async fn case_summary(
     with(state, |ws| Ok(ws.case.as_ref().map(|c| c.summary()))).await
 }
 
+/// The flag that stops the solve in progress, if one is running.
+#[derive(Default, Clone)]
+pub struct SolveRun(Arc<Mutex<Option<Arc<AtomicBool>>>>);
+
 #[tauri::command]
 pub async fn solve_power_flow(
     state: State<'_, SharedWorkspace>,
+    run: State<'_, SolveRun>,
     settings: SolveSettings,
 ) -> Result<SolveReport, String> {
-    with(state, move |ws| ws.current_mut()?.solve(settings)).await
+    let flag = Arc::new(AtomicBool::new(false));
+    if let Ok(mut slot) = run.0.lock() {
+        *slot = Some(flag.clone());
+    }
+    let current = run.0.clone();
+    let mine = flag.clone();
+    let result = with(state, move |ws| {
+        ws.current_mut()?.solve_cancellable(settings, Some(flag))
+    })
+    .await;
+    // Only clear the slot if a newer solve hasn't taken it.
+    if let Ok(mut slot) = current.lock() {
+        if slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &mine)) {
+            *slot = None;
+        }
+    }
+    result
+}
+
+/// Stop the solve in progress; it keeps the previous results.
+#[tauri::command]
+pub fn cancel_solve(run: State<'_, SolveRun>) {
+    if let Some(flag) = run.0.lock().ok().and_then(|f| f.clone()) {
+        flag.store(true, Ordering::Relaxed);
+    }
 }
 
 /// Attach a Stannum DC grid file to the open case.

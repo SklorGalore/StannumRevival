@@ -579,3 +579,21 @@ fn a_dc_grid_file_that_does_not_fit_the_case_is_refused() {
     assert!(error.contains("AC bus 105 is not in the case"), "{error}");
     assert!(case.dc_grids.is_none());
 }
+
+#[test]
+fn a_cancelled_solve_keeps_the_previous_results() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    case.solve(SolveSettings::default()).unwrap();
+    let err = case
+        .solve_cancellable(
+            SolveSettings::default(),
+            Some(Arc::new(AtomicBool::new(true))),
+        )
+        .unwrap_err();
+    assert_eq!(err, stannum_core::workspace::SOLVE_CANCELLED);
+    assert!(case.solved.is_some());
+}
