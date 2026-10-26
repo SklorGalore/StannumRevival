@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stannum</title>
+    <!--
+      Splash window shown while the main window loads (see src-tauri/src/splash.rs).
+      Plain HTML and CSS so it paints at once, before React or any app chunk loads.
+      The mark is src/assets/stannum-logo.svg inlined, so each part can be animated:
+      the cube draws, then the S is traced edge by edge from the far amber dot to the
+      near one, then the wordmark rises. Keep the geometry in step with that file.
+    -->
+    <style>
+      :root {
+        --rail: #0f2e30;
+        --edge: #2f6b68;
+        --amber: #f2b84b;
+        --ink: #e8f3f1;
+        --muted: #8fb5b0;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--rail);
+        color: var(--ink);
+        font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        /* lets the user drag the frameless window */
+        -webkit-app-region: drag;
+        app-region: drag;
+      }
+      svg {
+        width: 168px;
+        height: 168px;
+        overflow: visible;
+      }
+
+      /* cube: visible edges draw in, hidden edges fade in behind them */
+      .cube {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: draw 520ms cubic-bezier(0.4, 0, 0.2, 1) 120ms forwards;
+      }
+      .hidden-edges {
+        opacity: 0;
+        animation: fade 400ms ease-out 480ms forwards;
+      }
+
+      /* the S, one cube edge at a time */
+      .s path {
+        stroke-dasharray: 1 2;
+        stroke-dashoffset: 1;
+        opacity: 0;
+        animation:
+          show 1ms linear var(--at) forwards,
+          draw 170ms linear var(--at) forwards;
+      }
+      .s path:nth-child(1) { --at: 640ms; animation-timing-function: linear, cubic-bezier(0.5, 0, 1, 1); }
+      .s path:nth-child(2) { --at: 810ms; }
+      .s path:nth-child(3) { --at: 980ms; }
+      .s path:nth-child(4) { --at: 1150ms; }
+      .s path:nth-child(5) { --at: 1320ms; animation-timing-function: linear, cubic-bezier(0, 0, 0.5, 1); }
+
+      /* amber ends: the start pops before the trace, the end when it arrives;
+         both then breathe together while the app finishes loading */
+      .dot {
+        transform-box: fill-box;
+        transform-origin: center;
+        transform: scale(0);
+        animation:
+          pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--at) forwards,
+          breathe 1800ms ease-in-out 2000ms infinite;
+      }
+      .dot.start { --at: 520ms; }
+      .dot.end { --at: 1470ms; }
+
+      .wordmark {
+        text-align: center;
+        opacity: 0;
+        transform: translateY(8px);
+        animation: rise 520ms cubic-bezier(0.2, 0, 0, 1) 1380ms forwards;
+      }
+      .wordmark h1 {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+      .wordmark p {
+        margin: 4px 0 0;
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+      @keyframes show { to { opacity: 1; } }
+      @keyframes fade { to { opacity: 1; } }
+      @keyframes pop { to { transform: scale(1); } }
+      @keyframes rise { to { opacity: 1; transform: none; } }
+      @keyframes breathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+
+      /* reduced motion: show the finished mark, keep only a gentle fade */
+      @media (prefers-reduced-motion: reduce) {
+        .cube, .hidden-edges, .s path, .dot, .wordmark {
+          animation: fade 300ms ease-out forwards;
+          stroke-dashoffset: 0;
+          transform: none;
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg viewBox="76 56 360 400" role="img" aria-label="Stannum">
+      <defs>
+        <linearGradient id="sn-a" gradientUnits="userSpaceOnUse" x1="391" y1="178" x2="256" y2="100"><stop offset="0" stop-color="#8fc9c0"/><stop offset="1" stop-color="#3f8781"/></linearGradient>
+        <linearGradient id="sn-b" gradientUnits="userSpaceOnUse" x1="256" y1="100" x2="121" y2="178"><stop offset="0" stop-color="#3f8781"/><stop offset="1" stop-color="#8fc9c0"/></linearGradient>
+        <linearGradient id="sn-c" gradientUnits="userSpaceOnUse" x1="121" y1="178" x2="256" y2="256"><stop offset="0" stop-color="#8fc9c0"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+        <linearGradient id="sn-d" gradientUnits="userSpaceOnUse" x1="256" y1="412" x2="121" y2="334"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c3e9e2"/></linearGradient>
+      </defs>
+      <path class="cube" pathLength="1" d="M256 100L391 178V334L256 412L121 334V178Z M121 178L256 256L391 178 M256 256V412" fill="none" stroke="#2f6b68" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+      <path class="hidden-edges" d="M256 100V256 M121 334L256 256 M391 334L256 256" fill="none" stroke="#2f6b68" stroke-width="8" stroke-dasharray="1 18" stroke-linecap="round"/>
+      <g class="s" stroke-width="32" stroke-linecap="round" fill="none">
+        <path pathLength="1" d="M391 178L256 100" stroke="url(#sn-a)"/>
+        <path pathLength="1" d="M256 100L121 178" stroke="url(#sn-b)"/>
+        <path pathLength="1" d="M121 178L256 256" stroke="url(#sn-c)"/>
+        <path pathLength="1" d="M256 256V412" stroke="#ffffff"/>
+        <path pathLength="1" d="M256 412L121 334" stroke="url(#sn-d)"/>
+      </g>
+      <circle class="dot start" cx="391" cy="178" r="30" fill="#f2b84b"/>
+      <circle class="dot end" cx="121" cy="334" r="32" fill="#f2b84b"/>
+    </svg>
+    <div class="wordmark">
+      <h1>Stannum</h1>
+      <p>Power system workbench</p>
+    </div>
+  </body>
+</html>

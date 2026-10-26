@@ -19,6 +19,11 @@ export default defineConfig(async () => ({
     minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
     rolldownOptions: {
+      // splash.html is the logo window shown while the app loads.
+      input: {
+        main: "index.html",
+        splash: "splash.html",
+      },
       output: {
         // Big libraries get chunks of their own so no single file passes
         // Vite's 500 kB warning. Cytoscape only loads with the network view
