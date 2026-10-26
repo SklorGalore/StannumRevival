@@ -70,4 +70,18 @@ outage. **Clear** in the Layers panel turns it off.
 
 ![The Contingency layer on a one-line around the tripped line, with the legend](../../../assets/screens/contingency-layer.png)
 
+## Trip and compare
+
+To ask about one element without running every outage, select a branch or
+generator anywhere and choose **Trip and compare** in its inspector. It takes
+the element out of the latest AC solve, solves again in AC with the same
+settings, and draws the result with the **Contingency** layer, around the
+element. The inspector's **If it trips** box lists the branches pushed over
+the limit (new or worse, as above), voltage problems and any split-off
+buses. **Keep it out in the study** turns the trip into a study edit;
+**Clear** removes it from the diagram. A contingency run's results are left
+as they were.
+
+![Trip and compare: the If it trips box in the inspector and the Contingency layer around the tripped line](../../../assets/screens/trip-and-compare.png)
+
 The method is in [Contingency analysis](/StannumRevival/manual/contingencies/).

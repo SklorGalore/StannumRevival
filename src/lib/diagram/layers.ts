@@ -3,12 +3,12 @@
 // branch's element id); the Network style and the One-line style both draw
 // the same marks. The contingency layer draws the outage open in Power
 // flow's Contingencies tab.
-import type { ContingencyDetail, TopoPath, TopologySnapshot } from "../analysis/types";
+import type { ContingencyDetail, SolveReport, TopoPath, TopologySnapshot } from "../analysis/types";
 import { elementLabel } from "../elements";
 import { createColorPresentation, type ColorSettings } from "../../modules/topology/fields/field-colors";
 import { matchesBus, matchesEquipment, type FilterRule } from "../../modules/topology/fields/field-view";
 
-export type LayerId = "fields" | "islands" | "merged" | "critical" | "path" | "contingency";
+export type LayerId = "fields" | "islands" | "results" | "merged" | "critical" | "path" | "contingency";
 
 /** How one layer marks an element. Later layers win where they overlap. */
 export interface Mark {
@@ -61,7 +61,7 @@ export const LAYER_COLORS = {
 /** Island colours, largest island first. */
 const ISLAND_COLORS = ["#0072b2", "#e69f00", "#009e73", "#d55e00", "#56b4e9", "#cc79a7", "#f0e442", "#333333"];
 
-export const LAYER_ORDER: LayerId[] = ["fields", "islands", "merged", "critical", "path", "contingency"];
+export const LAYER_ORDER: LayerId[] = ["fields", "islands", "results", "merged", "critical", "path", "contingency"];
 
 export const LAYER_TITLES: Record<LayerId, string> = {
   critical: "Bridges and cut buses",
@@ -69,8 +69,32 @@ export const LAYER_TITLES: Record<LayerId, string> = {
   merged: "Zero-impedance groups",
   path: "Shortest path",
   fields: "Filters and colours",
+  results: "Colour by result",
   contingency: "Contingency",
 };
+
+/** What the Results layer colours by. */
+export type ResultMode = "loading" | "voltage" | "change" | "sensitivity";
+
+/** A sensitivity column, as shown in Power flow's Sensitivities tab. */
+export interface SensitivityLayer {
+  /** Such as "Voltage angle per MW injected at bus 1023". */
+  title: string;
+  /** A few words for the legend, such as "MW injected at bus 1023". */
+  short: string;
+  units: string;
+  rows: { element: string; value: number }[];
+}
+
+/** The Results layer's inputs. */
+export interface ResultInput {
+  mode: ResultMode;
+  /** The latest solve. */
+  report: SolveReport | null;
+  /** For "change": the saved solve to compare the latest one with. */
+  saved?: { name: string; report: SolveReport } | null;
+  sensitivity?: SensitivityLayer | null;
+}
 
 export interface LayerInput {
   on: Record<LayerId, boolean>;
@@ -79,6 +103,7 @@ export interface LayerInput {
   colors: ColorSettings;
   /** The outage open in the Contingencies tab, while shown on the diagram. */
   contingency?: { detail: ContingencyDetail; limitPct: number } | null;
+  results?: ResultInput | null;
 }
 
 function empty(): LayerMarks {
@@ -118,6 +143,8 @@ export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput):
     for (const bus of input.path.buses) put(marks.buses, bus, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
     for (const e of input.path.equipment_ids) put(marks.elements, e, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
     legend.push({ label: `${input.path.buses[0]} → ${input.path.buses[input.path.buses.length - 1]}, ${input.path.hops} hops`, color: LAYER_COLORS.path, kind: "line" });
+  } else if (id === "results" && input.results) {
+    resultMarks(input.results, marks, legend);
   } else if (id === "contingency" && input.contingency) {
     contingencyMarks(input.contingency.detail, input.contingency.limitPct, marks, legend);
   } else if (id === "fields") {
@@ -186,6 +213,142 @@ function contingencyMarks(d: ContingencyDetail, limit: number, marks: LayerMarks
   legend.push({ label: `${less} carry ${MOVED_MW}+ MW less`, color: LAYER_COLORS.less, kind: "line" });
   if (d.voltage_problems.length) legend.push({ label: `${d.voltage_problems.length} buses outside voltage limits`, color: LAYER_COLORS.voltage, kind: "halo" });
   if (d.cut_off.length) legend.push({ label: `${d.cut_off.length} buses split off (faded)`, color: "#94a3b8", kind: "fill" });
+}
+
+/** Branch loading bands, % of rate A: upper bound, colour, words. */
+export const LOADING_BANDS: [number, string, string][] = [
+  [50, "#16a34a", "under 50%"],
+  [80, "#84cc16", "50–80%"],
+  [90, "#eab308", "80–90%"],
+  [100, "#f97316", "90–100%"],
+  [Infinity, "#dc2626", "over 100%"],
+];
+
+/** Bus voltage bands, p.u.: upper bound, colour, words. */
+export const VOLTAGE_BANDS: [number, string, string][] = [
+  [0.95, "#1d4ed8", "under 0.95 p.u."],
+  [0.98, "#60a5fa", "0.95–0.98"],
+  [1.02, "#94a3b8", "0.98–1.02"],
+  [1.05, "#f59e0b", "1.02–1.05"],
+  [Infinity, "#dc2626", "over 1.05 p.u."],
+];
+
+/** Diverging ends for a signed result: negative, middle, positive. */
+const NEGATIVE = "#2563eb";
+const MIDDLE = "#cbd5e1";
+const POSITIVE = "#dc2626";
+
+/** Responses smaller than this share of the largest aren't coloured. */
+const SMALL_SHARE = 0.01;
+
+function band(value: number, bands: [number, string, string][]): number {
+  return bands.findIndex(([upper]) => value < upper);
+}
+
+/** Blend two #rrggbb colours, t from 0 (a) to 1 (b). */
+export function mix(a: string, b: string, t: number): string {
+  const p = (c: string, i: number) => parseInt(c.slice(1 + 2 * i, 3 + 2 * i), 16);
+  const ch = (i: number) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * Math.min(1, Math.max(0, t)));
+  return `#${[0, 1, 2].map((i) => ch(i).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** A signed value on the blue–grey–red scale, scaled by `max`. */
+function diverging(value: number, max: number): string {
+  const t = max > 0 ? Math.min(1, Math.abs(value) / max) : 0;
+  return value < 0 ? mix(MIDDLE, NEGATIVE, t) : mix(MIDDLE, POSITIVE, t);
+}
+
+/** Colour by the latest solve, a change from a saved solve, or a sensitivity. */
+function resultMarks(r: ResultInput, marks: LayerMarks, legend: LegendEntry[]) {
+  const report = r.report;
+  if (r.mode === "loading" && report) {
+    const counts = LOADING_BANDS.map(() => 0);
+    for (const b of report.branches) {
+      if (!b.online || b.loading_pct === null) continue;
+      const i = band(b.loading_pct, LOADING_BANDS);
+      counts[i]++;
+      put(marks.elements, b.element, {
+        color: LOADING_BANDS[i][1],
+        bold: b.loading_pct >= 100,
+        note: `${b.loading_pct.toFixed(0)}% of rate A (${Math.max(Math.abs(b.pf), Math.abs(b.pt)).toFixed(1)} MW)`,
+      });
+    }
+    LOADING_BANDS.forEach(([, color, words], i) => counts[i] && legend.push({ label: `${counts[i]} ${words}`, color, kind: "line" }));
+    const unrated = report.branches.filter((b) => b.online && b.loading_pct === null).length;
+    if (unrated) legend.push({ label: `${unrated} without a rating (not coloured)`, color: "#e2e8f0", kind: "line" });
+  } else if (r.mode === "voltage" && report) {
+    const counts = VOLTAGE_BANDS.map(() => 0);
+    let outside = 0;
+    for (const b of report.buses) {
+      if (b.kind === "Isolated") continue;
+      const i = band(b.vm, VOLTAGE_BANDS);
+      counts[i]++;
+      const out = b.vm < b.vmin - 1e-9 || b.vm > b.vmax + 1e-9;
+      if (out) outside++;
+      put(marks.buses, b.id, {
+        color: VOLTAGE_BANDS[i][1],
+        halo: out ? LAYER_COLORS.voltage : undefined,
+        note: `${b.vm.toFixed(3)} p.u.${out ? ` (limits ${b.vmin.toFixed(2)}–${b.vmax.toFixed(2)})` : ""}`,
+      });
+    }
+    VOLTAGE_BANDS.forEach(([, color, words], i) => counts[i] && legend.push({ label: `${counts[i]} ${words}`, color, kind: "fill" }));
+    if (outside) legend.push({ label: `${outside} outside their own limits`, color: LAYER_COLORS.voltage, kind: "halo" });
+  } else if (r.mode === "change" && report && r.saved) {
+    const before = new Map(r.saved.report.branches.map((b) => [b.element + "#" + b.winding, b]));
+    let more = 0;
+    let less = 0;
+    let switched = 0;
+    for (const b of report.branches) {
+      const was = before.get(b.element + "#" + b.winding);
+      if (!was) continue;
+      if (was.online !== b.online) {
+        switched++;
+        put(marks.elements, b.element, { halo: LAYER_COLORS.tripped, dim: !b.online, note: `${b.online ? "Back in service" : "Out of service"} since ${r.saved.name}` });
+        continue;
+      }
+      if (!b.online) continue;
+      const delta = b.pf - was.pf;
+      if (Math.abs(delta) < MOVED_MW) continue;
+      const heavier = Math.abs(b.pf) > Math.abs(was.pf);
+      if (heavier) more++;
+      else less++;
+      put(marks.elements, b.element, {
+        color: heavier ? LAYER_COLORS.more : LAYER_COLORS.less,
+        note: `${b.pf.toFixed(1)} MW, ${delta >= 0 ? "+" : ""}${delta.toFixed(1)} since ${r.saved.name}`,
+      });
+    }
+    const vmWas = new Map(r.saved.report.buses.map((b) => [b.id, b.vm]));
+    let moved = 0;
+    for (const b of report.buses) {
+      const was = vmWas.get(b.id);
+      if (was === undefined || Math.abs(b.vm - was) < VOLTAGE_MOVED) continue;
+      moved++;
+      put(marks.buses, b.id, { halo: b.vm > was ? POSITIVE : NEGATIVE, note: `${b.vm.toFixed(3)} p.u. (was ${was.toFixed(3)} in ${r.saved.name})` });
+    }
+    legend.push({ label: `Against ${r.saved.name}`, color: "#94a3b8", kind: "fill" });
+    legend.push({ label: `${more} carry ${MOVED_MW}+ MW more`, color: LAYER_COLORS.more, kind: "line" });
+    legend.push({ label: `${less} carry ${MOVED_MW}+ MW less`, color: LAYER_COLORS.less, kind: "line" });
+    if (switched) legend.push({ label: `${switched} switched in or out`, color: LAYER_COLORS.tripped, kind: "halo" });
+    if (moved) legend.push({ label: `${moved} bus${moved === 1 ? "" : "es"} moved ${VOLTAGE_MOVED}+ p.u.`, color: POSITIVE, kind: "halo" });
+  } else if (r.mode === "sensitivity" && r.sensitivity) {
+    const rows = r.sensitivity.rows.filter((x) => x.element && Number.isFinite(x.value));
+    const max = Math.max(0, ...rows.map((x) => Math.abs(x.value)));
+    for (const x of rows) {
+      if (Math.abs(x.value) < max * SMALL_SHARE) continue;
+      const mark: Mark = { color: diverging(x.value, max), note: `${sigText(x.value)} ${r.sensitivity.units}` };
+      if (x.element.startsWith("bus:")) put(marks.buses, Number(x.element.slice(4)), mark);
+      else put(marks.elements, x.element, mark);
+    }
+    legend.push({ label: r.sensitivity.short, color: NEGATIVE, to: POSITIVE, kind: "gradient" });
+    legend.push({ label: `${sigText(-max)} to ${sigText(max)} ${r.sensitivity.units}`, color: NEGATIVE, to: POSITIVE, kind: "gradient" });
+  }
+}
+
+/** Bus voltage changes smaller than this (p.u.) aren't marked. */
+const VOLTAGE_MOVED = 0.01;
+
+function sigText(n: number): string {
+  return Number(n.toPrecision(3)).toString();
 }
 
 function round(n: number): string {

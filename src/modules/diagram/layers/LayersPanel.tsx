@@ -5,7 +5,8 @@ import { useLayers } from "../../../store/layerStore";
 import { useTopology, shareTopology } from "../../../lib/analysis/topologyStore";
 import { api } from "../../../lib/analysis/api";
 import type { TopologySnapshot } from "../../../lib/analysis/types";
-import { LAYER_COLORS, LAYER_TITLES, type LayerId, type LayerLegend } from "../../../lib/diagram/layers";
+import { LAYER_COLORS, LAYER_TITLES, LOADING_BANDS, type LayerId, type LayerLegend, type ResultMode } from "../../../lib/diagram/layers";
+import { useStudy } from "../../../store/studyStore";
 import { Button, inputClass } from "../../../ui/primitives";
 import { count } from "../../../lib/analysis/format";
 import { FieldPanel } from "../../topology/FieldPanel";
@@ -27,7 +28,7 @@ export function LayersButton({ showLabel = true }: { showLabel?: boolean }) {
       onClick={() => setPanel(!open)}
       aria-pressed={open}
       aria-label="Layers"
-      title="Layers: bridges and cut buses, islands, paths, filters and colours"
+      title="Layers: results, contingencies, bridges and cut buses, islands, paths, filters and colours"
       className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium whitespace-nowrap ${
         open ? "bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200" : "text-slate-600 hover:bg-slate-100"
       }`}
@@ -132,6 +133,62 @@ function ContingencyLayerDetail() {
   );
 }
 
+const RESULT_MODES: { mode: ResultMode; label: string }[] = [
+  { mode: "loading", label: "Branch loading" },
+  { mode: "voltage", label: "Bus voltage" },
+  { mode: "change", label: "Change from a saved solve" },
+  { mode: "sensitivity", label: "Sensitivity" },
+];
+
+/** Pick what the Results layer colours by. */
+function ResultsLayerControls() {
+  const report = useWorkspace((s) => s.solveReport);
+  const mode = useLayers((s) => s.resultMode);
+  const compareWith = useLayers((s) => s.compareWith);
+  const sensitivity = useLayers((s) => s.sensitivity);
+  const setResults = useLayers((s) => s.setResults);
+  const saved = useStudy((s) => s.saved);
+  const savedOk = saved.some((x) => x.id === compareWith);
+  let hint: string | null = null;
+  if (!report) hint = "Solve the case in Power flow to colour by its results.";
+  else if (mode === "change" && !saved.length) hint = "Save a solve in Power flow's Study tab, change something and solve again.";
+  else if (mode === "change" && !savedOk) hint = "Choose the saved solve to compare with.";
+  else if (mode === "sensitivity" && !sensitivity) hint = "Open Power flow's Sensitivities tab and choose Show on diagram.";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <select
+        className={`${inputClass} w-full`}
+        aria-label="Result to colour by"
+        value={mode}
+        onChange={(e) => setResults(e.target.value as ResultMode)}
+      >
+        {RESULT_MODES.map((m) => (
+          <option key={m.mode} value={m.mode}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      {mode === "change" && saved.length > 0 && (
+        <select
+          className={`${inputClass} w-full`}
+          aria-label="Compare with"
+          value={savedOk ? String(compareWith) : ""}
+          onChange={(e) => setResults("change", e.target.value ? Number(e.target.value) : null)}
+        >
+          <option value="">Compare the latest solve with…</option>
+          {saved.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {mode === "sensitivity" && sensitivity && <p className="text-[11px] text-slate-600">{sensitivity.title}</p>}
+      {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
+    </div>
+  );
+}
+
 /** Merge zero-impedance branches in the network graph (the core's setting). */
 function MergeSwitch({ snapshot }: { snapshot: TopologySnapshot }) {
   const version = useTopology((s) => s.version);
@@ -200,6 +257,13 @@ export function LayersPanel({ floating = false }: { floating?: boolean }) {
         </LayerRow>
         <LayerRow id="path" swatch={<Swatch color={LAYER_COLORS.path} kind="line" />} detail="The fewest equipment hops between two buses.">
           <PathForm onShow={showPath} />
+        </LayerRow>
+        <LayerRow
+          id="results"
+          swatch={<span className="inline-block h-1 w-4 rounded" style={{ background: `linear-gradient(to right, ${LOADING_BANDS[0][1]}, ${LOADING_BANDS[4][1]})` }} />}
+          detail="Loading, voltage, the change since a saved solve, or a sensitivity, from Power flow."
+        >
+          <ResultsLayerControls />
         </LayerRow>
         <LayerRow id="contingency" swatch={<Swatch color={LAYER_COLORS.tripped} kind="halo" />} detail={<ContingencyLayerDetail />} />
         <li className="py-2" data-layer="fields">

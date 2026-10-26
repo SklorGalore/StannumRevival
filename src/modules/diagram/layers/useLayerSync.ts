@@ -5,6 +5,7 @@ import { NO_MARKS, resolveLayers } from "../../../lib/diagram/layers";
 import { isComplete, loadFieldSettings, saveFieldSettings } from "../../topology/fields/storage";
 import { useSnapshot } from "../network/useSnapshot";
 import { useContingencies } from "../../../store/contingencyStore";
+import { useStudy } from "../../../store/studyStore";
 
 /**
  * Keep the layers' marks in step with the case and the layer settings. The
@@ -22,6 +23,15 @@ export function useLayerSync(want: boolean) {
   const onDiagram = useContingencies((s) => s.onDiagram);
   const detail = useContingencies((s) => s.detail);
   const limitPct = useContingencies((s) => s.summary?.limit_pct ?? 100);
+  const report = useWorkspace((s) => s.solveReport);
+  const resultMode = useLayers((s) => s.resultMode);
+  const compareWith = useLayers((s) => s.compareWith);
+  const sensitivity = useLayers((s) => s.sensitivity);
+  const saved = useStudy((s) => s.saved.find((x) => x.id === compareWith) ?? null);
+  const results = useMemo(
+    () => ({ mode: resultMode, report, saved: saved ? { name: saved.name, report: saved.report } : null, sensitivity }),
+    [resultMode, report, saved, sensitivity]
+  );
   const contingency = useMemo(
     () => (onDiagram && detail ? { detail, limitPct } : null),
     [onDiagram, detail, limitPct]
@@ -37,8 +47,8 @@ export function useLayerSync(want: boolean) {
 
   const complete = useMemo(() => rules.filter(isComplete), [rules]);
   const resolved = useMemo(
-    () => (snapshot ? resolveLayers(snapshot, { on, path: pathQuery?.result ?? null, rules: complete, colors, contingency }) : null),
-    [snapshot, on, pathQuery, complete, colors, contingency]
+    () => (snapshot ? resolveLayers(snapshot, { on, path: pathQuery?.result ?? null, rules: complete, colors, contingency, results }) : null),
+    [snapshot, on, pathQuery, complete, colors, contingency, results]
   );
   useEffect(() => {
     if (resolved) useLayers.getState().setResolved(resolved.marks, resolved.legends);
