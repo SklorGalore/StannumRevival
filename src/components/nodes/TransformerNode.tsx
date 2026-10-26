@@ -56,6 +56,7 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
       w={W}
       h={H}
       focus={data.focus}

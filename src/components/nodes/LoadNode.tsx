@@ -21,6 +21,7 @@ export function LoadNode({ data, selected }: NodeProps<LoadNodeType>) {
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
       w={W}
       h={H}
       rotation={data.rotation}

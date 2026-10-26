@@ -28,7 +28,8 @@ The same box runs commands. Type a few letters of any of these:
 
 - **Open case…** / **Open another case…** and **Close case**
 - **Solve power flow**
-- **Go to** Diagram, Power flow, Topology or Case diff
+- **Go to** Diagram, Power flow or Case diff
+- **Show topology tables** and **Show layers**, which open them in the Diagram
 - **Open … side by side** and **Close side by side**
 - **Link selection** / **Unlink selection** and **Clear selection**
 - **Switch to dark theme** (or light, or the system theme)

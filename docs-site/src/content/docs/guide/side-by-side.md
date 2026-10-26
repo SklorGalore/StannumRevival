@@ -4,8 +4,8 @@ description: Two modules at once, with linked selection.
 ---
 
 **Side by side** in the case bar shows two modules at once. The usual pairs
-are a generated one-line beside the Power flow tables, or Topology beside the
-diagram.
+are a generated one-line beside the Power flow tables, or the network beside
+the Case diff.
 
 ![A one-line around bus 170 beside the Power flow bus table, with bus 170 selected in both](../../../assets/screens/split-view.png)
 

@@ -49,5 +49,5 @@ bus voltages that moved, largest first.
 
 ## Scope
 
-Studies change what Power flow and the diagram's results show. Topology and
-Case diff always show the file as it is.
+Studies change what Power flow and the diagram's results show. The topology
+layers and tables, and Case diff, always show the file as it is.

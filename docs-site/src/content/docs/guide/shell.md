@@ -7,8 +7,9 @@ description: The module rail, case bar, selection, linked selection, themes and 
 
 ## Module rail
 
-The dark teal rail on the left switches between **Diagram**, **Power flow**,
-**Topology** and **Case diff**. Modules stay loaded when you switch away, so a
+The dark teal rail on the left switches between **Diagram**, **Power flow**
+and **Case diff**. The case's topology is in the Diagram, as
+[layers and tables](/StannumRevival/guide/topology/). Modules stay loaded when you switch away, so a
 solved case, a drawn diagram or a comparison is still there when you come
 back. The theme button at the bottom of the rail (it reads **System**,
 **Light** or **Dark**) cycles through the three themes.
@@ -24,7 +25,7 @@ case](/StannumRevival/start/open-a-case/#the-case-bar).
 
 Every bus, branch, transformer, generator and DC line has one identity shared
 by all modules. Selecting it anywhere (a table row, a diagram symbol, a
-topology node, a diff record) puts it in the **selection chip** in the case
+network node, a diff record) puts it in the **selection chip** in the case
 bar. The chip's buttons show the element in another module, and **Draw
 around** generates a one-line around its bus. <kbd>Esc</kbd> clears the
 selection.
@@ -36,7 +37,7 @@ is open.
 
 ## Element inspector
 
-Select an element in Diagram, Power flow or Topology and the same inspector
+Select an element in Diagram or Power flow and the same inspector
 opens on the right:
 
 - **Header**: what the element is, its buses (each a link), whether it is in
@@ -57,8 +58,9 @@ opens on the right:
 - **Study**: the [study](/StannumRevival/guide/studies/) edits that touch the
   element.
 
-Topology adds a **Topology** section (degree, island, bridges and articulation
-buses, the RAW record), and the diagram adds a folded **Drawing** section.
+The Diagram's Network style adds a **Network** section (island, connections,
+bridges and cut buses, the RAW record), and the one-line adds a folded
+**Drawing** section.
 Sections fold with a click, and stay as you left them.
 
 ![The element inspector beside the Power flow branch table](../../../assets/screens/inspector.png)

@@ -22,6 +22,7 @@ export function ShuntNode({ data, selected }: NodeProps<ShuntNodeType>) {
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
       w={W}
       h={H}
       rotation={data.rotation}

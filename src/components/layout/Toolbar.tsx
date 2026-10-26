@@ -22,6 +22,8 @@ import { useState } from "react";
 import { ExportDialog } from "../dialogs/ExportDialog";
 import { StyleSwitch } from "../../modules/diagram/network/StyleSwitch";
 import { OverflowMenu, type MenuItem } from "../../ui/OverflowMenu";
+import { LayersButton } from "../../modules/diagram/layers/LayersPanel";
+import { TablesButton } from "../../modules/diagram/tables/TablesDrawer";
 import { useWidth } from "../../ui/useWidth";
 
 interface ToolbarButtonProps {
@@ -168,8 +170,10 @@ export function Toolbar() {
       className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-hidden whitespace-nowrap shrink-0"
       data-testid="diagram-toolbar"
     >
-      {width >= 600 && <span className="shrink-0 font-semibold text-slate-700 text-sm mr-3">Diagram</span>}
-      <StyleSwitch compact={width < 520} />
+      {width >= 820 && <span className="shrink-0 font-semibold text-slate-700 text-sm mr-3">Diagram</span>}
+      <StyleSwitch compact={!roomy} />
+      <LayersButton showLabel={labels} />
+      <TablesButton showLabel={labels} />
 
       {roomy && (
         <>

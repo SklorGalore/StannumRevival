@@ -11,7 +11,6 @@ export const SUMMARY_MIN = 160;
 const TARGETS: { id: ModuleId; label: string }[] = [
   { id: "diagram", label: "Diagram" },
   { id: "power", label: "Power flow" },
-  { id: "topology", label: "Topology" },
   { id: "diff", label: "Case diff" },
 ];
 
@@ -91,9 +90,9 @@ export function SelectionChip() {
   );
   if (!selection) return toggle;
   const available: Record<ModuleId, boolean> = {
-    diagram: summary.power.available,
+    // The Diagram draws the network from the topology, the one-line from power flow.
+    diagram: summary.power.available || summary.topology.available,
     power: summary.power.available,
-    topology: summary.topology.available,
     diff: summary.diffable,
   };
   const targets = TARGETS.filter((t) => t.id !== module && available[t.id]);
