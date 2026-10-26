@@ -399,6 +399,48 @@ impl OpenCase {
         Ok(self.contingency_results()?.page(offset, limit))
     }
 
+    /// Take one branch or generator out of the last AC solve and solve again
+    /// in AC with the same settings: "Trip and compare". The contingency
+    /// run in hand, if any, is kept.
+    pub fn trip_and_compare(
+        &self,
+        element: &str,
+        limit_pct: f64,
+    ) -> Result<ContingencyDetail, String> {
+        let power = self.power_case()?;
+        let (base, solve) = self
+            .solved
+            .as_ref()
+            .filter(|(r, s)| {
+                s.model == power::ModelChoice::Ac && r.status == rs_power::SolveStatus::Converged
+            })
+            .ok_or("Solve the case with the AC model first: the trip starts from that solution.")?;
+        let settings = ContingencySettings {
+            elements: Some(vec![element.to_string()]),
+            branches: true,
+            generators: true,
+            method: crate::contingency::Method::Ac,
+            ac_count: 1,
+            limit_pct,
+            solve: solve.clone(),
+        };
+        let job = ContingencyJob::new(power, base, settings).map_err(|e| {
+            if e.starts_with("Nothing to take out") {
+                format!("{element} is already out of service.")
+            } else {
+                e
+            }
+        })?;
+        let mut results = job.run()?;
+        let detail = results.detail(1)?;
+        log::info!(
+            "Tripped {element}: {} overload{} new or worse",
+            detail.overloads.len(),
+            if detail.overloads.len() == 1 { "" } else { "s" }
+        );
+        Ok(detail)
+    }
+
     pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
         self.contingencies
             .as_mut()
@@ -566,7 +608,7 @@ impl OpenCase {
             .as_ref()
             .ok_or("Calculate sensitivities first.")?;
         let q = power::Quantity::parse(quantity).ok_or("Unknown quantity")?;
-        power::responses(s, column, q, engineering)
+        power::responses(s, &self.power_case()?.elements, column, q, engineering)
     }
 
     /// Write the input case, or the latest solved case, as MATPOWER.

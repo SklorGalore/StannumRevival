@@ -13,6 +13,7 @@ import { busElement, elementLabel, parseElement } from "../lib/elements";
 import { elementResults, type ResultRow, type Tone } from "../lib/inspect";
 import { DrawAroundButton } from "./DrawAround";
 import { StudyActions, describeEdit } from "./StudyActions";
+import { TripButton, TripOutcome } from "./TripCompare";
 
 const KIND_LABEL: Record<string, string> = {
   bus: "Bus",
@@ -250,8 +251,10 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
         <div className="mt-2 -ml-1.5 flex flex-wrap items-center gap-0.5">
           <DrawAroundButton element={element} from={from} />
           <StudyActions element={element} />
+          <TripButton element={element} from={from} />
         </div>
       </header>
+      <TripOutcome element={element} onPick={pick} />
 
       <Section id="results" title="Results">
         {!report ? (

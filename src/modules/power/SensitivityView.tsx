@@ -4,8 +4,13 @@ import type { ResponseTable, SensitivitySummary } from "../../lib/analysis/types
 import { count, fixed, sig } from "../../lib/analysis/format";
 import { ErrorBanner, Field, SearchBox, inputClass } from "../../ui/primitives";
 import { DataTable } from "../../ui/DataTable";
+import { Network } from "lucide-react";
+import { useLayers } from "../../store/layerStore";
+import { useWorkspace } from "../../store/workspaceStore";
 
 type Order = "magnitude" | "value" | "input";
+
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Inspect how every state and branch flow responds to one bus injection. */
 export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
@@ -50,6 +55,20 @@ export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
     else if (order === "value") r.sort((a, b) => b.value - a.value || a.index - b.index);
     return r;
   }, [table, order]);
+
+  const drawAround = useWorkspace((s) => s.drawAround);
+  const showSensitivity = useLayers((s) => s.showSensitivity);
+  // Colour the diagram by this column, around the injection bus.
+  const showOnDiagram = () => {
+    if (!table || !column) return;
+    showSensitivity({
+      title: `${table.title} per ${kind === "p" ? "MW" : "Mvar"} injected at bus ${column.bus}`,
+      short: `${capital(table.title.split(" ").slice(-2).join(" "))} per ${kind === "p" ? "MW" : "Mvar"} at bus ${column.bus}`,
+      units: table.units,
+      rows: table.rows.filter((r) => !r.offline).map((r) => ({ element: r.element, value: r.value })),
+    });
+    drawAround(`bus:${column.bus}`, "power");
+  };
 
   const injectionMissing =
     busText.trim() !== "" && !column
@@ -112,6 +131,16 @@ export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
           </select>
         </Field>
         <SearchBox value={filter} onChange={setFilter} placeholder="Filter responses…" />
+        <button
+          type="button"
+          disabled={!table || !column}
+          onClick={showOnDiagram}
+          className="self-center inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50"
+          title="Colour the diagram by these responses, drawn around the injection bus"
+          data-testid="sensitivity-on-diagram"
+        >
+          <Network size={13} /> Show on diagram
+        </button>
         <span className="ml-auto text-[11px] text-slate-500 self-center">
           {summary.status} · {count(summary.injections.length)} injection columns · {fixed(summary.elapsed_ms, 0)} ms
         </span>

@@ -43,6 +43,7 @@ import { StudyPanel } from "./StudyPanel";
 import { WarningsTab } from "./WarningsTab";
 import { ContingencyTab } from "./ContingencyTab";
 import { useContingencies } from "../../store/contingencyStore";
+import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
@@ -968,6 +969,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     if (studyRevision === lastStudyRevision.current) return;
     lastStudyRevision.current = studyRevision;
     setSensitivity(null);
+    useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
     if (report && power?.available) void solve();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { ContingencyDetail, TopologySnapshot } from "../analysis/types";
+import type { BranchRow, BusRow, ContingencyDetail, SolveReport, TopologySnapshot } from "../analysis/types";
 import { defaultColorSettings } from "../../modules/topology/fields/field-colors";
-import { LAYER_COLORS, resolveLayers, type LayerInput } from "./layers";
+import { LAYER_COLORS, LOADING_BANDS, VOLTAGE_BANDS, mix, resolveLayers, type LayerInput } from "./layers";
 
 const source = (line: number) => ({ line, section: 'BUS', fields: {}, raw_lines: [] });
 
@@ -41,7 +41,7 @@ function snapshot(): TopologySnapshot {
   } as unknown) as TopologySnapshot;
 }
 
-const off = { fields: false, islands: false, merged: false, critical: false, path: false, contingency: false };
+const off = { fields: false, islands: false, merged: false, critical: false, path: false, results: false, contingency: false };
 const input = (on: Partial<LayerInput["on"]>, extra: Partial<LayerInput> = {}): LayerInput => ({
   on: { ...off, ...on },
   path: null,
@@ -120,5 +120,66 @@ describe("layers", () => {
   it("draws nothing for the contingency layer without an open outage", () => {
     const { marks } = resolveLayers(snapshot(), input({ contingency: true }));
     expect(marks.buses.size + marks.elements.size).toBe(0);
+  });
+
+  describe("results", () => {
+    const bus = (id: number, vm: number): BusRow => ({
+      id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation: 0,
+    });
+    const branch = (element: string, pf: number, loading_pct: number | null, online = true): BranchRow => ({
+      index: 0, element, circuit: "1", winding: 0, from: 1, to: 2, online, is_transformer: false,
+      pf, qf: 0, pt: -pf, qt: 0, loss_mw: 0, rate_a: 100, loading_pct,
+    });
+    const report = (buses: BusRow[], branches: BranchRow[]) => ({ buses, branches, generators: [] }) as unknown as SolveReport;
+
+    it("colours branches by loading band", () => {
+      const r = report([], [branch("line:1:2:1", 30, 30), branch("line:1:2:2", 95, 95), branch("line:3:4:1", 120, 120), branch("line:3:4:2", 10, null)]);
+      const { marks, legends } = resolveLayers(snapshot(), input({ results: true }, { results: { mode: "loading", report: r } }));
+      expect(marks.elements.get("line:1:2:1")?.color).toBe(LOADING_BANDS[0][1]);
+      expect(marks.elements.get("line:1:2:2")?.color).toBe(LOADING_BANDS[3][1]);
+      expect(marks.elements.get("line:3:4:1")).toMatchObject({ color: LOADING_BANDS[4][1], bold: true });
+      expect(marks.elements.get("line:3:4:2")).toBeUndefined();
+      expect(legends[0].entries.map((e) => e.label)).toContain("1 without a rating (not coloured)");
+    });
+
+    it("colours buses by voltage and rings those outside their limits", () => {
+      const r = report([bus(1, 0.93), bus(2, 1.0), bus(3, 1.06)], []);
+      const { marks } = resolveLayers(snapshot(), input({ results: true }, { results: { mode: "voltage", report: r } }));
+      expect(marks.buses.get(1)).toMatchObject({ color: VOLTAGE_BANDS[0][1], halo: LAYER_COLORS.voltage });
+      expect(marks.buses.get(2)).toMatchObject({ color: VOLTAGE_BANDS[2][1] });
+      expect(marks.buses.get(2)?.halo).toBeUndefined();
+      expect(marks.buses.get(3)).toMatchObject({ color: VOLTAGE_BANDS[4][1], halo: LAYER_COLORS.voltage });
+    });
+
+    it("draws the change from a saved solve", () => {
+      const before = report([bus(1, 1.0), bus(2, 1.0)], [branch("line:1:2:1", 50, 50), branch("line:1:2:2", 50, 50), branch("line:3:4:1", 20, 20), branch("line:3:4:2", 40, 40)]);
+      const after = report([bus(1, 1.0), bus(2, 0.97)], [branch("line:1:2:1", 80, 80), branch("line:1:2:2", 20, 20), branch("line:3:4:1", 22, 22), branch("line:3:4:2", 0, null, false)]);
+      const { marks } = resolveLayers(snapshot(), input({ results: true }, { results: { mode: "change", report: after, saved: { name: "Base", report: before } } }));
+      expect(marks.elements.get("line:1:2:1")?.color).toBe(LAYER_COLORS.more);
+      expect(marks.elements.get("line:1:2:2")?.color).toBe(LAYER_COLORS.less);
+      expect(marks.elements.get("line:3:4:1")).toBeUndefined();
+      expect(marks.elements.get("line:3:4:2")).toMatchObject({ halo: LAYER_COLORS.tripped, dim: true });
+      expect(marks.buses.get(2)?.halo).toBeDefined();
+      expect(marks.buses.get(1)).toBeUndefined();
+    });
+
+    it("colours a sensitivity on a blue to red scale and skips tiny responses", () => {
+      const sensitivity = {
+        title: "Angle per MW at bus 1",
+        short: "MW injected at bus 1",
+        units: "degrees/MW",
+        rows: [
+          { element: "bus:1", value: 2 },
+          { element: "bus:2", value: -1 },
+          { element: "bus:3", value: 0.001 },
+          { element: "line:1:2:1", value: 0.5 },
+        ],
+      };
+      const { marks } = resolveLayers(snapshot(), input({ results: true }, { results: { mode: "sensitivity", report: null, sensitivity } }));
+      expect(marks.buses.get(1)?.color).toBe("#dc2626");
+      expect(marks.buses.get(2)?.color).toBe(mix("#cbd5e1", "#2563eb", 0.5));
+      expect(marks.buses.get(3)).toBeUndefined();
+      expect(marks.elements.get("line:1:2:1")?.color).toBe(mix("#cbd5e1", "#dc2626", 0.25));
+    });
   });
 });

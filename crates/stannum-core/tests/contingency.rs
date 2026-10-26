@@ -207,3 +207,42 @@ fn a_run_can_be_cancelled() {
     );
     assert_eq!(summary.total, total, "screened rows are kept");
 }
+
+/// Trip and compare gives the same outcome as that outage in a full AC run,
+/// and leaves the run's results alone.
+#[test]
+fn trip_and_compare_matches_the_ac_run() {
+    let mut ws = solved("case30.m");
+    let case = ws.current_mut().unwrap();
+    let mut all = settings(Method::Ac);
+    all.branches = true;
+    all.generators = false;
+    case.run_contingencies(all).unwrap();
+    let rows = case.contingency_rows(0, 1).unwrap();
+    let element = rows[0].element.clone();
+    let tripped = case.trip_and_compare(&element, 100.0).unwrap();
+    let ranked = case.contingency_detail(1).unwrap();
+    assert_eq!(tripped.row.element, element);
+    assert_eq!(tripped.row.checked, "ac");
+    assert_eq!(tripped.overloads.len(), ranked.overloads.len());
+    for (a, b) in tripped.branches.iter().zip(&ranked.branches) {
+        assert!(
+            (a.mw - b.mw).abs() < 1e-6,
+            "{} {} vs {}",
+            a.element,
+            a.mw,
+            b.mw
+        );
+    }
+    // The run is still there to page through.
+    assert!(case.contingency_summary().is_some());
+    // An element that is already out can't be tripped.
+    case.set_edits(vec![Edit::Status {
+        element: element.clone(),
+        online: false,
+    }])
+    .unwrap();
+    case.solve(SolveSettings::default()).unwrap();
+    let err = case.trip_and_compare(&element, 100.0).unwrap_err();
+    assert!(err.contains("already out"), "{err}");
+}

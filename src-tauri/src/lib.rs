@@ -136,6 +136,7 @@ pub fn run() {
             analysis::contingency_summary,
             analysis::contingency_rows,
             analysis::contingency_detail,
+            analysis::trip_and_compare,
             analysis::log_entries,
         ])
         .run(tauri::generate_context!())
