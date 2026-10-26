@@ -1,0 +1,122 @@
+// The last contingency run: its settings, summary, ranked rows and the
+// outage that is open. stannum-core keeps the full results; this holds what
+// is on screen. A new case or a study change clears it, as the core does.
+import { create } from "zustand";
+import { api } from "../lib/analysis/api";
+import type {
+  ContingencyDetail,
+  ContingencyMethod,
+  ContingencyProgress,
+  ContingencyRow,
+  ContingencySummary,
+  SolveSettings,
+} from "../lib/analysis/types";
+
+/** Rows fetched at first; the rest load on request. */
+export const FIRST_PAGE = 2000;
+
+export interface ContingencyChoice {
+  branches: boolean;
+  generators: boolean;
+  method: ContingencyMethod;
+  acCount: number;
+  limitPct: number;
+}
+
+export const DEFAULT_CHOICE: ContingencyChoice = {
+  branches: true,
+  generators: true,
+  method: "screen",
+  acCount: 50,
+  limitPct: 100,
+};
+
+interface ContingencyState {
+  choice: ContingencyChoice;
+  setChoice: (c: Partial<ContingencyChoice>) => void;
+  summary: ContingencySummary | null;
+  rows: ContingencyRow[];
+  running: boolean;
+  progress: ContingencyProgress | null;
+  error: string | null;
+  /** The rank of the outage that is open, and its detail once loaded. */
+  open: number | null;
+  detail: ContingencyDetail | null;
+  /** Show the open outage on the diagram (the Contingency layer). */
+  onDiagram: boolean;
+  run: (solve: SolveSettings, elements: string[] | null) => Promise<boolean>;
+  cancel: () => void;
+  loadMore: () => Promise<void>;
+  openRow: (rank: number | null) => Promise<void>;
+  setOnDiagram: (on: boolean) => void;
+  clear: () => void;
+}
+
+export const useContingencies = create<ContingencyState>((set, get) => ({
+  choice: DEFAULT_CHOICE,
+  setChoice: (c) => set((s) => ({ choice: { ...s.choice, ...c } })),
+  summary: null,
+  rows: [],
+  running: false,
+  progress: null,
+  error: null,
+  open: null,
+  detail: null,
+  onDiagram: false,
+  async run(solve, elements) {
+    const c = get().choice;
+    set({ running: true, error: null, progress: null, open: null, detail: null });
+    // Follow the run's progress while it goes.
+    const timer = setInterval(() => {
+      api
+        .contingencyProgress()
+        .then((p) => get().running && set({ progress: p }))
+        .catch(() => undefined);
+    }, 250);
+    try {
+      const summary = await api.runContingencies({
+        elements,
+        branches: c.branches,
+        generators: c.generators,
+        method: c.method,
+        ac_count: c.acCount,
+        limit_pct: c.limitPct,
+        solve: { ...solve, model: "ac" },
+      });
+      const rows = await api.contingencyRows(0, FIRST_PAGE);
+      set({ summary, rows });
+      return true;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      clearInterval(timer);
+      set({ running: false, progress: null });
+    }
+  },
+  cancel() {
+    void api.cancelContingencies();
+  },
+  async loadMore() {
+    const { rows, summary } = get();
+    if (!summary || rows.length >= summary.total) return;
+    try {
+      const more = await api.contingencyRows(rows.length, summary.total - rows.length);
+      set({ rows: [...rows, ...more] });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+  async openRow(rank) {
+    set({ open: rank, detail: rank === null ? null : get().detail?.row.rank === rank ? get().detail : null });
+    if (rank === null) return;
+    try {
+      const detail = await api.contingencyDetail(rank);
+      if (get().open === rank) set({ detail });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+  setOnDiagram: (onDiagram) => set({ onDiagram }),
+  clear: () => set({ summary: null, rows: [], open: null, detail: null, error: null, onDiagram: false }),
+}));

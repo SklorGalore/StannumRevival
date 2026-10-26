@@ -94,6 +94,20 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             .map_err(|e| e.to_string())?;
             Ok(Value::Null)
         }
+        // Runs in the request: the bridge serves one request at a time, so
+        // there is nothing to cancel or follow.
+        "run_contingencies" => to_json(
+            ws.current_mut()?
+                .run_contingencies(arg(args, "settings")?)?,
+        ),
+        "cancel_contingencies" => Ok(Value::Null),
+        "contingency_progress" => to_json(stannum_core::contingency::Progress::default()),
+        "contingency_summary" => to_json(ws.current()?.contingency_summary()),
+        "contingency_rows" => to_json(
+            ws.current()?
+                .contingency_rows(arg(args, "offset")?, arg(args, "limit")?)?,
+        ),
+        "contingency_detail" => to_json(ws.current_mut()?.contingency_detail(arg(args, "rank")?)?),
         "log_entries" => to_json(logbook::since(arg(args, "since")?)),
         other => Err(format!("unknown command {other}")),
     }

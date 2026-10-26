@@ -4,6 +4,11 @@ import { catchUpLog, useLog } from "../../store/logStore";
 import type {
   CaseNetwork,
   CaseSummary,
+  ContingencyDetail,
+  ContingencyProgress,
+  ContingencyRow,
+  ContingencySettings,
+  ContingencySummary,
   DcGridsSummary,
   DiffRecordDetail,
   DiffRecordRow,
@@ -29,6 +34,8 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
+  run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
+  contingency_detail: { label: "Opening a contingency", quiet: true },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
   load_dc_grids: { label: "Reading DC grid file", done: "Attached DC grid file" },
   clear_dc_grids: { label: "Detaching DC grid file", done: "Detached DC grid file" },
@@ -122,6 +129,15 @@ export const api = {
     call<ResponseTable>("sensitivity_responses", { column, quantity, engineering }),
   exportMatpower: (path: string, solved: boolean) =>
     call<void>("export_matpower", { path, solved }),
+
+  runContingencies: (settings: ContingencySettings) =>
+    call<ContingencySummary>("run_contingencies", { settings }),
+  // Polled while a run is going, so they skip the log.
+  cancelContingencies: () => invoke<void>("cancel_contingencies"),
+  contingencyProgress: () => invoke<ContingencyProgress>("contingency_progress"),
+  contingencyRows: (offset: number, limit: number) =>
+    call<ContingencyRow[]>("contingency_rows", { offset, limit }),
+  contingencyDetail: (rank: number) => call<ContingencyDetail>("contingency_detail", { rank }),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
   elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),

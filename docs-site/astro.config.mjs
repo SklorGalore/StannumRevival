@@ -41,6 +41,7 @@ export default defineConfig({
             { label: "Studies", slug: "guide/studies" },
             { label: "Diagram", slug: "guide/diagram" },
             { label: "Power flow", slug: "guide/power-flow" },
+            { label: "Contingencies", slug: "guide/contingencies" },
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
@@ -57,6 +58,7 @@ export default defineConfig({
             { label: "Remote voltage regulation", slug: "manual/remote-regulation" },
             { label: "Switched shunts and taps", slug: "manual/voltage-controls" },
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
+            { label: "Contingency analysis", slug: "manual/contingencies" },
             {
               label: "HVDC",
               items: [

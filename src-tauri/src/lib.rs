@@ -28,6 +28,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(analysis::SharedWorkspace::default())
+        .manage(analysis::ContingencyRun::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
             Ok(())
@@ -54,6 +55,12 @@ pub fn run() {
             analysis::diff_compare,
             analysis::diff_section_records,
             analysis::diff_record_detail,
+            analysis::run_contingencies,
+            analysis::cancel_contingencies,
+            analysis::contingency_progress,
+            analysis::contingency_summary,
+            analysis::contingency_rows,
+            analysis::contingency_detail,
             analysis::log_entries,
         ])
         .run(tauri::generate_context!())

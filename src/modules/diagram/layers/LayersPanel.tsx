@@ -13,6 +13,8 @@ import { createColorPresentation } from "../../topology/fields/field-colors";
 import { matchesBus, matchesEquipment } from "../../topology/fields/field-view";
 import { isComplete } from "../../topology/fields/storage";
 import { useDrawingStyle } from "../../../store/drawingStyleStore";
+import { useContingencies } from "../../../store/contingencyStore";
+import { elementLabel } from "../../../lib/elements";
 
 /** The "Layers" button in either style's toolbar. */
 export function LayersButton({ showLabel = true }: { showLabel?: boolean }) {
@@ -113,6 +115,23 @@ function PathForm({ onShow }: { onShow: () => void }) {
   );
 }
 
+/** What the contingency layer shows, or how to give it something to show. */
+function ContingencyLayerDetail() {
+  const detail = useContingencies((s) => s.detail);
+  const onDiagram = useContingencies((s) => s.onDiagram);
+  const setOnDiagram = useContingencies((s) => s.setOnDiagram);
+  if (!detail || !onDiagram)
+    return <>Open an outage in Power flow's Contingencies tab and choose Show on diagram.</>;
+  return (
+    <>
+      After {elementLabel(detail.row.element)}: overloads in red, heavier flows in orange, lighter in blue.{" "}
+      <button type="button" className="text-slate-500 underline" onClick={() => setOnDiagram(false)}>
+        Clear
+      </button>
+    </>
+  );
+}
+
 /** Merge zero-impedance branches in the network graph (the core's setting). */
 function MergeSwitch({ snapshot }: { snapshot: TopologySnapshot }) {
   const version = useTopology((s) => s.version);
@@ -182,6 +201,7 @@ export function LayersPanel({ floating = false }: { floating?: boolean }) {
         <LayerRow id="path" swatch={<Swatch color={LAYER_COLORS.path} kind="line" />} detail="The fewest equipment hops between two buses.">
           <PathForm onShow={showPath} />
         </LayerRow>
+        <LayerRow id="contingency" swatch={<Swatch color={LAYER_COLORS.tripped} kind="halo" />} detail={<ContingencyLayerDetail />} />
         <li className="py-2" data-layer="fields">
           <div className="flex items-center gap-2 px-3 text-xs font-medium text-slate-800">
             <input

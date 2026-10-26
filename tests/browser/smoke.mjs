@@ -94,6 +94,15 @@ await page.getByRole("button", { name: "Close log" }).click();
 await log.waitFor({ state: "detached" });
 await page.getByTestId("log-status").filter({ hasText: /Sensitivities|Calculated sensitivities/ }).waitFor();
 
+// N-1 contingencies: every branch and generator out in turn, ranked, and
+// the worst opened beside the table.
+await page.getByRole("tab", { name: /Contingencies/ }).click();
+await page.getByTestId("run-contingencies").click();
+await page.getByTestId("contingency-summary").getByText("Outages").waitFor();
+await page.getByTestId("contingency-detail").getByText(/Overloads above/).waitFor();
+await page.getByTestId("contingency-detail").getByText(/AC solve, converged|AC solve did not converge|Linear screen only/).waitFor();
+await shot("power-contingencies");
+
 // A study: save the solve as filed, take line 4-5 out, and the case
 // re-solves without it.
 await page.getByRole("tab", { name: /Study/ }).click();

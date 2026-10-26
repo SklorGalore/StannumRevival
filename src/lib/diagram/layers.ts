@@ -1,13 +1,14 @@
 // Layers: topology findings and field rules drawn on the Diagram, in either
 // style. Each layer marks elements by their shared id (a bus number, or a
 // branch's element id); the Network style and the One-line style both draw
-// the same marks. Result layers (loading, voltage, contingencies) are meant
-// to join this model later.
-import type { TopoPath, TopologySnapshot } from "../analysis/types";
+// the same marks. The contingency layer draws the outage open in Power
+// flow's Contingencies tab.
+import type { ContingencyDetail, TopoPath, TopologySnapshot } from "../analysis/types";
+import { elementLabel } from "../elements";
 import { createColorPresentation, type ColorSettings } from "../../modules/topology/fields/field-colors";
 import { matchesBus, matchesEquipment, type FilterRule } from "../../modules/topology/fields/field-view";
 
-export type LayerId = "fields" | "islands" | "merged" | "critical" | "path";
+export type LayerId = "fields" | "islands" | "merged" | "critical" | "path" | "contingency";
 
 /** How one layer marks an element. Later layers win where they overlap. */
 export interface Mark {
@@ -50,12 +51,17 @@ export const LAYER_COLORS = {
   critical: "#b45309",
   path: "#2563eb",
   merged: "#7c3aed",
+  tripped: "#dc2626",
+  overload: "#dc2626",
+  more: "#ea580c",
+  less: "#0284c7",
+  voltage: "#d97706",
 };
 
 /** Island colours, largest island first. */
 const ISLAND_COLORS = ["#0072b2", "#e69f00", "#009e73", "#d55e00", "#56b4e9", "#cc79a7", "#f0e442", "#333333"];
 
-export const LAYER_ORDER: LayerId[] = ["fields", "islands", "merged", "critical", "path"];
+export const LAYER_ORDER: LayerId[] = ["fields", "islands", "merged", "critical", "path", "contingency"];
 
 export const LAYER_TITLES: Record<LayerId, string> = {
   critical: "Bridges and cut buses",
@@ -63,6 +69,7 @@ export const LAYER_TITLES: Record<LayerId, string> = {
   merged: "Zero-impedance groups",
   path: "Shortest path",
   fields: "Filters and colours",
+  contingency: "Contingency",
 };
 
 export interface LayerInput {
@@ -70,6 +77,8 @@ export interface LayerInput {
   path: TopoPath | null;
   rules: FilterRule[];
   colors: ColorSettings;
+  /** The outage open in the Contingencies tab, while shown on the diagram. */
+  contingency?: { detail: ContingencyDetail; limitPct: number } | null;
 }
 
 function empty(): LayerMarks {
@@ -109,6 +118,8 @@ export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput):
     for (const bus of input.path.buses) put(marks.buses, bus, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
     for (const e of input.path.equipment_ids) put(marks.elements, e, { color: LAYER_COLORS.path, bold: true, note: "On the shortest path" });
     legend.push({ label: `${input.path.buses[0]} → ${input.path.buses[input.path.buses.length - 1]}, ${input.path.hops} hops`, color: LAYER_COLORS.path, kind: "line" });
+  } else if (id === "contingency" && input.contingency) {
+    contingencyMarks(input.contingency.detail, input.contingency.limitPct, marks, legend);
   } else if (id === "fields") {
     const rules = input.rules;
     if (rules.length) {
@@ -134,6 +145,47 @@ export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput):
     }
   }
   return { marks, legend };
+}
+
+/** Flow changes smaller than this (MW) aren't coloured. */
+const MOVED_MW = 5;
+
+/** The outage, what it overloads, and where flow moved: drawn on the diagram. */
+function contingencyMarks(d: ContingencyDetail, limit: number, marks: LayerMarks, legend: LegendEntry[]) {
+  const outage = d.row.element;
+  const cut = new Set(d.cut_off);
+  for (const bus of d.cut_off) put(marks.buses, bus, { dim: true, note: "Split off by the outage" });
+  let more = 0;
+  let less = 0;
+  for (const b of d.branches) {
+    const delta = b.mw - b.base_mw;
+    if (b.tripped || cut.has(b.from) || cut.has(b.to)) continue;
+    const pct = b.pct === null ? "" : `, ${b.pct.toFixed(0)}% of rate A (was ${b.base_pct?.toFixed(0) ?? "—"}%)`;
+    const note = `After ${elementLabel(outage)}: ${b.mw.toFixed(1)} MW (${delta >= 0 ? "+" : ""}${delta.toFixed(1)})${pct}`;
+    if (b.pct !== null && b.pct > limit && (b.base_pct === null || b.base_pct <= limit || b.pct > b.base_pct + 1)) {
+      put(marks.elements, b.element, { color: LAYER_COLORS.overload, bold: true, note });
+    } else if (Math.abs(delta) >= MOVED_MW) {
+      // Flow moved in its own direction (heavier) or against it (lighter).
+      const heavier = Math.abs(b.mw) > Math.abs(b.base_mw);
+      if (heavier) more++;
+      else less++;
+      put(marks.elements, b.element, { color: heavier ? LAYER_COLORS.more : LAYER_COLORS.less, note });
+    }
+  }
+  if (d.row.kind === "generator") {
+    const bus = Number(outage.split(":")[1]);
+    if (Number.isInteger(bus)) put(marks.buses, bus, { halo: LAYER_COLORS.tripped, note: `${elementLabel(outage)} taken out` });
+  } else {
+    put(marks.elements, outage, { halo: LAYER_COLORS.tripped, dim: true, note: `${elementLabel(outage)} taken out` });
+  }
+  for (const v of d.voltage_problems)
+    put(marks.buses, v.bus, { halo: LAYER_COLORS.voltage, note: `${v.vm.toFixed(3)} p.u. after the outage (was ${v.base_vm.toFixed(3)})` });
+  legend.push({ label: `Out: ${elementLabel(outage)}`, color: LAYER_COLORS.tripped, kind: "halo" });
+  legend.push({ label: `${d.overloads.length} over ${limit.toFixed(0)}%, new or worse`, color: LAYER_COLORS.overload, kind: "line" });
+  legend.push({ label: `${more} carry ${MOVED_MW}+ MW more`, color: LAYER_COLORS.more, kind: "line" });
+  legend.push({ label: `${less} carry ${MOVED_MW}+ MW less`, color: LAYER_COLORS.less, kind: "line" });
+  if (d.voltage_problems.length) legend.push({ label: `${d.voltage_problems.length} buses outside voltage limits`, color: LAYER_COLORS.voltage, kind: "halo" });
+  if (d.cut_off.length) legend.push({ label: `${d.cut_off.length} buses split off (faded)`, color: "#94a3b8", kind: "fill" });
 }
 
 function round(n: number): string {

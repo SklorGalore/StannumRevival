@@ -5,6 +5,10 @@
 //! only reads RAW revision 35); the other modules keep working and the
 //! frontend shows why a module is unavailable.
 
+use crate::contingency::{
+    ContingencyDetail, ContingencyJob, ContingencyResults, ContingencyRow, ContingencySettings,
+    ContingencySummary,
+};
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
@@ -46,6 +50,8 @@ pub struct OpenCase {
     pub edited: Option<PowerCase>,
     /// VSC DC grids from a DC grid file, solved with every AC solve.
     pub dc_grids: Option<LoadedDcGrids>,
+    /// The last contingency run, until the study's edits change.
+    pub contingencies: Option<ContingencyResults>,
 }
 
 #[derive(Default)]
@@ -278,6 +284,7 @@ impl OpenCase {
             edits: vec![],
             edited: None,
             dc_grids: None,
+            contingencies: None,
         }
     }
 
@@ -330,7 +337,73 @@ impl OpenCase {
             self.before_edits = Some(solved);
         }
         self.sensitivity = None;
+        if self.contingencies.take().is_some() {
+            log::info!("Contingency results cleared: they were for the case before this change");
+        }
         Ok(())
+    }
+
+    /// A contingency run over the case with the study's edits, from its last
+    /// converged AC solve. Run it with [`ContingencyJob::run`] (it doesn't
+    /// need the workspace) and keep the results with
+    /// [`Self::set_contingencies`].
+    pub fn contingency_job(&self, settings: ContingencySettings) -> Result<ContingencyJob, String> {
+        let power = self.power_case()?;
+        let base = resumable(&self.solved).ok_or(
+            "Solve the case with the AC model first: contingencies start from that solution.",
+        )?;
+        if self.dc_grids.is_some() {
+            log::warn!("Contingencies leave out the attached VSC DC grids");
+        }
+        let job = ContingencyJob::new(power, base, settings)?;
+        log::info!(
+            "Running {} contingenc{}",
+            job.len(),
+            if job.len() == 1 { "y" } else { "ies" }
+        );
+        Ok(job)
+    }
+
+    /// Keep a finished run and return its summary.
+    pub fn set_contingencies(&mut self, results: ContingencyResults) -> ContingencySummary {
+        let summary = results.summary.clone();
+        self.contingencies = Some(results);
+        summary
+    }
+
+    /// Run contingencies here and keep the results (for callers without a
+    /// separate worker thread).
+    pub fn run_contingencies(
+        &mut self,
+        settings: ContingencySettings,
+    ) -> Result<ContingencySummary, String> {
+        let results = self.contingency_job(settings)?.run()?;
+        Ok(self.set_contingencies(results))
+    }
+
+    fn contingency_results(&self) -> Result<&ContingencyResults, String> {
+        self.contingencies
+            .as_ref()
+            .ok_or_else(|| "Run contingencies first.".into())
+    }
+
+    pub fn contingency_summary(&self) -> Option<ContingencySummary> {
+        self.contingencies.as_ref().map(|c| c.summary.clone())
+    }
+
+    pub fn contingency_rows(
+        &self,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<ContingencyRow>, String> {
+        Ok(self.contingency_results()?.page(offset, limit))
+    }
+
+    pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
+        self.contingencies
+            .as_mut()
+            .ok_or("Run contingencies first.")?
+            .detail(rank)
     }
 
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
