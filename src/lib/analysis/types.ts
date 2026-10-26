@@ -647,3 +647,111 @@ export interface ElementDetail {
   connected: string[];
   note: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Contingency analysis (stannum-core contingency.rs)
+// ---------------------------------------------------------------------------
+
+/** Linear screen then AC of the worst, or AC for every outage. */
+export type ContingencyMethod = "screen" | "ac";
+
+export interface ContingencySettings {
+  /** Element ids to take out one at a time; absent means every in-service branch and/or generator. */
+  elements?: string[] | null;
+  branches: boolean;
+  generators: boolean;
+  method: ContingencyMethod;
+  ac_count: number;
+  limit_pct: number;
+  solve: SolveSettings;
+}
+
+export interface ContingencyOverload {
+  element: string;
+  from: number;
+  to: number;
+  pct: number;
+  base_pct: number;
+  mw: number;
+  base_mw: number;
+}
+
+export interface ContingencyVoltage {
+  bus: number;
+  name: string;
+  vm: number;
+  base_vm: number;
+  vmin: number;
+  vmax: number;
+  outside: number;
+}
+
+export interface ContingencyRow {
+  rank: number;
+  element: string;
+  kind: "branch" | "generator";
+  checked: "ac" | "linear";
+  converged: boolean | null;
+  iterations: number | null;
+  worst: ContingencyOverload | null;
+  overloads: number;
+  screened_pct: number | null;
+  note: string | null;
+  worst_voltage: ContingencyVoltage | null;
+  voltage_violations: number;
+  cut_off_buses: number;
+  lost_load_mw: number;
+  lost_generation_mw: number;
+  severity: number;
+}
+
+export interface ContingencySummary {
+  method: ContingencyMethod | null;
+  limit_pct: number;
+  total: number;
+  already_out: number;
+  ac_checked: number;
+  with_overloads: number;
+  with_voltage_problems: number;
+  not_converged: number;
+  islanding: number;
+  screen_ms: number;
+  ac_ms: number;
+  elapsed_ms: number;
+  cancelled: boolean;
+  worst: ContingencyRow | null;
+}
+
+export interface ContingencyBranchChange {
+  element: string;
+  from: number;
+  to: number;
+  mw: number;
+  base_mw: number;
+  pct: number | null;
+  base_pct: number | null;
+  tripped: boolean;
+}
+
+export interface ContingencyBusChange {
+  bus: number;
+  vm: number;
+  base_vm: number;
+  vmin: number;
+  vmax: number;
+}
+
+export interface ContingencyDetail {
+  row: ContingencyRow;
+  overloads: ContingencyOverload[];
+  voltage_problems: ContingencyVoltage[];
+  branches: ContingencyBranchChange[];
+  buses: ContingencyBusChange[];
+  cut_off: number[];
+}
+
+export interface ContingencyProgress {
+  phase: "idle" | "screening" | "ac";
+  done: number;
+  total: number;
+}

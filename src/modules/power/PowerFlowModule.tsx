@@ -41,12 +41,25 @@ import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
 import { WarningsTab } from "./WarningsTab";
+import { ContingencyTab } from "./ContingencyTab";
+import { useContingencies } from "../../store/contingencyStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "vsc" | "sensitivities" | "study" | "warnings";
+type Tab =
+  | "overview"
+  | "buses"
+  | "generators"
+  | "branches"
+  | "dc"
+  | "dcnet"
+  | "vsc"
+  | "sensitivities"
+  | "contingencies"
+  | "study"
+  | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -894,6 +907,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("overview");
     setPicked(null);
     setJump({ n: 0, problems: false });
+    useContingencies.getState().clear();
   }, [caseVersion]);
 
   const power = summary?.power;
@@ -954,6 +968,8 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     if (studyRevision === lastStudyRevision.current) return;
     lastStudyRevision.current = studyRevision;
     setSensitivity(null);
+    // The core drops contingency results when the study changes.
+    useContingencies.getState().clear();
     if (report && power?.available) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyRevision]);
@@ -985,6 +1001,18 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     await run("export", () => api.exportMatpower(path, solved), () => undefined);
   }
 
+  const contingencyTotal = useContingencies((s) => s.summary?.total);
+  const contingencyChoice = useContingencies((s) => s.choice);
+  // Bus filters narrow the outages to what touches the matching buses.
+  const contingencyScope = useMemo(() => {
+    if (!filtered || !passing) return null;
+    const elements = [
+      ...(contingencyChoice.branches ? filtered.branches.filter((b) => b.online).map((b) => b.element) : []),
+      ...(contingencyChoice.generators ? filtered.generators.filter((g) => g.online).map((g) => g.element) : []),
+    ];
+    return { elements: [...new Set(elements)], buses: passing.size };
+  }, [filtered, passing, contingencyChoice.branches, contingencyChoice.generators]);
+
   const tabs = useMemo(
     () => [
       { id: "overview" as const, label: "Overview", disabled: !report },
@@ -1000,9 +1028,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
+      { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !report },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
-    [report, sensitivity, warnings.length, studyCount, dcGrids]
+    [report, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
   );
 
   if (!summary) {
@@ -1129,14 +1158,18 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 setTab(t);
               }}
             />
-            {report && (tab === "overview" || tab === "buses" || tab === "generators" || tab === "branches") && (
+            {report && (tab === "overview" || tab === "buses" || tab === "generators" || tab === "branches" || tab === "contingencies") && (
               <FilterChips
                 fields={RESULT_BUS_FIELDS}
                 options={(field) => busFieldOptions(report.buses, field)}
                 rules={rules}
                 onRules={setRules}
                 note={
-                  filtered && tab === "overview"
+                  tab === "contingencies"
+                    ? filtered
+                      ? `Outages limited to branches and generators touching ${count(passing!.size)} of ${count(report.buses.length)} buses`
+                      : "Limits the outages to branches and generators touching matching buses"
+                    : filtered && tab === "overview"
                     ? `Charts show ${count(passing!.size)} of ${count(report.buses.length)} buses. The checks above them cover the whole case.`
                     : filtered && tab !== "overview"
                     ? `${count(filtered[tab].length)} of ${count(report[tab].length)} ${tab}${
@@ -1222,6 +1255,14 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
+              )}
+              {tab === "contingencies" && (
+                <ContingencyTab
+                  report={report}
+                  settings={settings}
+                  scope={contingencyScope}
+                  onPick={pick}
+                />
               )}
               {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
               {tab === "warnings" && (

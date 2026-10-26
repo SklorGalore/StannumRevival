@@ -5,6 +5,7 @@ mod dc;
 mod input;
 mod mtdc;
 mod network;
+mod outage;
 mod output;
 mod raw;
 mod sensitivity;
@@ -20,6 +21,7 @@ pub use mtdc::{
     MtdcBus, MtdcBusSolution, MtdcConverter, MtdcConverterSolution, MtdcLink, MtdcLinkSolution,
     MtdcMode, MtdcSolution, MtdcSystem,
 };
+pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
     BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawWarning,

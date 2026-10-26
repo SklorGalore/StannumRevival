@@ -38,7 +38,14 @@ interface LayerState {
   reset: (fields?: { rules: FilterRule[]; colors: ColorSettings }) => void;
 }
 
-export const DEFAULT_LAYERS: Record<LayerId, boolean> = { critical: true, islands: false, merged: false, path: true, fields: true };
+export const DEFAULT_LAYERS: Record<LayerId, boolean> = {
+  critical: true,
+  islands: false,
+  merged: false,
+  path: true,
+  fields: true,
+  contingency: true,
+};
 
 export const useLayers = create<LayerState>((set) => ({
   on: { ...DEFAULT_LAYERS },

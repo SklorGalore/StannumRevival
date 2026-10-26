@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TopologySnapshot } from "../analysis/types";
+import type { ContingencyDetail, TopologySnapshot } from "../analysis/types";
 import { defaultColorSettings } from "../../modules/topology/fields/field-colors";
 import { LAYER_COLORS, resolveLayers, type LayerInput } from "./layers";
 
@@ -41,7 +41,7 @@ function snapshot(): TopologySnapshot {
   } as unknown) as TopologySnapshot;
 }
 
-const off = { fields: false, islands: false, merged: false, critical: false, path: false };
+const off = { fields: false, islands: false, merged: false, critical: false, path: false, contingency: false };
 const input = (on: Partial<LayerInput["on"]>, extra: Partial<LayerInput> = {}): LayerInput => ({
   on: { ...off, ...on },
   path: null,
@@ -83,5 +83,42 @@ describe("layers", () => {
   it("rings zero-impedance groups", () => {
     const { marks } = resolveLayers(snapshot(), input({ merged: true }));
     expect(marks.buses.get(2)).toMatchObject({ halo: LAYER_COLORS.merged });
+  });
+
+  it("draws an open contingency: the outage, its overloads and moved flows", () => {
+    const row = {
+      rank: 1, element: "line:1:3:1", kind: "branch", checked: "ac", converged: true, iterations: 2, worst: null, overloads: 1,
+      screened_pct: 120, note: null, worst_voltage: null, voltage_violations: 1, cut_off_buses: 0, lost_load_mw: 0, lost_generation_mw: 0, severity: 120,
+    } as const;
+    const change = (element: string, mw: number, base_mw: number, pct: number | null, base_pct: number | null, tripped = false) =>
+      ({ element, from: 1, to: 4, mw, base_mw, pct, base_pct, tripped });
+    const detail: ContingencyDetail = {
+      row: { ...row },
+      overloads: [],
+      voltage_problems: [{ bus: 4, name: "", vm: 0.88, base_vm: 0.95, vmin: 0.9, vmax: 1.1, outside: 0.02 }],
+      branches: [
+        change("line:1:3:1", 0, 50, null, 40, true),
+        change("line:1:4:1", 120, 70, 120, 70),
+        change("line:3:4:1", -60, -40, null, null),
+        change("line:3:4:2", 10, 30, null, null),
+        change("line:4:9:1", 101, 100, 105.5, 105),
+      ],
+      buses: [],
+      cut_off: [],
+    };
+    const { marks, legends } = resolveLayers(snapshot(), input({ contingency: true }, { contingency: { detail, limitPct: 100 } }));
+    expect(marks.elements.get("line:1:3:1")).toMatchObject({ halo: LAYER_COLORS.tripped, dim: true });
+    expect(marks.elements.get("line:1:4:1")).toMatchObject({ color: LAYER_COLORS.overload, bold: true });
+    expect(marks.elements.get("line:3:4:1")).toMatchObject({ color: LAYER_COLORS.more });
+    expect(marks.elements.get("line:3:4:2")).toMatchObject({ color: LAYER_COLORS.less });
+    // Over the limit before, and less than a point worse: not marked.
+    expect(marks.elements.get("line:4:9:1")).toBeUndefined();
+    expect(marks.buses.get(4)).toMatchObject({ halo: LAYER_COLORS.voltage });
+    expect(legends.map((l) => l.id)).toEqual(["contingency"]);
+  });
+
+  it("draws nothing for the contingency layer without an open outage", () => {
+    const { marks } = resolveLayers(snapshot(), input({ contingency: true }));
+    expect(marks.buses.size + marks.elements.size).toBe(0);
   });
 });

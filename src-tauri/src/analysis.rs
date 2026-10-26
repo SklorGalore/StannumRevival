@@ -1,6 +1,9 @@
 //! Tauri commands over `stannum-core`. Each command runs on a blocking
 //! worker so long solves never freeze the window.
 
+use stannum_core::contingency::{
+    ContingencyDetail, ContingencyRow, ContingencySettings, ContingencySummary, Progress, RunHandle,
+};
 use stannum_core::diff::{DiffSummary, RecordDetail, RecordRow};
 use stannum_core::power::{ResponseTable, SensitivitySummary, SolveReport, SolveSettings};
 use stannum_core::study::Edit;
@@ -210,6 +213,88 @@ pub async fn diff_record_detail(
         Ok(ws.comparison()?.record_detail(&section, index))
     })
     .await
+}
+
+/// The contingency run in hand, so it can be cancelled or followed while it
+/// runs without the workspace lock.
+#[derive(Default, Clone)]
+pub struct ContingencyRun(Arc<Mutex<Option<RunHandle>>>);
+
+/// Run contingencies. The run itself doesn't hold the workspace, so the
+/// window stays usable and Cancel can reach it.
+#[tauri::command]
+pub async fn run_contingencies(
+    state: State<'_, SharedWorkspace>,
+    run: State<'_, ContingencyRun>,
+    settings: ContingencySettings,
+) -> Result<ContingencySummary, String> {
+    let shared = state.0.clone();
+    let current = run.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let job = {
+            let ws = shared
+                .lock()
+                .map_err(|_| "Workspace is unavailable after an earlier failure.".to_string())?;
+            ws.current()?.contingency_job(settings)?
+        };
+        if let Ok(mut slot) = current.lock() {
+            *slot = Some(job.handle());
+        }
+        let results = job.run();
+        if let Ok(mut slot) = current.lock() {
+            *slot = None;
+        }
+        let results = results?;
+        let mut ws = shared
+            .lock()
+            .map_err(|_| "Workspace is unavailable after an earlier failure.".to_string())?;
+        Ok(ws.current_mut()?.set_contingencies(results))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn cancel_contingencies(run: State<'_, ContingencyRun>) {
+    if let Some(handle) = run.0.lock().ok().and_then(|h| h.clone()) {
+        handle.cancel();
+    }
+}
+
+#[tauri::command]
+pub fn contingency_progress(run: State<'_, ContingencyRun>) -> Progress {
+    run.0
+        .lock()
+        .ok()
+        .and_then(|h| h.as_ref().map(RunHandle::progress))
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn contingency_summary(
+    state: State<'_, SharedWorkspace>,
+) -> Result<Option<ContingencySummary>, String> {
+    with(state, |ws| Ok(ws.current()?.contingency_summary())).await
+}
+
+#[tauri::command]
+pub async fn contingency_rows(
+    state: State<'_, SharedWorkspace>,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<ContingencyRow>, String> {
+    with(state, move |ws| {
+        ws.current()?.contingency_rows(offset, limit)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn contingency_detail(
+    state: State<'_, SharedWorkspace>,
+    rank: usize,
+) -> Result<ContingencyDetail, String> {
+    with(state, move |ws| ws.current_mut()?.contingency_detail(rank)).await
 }
 
 /// Log lines numbered above `since`, for the log panel to catch up.
