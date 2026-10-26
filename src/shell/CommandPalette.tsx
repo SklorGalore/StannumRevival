@@ -3,6 +3,7 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  Columns2,
   CornerDownLeft,
   FolderOpen,
   GitCompareArrows,
@@ -18,7 +19,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useWorkspace, type ModuleId } from "../store/workspaceStore";
+import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
@@ -45,6 +46,8 @@ function useCommands(): Command[] {
   const linked = useWorkspace((s) => s.linked);
   const selection = useWorkspace((s) => s.selection);
   const preference = useTheme((s) => s.preference);
+  const module = useWorkspace((s) => s.module);
+  const split = useWorkspace((s) => s.split);
   const logOpen = useLog((s) => s.open);
   return useMemo(() => {
     const w = useWorkspace.getState();
@@ -55,6 +58,17 @@ function useCommands(): Command[] {
     if (summary?.power.available)
       list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
     for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
+    if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
+    else
+      for (const m of MODULE_COMMANDS)
+        if (m.id !== module)
+          list.push({
+            id: `split-${m.id}`,
+            title: `Open ${m.title.replace("Go to ", "")} side by side`,
+            icon: <Columns2 size={14} />,
+            keywords: `split view pane beside ${m.id === SPLIT_PARTNER[module] ? "default" : ""}`,
+            run: () => w.setSplit(m.id),
+          });
     if (summary) {
       list.push({
         id: "link",
@@ -81,7 +95,7 @@ function useCommands(): Command[] {
       run: () => useLog.getState().setOpen(!logOpen),
     });
     return list;
-  }, [summary, linked, selection, preference, logOpen]);
+  }, [summary, linked, selection, preference, module, split, logOpen]);
 }
 
 type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };

@@ -739,6 +739,27 @@ if (STANNUM_VIOLATIONS) {
   await page.getByText(/^Around\b/).filter({ hasText: "170" }).first().waitFor();
   await page.keyboard.press("Escape");
 
+  // Side by side: the drawing on the left, Power flow on the right, with
+  // selection linked between them while split.
+  await page.getByRole("button", { name: "Side by side" }).click();
+  const right = page.locator("[data-pane=right]");
+  await right.getByRole("combobox", { name: "Right pane" }).waitFor();
+  assert.equal(await right.getByRole("combobox", { name: "Right pane" }).inputValue(), "power");
+  await page.getByRole("button", { name: "Linked", exact: true }).waitFor();
+  await right.getByRole("tab", { name: /Buses/ }).click();
+  const violationsBox = right.getByLabel(/Voltage violations only/);
+  if (await violationsBox.isChecked()) await violationsBox.uncheck();
+  await right.getByPlaceholder("Search buses…").fill("170");
+  await right.locator("tbody tr:not([data-spacer])", { has: page.locator("td:first-child", { hasText: /^170$/ }) }).click();
+  await page.locator("[data-pane=left] .react-flow__node-bus.selected").first().waitFor();
+  await page.waitForTimeout(400);
+  await shot("split-view");
+  await right.getByRole("button", { name: "Swap sides" }).click();
+  assert.equal(await page.locator("[data-pane=left]").getByRole("combobox", { name: "Left pane" }).inputValue(), "power");
+  await page.locator("[data-pane=right]").getByRole("button", { name: "Close split view" }).click();
+  await page.locator("[data-pane]").first().waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Link selection" }).waitFor();
+
   // Tables draw only the rows in view, carry bus names, and show loading and
   // limits as bars and marks.
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
@@ -780,8 +801,10 @@ if (STANNUM_VIOLATIONS) {
   await shot("filter-chips");
   // The same filters narrow the overview's charts; its checks stay whole-case.
   await page.getByRole("tab", { name: "Overview" }).click();
-  await chips.getByText(new RegExp(`^Charts show ${kept} of 300 buses`)).waitFor();
-  await page.getByText(`${kept} of 300 buses, lowest to highest`).waitFor();
+  // The table count can include the selected bus; the charts show only matches.
+  const charted = Number((await chips.getByText(/^Charts show \d+ of 300 buses/).innerText()).split(" ")[2]);
+  assert.ok(charted > 0 && charted <= kept, "charts narrowed to the matching buses");
+  await page.getByText(`${charted} of 300 buses, lowest to highest`).waitFor();
   await page.getByText("Touching matching buses, against rating A").waitFor();
   await page.getByTestId("voltage-profile").scrollIntoViewIfNeeded();
   await shot("overview-filtered");
