@@ -1,0 +1,317 @@
+// The Diagram's Network style: the topology graph (Cytoscape) drawn around a
+// bus, sharing the focus bus, hop count and selection with the One-line style.
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Maximize2, Minus, Plus, Spline, X } from "lucide-react";
+import { useWorkspace } from "../../../store/workspaceStore";
+import { useDiagramStore } from "../../../store/diagramStore";
+import { MAX_HOPS, useDrawingStyle } from "../../../store/drawingStyleStore";
+import { loadTopology, useTopology } from "../../../lib/analysis/topologyStore";
+import type { TopologySnapshot } from "../../../lib/analysis/types";
+import { busElement, elementLabel } from "../../../lib/elements";
+import { count, fixed } from "../../../lib/analysis/format";
+import { centreBus } from "../../../ui/DrawAround";
+import { NetworkGraph } from "../../topology/NetworkGraph";
+import { DISPLAY_LIMIT, locateElement, neighborhood, nodeForBus, type GraphSelection } from "../../topology/viewModel";
+import { showOneLine } from "./switchStyle";
+import { StyleSwitch } from "./StyleSwitch";
+
+const NOTHING: GraphSelection = { bus: null, equipment: null };
+
+/** The open case's topology snapshot, loaded while `want` is true. */
+function useSnapshot(want: boolean): { snapshot: TopologySnapshot | null; error: string | null } {
+  const caseVersion = useWorkspace((s) => s.caseVersion);
+  const available = useWorkspace((s) => !!s.caseSummary?.topology.available);
+  const snapshot = useTopology((s) => (s.version === caseVersion ? s.snapshot : null));
+  const [error, setError] = useState<{ version: number; message: string } | null>(null);
+  useEffect(() => {
+    if (!want || !available || snapshot) return;
+    let live = true;
+    loadTopology(caseVersion).catch((e: Error) => live && setError({ version: caseVersion, message: e.message }));
+    return () => {
+      live = false;
+    };
+  }, [want, available, snapshot, caseVersion]);
+  return { snapshot, error: error?.version === caseVersion ? error.message : null };
+}
+
+/** Draw the one-line around a bus with the network's hop count, and switch to it. */
+function drawOneLineAround(bus: number) {
+  const { focus, setFocus } = useDrawingStyle.getState();
+  setFocus({ bus, depth: focus?.depth ?? 2 });
+  void showOneLine();
+}
+
+/** The bus to draw around for the selected element. */
+function selectionBus(element: string | null, snapshot: TopologySnapshot | null): number | null {
+  if (!element) return null;
+  if (snapshot) {
+    const found = locateElement(element, snapshot);
+    if (found) return found.selection.bus ?? found.bus;
+  }
+  return centreBus(element);
+}
+
+/** The Diagram toolbar while the Network style is shown. */
+export function NetworkToolbar() {
+  const focus = useDrawingStyle((s) => s.focus);
+  const element = useDrawingStyle((s) => s.element);
+  const busy = useDrawingStyle((s) => s.busy);
+  const requestFit = useDrawingStyle((s) => s.requestFit);
+  const canDraw = useWorkspace((s) => !!s.caseSummary?.power.available);
+  const snapshot = useTopology((s) => s.snapshot);
+  const bus = selectionBus(element, snapshot) ?? focus?.bus ?? null;
+  return (
+    <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto whitespace-nowrap shrink-0">
+      <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
+      <StyleSwitch />
+      <div className="w-px h-5 bg-slate-200 mx-1" />
+      <button
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100"
+        onClick={requestFit}
+        title="Fit the network to the view"
+      >
+        <Maximize2 size={14} />
+        <span className="hidden sm:inline">Fit</span>
+      </button>
+      <button
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        disabled={!canDraw || bus === null || busy}
+        onClick={() => bus !== null && drawOneLineAround(bus)}
+        title={
+          !canDraw
+            ? "This case can't be read for power flow, so it can't be drawn as a one-line"
+            : bus !== null
+              ? `Draw ${focus?.depth ?? 2} hops around bus ${bus} as a one-line`
+              : "Pick a bus first"
+        }
+      >
+        <Spline size={14} />
+        <span>{busy ? "Drawing…" : "Draw as one-line"}</span>
+      </button>
+    </div>
+  );
+}
+
+/** The network graph around the focus bus, with its hop bar. */
+export function NetworkCanvas({ visible }: { visible: boolean }) {
+  const summary = useWorkspace((s) => s.caseSummary);
+  const { snapshot, error } = useSnapshot(visible);
+  const focus = useDrawingStyle((s) => s.focus);
+  const setFocus = useDrawingStyle((s) => s.setFocus);
+  const element = useDrawingStyle((s) => s.element);
+  const setElement = useDrawingStyle((s) => s.setElement);
+  const fit = useDrawingStyle((s) => s.fit);
+  const around = useDiagramStore((s) => s.metadata.around);
+  const linked = useDiagramStore((s) => !!s.metadata.caseName && s.metadata.caseName === summary?.name);
+
+  // A one-line drawn around a bus (a "Draw around" request, its hop bar)
+  // moves the network with it.
+  useEffect(() => {
+    if (around && linked) setFocus(around);
+  }, [around, linked, setFocus]);
+
+  // Start around the selection, or the best-connected bus.
+  useEffect(() => {
+    if (!snapshot || focus) return;
+    const bus = selectionBus(element, snapshot) ?? snapshot.analysis.degrees[0]?.bus;
+    if (bus !== undefined && bus !== null) setFocus({ bus, depth: 2 });
+  }, [snapshot, focus, element, setFocus]);
+
+  const graph = useMemo(
+    () => (snapshot && focus ? neighborhood(snapshot.graph, focus.bus, focus.depth) : null),
+    [snapshot, focus]
+  );
+  const located = useMemo(() => (snapshot && element ? locateElement(element, snapshot) : null), [snapshot, element]);
+  const selection = located?.selection ?? NOTHING;
+
+  // A new selection made elsewhere that isn't in view re-centres the network
+  // on it. (The selection the network opened with, and changing the hop
+  // count, never move the focus.)
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  const followed = useRef(element);
+  useEffect(() => {
+    const shownGraph = graphRef.current;
+    if (!shownGraph || !located || followed.current === element) return;
+    followed.current = element;
+    if (located.bus === null) return;
+    const shown = located.selection.equipment
+      ? shownGraph.edges.some((e) => e.equipment_id === located.selection.equipment)
+      : located.selection.bus !== null && !!nodeForBus(shownGraph, located.selection.bus);
+    if (!shown) setFocus({ bus: located.bus, depth: useDrawingStyle.getState().focus?.depth ?? 2 });
+  }, [element, located, setFocus]);
+
+  function pick(next: GraphSelection) {
+    const picked = next.equipment ?? (next.bus !== null ? busElement(next.bus) : null);
+    setElement(picked);
+    if (picked) useWorkspace.getState().select(picked, "diagram");
+  }
+
+  let message: string | null = null;
+  if (!summary) message = "Open a case to draw its network.";
+  else if (!summary.topology.available) message = `This case has no topology to draw. ${summary.topology.error ?? ""}`;
+  else if (error) message = `Couldn't build the network: ${error}`;
+  else if (!snapshot || !graph) message = "Building the network…";
+  else if (graph.nodes.length > DISPLAY_LIMIT)
+    message = `${count(graph.nodes.length)} buses are within ${focus!.depth} hops, more than the ${DISPLAY_LIMIT} the network view draws. Use fewer hops.`;
+  else if (!graph.nodes.length) message = `Bus ${focus!.bus} isn't in service, so it has no network to draw.`;
+
+  return (
+    <div className="absolute inset-0 bg-white" data-testid="network-view">
+      {message ? (
+        <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-500">{message}</div>
+      ) : (
+        <NetworkGraph
+          graph={graph!}
+          snapshot={snapshot!}
+          path={null}
+          selection={selection}
+          onInspect={pick}
+          visible={visible}
+          fitSignal={fit}
+          focus={focus?.bus ?? null}
+          onRecentre={(bus) => setFocus({ bus, depth: focus?.depth ?? 2 })}
+        />
+      )}
+      {snapshot && focus && <HopBar snapshot={snapshot} buses={graph?.nodes.filter((n) => n.bus !== null).length ?? 0} />}
+    </div>
+  );
+}
+
+/** Which bus the network is drawn around, and how many hops. */
+function HopBar({ snapshot, buses }: { snapshot: TopologySnapshot; buses: number }) {
+  const focus = useDrawingStyle((s) => s.focus)!;
+  const setFocus = useDrawingStyle((s) => s.setFocus);
+  const name = snapshot.case.buses.find((b) => b.number === focus.bus)?.name.trim();
+  const step = (d: number) => setFocus({ bus: focus.bus, depth: focus.depth + d });
+  const btn = "p-1 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div
+      className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600 whitespace-nowrap"
+      data-testid="network-hops"
+    >
+      <span className="px-1">
+        Around <span className="font-semibold text-slate-800">Bus {focus.bus}</span>
+        {name && <span className="text-slate-500"> {name}</span>}
+      </span>
+      <span className="w-px h-4 bg-slate-200 mx-1" />
+      <button className={btn} title="One hop fewer" aria-label="One hop fewer" disabled={focus.depth <= 1} onClick={() => step(-1)}>
+        <Minus size={13} />
+      </button>
+      <span className="tabular-nums w-12 text-center" aria-label="Hops">
+        {focus.depth} hop{focus.depth === 1 ? "" : "s"}
+      </span>
+      <button className={btn} title="One hop more" aria-label="One hop more" disabled={focus.depth >= MAX_HOPS} onClick={() => step(1)}>
+        <Plus size={13} />
+      </button>
+      <span className="w-px h-4 bg-slate-200 mx-1" />
+      <span className="px-1 tabular-nums">{count(buses)} buses</span>
+      <span className="px-1 text-slate-400">Double-click a bus to centre on it</span>
+    </div>
+  );
+}
+
+/**
+ * What is selected in the network, floating over its top right corner: its
+ * topology facts and the actions that move between styles. (The shared element inspector, M6 PR 6.1, replaces this.)
+ */
+export function NetworkSelection() {
+  const element = useDrawingStyle((s) => s.element);
+  const setElement = useDrawingStyle((s) => s.setElement);
+  const focus = useDrawingStyle((s) => s.focus);
+  const setFocus = useDrawingStyle((s) => s.setFocus);
+  const busy = useDrawingStyle((s) => s.busy);
+  const caseVersion = useWorkspace((s) => s.caseVersion);
+  const canDraw = useWorkspace((s) => !!s.caseSummary?.power.available);
+  const snapshot = useTopology((s) => (s.version === caseVersion ? s.snapshot : null));
+  if (!element || !snapshot) return null;
+  const found = locateElement(element, snapshot);
+  if (!found) return null;
+  const { case: c, analysis: a } = snapshot;
+  const pickBus = (bus: number) => {
+    setElement(busElement(bus));
+    useWorkspace.getState().select(busElement(bus), "diagram");
+  };
+  const bus = found.selection.bus ?? found.bus;
+  const row = "grid grid-cols-2 gap-1.5";
+  let body: React.ReactNode;
+  let eyebrow: string;
+  let title: string;
+  if (found.selection.equipment) {
+    const e = c.equipment.find((x) => x.id === found.selection.equipment)!;
+    const bridge = a.bridges.some((b) => b.equipment_id === e.id);
+    eyebrow = e.kind;
+    title = elementLabel(e.id);
+    body = (
+      <>
+        {e.name.trim() && <p className="text-slate-600">{e.name.trim()}</p>}
+        <p className="mt-2 text-slate-500">Terminals</p>
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          {e.buses.map((b, i) => (
+            <button key={`${b}-${i}`} className="rounded border border-slate-300 px-1.5 py-px hover:bg-slate-50" onClick={() => pickBus(b)}>
+              Bus {b}
+              {e.active_terminals[i] === false && " (open)"}
+            </button>
+          ))}
+        </div>
+        {bridge && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Bridge: taking it out splits its island.</p>}
+      </>
+    );
+  } else {
+    const b = c.buses.find((x) => x.number === found.selection.bus);
+    const degree = a.degrees.find((d) => d.bus === found.selection.bus);
+    const node = found.selection.bus !== null ? nodeForBus(snapshot.graph, found.selection.bus) : undefined;
+    eyebrow = "Bus";
+    title = node && node.member_buses.length > 1 ? `Merged node ${node.bus} · ${node.member_buses.length} buses` : `Bus ${found.selection.bus}`;
+    body = (
+      <>
+        {b?.name.trim() && <p className="text-slate-600">{b.name.trim()}</p>}
+        <dl className={`mt-2 ${row}`}>
+          <div><dt className="text-slate-500">Base kV</dt><dd className="font-medium">{b ? fixed(b.base_kv, 1) : "—"}</dd></div>
+          <div><dt className="text-slate-500">Island</dt><dd className="font-medium">{degree?.island ?? "—"}</dd></div>
+          <div><dt className="text-slate-500">Connections</dt><dd className="font-medium">{degree?.degree ?? "—"}</dd></div>
+        </dl>
+        {found.selection.bus !== null && a.articulation_buses.includes(found.selection.bus) && (
+          <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Cut bus: losing it splits its island.</p>
+        )}
+      </>
+    );
+  }
+  return (
+    // Floats over the canvas, so picking something doesn't squeeze the graph.
+    <aside
+      className="absolute right-3 top-3 z-10 w-64 max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white/95 p-3 text-xs shadow-md"
+      data-testid="network-selection"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{eyebrow}</p>
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        </div>
+        <button className="p-1 text-slate-400 hover:text-slate-700" onClick={() => setElement(null)} aria-label="Clear selection" title="Clear selection">
+          <X size={13} />
+        </button>
+      </div>
+      {body}
+      {bus !== null && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {found.selection.bus !== null && focus?.bus !== bus && (
+            <button className="rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-slate-50" onClick={() => setFocus({ bus, depth: focus?.depth ?? 2 })}>
+              Centre here
+            </button>
+          )}
+          {canDraw && (
+            <button
+              className="inline-flex items-center gap-1 rounded-md bg-teal-700 px-2 py-1 font-medium text-white hover:bg-teal-800 disabled:opacity-40"
+              disabled={busy}
+              onClick={() => drawOneLineAround(bus)}
+              title={`Draw ${focus?.depth ?? 2} hops around bus ${bus} as a one-line`}
+            >
+              <Spline size={12} /> Draw as one-line
+            </button>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}

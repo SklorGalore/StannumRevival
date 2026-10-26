@@ -1,5 +1,12 @@
 // Graph scoping helpers ported from nodal's web/view-model.ts and topology-view.ts.
 import type { GraphData, GraphNode, TopologySnapshot } from "../../lib/analysis/types";
+import { elementBus, parseElement } from "../../lib/elements";
+
+/** A bus or a piece of equipment picked in the graph. */
+export interface GraphSelection {
+  bus: number | null;
+  equipment: string | null;
+}
 
 export const DISPLAY_LIMIT = 500;
 
@@ -106,4 +113,19 @@ export function busRows(snapshot: TopologySnapshot): TopoBusRow[] {
         articulation: false,
       });
   return rows;
+}
+
+/**
+ * What a shared element id is in the topology graph, and the bus to centre a
+ * neighbourhood on to show it. Generators and loads are found at their bus.
+ */
+export function locateElement(element: string, s: TopologySnapshot): { selection: GraphSelection; bus: number | null } | null {
+  const parsed = parseElement(element);
+  if (!parsed) return null;
+  if (parsed.kind === "line" || parsed.kind === "transformer" || parsed.kind === "switch") {
+    const e = s.case.equipment.find((x) => x.id === element);
+    return e ? { selection: { bus: null, equipment: e.id }, bus: e.buses[0] ?? null } : null;
+  }
+  const bus = elementBus(element);
+  return bus !== null && s.case.buses.some((b) => b.number === bus) ? { selection: { bus, equipment: null }, bus } : null;
 }

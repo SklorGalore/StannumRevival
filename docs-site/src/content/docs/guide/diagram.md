@@ -9,6 +9,36 @@ draw by hand.
 
 ![A one-line generated around a bus, two hops deep, with solved flows](../../../assets/screens/diagram-local.png)
 
+## Two drawing styles
+
+The switch at the start of the toolbar draws the same neighbourhood in two
+styles:
+
+- **One-line**: symbols, routed wires, results and editing (everything below).
+- **Network**: the bus-branch graph from [Topology](/StannumRevival/guide/topology/).
+  Buses are dots and branches are lines (transformers dashed), so it stays
+  quick and readable for hundreds of buses. Bridges and cut buses are
+  highlighted in amber, and the bus it is drawn around has a teal halo.
+
+![The Network style, two hops around a bus, with a bus selected](../../../assets/screens/diagram-network.png)
+
+Switching keeps the bus the drawing is centred on, the hop count and the
+selection. Change the hops in the Network style and switch back, and the
+one-line is redrawn to match (undoably; a hand-drawn diagram is never
+replaced).
+
+In the Network style:
+
+- Click a bus or branch to select it. A card shows its island, connections,
+  and whether it is a bridge or a cut bus.
+- Double-click a bus, or **Centre here** on its card, to draw around it.
+- The bar at the bottom changes the hop count, up to six.
+- **Draw as one-line** switches to the one-line drawn around the selection,
+  with the same hop count.
+
+"Draw around" from another module and selections from linked modules move
+both styles.
+
 ## Generating from the case
 
 **From case** draws a one-line of the open case (MATPOWER or RAW): the whole
