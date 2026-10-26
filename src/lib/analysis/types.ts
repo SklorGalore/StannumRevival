@@ -37,6 +37,8 @@ export interface CaseSummary {
     titles: string[];
   }>;
   diffable: boolean;
+  /** Cells edited in Records and not yet saved to a file. Missing from older backends. */
+  record_edits?: number;
   /** The attached Stannum DC grid file, if any. Missing from older backends. */
   dc_grids?: DcGridsSummary | null;
 }
@@ -785,12 +787,24 @@ export interface RecordBook {
   source: RecordSource;
   revision: number | null;
   note: string | null;
+  /** Whether cells can be edited: RAW revisions 33 and 35, and MATPOWER. */
+  editable: boolean;
   sections: RecordSectionInfo[];
 }
 
 export interface RecordColumn {
   name: string;
   kind: RecordColumnKind;
+  /** Key fields (bus numbers, ids) and case details stay as read. */
+  editable: boolean;
+}
+
+/** One cell's new value, as typed, by table position. */
+export interface RecordEdit {
+  section: string;
+  row: number;
+  column: number;
+  value: string;
 }
 
 export interface CaseRecord {

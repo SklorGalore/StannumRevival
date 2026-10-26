@@ -190,6 +190,30 @@ pub async fn record_table(
     with(state, move |ws| ws.current_mut()?.record_table(&section)).await
 }
 
+/// Write cell edits from Records into the case and reopen it in place.
+#[tauri::command]
+pub async fn apply_record_edits(
+    state: State<'_, SharedWorkspace>,
+    edits: Vec<stannum_core::record_edit::RecordEdit>,
+) -> Result<CaseSummary, String> {
+    with(state, move |ws| {
+        ws.current_mut()?.apply_record_edits(&edits)
+    })
+    .await
+}
+
+/// Save the case, with its edits, to a new file.
+#[tauri::command]
+pub async fn save_case_as(
+    state: State<'_, SharedWorkspace>,
+    path: String,
+) -> Result<CaseSummary, String> {
+    with(state, move |ws| {
+        ws.current_mut()?.save_as(&PathBuf::from(path))
+    })
+    .await
+}
+
 /// Serialized inside the lock: the snapshot borrows the parsed case.
 #[tauri::command]
 pub async fn topology_snapshot(

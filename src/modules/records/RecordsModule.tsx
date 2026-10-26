@@ -1,11 +1,13 @@
 // Records: every record in the open case as a table, one record type at a
 // time, with every field. Sort by a column, search, or filter with chips;
 // picking a row opens it in the element inspector, with "Draw around".
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronRight, Download, FolderOpen, Sheet } from "lucide-react";
+// Double-click a cell to edit it; Apply writes the edits into the case, which
+// every module then reloads, and Save as writes the edited case to a file.
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, Check, ChevronRight, Download, FolderOpen, Lock, Save, Sheet, Undo2, X } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, saveTextExport } from "../../lib/analysis/api";
-import type { CaseRecord, RecordBook, RecordTable } from "../../lib/analysis/types";
+import type { CaseRecord, RecordBook, RecordColumnKind, RecordEdit, RecordTable } from "../../lib/analysis/types";
 import { count, toCsv } from "../../lib/analysis/format";
 import type { FilterRule } from "../../lib/filters";
 import { elementLabel } from "../../lib/elements";
@@ -15,21 +17,127 @@ import { FilterChips } from "../../ui/FilterChips";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import { DrawAroundButton } from "../../ui/DrawAround";
 import { useWidth } from "../../ui/useWidth";
-import { columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
+import { cellProblem, columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
 
 /** Below this width the record types fold into a menu. */
 const LIST_MIN = 720;
 /** Below this width the inspector floats over the table. */
 const INSPECTOR_MIN = 1060;
 
-function columnsFor(table: RecordTable, raw: boolean): Column<CaseRecord>[] {
-  const cols: Column<CaseRecord>[] = table.columns.map((c, i) => ({
-    key: String(i),
-    header: c.name,
-    title: `${c.name} (${c.kind})`,
-    value: (r) => r.cells[i] ?? null,
-    align: c.kind === "text" ? "left" : "right",
-  }));
+/** A cell being edited, by table position. */
+interface CellRef {
+  row: number;
+  column: number;
+}
+
+const editKey = (section: string, row: number, column: number) => `${section}\u0000${row}\u0000${column}`;
+
+function shownValue(v: CaseRecord["cells"][number]): string {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+/** The text box over a cell while it is edited. Enter or Tab keeps the value, Esc drops it. */
+function CellEditor({
+  initial,
+  kind,
+  align,
+  onDone,
+}: {
+  initial: string;
+  kind: RecordColumnKind;
+  align: "left" | "right";
+  /** value null: cancelled; next: Tab pressed. */
+  onDone: (value: string | null, next?: boolean) => void;
+}) {
+  const [text, setText] = useState(initial);
+  const problem = cellProblem(kind, text);
+  const done = useRef(false);
+  const finish = (value: string | null, next?: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(value, next);
+  };
+  return (
+    <input
+      autoFocus
+      aria-label="Cell value"
+      aria-invalid={problem !== null}
+      title={problem ?? undefined}
+      value={text}
+      onFocus={(e) => e.currentTarget.select()}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") finish(null);
+        else if ((e.key === "Enter" || e.key === "Tab") && !problem) {
+          e.preventDefault();
+          finish(text, e.key === "Tab");
+        } else if (e.key === "Tab") e.preventDefault();
+      }}
+      onBlur={() => finish(problem ? null : text)}
+      className={`w-full min-w-16 h-6 px-1 rounded-sm border text-xs tabular-nums bg-white focus:outline-none ${
+        align === "right" ? "text-right" : "text-left"
+      } ${problem ? "border-red-400 ring-2 ring-red-200" : "border-teal-500 ring-2 ring-teal-500/30"}`}
+    />
+  );
+}
+
+interface EditState {
+  editable: boolean;
+  section: string;
+  rowIndex: (r: CaseRecord) => number;
+  pending: Record<string, string>;
+  editing: CellRef | null;
+  start: (cell: CellRef) => void;
+  finish: (cell: CellRef, value: string | null, next?: boolean) => void;
+}
+
+function columnsFor(table: RecordTable, raw: boolean, edit: EditState): Column<CaseRecord>[] {
+  const cols: Column<CaseRecord>[] = table.columns.map((c, i) => {
+    const align = c.kind === "text" ? "left" : "right";
+    const canEdit = edit.editable && c.editable;
+    return {
+      key: String(i),
+      header: canEdit || !edit.editable ? c.name : (
+        <span className="inline-flex items-center gap-0.5">
+          {c.name}
+          <Lock size={9} className="text-slate-400" aria-hidden="true" />
+        </span>
+      ),
+      title: `${c.name} (${c.kind})${edit.editable && !c.editable ? ": identifies the record, so it can't be edited" : ""}`,
+      value: (r) => r.cells[i] ?? null,
+      align,
+      render: (r) => {
+        const row = edit.rowIndex(r);
+        const pending = edit.pending[editKey(edit.section, row, i)];
+        if (edit.editing && edit.editing.row === row && edit.editing.column === i)
+          return (
+            <CellEditor
+              initial={pending ?? shownValue(r.cells[i])}
+              kind={c.kind}
+              align={align}
+              onDone={(value, next) => edit.finish({ row, column: i }, value, next)}
+            />
+          );
+        const text = pending ?? shownValue(r.cells[i]);
+        if (!canEdit) return text;
+        return (
+          <span
+            className={`block -mx-2.5 px-2.5 leading-7 cursor-text ${pending !== undefined ? "bg-amber-100 text-amber-950 font-medium" : ""}`}
+            data-pending={pending !== undefined ? "" : undefined}
+            title={pending !== undefined ? `Was ${shownValue(r.cells[i]) || "empty"}` : "Double-click to edit"}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              edit.start({ row, column: i });
+            }}
+          >
+            {text || "\u00a0"}
+          </span>
+        );
+      },
+    };
+  });
   if (raw) cols.push({ key: "line", header: "Line", title: "Line in the RAW file where the record starts", value: (r) => r.line, align: "right" });
   return cols;
 }
@@ -78,6 +186,9 @@ export function RecordsModule({ active }: { active: boolean }) {
   const linked = useWorkspace((s) => s.linked);
   const select = useWorkspace((s) => s.select);
   const split = useWorkspace((s) => s.split);
+  const editedVersion = useWorkspace((s) => s.editedVersion);
+  const applyRecordEdits = useWorkspace((s) => s.applyRecordEdits);
+  const saveCaseAs = useWorkspace((s) => s.saveCaseAs);
 
   const [book, setBook] = useState<RecordBook | null>(null);
   const [tables, setTables] = useState<Record<string, RecordTable>>({});
@@ -88,6 +199,11 @@ export function RecordsModule({ active }: { active: boolean }) {
   // Picked here; while linked (or after a search), the shared selection wins.
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedRow, setPickedRow] = useState<CaseRecord | null>(null);
+  // Typed values not yet applied to the case, by section, row and column.
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<CellRef | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const selected = linked || selection?.from === "search" ? (selection?.element ?? null) : picked;
 
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
@@ -96,16 +212,22 @@ export function RecordsModule({ active }: { active: boolean }) {
 
   const readable = !!summary && (summary.power.available || summary.diffable);
 
-  // A new case starts over.
+  // A new case starts over. The same case with edits applied is read again,
+  // keeping the table, search and filters in view.
   useEffect(() => {
     setBook(null);
     setTables({});
     setError(null);
+    setPickedRow(null);
+    setEditing(null);
+    if (caseVersion === editedVersion) return;
     setSection(null);
     setSearch("");
     setRulesBy({});
     setPicked(null);
-    setPickedRow(null);
+    setPending({});
+    setEditError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseVersion]);
 
   // The record types, read the first time the module is shown for a case.
@@ -146,7 +268,42 @@ export function RecordsModule({ active }: { active: boolean }) {
   }, [selection, book]);
 
   const raw = book?.source === "raw";
-  const columns = useMemo(() => (table ? columnsFor(table, raw) : []), [table, raw]);
+  const keys = useMemo(() => new Map(table?.rows.map((r, i) => [r, i]) ?? []), [table]);
+  const editState: EditState = {
+    editable: !!book?.editable,
+    section: section ?? "",
+    rowIndex: (r) => keys.get(r) ?? -1,
+    pending,
+    editing,
+    start: (cell) => {
+      setEditError(null);
+      setEditing(cell);
+    },
+    finish: (cell, value, next) => {
+      setEditing(null);
+      if (value !== null && table && section) {
+        const key = editKey(section, cell.row, cell.column);
+        const original = shownValue(table.rows[cell.row]?.cells[cell.column] ?? null);
+        setPending((all) => {
+          const copy = { ...all };
+          // Typing the value back drops the edit.
+          if (value.trim() === original.trim()) delete copy[key];
+          else copy[key] = value;
+          return copy;
+        });
+      }
+      if (next && table) {
+        // Tab: on to the next editable field of the record.
+        const after = table.columns.findIndex((c, i) => i > cell.column && c.editable);
+        if (after >= 0) setEditing({ row: cell.row, column: after });
+      }
+    },
+  };
+  const columns = useMemo(
+    () => (table ? columnsFor(table, raw, editState) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table, raw, pending, editing, book?.editable, keys]
+  );
   const fields = useMemo(() => (table ? recordFields(table) : []), [table]);
   const rules = (section && rulesBy[section]) || [];
   // The picked record stays listed even when a filter would hide it.
@@ -154,7 +311,24 @@ export function RecordsModule({ active }: { active: boolean }) {
     () => (table ? (rules.length ? table.rows.filter((r) => passes(r, rules) || (selected !== null && r.element === selected)) : table.rows) : []),
     [table, rules, selected]
   );
-  const keys = useMemo(() => new Map(table?.rows.map((r, i) => [r, i]) ?? []), [table]);
+
+  const pendingList: RecordEdit[] = Object.entries(pending).map(([key, value]) => {
+    const [sec, row, column] = key.split("\u0000");
+    return { section: sec, row: Number(row), column: Number(column), value };
+  });
+  const apply = async () => {
+    setApplying(true);
+    setEditError(null);
+    try {
+      await applyRecordEdits(pendingList);
+      setPending({});
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setApplying(false);
+    }
+  };
+  const unsaved = summary?.record_edits ?? 0;
 
   const pick = (row: CaseRecord) => {
     setPickedRow(row);
@@ -234,6 +408,7 @@ export function RecordsModule({ active }: { active: boolean }) {
           <span className="text-[11px] text-slate-500 truncate" data-testid="records-summary">
             {count(table.columns.length)} fields
             {raw && book.revision !== null ? ` · RAW revision ${book.revision}` : book.source === "model" ? " · power flow model" : ""}
+            {book.editable ? " · double-click a cell to edit" : " · read only"}
           </span>
           <span className="ml-auto flex items-center gap-1">
             {selected && !(dockInspector || !split) && (
@@ -255,6 +430,54 @@ export function RecordsModule({ active }: { active: boolean }) {
           onRules={(next) => setRulesBy((all) => ({ ...all, [section]: next }))}
           note={filtered ? `${count(shown.length)} of ${count(table.rows.length)} ${table.label.toLowerCase()}` : "Filter on any field"}
         />
+        {(pendingList.length > 0 || unsaved > 0 || editError) && (
+          <div
+            className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-amber-200 bg-amber-50 text-xs text-amber-950"
+            data-testid="records-edits"
+            role="status"
+          >
+            {pendingList.length > 0 ? (
+              <>
+                <span className="font-medium">
+                  {count(pendingList.length)} change{pendingList.length === 1 ? "" : "s"} not applied
+                </span>
+                <span className="text-amber-800/80 hidden @3xl:inline">Apply writes them into the case; every module then uses the new values.</span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Button variant="primary" onClick={apply} disabled={applying}>
+                    <Check size={13} /> {applying ? "Applying…" : "Apply"}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPending({})} disabled={applying}>
+                    <X size={13} /> Discard
+                  </Button>
+                </span>
+              </>
+            ) : unsaved > 0 ? (
+              <>
+                <span className="font-medium">
+                  {count(unsaved)} edited value{unsaved === 1 ? "" : "s"} not saved to a file
+                </span>
+                <span className="text-amber-800/80 hidden @3xl:inline">{summary.name} on disk is unchanged.</span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Button variant="primary" onClick={() => void saveCaseAs().catch((e: Error) => setEditError(e.message))}>
+                    <Save size={13} /> Save as…
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    title={`Open ${summary.name} again as it is on disk`}
+                    onClick={() => void openCase(summary.path)}
+                  >
+                    <Undo2 size={13} /> Revert to file
+                  </Button>
+                </span>
+              </>
+            ) : null}
+            {editError && (
+              <span className="basis-full text-red-700" role="alert">
+                {editError}
+              </span>
+            )}
+          </div>
+        )}
         {(book.note || table.note) && (
           <div className="px-3 pt-2 flex flex-col gap-1.5">
             {book.note && <Notice>{book.note}</Notice>}

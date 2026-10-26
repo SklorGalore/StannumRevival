@@ -113,5 +113,7 @@ let lastVersion = useWorkspace.getState().caseVersion;
 useWorkspace.subscribe((s) => {
   if (s.caseVersion === lastVersion) return;
   lastVersion = s.caseVersion;
+  // Edits made in Records keep the study: the backend applies it again.
+  if (s.caseVersion === s.editedVersion) return;
   useStudy.setState((st) => ({ entries: [], saved: [], compare: null, error: null, revision: st.revision + 1 }));
 });

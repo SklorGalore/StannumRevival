@@ -9,6 +9,7 @@
 //! - [`diff`]: exact RAW case comparison (ported from case-diff).
 //! - [`inspect`]: one element's data and limits, for the element inspector.
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
+//! - [`record_edit`]: edits from the Records module, written into the case.
 //! - [`records`]: the open case's records as tables, one per record type.
 //! - [`logbook`]: the application log shown in the log panel.
 
@@ -21,6 +22,7 @@ pub mod elements;
 pub mod inspect;
 pub mod logbook;
 pub mod power;
+pub mod record_edit;
 pub mod records;
 pub mod study;
 pub mod workspace;

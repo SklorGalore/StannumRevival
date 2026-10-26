@@ -1,5 +1,6 @@
 //! The Records module's tables: every record type with every field.
 use stannum_core::Workspace;
+use stannum_core::record_edit::RecordEdit;
 use stannum_core::records::{ColumnKind, RecordSource};
 use std::path::PathBuf;
 
@@ -144,5 +145,117 @@ fn synthetic_usa_lists_every_record() {
             .as_deref()
             .unwrap()
             .contains("three-winding")
+    );
+}
+
+fn col(table: &stannum_core::records::RecordTable, name: &str) -> usize {
+    table.columns.iter().position(|c| c.name == name).unwrap()
+}
+
+fn edit(section: &str, row: usize, column: usize, value: &str) -> RecordEdit {
+    RecordEdit {
+        section: section.into(),
+        row,
+        column,
+        value: value.into(),
+    }
+}
+
+#[test]
+fn raw_edits_rewrite_only_the_edited_fields_and_reach_power_flow() {
+    let mut ws = open(fixture("five_bus.raw"));
+    let case = ws.current_mut().unwrap();
+    let loads = case.record_table("LOAD").unwrap();
+    let buses = case.record_table("BUS").unwrap();
+    let (pl, name, id) = (col(&loads, "PL"), col(&buses, "NAME"), col(&buses, "I"));
+    assert!(!buses.columns[id].editable, "key fields stay as read");
+    assert!(buses.columns[name].editable);
+    let before = String::from_utf8(case.bytes.clone()).unwrap();
+
+    let summary = case
+        .apply_record_edits(&[
+            edit("LOAD", 0, pl, "95.5"),
+            edit("BUS", 4, name, "Spur_South"),
+        ])
+        .unwrap();
+    assert_eq!(summary.record_edits, 2);
+    let after = String::from_utf8(case.bytes.clone()).unwrap();
+    let changed: Vec<(&str, &str)> = before
+        .lines()
+        .zip(after.lines())
+        .filter(|(a, b)| a != b)
+        .collect();
+    assert_eq!(changed.len(), 2, "{changed:?}");
+    // Width and the rest of the line are kept.
+    assert_eq!(
+        changed[0].1,
+        "     5,'Spur_South  ',  69.0000,1,   2,   1,   1,0.99000,  -5.0000,1.10000,0.90000,1.10000,0.90000"
+    );
+    assert!(
+        changed[1]
+            .1
+            .starts_with("    2,'1 ',1,   1,   1,      95.5,    30.000,"),
+        "{}",
+        changed[1].1
+    );
+    // The tables and the power flow model both see the new values.
+    assert_eq!(
+        case.record_table("LOAD").unwrap().rows[0].cells[pl],
+        serde_json::json!(95.5)
+    );
+    let pd = case
+        .power
+        .as_ref()
+        .unwrap()
+        .case
+        .buses
+        .iter()
+        .find(|b| b.id == 2)
+        .unwrap()
+        .pd;
+    assert!((pd - 95.5).abs() < 1e-9, "{pd}");
+
+    // Bad values and key fields are refused, and nothing changes.
+    assert!(
+        case.apply_record_edits(&[edit("LOAD", 0, pl, "lots")])
+            .is_err()
+    );
+    assert!(case.apply_record_edits(&[edit("BUS", 0, id, "7")]).is_err());
+    assert_eq!(String::from_utf8(case.bytes.clone()).unwrap(), after);
+
+    // Save as writes the edited case, which reads back the same.
+    let dir = std::env::temp_dir().join(format!("stannum-records-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let saved = dir.join("five_bus_edited.raw");
+    let summary = case.save_as(&saved).unwrap();
+    assert_eq!(summary.record_edits, 0);
+    assert_eq!(summary.name, "five_bus_edited.raw");
+    assert_eq!(std::fs::read_to_string(&saved).unwrap(), after);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn matpower_edits_change_the_model() {
+    let mut ws = open(fixture("case9.m"));
+    let case = ws.current_mut().unwrap();
+    let gens = case.record_table("gen").unwrap();
+    let (pg, status, bus) = (
+        col(&gens, "PG"),
+        col(&gens, "GEN_STATUS"),
+        col(&gens, "GEN_BUS"),
+    );
+    assert!(!gens.columns[bus].editable);
+    case.apply_record_edits(&[edit("gen", 1, pg, "150"), edit("gen", 2, status, "0")])
+        .unwrap();
+    let model = &case.power.as_ref().unwrap().case;
+    assert_eq!(model.generators[1].pg, 150.0);
+    assert!(!model.generators[2].online);
+    assert_eq!(
+        case.record_table("gen").unwrap().rows[1].cells[pg].as_f64(),
+        Some(150.0)
+    );
+    assert!(
+        case.apply_record_edits(&[edit("gen", 0, bus, "4")])
+            .is_err()
     );
 }

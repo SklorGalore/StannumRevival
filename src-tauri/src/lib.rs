@@ -127,6 +127,8 @@ pub fn run() {
             analysis::element_detail,
             analysis::case_records,
             analysis::record_table,
+            analysis::apply_record_edits,
+            analysis::save_case_as,
             analysis::topology_snapshot,
             analysis::topology_set_merge,
             analysis::topology_shortest_path,

@@ -34,6 +34,8 @@ pub enum ColumnKind {
 pub struct RecordColumn {
     pub name: String,
     pub kind: ColumnKind,
+    /// Whether its cells can be edited (key fields and case details can't).
+    pub editable: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -44,6 +46,9 @@ pub struct RecordRow {
     pub element: Option<String>,
     /// One value per column: a number, text, or null when absent.
     pub cells: Vec<Json>,
+    /// Which of the table's layouts the record has (RAW only).
+    #[serde(skip)]
+    pub layout: usize,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -57,6 +62,10 @@ pub struct RecordTable {
     pub skipped: usize,
     /// Why some records are missing, or how to read the table.
     pub note: Option<String>,
+    /// For each layout, the column of each of its fields in record order
+    /// (RAW only), so an edit can find its token in the file.
+    #[serde(skip)]
+    pub layouts: Vec<Vec<usize>>,
 }
 
 /// One record type in the list, without its rows.
@@ -75,6 +84,8 @@ pub struct RecordBook {
     pub revision: Option<i64>,
     /// Shown above every table, such as why the model is shown instead.
     pub note: Option<String>,
+    /// Whether cells can be edited at all (RAW 33/35 and MATPOWER files).
+    pub editable: bool,
     pub sections: Vec<SectionInfo>,
 }
 
@@ -82,6 +93,7 @@ pub struct Records {
     pub source: RecordSource,
     pub revision: Option<i64>,
     pub note: Option<String>,
+    pub editable: bool,
     pub tables: Vec<RecordTable>,
 }
 
@@ -91,6 +103,7 @@ impl Records {
             source: self.source,
             revision: self.revision,
             note: self.note.clone(),
+            editable: self.editable,
             sections: self
                 .tables
                 .iter()
@@ -107,6 +120,13 @@ impl Records {
     pub fn table(&self, id: &str) -> Result<&RecordTable, String> {
         self.tables
             .iter()
+            .find(|t| t.id == id)
+            .ok_or_else(|| format!("The case has no {id} records."))
+    }
+
+    pub fn table_mut(&mut self, id: &str) -> Result<&mut RecordTable, String> {
+        self.tables
+            .iter_mut()
             .find(|t| t.id == id)
             .ok_or_else(|| format!("The case has no {id} records."))
     }
@@ -419,7 +439,10 @@ fn raw_table(case: &DiffCase, section: &str, parsed: &[Record]) -> RecordTable {
     let mut rows = Vec::with_capacity(records.len());
     // Records of a section mostly share one layout: the column of each field
     // is worked out once per layout, not once per record.
-    let mut last: Option<(&Record, Vec<usize>)> = None;
+    let mut last: Option<(&Record, usize)> = None;
+    let mut layouts: Vec<Vec<usize>> = Vec::new();
+    let keys: Vec<String> = key_fields(section);
+    let editable_section = section != crate::diff::parser::CASE_DETAILS;
     for record in records {
         let same = last.as_ref().is_some_and(|(prev, _)| {
             prev.fields.len() == record.fields.len()
@@ -436,17 +459,24 @@ fn raw_table(case: &DiffCase, section: &str, parsed: &[Record]) -> RecordTable {
                     Some(&i) => i,
                     None => {
                         index.insert(name.clone(), columns.len());
+                        let editable = editable_section && !keys.contains(&name);
                         columns.push(RecordColumn {
                             name,
                             kind: ColumnKind::Integer,
+                            editable,
                         });
                         columns.len() - 1
                     }
                 })
                 .collect();
-            last = Some((record, at));
+            let id = layouts.iter().position(|l| *l == at).unwrap_or_else(|| {
+                layouts.push(at);
+                layouts.len() - 1
+            });
+            last = Some((record, id));
         }
-        let at = &last.as_ref().expect("set above").1;
+        let layout = last.as_ref().expect("set above").1;
+        let at = &layouts[layout];
         let mut cells = vec![Json::Null; columns.len()];
         for (&col, (_, value)) in at.iter().zip(&record.fields) {
             cells[col] = match value {
@@ -468,6 +498,7 @@ fn raw_table(case: &DiffCase, section: &str, parsed: &[Record]) -> RecordTable {
             line: record.line_number,
             element: raw_element(section, record),
             cells,
+            layout,
         });
     }
     for row in &mut rows {
@@ -480,7 +511,27 @@ fn raw_table(case: &DiffCase, section: &str, parsed: &[Record]) -> RecordTable {
         rows,
         skipped,
         note,
+        layouts,
     }
+}
+
+/// A section's key fields, which identify its records and can't be edited.
+fn key_fields(section: &str) -> Vec<String> {
+    let definition = &crate::diff::parser::schema()["sections"][section];
+    let mut keys: Vec<String> = definition["key_fields"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|k| k.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(by_rev) = definition["key_fields_by_revision"].as_object() {
+        for list in by_rev.values().filter_map(Json::as_array) {
+            keys.extend(list.iter().filter_map(|k| k.as_str().map(str::to_string)));
+        }
+    }
+    keys
 }
 
 /// Every section of a RAW file read by case-diff's parser, in file order,
@@ -504,6 +555,7 @@ pub fn from_raw(case: &DiffCase) -> Records {
         source: RecordSource::Raw,
         revision: Some(case.revision),
         note: None,
+        editable: true,
         tables,
     }
 }
@@ -537,6 +589,8 @@ fn model_table(
                 } else {
                     ColumnKind::Number
                 },
+                // Bus numbers tie the tables together, so they stay as read.
+                editable: !MODEL_KEYS.contains(&name.as_str()),
                 name,
             }
         })
@@ -547,6 +601,7 @@ fn model_table(
             RecordColumn {
                 name: "NAME".into(),
                 kind: ColumnKind::Text,
+                editable: true,
             },
         );
     }
@@ -570,6 +625,7 @@ fn model_table(
                 line: 0,
                 element,
                 cells,
+                layout: 0,
             }
         })
         .collect();
@@ -580,10 +636,14 @@ fn model_table(
         rows,
         skipped: 0,
         note: None,
+        layouts: Vec::new(),
     }
 }
 
-const BUS: &[&str] = &[
+/// Model columns holding bus numbers, which stay as read.
+const MODEL_KEYS: &[&str] = &["BUS_I", "GEN_BUS", "F_BUS", "T_BUS"];
+
+pub(crate) const BUS: &[&str] = &[
     "BUS_I", "TYPE", "PD", "QD", "GS", "BS", "BUS_AREA", "VM", "VA", "BASE_KV", "ZONE", "VMAX",
     "VMIN",
 ];
@@ -795,6 +855,8 @@ pub fn from_model(power: &PowerCase, from_raw: bool) -> Records {
     Records {
         source: RecordSource::Model,
         revision: None,
+        // A RAW file shown as the model can't be written back as RAW.
+        editable: !from_raw,
         note: from_raw.then(|| {
             "Stannum reads RAW revisions 33 and 35 record by record. This file is shown as the power flow model instead, in MATPOWER's columns: loads and fixed shunts are summed into each bus.".to_string()
         }),
