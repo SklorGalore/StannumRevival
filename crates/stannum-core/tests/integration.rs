@@ -406,3 +406,56 @@ fn study_edits_change_what_is_solved() {
     let again = case.solve(SolveSettings::default()).unwrap();
     assert!((again.total_losses_mw - base.total_losses_mw).abs() < 1e-9);
 }
+
+#[test]
+fn last_solution_start_resumes_the_previous_solve() {
+    use stannum_core::power::StartChoice;
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus.raw")).unwrap();
+    let case = ws.current_mut().unwrap();
+    let last = SolveSettings {
+        start: StartChoice::Last,
+        enforce_q_limits: true,
+        ..SolveSettings::default()
+    };
+    // Nothing solved yet: the case voltages, like "From case".
+    let first = case.solve(last.clone()).unwrap();
+    let cold = case
+        .solve(SolveSettings {
+            start: StartChoice::Case,
+            ..last.clone()
+        })
+        .unwrap();
+    assert!(first.converged && first.iterations > 0);
+    assert_eq!(first.iterations, cold.iterations);
+    // Again from that solution: nothing left to do, same answer.
+    let again = case.solve(last.clone()).unwrap();
+    assert!(again.converged);
+    assert_eq!(again.iterations, 0);
+    assert!((again.total_losses_mw - cold.total_losses_mw).abs() < 1e-6);
+    for (a, b) in again.buses.iter().zip(&cold.buses) {
+        assert!((a.vm - b.vm).abs() < 1e-8);
+    }
+    assert_eq!(
+        (again.shunts_switched, again.taps_moved),
+        (cold.shunts_switched, cold.taps_moved)
+    );
+    // A DC solve leaves no AC solution to start from.
+    case.solve(SolveSettings {
+        model: ModelChoice::Dc,
+        ..last.clone()
+    })
+    .unwrap();
+    assert_eq!(
+        case.solve(last.clone()).unwrap().iterations,
+        cold.iterations
+    );
+    // Nor does a study edit, which changes the case.
+    case.set_edits(vec![stannum_core::study::Edit::Load {
+        bus: first.buses[1].id,
+        mw: first.buses[1].pd + 1.0,
+        mvar: first.buses[1].qd,
+    }])
+    .unwrap();
+    assert!(case.solve(last).unwrap().iterations > 0);
+}

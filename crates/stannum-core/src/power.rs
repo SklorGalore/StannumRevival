@@ -111,6 +111,9 @@ pub enum StartChoice {
     #[default]
     Case,
     Flat,
+    /// The last converged AC solve of the same case, with its controls where
+    /// they ended; the case voltages when there is none.
+    Last,
 }
 
 /// How two-terminal (LCC), VSC and multi-terminal DC lines are solved when
@@ -203,7 +206,8 @@ impl SolveSettings {
                 ModelChoice::Dc => Model::Dc,
             },
             initialization: match self.start {
-                StartChoice::Case => Initialization::Case,
+                // Without an earlier solution to start from.
+                StartChoice::Case | StartChoice::Last => Initialization::Case,
                 StartChoice::Flat => Initialization::Flat,
             },
             tolerance: self.tolerance,
@@ -213,6 +217,72 @@ impl SolveSettings {
             ..PowerFlowOptions::default()
         }
     }
+}
+
+/// A copy of `case` that starts where `last`, an earlier converged AC solve
+/// of the same case, ended, with `options` changed to match.
+///
+/// Bus voltages and generator reactive outputs come from `last`, so that
+/// generators it held at a reactive limit start there. Switched shunts,
+/// transformer taps and DC converter taps that `options` controls start at
+/// their final settings. Everything else, such as dispatch and loads, stays
+/// as in `case`.
+pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOptions) -> Case {
+    let mut warm = case.clone();
+    let solved = &last.case;
+    for (b, s) in warm.buses.iter_mut().zip(&solved.buses) {
+        if b.id == s.id {
+            b.vm = s.vm;
+            b.va = s.va;
+        }
+    }
+    for (g, s) in warm.generators.iter_mut().zip(&solved.generators) {
+        if g.bus == s.bus && g.online && s.qg.is_finite() {
+            g.qg = s.qg;
+        }
+    }
+    let controls = &mut options.voltage_controls;
+    if controls.switched_shunts.len() == last.switched_shunts.len() {
+        let index: std::collections::HashMap<u32, usize> = warm
+            .buses
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.id, i))
+            .collect();
+        for (shunt, &value) in controls
+            .switched_shunts
+            .iter_mut()
+            .zip(&last.switched_shunts)
+        {
+            if let (Some(&i), true) = (index.get(&shunt.bus), value.is_finite()) {
+                warm.buses[i].bs += value - shunt.initial;
+                shunt.initial = value;
+            }
+        }
+    }
+    if controls.taps.len() == last.tap_ratios.len() {
+        for (tap, &ratio) in controls.taps.iter_mut().zip(&last.tap_ratios) {
+            if ratio.is_finite() && tap.branch < warm.branches.len() {
+                tap.ratio = ratio;
+                warm.branches[tap.branch].tap = tap.tap_per_ratio * ratio;
+            }
+        }
+    }
+    if let rs_power::DcModel::Detailed {
+        lines,
+        adjust_taps: true,
+        ..
+    } = &mut options.dc_model
+    {
+        for line in lines {
+            if let Some(s) = last.lcc.iter().find(|s| s.row == line.row) {
+                line.rectifier.tap = s.rectifier_tap;
+                line.inverter.tap = s.inverter_tap;
+            }
+        }
+    }
+    options.initialization = Initialization::Solution;
+    warm
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -578,11 +648,17 @@ pub fn report(
 ) -> SolveReport {
     let case = &result.case;
     let names = bus_names(case);
+    // Looked up once per generator and branch end, so index the buses.
+    let index: std::collections::HashMap<u32, usize> = case
+        .buses
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id, i))
+        .collect();
     let name_of = |id: u32| {
-        case.buses
-            .iter()
-            .position(|b| b.id == id)
-            .map(|i| names[i].clone())
+        index
+            .get(&id)
+            .map(|&i| names[i].clone())
             .unwrap_or_default()
     };
     let mut limits = LimitSummary::default();
@@ -976,11 +1052,17 @@ pub fn sensitivity_summary(
 ) -> SensitivitySummary {
     let case = &s.power_flow.case;
     let names = bus_names(case);
+    // Looked up once per generator and branch end, so index the buses.
+    let index: std::collections::HashMap<u32, usize> = case
+        .buses
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id, i))
+        .collect();
     let name_of = |id: u32| {
-        case.buses
-            .iter()
-            .position(|b| b.id == id)
-            .map(|i| names[i].clone())
+        index
+            .get(&id)
+            .map(|&i| names[i].clone())
             .unwrap_or_default()
     };
     SensitivitySummary {

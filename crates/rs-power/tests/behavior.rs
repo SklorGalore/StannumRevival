@@ -459,3 +459,50 @@ fn requires_one_reference_generator_per_active_island() {
         Err(Error::Unsupported(message)) if message.contains("each active island")
     ));
 }
+
+#[test]
+fn solution_start_keeps_reactive_limits_and_needs_no_newton_steps() {
+    let mut c = parse_matpower(include_str!("fixtures/case30.m")).unwrap();
+    for g in &mut c.generators[1..] {
+        g.qmax = g.qmax.min(10.0);
+    }
+    let limited = PowerFlowOptions {
+        enforce_q_limits: true,
+        ..Default::default()
+    };
+    let first = solve(&c, &limited).unwrap();
+    assert_eq!(first.status, SolveStatus::Converged);
+    assert!(first.q_limit_passes > 0);
+
+    // The solved case as data: dispatch and loads from the input, voltages
+    // and reactive outputs from the solve.
+    let mut warm = c.clone();
+    for (b, s) in warm.buses.iter_mut().zip(&first.case.buses) {
+        (b.vm, b.va) = (s.vm, s.va);
+    }
+    for (g, s) in warm.generators.iter_mut().zip(&first.case.generators) {
+        g.qg = s.qg;
+    }
+    // From its voltages alone the limits are found again...
+    let again = solve(&warm, &limited).unwrap();
+    assert!(again.q_limit_passes > 0);
+    assert!(again.iterations > 0);
+    // ...but starting from the solution, nothing is left to do.
+    let resumed = solve(
+        &warm,
+        &PowerFlowOptions {
+            initialization: Initialization::Solution,
+            ..limited.clone()
+        },
+    )
+    .unwrap();
+    assert_eq!(resumed.status, SolveStatus::Converged);
+    assert_eq!(resumed.iterations, 0);
+    assert_eq!(resumed.q_limit_passes, 0);
+    for (a, b) in resumed.case.buses.iter().zip(&first.case.buses) {
+        assert!((a.vm - b.vm).abs() < 1e-8 && (a.va - b.va).abs() < 1e-6);
+    }
+    for (a, b) in resumed.case.generators.iter().zip(&first.case.generators) {
+        assert!((a.qg - b.qg).abs() < 1e-5 && (a.pg - b.pg).abs() < 1e-5);
+    }
+}

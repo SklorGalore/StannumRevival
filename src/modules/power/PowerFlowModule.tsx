@@ -418,9 +418,15 @@ function SolvePanel({
           className={inputClass}
           value={settings.start}
           disabled={!ac}
+          title={
+            settings.start === "last"
+              ? "Start where the last solve of this case ended, with generators at Q limits, shunts and taps where it left them. Uses the case voltages when there is no earlier solve."
+              : undefined
+          }
           onChange={(e) => setSettings({ ...settings, start: e.target.value as SolveSettings["start"] })}
         >
           <option value="case">From case</option>
+          <option value="last">From last solution</option>
           <option value="flat">Flat start (1 p.u.)</option>
         </select>
       </Field>

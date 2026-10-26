@@ -43,7 +43,9 @@ export type ModelChoice = "ac" | "dc";
 
 export interface SolveSettings {
   model: ModelChoice;
-  start: "case" | "flat";
+  /** "last" starts from the last converged AC solve of this case, with its
+   * controls where they ended, and falls back to "case" without one. */
+  start: "case" | "flat" | "last";
   tolerance: number;
   max_iterations: number;
   enforce_q_limits: boolean;

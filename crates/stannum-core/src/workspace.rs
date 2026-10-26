@@ -316,15 +316,33 @@ impl OpenCase {
     pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
         let power = self.power_case()?;
         let start = Instant::now();
-        let options = settings.options_for(power);
-        let result = rs_power::solve(&power.case, &options)
+        let cold = settings.options_for(power);
+        let mut options = cold.clone();
+        let warm = match (&self.solved, settings.start) {
+            (Some((last, before)), power::StartChoice::Last)
+                if settings.model == power::ModelChoice::Ac
+                    && before.model == power::ModelChoice::Ac
+                    && last.status == rs_power::SolveStatus::Converged =>
+            {
+                Some(power::warm_start(&power.case, last, &mut options))
+            }
+            (_, power::StartChoice::Last) if settings.model == power::ModelChoice::Ac => {
+                log::info!(
+                    "No converged AC solution of this case to start from; starting from the case voltages"
+                );
+                None
+            }
+            _ => None,
+        };
+        let result = rs_power::solve(warm.as_ref().unwrap_or(&power.case), &options)
             .map_err(|e| study::explain(e.to_string(), &self.edits))?;
         let solved_ms = elapsed_ms(start);
         let report = power::report(
             &result,
             &power.elements,
             &power.dc_line_kinds,
-            &options.voltage_controls,
+            // Count moves from the file's settings, not from the last solve.
+            &cold.voltage_controls,
             &settings,
             elapsed_ms(start),
         );
