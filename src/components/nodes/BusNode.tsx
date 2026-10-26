@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { BusNode as BusNodeType } from "../../store/types";
 import { useResults } from "../../lib/diagram/results";
@@ -9,6 +9,7 @@ import { busTaps } from "./shared/busTaps";
 import { handleStyle } from "./shared/SymbolFrame";
 import { Leader, useBBox, useLabelDrag } from "./shared/labels";
 import { BAR, isVertical, tapFacing } from "../../lib/diagram/bus";
+import { useRemeasure } from "./shared/remeasure";
 
 const POSITION = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 const MIN_LENGTH = 40;
@@ -61,9 +62,7 @@ export function BusNode({ id, data, selected }: NodeProps<BusNodeType>) {
   const taps = busTaps(data);
   // Re-measure when taps come or go (expand, undo, paste) or the bus turns,
   // so wires can attach.
-  const updateInternals = useUpdateNodeInternals();
-  const tapKey = `${vertical}` + taps.map((t) => `${t.id}${t.side}${t.x}`).join();
-  useEffect(() => updateInternals(id), [tapKey, id, updateInternals]);
+  useRemeasure(`${vertical}` + taps.map((t) => `${t.id}${t.side}${t.x}`).join());
   // Fixed taps (from a generated layout or added by hand) must stay on the bar.
   const minLength = Math.max(MIN_LENGTH, ...(data.taps ?? []).map((t) => t.x + 20));
   const width = vertical ? BAR : length;

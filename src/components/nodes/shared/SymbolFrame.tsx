@@ -1,9 +1,10 @@
-import { Handle, Position, useNodeId, useUpdateNodeInternals } from "@xyflow/react";
-import { useEffect, type ReactNode } from "react";
+import { Handle, Position, useNodeId } from "@xyflow/react";
+import type { ReactNode } from "react";
 import type { LabelOffset, Rotation } from "../../../store/types";
 import { useDiagramStore } from "../../../store/diagramStore";
 import { useInk } from "../../../lib/diagram/ink";
 import { Leader, useBBox, useLabelDrag } from "./labels";
+import { useRemeasure } from "./remeasure";
 
 export type Side = "top" | "right" | "bottom" | "left";
 
@@ -99,10 +100,7 @@ export function SymbolFrame({
   const size = rotatedSize(w, h, rotation);
   // Handles move when the symbol turns: re-measure so wires follow.
   const id = useNodeId();
-  const updateInternals = useUpdateNodeInternals();
-  useEffect(() => {
-    if (id) updateInternals(id);
-  }, [id, rotation, updateInternals]);
+  useRemeasure(String(rotation));
   const sideways = rotation === 90 || rotation === 270;
   // Sideways, the block is centred under the symbol (text-anchor inherits).
   const base = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
