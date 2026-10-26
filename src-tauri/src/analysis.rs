@@ -61,6 +61,27 @@ pub async fn solve_power_flow(
     with(state, move |ws| ws.current_mut()?.solve(settings)).await
 }
 
+/// Attach a Stannum DC grid file to the open case.
+#[tauri::command]
+pub async fn load_dc_grids(
+    state: State<'_, SharedWorkspace>,
+    path: String,
+) -> Result<stannum_core::dc_grids::DcGridsSummary, String> {
+    with(state, move |ws| {
+        ws.current_mut()?.load_dc_grids(&PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn clear_dc_grids(state: State<'_, SharedWorkspace>) -> Result<(), String> {
+    with(state, |ws| {
+        ws.current_mut()?.clear_dc_grids();
+        Ok(())
+    })
+    .await
+}
+
 /// Replace the study's edits; the next solve uses them.
 #[tauri::command]
 pub async fn set_study_edits(

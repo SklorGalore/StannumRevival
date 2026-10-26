@@ -75,4 +75,5 @@ jobs:
             STANNUM_RAW_DC=$PWD/crates/rs-power/tests/fixtures/raw/t_psse_case3.raw \
             STANNUM_DC_A=$PWD/$F/five_bus_dc.raw STANNUM_DC_B=$PWD/$F/five_bus_dc_modified.raw \
             STANNUM_VIOLATIONS=$PWD/crates/rs-power/tests/fixtures/case300.m \
+            STANNUM_VSC_CASE=$PWD/$F/vsc_grids/two_area.m STANNUM_VSC_GRIDS=$PWD/$F/vsc_grids/two_area.dcgrid.json \
             node tests/browser/smoke.mjs

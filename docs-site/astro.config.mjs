@@ -64,6 +64,7 @@ export default defineConfig({
                 { label: "Two-terminal LCC", slug: "manual/hvdc/lcc" },
                 { label: "Two-terminal VSC", slug: "manual/hvdc/vsc" },
                 { label: "Multi-terminal DC", slug: "manual/hvdc/mtdc" },
+                { label: "Meshed VSC grids", slug: "manual/hvdc/vsc-grids" },
               ],
             },
             { label: "Topology analysis", slug: "manual/topology" },
@@ -75,6 +76,7 @@ export default defineConfig({
           items: [
             { label: "PSS/E RAW", slug: "reference/psse-raw" },
             { label: "MATPOWER", slug: "reference/matpower" },
+            { label: "Stannum DC grid file", slug: "reference/dc-grid-file" },
           ],
         },
         {
