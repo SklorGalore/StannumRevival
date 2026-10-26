@@ -326,6 +326,13 @@ await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.svg"]);
 const svgOut = await page.evaluate(() => window.__files["/tmp/labels.svg"]);
 assert(svgOut.includes(`transform="${movedLabel}"`), "exported SVG keeps the moved label");
+// PDF export loads jsPDF on demand; check it still writes a PDF.
+await queue("/tmp/labels.pdf");
+await page.getByRole("button", { name: "Export", exact: true }).click();
+await page.locator("div.fixed button").filter({ hasText: /^PDF$/ }).click();
+await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
+await page.waitForFunction(() => window.__files["/tmp/labels.pdf"]);
+assert((await page.evaluate(() => window.__files["/tmp/labels.pdf"])).startsWith("%PDF-"), "PDF export writes a PDF");
 await queue("/tmp/labels.sld");
 await page.getByRole("button", { name: "Save As", exact: true }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.sld"]);

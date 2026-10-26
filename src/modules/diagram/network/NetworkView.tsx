@@ -10,7 +10,7 @@ import type { TopologySnapshot } from "../../../lib/analysis/types";
 import { busElement } from "../../../lib/elements";
 import { count } from "../../../lib/analysis/format";
 import { centreBus } from "../../../ui/DrawAround";
-import { NetworkGraph } from "../../topology/NetworkGraph";
+import { NetworkGraph } from "../../topology/LazyNetworkGraph";
 import { ElementInspector, InspectorSection, inspectorClass } from "../../../ui/ElementInspector";
 import { DISPLAY_LIMIT, focusedGraph, islandGraph, locateElement, neighborhood, nodeForBus, type GraphSelection } from "../../topology/viewModel";
 import { useLayers } from "../../../store/layerStore";
