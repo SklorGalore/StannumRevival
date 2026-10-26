@@ -1,0 +1,325 @@
+{
+  "format": "stannum-dc-grids",
+  "version": 1,
+  "description": "two_area.dcgrid.json with converter South ordering 120 MW against a 1.0 p.u. current limit and Offshore's converter voltage capped at 1.08 p.u., so both run into their limits. Used by the MatACDC benchmark.",
+  "grids": [
+    {
+      "name": "Three-terminal",
+      "base_kv": 150,
+      "poles": 2,
+      "buses": [
+        {
+          "number": 1,
+          "name": "North"
+        },
+        {
+          "number": 2,
+          "name": "South"
+        },
+        {
+          "number": 3,
+          "name": "Offshore"
+        }
+      ],
+      "lines": [
+        {
+          "from": 1,
+          "to": 2,
+          "name": "North-South",
+          "r_ohm": 12
+        },
+        {
+          "from": 2,
+          "to": 3,
+          "name": "South-Offshore",
+          "r_ohm": 9
+        },
+        {
+          "from": 1,
+          "to": 3,
+          "name": "North-Offshore",
+          "r_ohm": 15
+        }
+      ],
+      "converters": [
+        {
+          "name": "North",
+          "ac_bus": 105,
+          "dc_bus": 1,
+          "dc_control": {
+            "mode": "slack",
+            "v_dc_pu": 1.0
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 0.887,
+            "c_rectifier_ohm": 4.371,
+            "c_inverter_ohm": 2.885
+          },
+          "limits": {
+            "i_max_pu": 1.1,
+            "uc_max_pu": 1.2
+          }
+        },
+        {
+          "name": "South",
+          "ac_bus": 205,
+          "dc_bus": 2,
+          "dc_control": {
+            "mode": "power",
+            "p_mw": 120
+          },
+          "ac_control": {
+            "mode": "voltage",
+            "v_pu": 1.0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 0.887,
+            "c_rectifier_ohm": 4.371,
+            "c_inverter_ohm": 2.885
+          },
+          "limits": {
+            "i_max_pu": 1.0,
+            "uc_max_pu": 1.2
+          }
+        },
+        {
+          "name": "Offshore",
+          "ac_bus": 302,
+          "dc_bus": 3,
+          "dc_control": {
+            "mode": "power",
+            "p_mw": -150
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 2.206,
+            "b_kv": 0.887,
+            "c_rectifier_ohm": 2.185,
+            "c_inverter_ohm": 1.442
+          },
+          "limits": {
+            "i_max_pu": 2.1,
+            "uc_max_pu": 1.08
+          }
+        }
+      ]
+    },
+    {
+      "name": "Four-terminal",
+      "base_kv": 300,
+      "poles": 2,
+      "buses": [
+        {
+          "number": 4,
+          "name": "A1"
+        },
+        {
+          "number": 5,
+          "name": "A2"
+        },
+        {
+          "number": 6,
+          "name": "B1"
+        },
+        {
+          "number": 7,
+          "name": "B2"
+        }
+      ],
+      "lines": [
+        {
+          "from": 4,
+          "to": 5,
+          "r_ohm": 20
+        },
+        {
+          "from": 5,
+          "to": 6,
+          "r_ohm": 25
+        },
+        {
+          "from": 6,
+          "to": 7,
+          "r_ohm": 20
+        },
+        {
+          "from": 7,
+          "to": 4,
+          "r_ohm": 30
+        },
+        {
+          "from": 4,
+          "to": 6,
+          "r_ohm": 40
+        }
+      ],
+      "converters": [
+        {
+          "name": "A1",
+          "ac_bus": 107,
+          "dc_bus": 4,
+          "dc_control": {
+            "mode": "droop",
+            "p_mw": 40,
+            "v_dc_pu": 1.0,
+            "mw_per_kv": 8
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "filter_b_pu": 0.0887,
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 1.8,
+            "c_rectifier_ohm": 18,
+            "c_inverter_ohm": 11.88
+          },
+          "limits": {
+            "i_max_pu": 1.1,
+            "uc_max_pu": 1.2
+          }
+        },
+        {
+          "name": "A2",
+          "ac_bus": 109,
+          "dc_bus": 5,
+          "dc_control": {
+            "mode": "power",
+            "p_mw": -60
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 10
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "filter_b_pu": 0.0887,
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 1.8,
+            "c_rectifier_ohm": 18,
+            "c_inverter_ohm": 11.88
+          },
+          "limits": {
+            "i_max_pu": 1.1,
+            "uc_max_pu": 1.2
+          }
+        },
+        {
+          "name": "B1",
+          "ac_bus": 207,
+          "dc_bus": 6,
+          "dc_control": {
+            "mode": "droop",
+            "p_mw": 20,
+            "v_dc_pu": 1.0,
+            "mw_per_kv": 4
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "filter_b_pu": 0.0887,
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 1.8,
+            "c_rectifier_ohm": 18,
+            "c_inverter_ohm": 11.88
+          },
+          "limits": {
+            "i_max_pu": 1.1,
+            "uc_max_pu": 1.2
+          }
+        },
+        {
+          "name": "B2",
+          "ac_bus": 209,
+          "dc_bus": 7,
+          "dc_control": {
+            "mode": "power",
+            "p_mw": 30
+          },
+          "ac_control": {
+            "mode": "reactive",
+            "q_mvar": 0
+          },
+          "transformer": {
+            "r_pu": 0.0015,
+            "x_pu": 0.1121
+          },
+          "filter_b_pu": 0.0887,
+          "reactor": {
+            "r_pu": 0.0001,
+            "x_pu": 0.16428
+          },
+          "losses": {
+            "a_mw": 1.103,
+            "b_kv": 1.8,
+            "c_rectifier_ohm": 18,
+            "c_inverter_ohm": 11.88
+          },
+          "limits": {
+            "i_max_pu": 1.1,
+            "uc_max_pu": 1.2
+          }
+        }
+      ]
+    }
+  ]
+}

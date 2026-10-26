@@ -188,6 +188,26 @@ settles in a few iterations.
   DC grids (below): each grid's converters put in exactly its line losses,
   line currents and losses match the bus voltages, every converter holds its
   set-points, and limits behave as described above.
+- **Benchmark against MatACDC.** [MatACDC](https://www.esat.kuleuven.be/electa/teaching/matacdc/)
+  (J. Beerten, KU Leuven) is the open-source AC/DC power flow that
+  accompanies the paper. MatACDC 1.0 solved the demo case and two
+  variations of it, converted to its input format by
+  `scripts/matacdc_benchmark.m`, and its results are stored with the tests.
+  MatACDC is used only to check results: Stannum's model is written from
+  the paper, and neither MatACDC's code nor its cases are part of Stannum.
+
+  | Case | Largest difference |
+  | --- | --- |
+  | Demo case: slack, droop, power and AC voltage control | $P_s$ 6·10⁻⁸ MW, $Q_s$ 5·10⁻⁹ Mvar, DC voltage 2·10⁻¹⁵ p.u., AC voltage 9·10⁻¹² p.u. |
+  | Converter A2 out, the two droop converters take up its 60 MW | $P_s$ 9·10⁻⁸ MW, DC voltage 1·10⁻¹⁵ p.u. |
+  | South ordered to 120 MW against a 1.0 p.u. current limit, Offshore's converter voltage capped at 1.08 p.u. | South 101.85 MW against 100.00 MW, North 1.87 MW lower to balance, Offshore $Q_s$ 0.60 Mvar |
+
+  With limits the two differ by design. Stannum puts a limited converter
+  exactly on its limit circle (section III-C of the paper), so South runs
+  at exactly 1.0 p.u. current and Offshore at exactly 1.08 p.u. converter
+  voltage. MatACDC 1.0 stops inside the limits, at 0.98 p.u. and 1.078 p.u.
+  The four-terminal grid, which reaches no limit, agrees as in the other
+  cases.
 
 ## Demo case
 
