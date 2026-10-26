@@ -75,6 +75,7 @@ export const useDiagramStore = create<DiagramStore>()(
     showResults: true,
     fitRequest: 0,
     colorMode: "voltage",
+    locked: false,
     past: [],
     future: [],
 
@@ -106,6 +107,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     undo: () => {
+      if (get().locked) return;
       const { past, nodes, edges } = get();
       if (!past.length) return;
       lastCheckpoint = { key: "", at: 0 };
@@ -119,6 +121,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     redo: () => {
+      if (get().locked) return;
       const { future, nodes, edges } = get();
       if (!future.length) return;
       lastCheckpoint = { key: "", at: 0 };
@@ -144,7 +147,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     paste: () => {
-      if (!clipboard) return;
+      if (!clipboard || get().locked) return;
       get().checkpoint();
       pasteCount += 1;
       const offset = 40 * pasteCount;
@@ -180,6 +183,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     duplicateSelection: () => {
+      if (get().locked) return;
       const saved = clipboard;
       const savedCount = pasteCount;
       get().copySelection();
@@ -211,7 +215,7 @@ export const useDiagramStore = create<DiagramStore>()(
       }),
 
     nudge: (dx, dy) => {
-      if (!get().nodes.some((n) => n.selected)) return;
+      if (get().locked || !get().nodes.some((n) => n.selected)) return;
       get().checkpoint("nudge");
       set((s) => {
         for (const n of s.nodes)
@@ -221,7 +225,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     rotateSelection: (turn) => {
-      if (!get().nodes.some((n) => n.selected)) return;
+      if (get().locked || !get().nodes.some((n) => n.selected)) return;
       get().checkpoint();
       const { nodes, edges, snapToGrid, gridSize } = get();
       const next = rotateSelected(nodes, edges, turn, snapToGrid ? gridSize : 0);
@@ -233,7 +237,7 @@ export const useDiagramStore = create<DiagramStore>()(
 
     align: (how) => {
       const picked = get().nodes.filter((n) => n.selected);
-      if (picked.length < 2) return;
+      if (get().locked || picked.length < 2) return;
       get().checkpoint();
       const moves = aligned(picked, how);
       set((s) => {
@@ -245,12 +249,18 @@ export const useDiagramStore = create<DiagramStore>()(
       });
     },
 
+    setLocked: (locked) =>
+      set((s) => {
+        s.locked = locked;
+      }),
+
     toggleColorMode: () =>
       set((s) => {
         s.colorMode = s.colorMode === "voltage" ? "mono" : "voltage";
       }),
 
     updateNodeData: (id, data) => {
+      if (get().locked) return;
       get().checkpoint(`node:${id}:${Object.keys(data).join(",")}`);
       set((s) => {
         const node = s.nodes.find((n) => n.id === id);
@@ -260,6 +270,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     updateEdgeData: (id, data: Partial<ConductorData>) => {
+      if (get().locked) return;
       get().checkpoint(`edge:${id}:${Object.keys(data).join(",")}`);
       set((s) => {
         const edge = s.edges.find((e) => e.id === id);
@@ -272,6 +283,7 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     addNode: (node) => {
+      if (get().locked) return;
       get().checkpoint();
       set((s) => {
         (s.nodes as SLDNode[]).push(node);
@@ -281,7 +293,7 @@ export const useDiagramStore = create<DiagramStore>()(
 
     deleteSelected: () => {
       const { nodes, edges } = get();
-      if (!nodes.some((n) => n.selected) && !edges.some((e) => e.selected)) return;
+      if (get().locked || (!nodes.some((n) => n.selected) && !edges.some((e) => e.selected))) return;
       get().checkpoint();
       set((s) => {
         const nodeIds = new Set(s.nodes.filter((n) => n.selected).map((n) => n.id));

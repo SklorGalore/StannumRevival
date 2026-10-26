@@ -25,6 +25,23 @@
 .react-flow:has(.react-flow__connectionline) .react-flow__handle {
   opacity: 1;
 }
+/* A locked drawing offers no terminals to wire from. */
+.diagram-is-locked .react-flow__handle {
+  opacity: 0 !important;
+}
+/* A locked drawing's symbols are clicked, not dragged. */
+.diagram-is-locked .react-flow__node {
+  cursor: pointer;
+}
+
+/* React Flow fills control icons; Lucide icons are outlines. */
+.react-flow__controls-button svg.lucide {
+  fill: none;
+}
+.react-flow__controls-button.diagram-locked {
+  color: var(--color-teal-700);
+  background: var(--color-teal-50);
+}
 
 /* Handles sit just inside the symbol so a wire ends exactly on its terminal
    (React Flow anchors a wire at the handle's outer edge). */

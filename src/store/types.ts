@@ -309,6 +309,8 @@ export interface DiagramStore {
   fitRequest: number;
   /** "mono" draws everything black, for printing. */
   colorMode: "voltage" | "mono";
+  /** The drawing is locked against changes (see setLocked). Shared by both drawing styles. */
+  locked: boolean;
   /** Undo/redo history of the drawing (nodes and edges only). */
   past: DiagramSnapshot[];
   future: DiagramSnapshot[];
@@ -335,6 +337,9 @@ export interface DiagramStore {
   rotateSelection: (turn: 90 | -90) => void;
   align: (how: AlignMode) => void;
   toggleColorMode: () => void;
+  /** Lock the drawing: symbols and wires can still be selected and
+   *  inspected, but not moved, edited, deleted or rewired. */
+  setLocked: (locked: boolean) => void;
   updateNodeData: (id: string, data: Partial<SLDNode["data"]>) => void;
   updateEdgeData: (id: string, data: Partial<ConductorData>) => void;
   addNode: (node: SLDNode) => void;

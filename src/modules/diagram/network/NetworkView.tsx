@@ -1,7 +1,7 @@
 // The Diagram's Network style: the topology graph (Cytoscape) drawn around a
 // bus, sharing the focus bus, hop count and selection with the One-line style.
 import { useEffect, useMemo, useRef } from "react";
-import { Maximize2, Minus, Plus, Spline } from "lucide-react";
+import { Lock, LockOpen, Maximize2, Minus, Plus, Spline } from "lucide-react";
 import { useWorkspace } from "../../../store/workspaceStore";
 import { useDiagramStore } from "../../../store/diagramStore";
 import { MAX_HOPS, useDrawingStyle } from "../../../store/drawingStyleStore";
@@ -52,6 +52,9 @@ export function NetworkToolbar() {
   const element = useDrawingStyle((s) => s.element);
   const busy = useDrawingStyle((s) => s.busy);
   const requestFit = useDrawingStyle((s) => s.requestFit);
+  // One lock for both styles.
+  const locked = useDiagramStore((s) => s.locked);
+  const setLocked = useDiagramStore((s) => s.setLocked);
   const canDraw = useWorkspace((s) => !!s.caseSummary?.power.available);
   const snapshot = useTopology((s) => s.snapshot);
   const bus = selectionBus(element, snapshot) ?? focus?.bus ?? null;
@@ -70,6 +73,18 @@ export function NetworkToolbar() {
       >
         <Maximize2 size={14} />
         {width >= 520 && <span>Fit</span>}
+      </button>
+      <button
+        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium ${
+          locked ? "bg-teal-50 text-teal-700 hover:bg-teal-100" : "text-slate-600 hover:bg-slate-100"
+        }`}
+        onClick={() => setLocked(!locked)}
+        aria-pressed={locked}
+        title={locked ? "Unlock the drawing" : "Lock the drawing: select and inspect, but don't drag buses about"}
+        data-testid="network-lock"
+      >
+        {locked ? <Lock size={14} /> : <LockOpen size={14} />}
+        {width >= 720 && <span>{locked ? "Locked" : "Lock"}</span>}
       </button>
       <button
         className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -99,6 +114,7 @@ export function NetworkCanvas({ visible }: { visible: boolean }) {
   const element = useDrawingStyle((s) => s.element);
   const setElement = useDrawingStyle((s) => s.setElement);
   const fit = useDrawingStyle((s) => s.fit);
+  const locked = useDiagramStore((s) => s.locked);
   const [ref, width] = useWidth<HTMLDivElement>(1200);
   const around = useDiagramStore((s) => s.metadata.around);
   const linked = useDiagramStore((s) => !!s.metadata.caseName && s.metadata.caseName === summary?.name);
@@ -187,6 +203,7 @@ export function NetworkCanvas({ visible }: { visible: boolean }) {
           fitSignal={fit}
           focus={focus?.bus ?? null}
           onRecentre={(bus) => setFocus({ bus, depth: focus?.depth ?? 2 })}
+          locked={locked}
         />
       )}
       {snapshot && view.kind !== "around" && <ScopeBar buses={graph?.nodes.filter((n) => n.bus !== null).length ?? 0} />}

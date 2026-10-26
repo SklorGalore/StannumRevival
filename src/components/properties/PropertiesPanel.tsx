@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { useDiagramStore } from "../../store/diagramStore";
 import { BusForm } from "./forms/BusForm";
 import { GeneratorForm } from "./forms/GeneratorForm";
@@ -49,7 +50,11 @@ export function PropertiesPanel({ missing = null }: { missing?: string | null })
   const shared = useDiagramStore(selectedCaseElement);
   const item = selectedNode ?? selectedEdge;
   const element = shared ?? (item || selectedNodeIds.length || selectedEdgeIds.length ? null : missing);
-  const form = selectedNode ? <NodeForm node={selectedNode} /> : selectedEdge ? <EdgeForm edge={selectedEdge} /> : null;
+  const locked = useDiagramStore((s) => s.locked);
+  const fields = selectedNode ? <NodeForm node={selectedNode} /> : selectedEdge ? <EdgeForm edge={selectedEdge} /> : null;
+  // A locked drawing is inspected, not edited: its drawing fields are read
+  // only. The case element's own actions (Trip and compare) stay live.
+  const form = fields && locked ? <LockedFields>{fields}</LockedFields> : fields;
 
   // A symbol drawn from the case is inspected as the case element; its
   // drawing fields fold into a section of their own.
@@ -124,4 +129,22 @@ function SymbolForm({ node }: { node: SLDNode }) {
     default:
       return null;
   }
+}
+
+function LockedFields({ children }: { children: React.ReactNode }) {
+  const setLocked = useDiagramStore((s) => s.setLocked);
+  return (
+    <div data-testid="locked-fields">
+      <p className="mb-2 flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+        <Lock size={11} className="shrink-0" />
+        <span className="flex-1">The drawing is locked.</span>
+        <button type="button" className="font-medium text-teal-700 hover:underline" onClick={() => setLocked(false)}>
+          Unlock
+        </button>
+      </p>
+      <fieldset disabled className="min-w-0 opacity-70">
+        {children}
+      </fieldset>
+    </div>
+  );
 }

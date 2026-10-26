@@ -126,8 +126,10 @@ export function Toolbar() {
   const deleteSelected = useDiagramStore((s) => s.deleteSelected);
   const toggleGrid = useDiagramStore((s) => s.toggleGrid);
   const toggleSnap = useDiagramStore((s) => s.toggleSnap);
-  const canUndo = useDiagramStore((s) => s.past.length > 0);
-  const canRedo = useDiagramStore((s) => s.future.length > 0);
+  // A locked drawing can't be changed, undo and redo included.
+  const locked = useDiagramStore((s) => s.locked);
+  const canUndo = useDiagramStore((s) => s.past.length > 0) && !locked;
+  const canRedo = useDiagramStore((s) => s.future.length > 0) && !locked;
   const undo = useDiagramStore((s) => s.undo);
   const redo = useDiagramStore((s) => s.redo);
   const mono = useDiagramStore((s) => s.colorMode === "mono");
@@ -256,7 +258,8 @@ export function Toolbar() {
         showLabel={labels}
         onClick={deleteSelected}
         danger
-        disabled={!hasSelection}
+        disabled={!hasSelection || locked}
+        title={locked ? "The drawing is locked" : undefined}
       />
 
       {!roomy && <OverflowMenu label="More diagram actions" items={[...fileItems, ...viewItems]} />}
