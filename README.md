@@ -177,6 +177,10 @@ npm run tauri dev      # run the desktop app
 npm run tauri build    # package it
 ```
 
+The repo uses npm (`package-lock.json`), and CI does too. `pnpm install` also
+works: `pnpm-workspace.yaml` skips the one dependency build script (core-js)
+that newer pnpm versions would otherwise stop on.
+
 Checks:
 
 ```sh
