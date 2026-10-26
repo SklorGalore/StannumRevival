@@ -61,6 +61,27 @@ pub async fn solve_power_flow(
     with(state, move |ws| ws.current_mut()?.solve(settings)).await
 }
 
+/// Attach a Stannum DC grid file to the open case.
+#[tauri::command]
+pub async fn load_dc_grids(
+    state: State<'_, SharedWorkspace>,
+    path: String,
+) -> Result<stannum_core::dc_grids::DcGridsSummary, String> {
+    with(state, move |ws| {
+        ws.current_mut()?.load_dc_grids(&PathBuf::from(path))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn clear_dc_grids(state: State<'_, SharedWorkspace>) -> Result<(), String> {
+    with(state, |ws| {
+        ws.current_mut()?.clear_dc_grids();
+        Ok(())
+    })
+    .await
+}
+
 /// Replace the study's edits; the next solve uses them.
 #[tauri::command]
 pub async fn set_study_edits(
@@ -108,6 +129,15 @@ pub async fn diagram_network(
     state: State<'_, SharedWorkspace>,
 ) -> Result<stannum_core::diagram::CaseNetwork, String> {
     with(state, |ws| ws.current()?.diagram_network()).await
+}
+
+/// One element's data and limits from the file, for the element inspector.
+#[tauri::command]
+pub async fn element_detail(
+    state: State<'_, SharedWorkspace>,
+    element: String,
+) -> Result<stannum_core::inspect::ElementDetail, String> {
+    with(state, move |ws| ws.current()?.element_detail(&element)).await
 }
 
 /// Serialized inside the lock: the snapshot borrows the parsed case.

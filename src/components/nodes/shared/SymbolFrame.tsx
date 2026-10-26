@@ -1,9 +1,12 @@
-import { Handle, Position, useNodeId, useUpdateNodeInternals } from "@xyflow/react";
-import { useEffect, type ReactNode } from "react";
+import { Handle, Position, useNodeId } from "@xyflow/react";
+import type { ReactNode } from "react";
 import type { LabelOffset, Rotation } from "../../../store/types";
 import { useDiagramStore } from "../../../store/diagramStore";
 import { useInk } from "../../../lib/diagram/ink";
 import { Leader, useBBox, useLabelDrag } from "./labels";
+import { useRemeasure } from "./remeasure";
+import { useElementMark } from "../../../store/layerStore";
+import type { Mark } from "../../../lib/diagram/layers";
 
 export type Side = "top" | "right" | "bottom" | "left";
 
@@ -79,6 +82,8 @@ export function SymbolFrame({
   terminals,
   title,
   onDoubleClick,
+  focus,
+  element,
 }: {
   w: number;
   h: number;
@@ -92,14 +97,16 @@ export function SymbolFrame({
   terminals: Terminal[];
   title?: string;
   onDoubleClick?: () => void;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
+  /** Shared element id, for the Diagram's layers. */
+  element?: string;
 }) {
+  const layer = useElementMark(element);
   const size = rotatedSize(w, h, rotation);
   // Handles move when the symbol turns: re-measure so wires follow.
   const id = useNodeId();
-  const updateInternals = useUpdateNodeInternals();
-  useEffect(() => {
-    if (id) updateInternals(id);
-  }, [id, rotation, updateInternals]);
+  useRemeasure(String(rotation));
   const sideways = rotation === 90 || rotation === 270;
   // Sideways, the block is centred under the symbol (text-anchor inherits).
   const base = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
@@ -109,9 +116,11 @@ export function SymbolFrame({
   const drag = useLabelDrag(labelOffset, (next) => id && useDiagramStore.getState().updateNodeData(id, { labelOffset: next }));
   const [labelRef, labelBox] = useBBox<SVGGElement>([labelAt.x, labelAt.y, label, rotation]);
   return (
-    <div className="node-wrapper relative" style={{ width: size.w, height: size.h }}>
+    <div className="node-wrapper relative" style={{ width: size.w, height: size.h, opacity: layer?.dim ? 0.25 : undefined }}>
       <svg width={size.w} height={size.h} overflow="visible" style={{ display: "block" }} onDoubleClick={onDoubleClick}>
         {title && <title>{title}</title>}
+        {focus && <FocusHalo w={size.w} h={size.h} />}
+        {layer?.halo && <LayerRing w={size.w} h={size.h} mark={layer} />}
         <g transform={TURN[rotation](w, h)}>{graphic}</g>
         {label && labelOffset && labelBox && (
           <Leader
@@ -146,5 +155,49 @@ export function SymbolFrame({
         );
       })}
     </div>
+  );
+}
+
+/** Halo behind the element a local drawing was made around. */
+export function FocusHalo({ w, h, x = 0, y = 0 }: { w: number; h: number; x?: number; y?: number }) {
+  const ink = useInk();
+  return (
+    <rect
+      x={x - 7}
+      y={y - 7}
+      width={w + 14}
+      height={h + 14}
+      rx={6}
+      fill={ink.mono ? "none" : ink.halo}
+      fillOpacity={ink.mono ? undefined : 0.18}
+      stroke={ink.halo}
+      strokeWidth={ink.mono ? 1 : 1.5}
+      strokeDasharray={ink.mono ? "4 3" : undefined}
+      data-testid="focus-halo"
+    >
+      <title>Studied element</title>
+    </rect>
+  );
+}
+
+/** A layer's ring around a symbol or bus (a bridge, a cut bus): dashed, so it
+ *  reads apart from the focus halo and from voltage bands. */
+export function LayerRing({ w, h, mark }: { w: number; h: number; mark: Mark }) {
+  const ink = useInk();
+  return (
+    <rect
+      x={-10}
+      y={-10}
+      width={w + 20}
+      height={h + 20}
+      rx={7}
+      fill="none"
+      stroke={ink.mono ? ink.line : mark.halo}
+      strokeWidth={2}
+      strokeDasharray="6 3"
+      data-testid="layer-ring"
+    >
+      {mark.note && <title>{mark.note}</title>}
+    </rect>
   );
 }

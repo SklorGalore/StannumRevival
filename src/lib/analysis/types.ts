@@ -18,6 +18,8 @@ export interface CaseCounts {
 export interface RawWarning {
   line: number;
   message: string;
+  /** The branch or generator the warning's record describes, when known. */
+  element?: string;
 }
 
 export interface CaseSummary {
@@ -35,6 +37,86 @@ export interface CaseSummary {
     titles: string[];
   }>;
   diffable: boolean;
+  /** The attached Stannum DC grid file, if any. Missing from older backends. */
+  dc_grids?: DcGridsSummary | null;
+}
+
+// ---- VSC DC grids ---------------------------------------------------------
+
+export interface DcGridsSummary {
+  path: string;
+  name: string;
+  grids: { name: string; base_kv: number; poles: number; buses: number; lines: number; converters: number }[];
+}
+
+export interface VscGridConverterRow {
+  name: string;
+  ac_bus: number;
+  ac_bus_name: string;
+  dc_bus: number;
+  in_service: boolean;
+  dc_control: "slack" | "power" | "droop";
+  ac_control: "reactive" | "voltage" | "reactive_limit";
+  /** Injected into the AC grid at the system bus. */
+  ps_mw: number;
+  qs_mvar: number;
+  us_pu: number;
+  us_deg: number;
+  /** Leaving the converter towards the AC side. */
+  pc_mw: number;
+  qc_mvar: number;
+  uc_pu: number;
+  uc_deg: number;
+  current_pu: number;
+  current_ka: number;
+  loss_mw: number;
+  /** Injected into the DC grid. */
+  pdc_mw: number;
+  udc_pu: number;
+  udc_kv: number;
+  q_min_mvar: number | null;
+  q_max_mvar: number | null;
+  p_limited: boolean;
+  outside_limits: boolean;
+}
+
+export interface VscGridBusRow {
+  number: number;
+  name: string;
+  v_pu: number;
+  kv: number;
+  injection_mw: number;
+}
+
+export interface VscGridLineRow {
+  from: number;
+  to: number;
+  name: string;
+  in_service: boolean;
+  current_ka: number;
+  from_mw: number;
+  to_mw: number;
+  loss_mw: number;
+}
+
+export interface VscGridReport {
+  name: string;
+  base_kv: number;
+  poles: number;
+  line_loss_mw: number;
+  converter_loss_mw: number;
+  converters: VscGridConverterRow[];
+  buses: VscGridBusRow[];
+  lines: VscGridLineRow[];
+}
+
+export interface VscGridsReport {
+  file: string;
+  converged: boolean;
+  iterations: number;
+  ac_iterations: number;
+  last_change_mva: number;
+  grids: VscGridReport[];
 }
 
 // ---- Power flow -----------------------------------------------------------
@@ -46,7 +128,8 @@ export interface SolveSettings {
   /** "last" starts from the last converged AC solve, with its controls where
    * they ended, and falls back to the case voltages ("case") without one. */
   start: "case" | "flat" | "last";
-  tolerance: number;
+  /** Largest mismatch allowed at any bus, in MVA on every case's base. */
+  tolerance_mva: number;
   max_iterations: number;
   enforce_q_limits: boolean;
   /** Two-terminal DC lines: converter equations, or MATPOWER's lossless pair. */
@@ -279,6 +362,8 @@ export interface SolveReport {
   dc_lines?: DcLineRow[];
   /** DC networks of the multi-terminal systems (detailed model). */
   dc_systems?: DcSystemReport[];
+  /** VSC DC grids from an attached DC grid file. */
+  vsc_grids?: VscGridsReport | null;
 }
 
 export interface InjectionColumn {
@@ -538,3 +623,27 @@ export type StudyEdit =
   | { kind: "status"; element: string; online: boolean }
   | { kind: "generation"; element: string; mw: number }
   | { kind: "load"; bus: number; mw: number; mvar: number };
+
+// ---- Element inspector ----------------------------------------------------
+
+/** One value from the file; text where it isn't a number (a type, "not rated"). */
+export interface DetailField {
+  label: string;
+  value: number | string;
+  unit: string;
+}
+
+/** One element as the file describes it (see stannum-core inspect.rs). */
+export interface ElementDetail {
+  element: string;
+  kind: string;
+  buses: { number: number; name: string; base_kv: number }[];
+  /** In service in the file, before study edits. */
+  online: boolean;
+  /** Parameters, one group per winding for a three-winding transformer. */
+  data: { title: string; fields: DetailField[] }[];
+  limits: DetailField[];
+  /** A bus's branches, generators and DC lines. */
+  connected: string[];
+  note: string | null;
+}

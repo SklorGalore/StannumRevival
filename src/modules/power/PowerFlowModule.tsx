@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
-import { api, DEFAULT_SOLVE_SETTINGS, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
   DcLineKind,
+  DcGridsSummary,
   DcLineRow,
   DcSystemReport,
   MtdcControl,
@@ -29,6 +30,7 @@ import {
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
 import { SensitivityView } from "./SensitivityView";
+import { VscGridsTab } from "./VscGridsTab";
 import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
 import { DrawAroundButton, ElementLink } from "../../ui/DrawAround";
 import { LoadingBar, RangeMark } from "../../ui/CellBars";
@@ -38,11 +40,13 @@ import { useWidth } from "../../ui/useWidth";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
+import { WarningsTab } from "./WarningsTab";
+import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
-import { toleranceMva, tolerancePu } from "../../lib/analysis/tolerance";
+import { tolerancePu } from "../../lib/analysis/tolerance";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
-type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "sensitivities" | "study" | "warnings";
+type Tab = "overview" | "buses" | "generators" | "branches" | "dc" | "dcnet" | "vsc" | "sensitivities" | "study" | "warnings";
 
 const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
@@ -419,10 +423,10 @@ function SolvePanel({
           type="number"
           step="any"
           min={0}
-          value={toleranceMva(settings.tolerance, baseMva)}
+          value={settings.tolerance_mva}
           disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, tolerance: tolerancePu(Number(e.target.value), baseMva) })}
-          title={`${sig(settings.tolerance)} p.u. on the ${baseMva} MVA base`}
+          onChange={(e) => setSettings({ ...settings, tolerance_mva: Number(e.target.value) })}
+          title={`${sig(tolerancePu(settings.tolerance_mva, baseMva))} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
       <Field label="Newton iterations per pass">
@@ -706,6 +710,7 @@ function TableTab<T>({
   onPick,
   problem,
   initialProblemsOnly = false,
+  inspector = false,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -723,6 +728,8 @@ function TableTab<T>({
   /** Rows outside their limits, with the column that measures how far, worst first. */
   problem?: { test: (r: T) => boolean; sortKey: string; label: string };
   initialProblemsOnly?: boolean;
+  /** The element inspector is open beside the table, so the actions live there. */
+  inspector?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
@@ -764,8 +771,12 @@ function TableTab<T>({
           {selectedRow && selected && (
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
-              <DrawAroundButton element={element(selectedRow)} from="power" />
-              <StudyActions element={element(selectedRow)} />
+              {!inspector && (
+                <>
+                  <DrawAroundButton element={element(selectedRow)} from="power" />
+                  <StudyActions element={element(selectedRow)} />
+                </>
+              )}
             </span>
           )}
           <Button variant="ghost" className="whitespace-nowrap" onClick={exportCsv}>
@@ -801,6 +812,12 @@ const BRANCH_PROBLEM = {
   label: "Overloads",
 };
 
+/** The table that lists an element. */
+function tabFor(element: string): Tab | null {
+  const kind = parseElement(element)?.kind;
+  return kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
+}
+
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
@@ -814,6 +831,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
   const showSettings = settingsOpen ?? width >= 960;
+  // The inspector takes a column only where the tables keep room beside it.
+  const showInspector = width >= 900;
+  const split = useWorkspace((s) => s.split);
   const branchCols = useMemo(
     // Name columns only when the case names its buses (MATPOWER doesn't).
     () => branchColumns(new Map((report?.buses ?? []).filter((b) => b.name.trim()).map((b) => [b.id, b.name.trim()]))),
@@ -848,9 +868,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   useEffect(() => {
     if (!selection || selection.from === "power" || !report || followed.current === selection) return;
     followed.current = selection;
-    const kind = parseElement(selection.element)?.kind;
-    const next: Tab | null =
-      kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
+    const next = tabFor(selection.element);
     if (next) setTab(next);
   }, [selection, report]);
 
@@ -880,6 +898,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
 
   const power = summary?.power;
   const warnings = power?.info?.warnings ?? [];
+  // The attached DC grid file; a new case starts without one.
+  const [dcGrids, setDcGrids] = useState<DcGridsSummary | null>(summary?.dc_grids ?? null);
+  useEffect(() => setDcGrids(summary?.dc_grids ?? null), [summary]);
 
   async function run<T>(kind: string, work: () => Promise<T>, done: (v: T) => void) {
     const version = useWorkspace.getState().caseVersion;
@@ -902,6 +923,18 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       setSolvedRevision(revision);
       if (tab === "sensitivities" || tab === "warnings") setTab("overview");
     });
+  };
+  // Attaching or detaching DC grids changes what a solve covers, so solve
+  // again when results are on screen.
+  const attachDcGrids = async () => {
+    const path = await pickFile(DC_GRID_FILTERS);
+    if (!path) return;
+    await run("grids", () => api.loadDcGrids(path), (g) => setDcGrids(g));
+    if (useWorkspace.getState().solveReport) void solve();
+  };
+  const detachDcGrids = async () => {
+    await run("grids", () => api.clearDcGrids(), () => setDcGrids(null));
+    if (useWorkspace.getState().solveReport) void solve();
   };
   const sensitivities = () =>
     run("sens", () => api.sensitivities(settings), (s) => {
@@ -964,11 +997,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.dc_systems?.length
         ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
         : []),
+      { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
-    [report, sensitivity, warnings.length, studyCount]
+    [report, sensitivity, warnings.length, studyCount, dcGrids]
   );
 
   if (!summary) {
@@ -998,7 +1032,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   }
 
   return (
-    <div ref={rootRef} className="h-full flex" aria-hidden={!active}>
+    <div ref={rootRef} className="relative h-full flex" aria-hidden={!active}>
       {showSettings ? (
         <SolvePanel
           settings={settings}
@@ -1045,7 +1079,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <Notice>These results are from before your latest study edits. Solve again to update them.</Notice>
           </div>
         )}
-        {!report && !sensitivity && tab !== "warnings" && tab !== "study" ? (
+        {!report && !sensitivity && tab !== "warnings" && tab !== "study" && tab !== "vsc" ? (
           <EmptyState icon={<Play size={20} />} title="Ready to solve">
             {count(power.info!.counts.buses)} buses, {count(power.info!.counts.generators)} generators and{" "}
             {count(power.info!.counts.branches)} branches loaded.
@@ -1068,6 +1102,21 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 .
               </>
             )}
+            <span className="block mt-2">
+              {dcGrids ? (
+                <>
+                  VSC DC grids from{" "}
+                  <button className="text-teal-700 underline" onClick={() => setTab("vsc")}>
+                    {dcGrids.name}
+                  </button>{" "}
+                  will solve with the case.
+                </>
+              ) : (
+                <button className="text-teal-700 underline" onClick={() => setTab("vsc")} data-testid="open-vsc-grids">
+                  Attach VSC DC grids…
+                </button>
+              )}
+            </span>
           </EmptyState>
         ) : (
           <>
@@ -1106,6 +1155,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`buses-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.buses ?? report.buses}
@@ -1123,6 +1173,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`generators-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.generators ?? report.generators}
@@ -1139,6 +1190,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   key={`branches-${jump.n}`}
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
                   rows={filtered?.branches ?? report.branches}
@@ -1154,6 +1206,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 <TableTab
                   selected={selected}
                   onPick={pick}
+                  inspector={showInspector}
                   rows={report.dc_lines}
                   columns={dcLineColumns}
                   rowKey={(r) => r.index}
@@ -1164,26 +1217,46 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 />
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
+              {tab === "vsc" && (
+                <VscGridsTab file={dcGrids} report={report} busy={!!busy} onLoad={attachDcGrids} onClear={detachDcGrids} />
+              )}
               {tab === "sensitivities" && sensitivity && (
                 <SensitivityView key={sensitivityVersion} summary={sensitivity} />
               )}
               {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
               {tab === "warnings" && (
-                <div className="h-full bg-white">
-                  <DataTable
-                    rows={warnings.map((w, i) => ({ ...w, i }))}
-                    rowKey={(w) => w.i}
-                    columns={[
-                      { key: "line", header: "Line", value: (w) => w.line, align: "right" },
-                      { key: "message", header: "Warning", value: (w) => w.message },
-                    ]}
-                  />
-                </div>
+                <WarningsTab
+                  warnings={warnings}
+                  onShow={(e) => {
+                    pick(e);
+                    const next = tabFor(e);
+                    if (next && report) setTab(next);
+                  }}
+                />
               )}
             </div>
           </>
         )}
       </div>
+      {selected && (showInspector || (!split && selection?.from === "power")) && (
+        // In a narrow window it floats, clear of the tab bar. Side by side,
+        // the other pane's inspector shows the selection instead.
+        <aside className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
+          <ElementInspector
+            element={selected}
+            from="power"
+            onPick={(e) => {
+              pick(e);
+              const next = tabFor(e);
+              if (next && report) setTab(next);
+            }}
+            onClose={() => {
+              setPicked(null);
+              select(null, "power");
+            }}
+          />
+        </aside>
+      )}
     </div>
   );
 }

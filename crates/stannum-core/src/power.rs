@@ -6,6 +6,7 @@ use rs_power::{
     PowerFlowSensitivity, SolveStatus, StateVariable,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// A case loaded for power flow, with any RAW conversion warnings.
 #[derive(Clone, Debug)]
@@ -40,6 +41,10 @@ fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
 pub struct Warning {
     pub line: usize,
     pub message: String,
+    /// The branch or generator whose record the warning is about, as a
+    /// shared element id, when the line is one of theirs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element: Option<String>,
 }
 
 /// Parse MATPOWER (`.m`) or PSS/E RAW text.
@@ -67,13 +72,23 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             ..Default::default()
         };
         let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
+        let elements = Elements::from_raw(
+            &import.case,
+            &import.branch_sources,
+            &import.generator_sources,
+            &import.dc_line_names,
+        );
+        // Which element each record's first line belongs to, so a warning
+        // can name what it is about.
+        let mut by_line: HashMap<usize, String> = HashMap::new();
+        for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
+            by_line.entry(s.line).or_insert_with(|| e.element.clone());
+        }
+        for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
+            by_line.entry(s.line).or_insert_with(|| e.element.clone());
+        }
         Ok(PowerCase {
-            elements: Elements::from_raw(
-                &import.case,
-                &import.branch_sources,
-                &import.generator_sources,
-                &import.dc_line_names,
-            ),
+            elements,
             dc_line_kinds: import
                 .dc_line_kinds
                 .iter()
@@ -89,6 +104,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .warnings
                 .into_iter()
                 .map(|w| Warning {
+                    element: by_line.get(&w.line).cloned(),
                     line: w.line,
                     message: w.message,
                 })
@@ -138,7 +154,10 @@ fn yes() -> bool {
 pub struct SolveSettings {
     pub model: ModelChoice,
     pub start: StartChoice,
-    pub tolerance: f64,
+    /// Largest power mismatch allowed at any bus, in MVA. It converts to per
+    /// unit on each case's own base at solve time, so the same setting means
+    /// the same MW and Mvar on every case.
+    pub tolerance_mva: f64,
     pub max_iterations: usize,
     pub enforce_q_limits: bool,
     #[serde(default)]
@@ -154,10 +173,10 @@ pub struct SolveSettings {
     pub adjust_transformer_taps: bool,
 }
 
-/// Default mismatch tolerance in per unit: 2 MVA on the usual 100 MVA base.
-/// Looser than the solver library's own default, which suits reference
-/// checks rather than day-to-day studies.
-pub const DEFAULT_TOLERANCE: f64 = 0.02;
+/// Default mismatch tolerance: 2 MVA on any system base. Looser than the
+/// solver library's own default, which suits reference checks rather than
+/// day-to-day studies.
+pub const DEFAULT_TOLERANCE_MVA: f64 = 2.0;
 
 impl Default for SolveSettings {
     fn default() -> Self {
@@ -165,7 +184,7 @@ impl Default for SolveSettings {
         Self {
             model: ModelChoice::Ac,
             start: StartChoice::Last,
-            tolerance: DEFAULT_TOLERANCE,
+            tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,
@@ -180,7 +199,7 @@ impl SolveSettings {
     /// Solver options for `power`, using its LCC data when the detailed DC
     /// model is chosen and its voltage controls when they are switched on.
     pub fn options_for(&self, power: &PowerCase) -> PowerFlowOptions {
-        let mut options = self.options();
+        let mut options = self.options(power.case.base_mva);
         if self.dc_model == DcModelChoice::Detailed
             && (!power.lcc_lines.is_empty()
                 || !power.vsc_lines.is_empty()
@@ -205,8 +224,9 @@ impl SolveSettings {
         options
     }
 
-    /// Solver options without detailed DC line data.
-    pub fn options(&self) -> PowerFlowOptions {
+    /// Solver options without detailed DC line data, for a case on
+    /// `base_mva`.
+    pub fn options(&self, base_mva: f64) -> PowerFlowOptions {
         PowerFlowOptions {
             model: match self.model {
                 ModelChoice::Ac => Model::Ac,
@@ -217,13 +237,18 @@ impl SolveSettings {
                 StartChoice::Case | StartChoice::Last => Initialization::Case,
                 StartChoice::Flat => Initialization::Flat,
             },
-            tolerance: self.tolerance,
+            tolerance: tolerance_pu(self.tolerance_mva, base_mva),
             max_iterations: self.max_iterations,
             // Q limits only apply to AC; the solver rejects them for DC.
             enforce_q_limits: self.enforce_q_limits && self.model == ModelChoice::Ac,
             ..PowerFlowOptions::default()
         }
     }
+}
+
+/// `mva` in per unit on `base_mva`, taking 100 MVA when the base is missing.
+pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
+    mva / if base_mva > 0.0 { base_mva } else { 100.0 }
 }
 
 /// A copy of `case` that starts where `last`, an earlier converged AC solve,
@@ -605,6 +630,9 @@ pub struct SolveReport {
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
     pub dc_systems: Vec<DcSystemReport>,
+    /// VSC DC grids from an attached DC grid file, solved in sequence with
+    /// the AC network.
+    pub vsc_grids: Option<crate::dc_grids::VscGridsReport>,
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -934,6 +962,7 @@ pub fn report(
         branches,
         dc_lines,
         dc_systems,
+        vsc_grids: None,
     }
 }
 

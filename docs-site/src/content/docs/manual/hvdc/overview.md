@@ -15,6 +15,11 @@ and is always used for DC (linear) solves.
 | Two-terminal VSC | Voltage source converter (VSC) DC line data | [Two-terminal VSC](/StannumRevival/manual/hvdc/vsc/) |
 | Multi-terminal LCC | Multi-terminal DC line data | [Multi-terminal DC](/StannumRevival/manual/hvdc/mtdc/) |
 
+Meshed and multi-terminal VSC grids aren't part of RAW files. They come from a
+[Stannum DC grid file](/StannumRevival/reference/dc-grid-file/) attached to
+the case and are solved as described in [Meshed VSC
+grids](/StannumRevival/manual/hvdc/vsc-grids/).
+
 Choose the model with **DC line model** in the solve settings: **Detailed
 converters** (the default for RAW files) or the simplified model.
 **Adjust DC converter taps** lets converter transformer taps step to hold

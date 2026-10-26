@@ -13,7 +13,7 @@ holds:
 | Setting | Meaning | Default |
 | --- | --- | --- |
 | **Model** | **AC** Newton–Raphson, or **DC** linear flow | AC |
-| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2 on a 100 MVA base (0.02 p.u.) |
+| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2, on any case's base |
 | **Newton iterations per pass** | Newton steps allowed in each pass | 10 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |
 | **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | Off |
@@ -80,6 +80,30 @@ When the case has DC lines, two more tabs appear:
 
 The models behind these numbers are in [HVDC](/StannumRevival/manual/hvdc/overview/).
 
+## VSC grids
+
+**VSC grids** adds meshed and multi-terminal VSC DC grids that aren't in the
+case file. **Attach DC grid file…** reads a [Stannum DC grid
+file](/StannumRevival/reference/dc-grid-file/), checks it against the case,
+and every AC solve after that includes its grids. Before the first solve,
+**Attach VSC DC grids…** on the ready-to-solve page leads here.
+
+After a solve the tab shows how many AC/DC iterations the converters took to
+settle, the DC grids' losses, and for each grid:
+
+- **Converters**: control modes, the AC injection ($P_s$, $Q_s$), the
+  converter's voltage and current, its loss, the DC power and voltage, the
+  reactive range its limits allow, and whether a limit reduced its order or
+  is still exceeded.
+- **DC buses**: voltages in per unit and kV, and what converters inject.
+- **DC lines**: current per pole, power at each end and loss.
+
+![VSC grids tab after a solve](../../../assets/screens/vsc-grids.png)
+
+**Replace…** attaches another file and **Detach** removes the grids; either
+solves again when results are showing. The DC (linear) model leaves VSC grids
+out. The model is in [Meshed VSC grids](/StannumRevival/manual/hvdc/vsc-grids/).
+
 ## Sensitivities
 
 **Calculate sensitivities** linearizes the solved case. Pick an injection bus
@@ -94,7 +118,12 @@ manual](/StannumRevival/manual/sensitivities/) gives the mathematics.
 ## Import warnings
 
 For RAW files, **Import warnings** lists everything the conversion
-approximated or skipped, with its line number.
+approximated or skipped. Warnings with the same message are grouped, most
+frequent first, with how many there are and which lines of the file they come
+from. Open a group to list each record with its line number and the branch or
+generator it describes; click the element to select it, or use
+**Draw around** beside it. The log gets one line per import naming the most
+common warning, not a line per record.
 
 ## Export MATPOWER
 

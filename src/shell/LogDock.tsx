@@ -140,12 +140,12 @@ function LogStrip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
         )}
       </span>
       {unseen.error > 0 && (
-        <span className="inline-flex items-center gap-1 text-red-700 shrink-0" title="Errors since you last looked">
+        <span className="inline-flex items-center gap-1 text-red-700 shrink-0" title="Errors in this case since you last looked">
           <OctagonX size={12} /> {unseen.error}
         </span>
       )}
       {unseen.warn > 0 && (
-        <span className="inline-flex items-center gap-1 text-amber-700 shrink-0" title="Warnings since you last looked">
+        <span className="inline-flex items-center gap-1 text-amber-700 shrink-0" title="Warnings in this case since you last looked">
           <AlertTriangle size={12} /> {unseen.warn}
         </span>
       )}

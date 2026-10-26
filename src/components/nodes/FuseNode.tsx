@@ -1,6 +1,6 @@
 import type { NodeProps } from "@xyflow/react";
 import type { FuseNode as FuseNodeType } from "../../store/types";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
@@ -18,7 +18,7 @@ const TERMINALS: Terminal[] = [
 export function FuseNode({ data, selected }: NodeProps<FuseNodeType>) {
   const ink = useInk();
   const blown = data.blown ? ink.alert("#dc2626") : null;
-  const stroke = selected ? SELECTED : (blown ?? ink.line);
+  const stroke = selected ? ink.selected : (blown ?? ink.line);
 
   return (
     <SymbolFrame

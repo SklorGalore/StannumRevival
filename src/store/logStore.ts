@@ -19,13 +19,15 @@ interface LogState {
   running: Activity[];
   /** Newest core line received, so catching up never repeats one. */
   coreSeq: number;
-  /** Warnings and errors since the panel was last opened. */
+  /** Warnings and errors for the open case since the panel was last opened. */
   unseen: { warn: number; error: number };
   open: boolean;
   setOpen: (open: boolean) => void;
   add: (level: LogLevel, message: string, source?: string) => void;
   ingest: (lines: CoreEntry[]) => void;
   clear: () => void;
+  /** Start the badge afresh for a newly opened (or closed) case. */
+  newCase: () => void;
   /** Mark the start of an operation; call the returned function when it ends. */
   begin: (label: string) => (outcome: { error?: string; done?: string; quiet?: boolean }) => void;
 }
@@ -68,6 +70,7 @@ export const useLog = create<LogState>((set, get) => ({
     }));
   },
   clear: () => set({ entries: [], unseen: { warn: 0, error: 0 } }),
+  newCase: () => set({ unseen: { warn: 0, error: 0 } }),
   begin: (label) => {
     const activity: Activity = { id: ++key, label, started: Date.now() };
     set((s) => ({ running: [...s.running, activity] }));

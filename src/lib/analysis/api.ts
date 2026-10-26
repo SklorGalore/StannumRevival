@@ -4,9 +4,11 @@ import { catchUpLog, useLog } from "../../store/logStore";
 import type {
   CaseNetwork,
   CaseSummary,
+  DcGridsSummary,
   DiffRecordDetail,
   DiffRecordRow,
   DiffSummary,
+  ElementDetail,
   GraphData,
   Analysis,
   ResponseTable,
@@ -28,9 +30,12 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
+  load_dc_grids: { label: "Reading DC grid file", done: "Attached DC grid file" },
+  clear_dc_grids: { label: "Detaching DC grid file", done: "Detached DC grid file" },
   diff_compare: { label: "Comparing cases", done: "Compared cases" },
   save_diagram: { label: "Saving file", done: "Saved file" },
   diagram_network: { label: "Reading the case network", quiet: true },
+  element_detail: { label: "Reading an element", quiet: true },
   topology_shortest_path: { label: "Finding a path", quiet: true },
 };
 
@@ -57,8 +62,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   model: "ac",
   start: "last",
-  // 2 MVA on a 100 MVA base.
-  tolerance: 0.02,
+  // The same MW and Mvar on every case, whatever its base.
+  tolerance_mva: 2,
   max_iterations: 10,
   enforce_q_limits: false,
   dc_model: "detailed",
@@ -72,6 +77,7 @@ export const CASE_FILTERS = [
   { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
   { name: "MATPOWER", extensions: ["m"] },
 ];
+export const DC_GRID_FILTERS = [{ name: "Stannum DC grids", extensions: ["json"] }];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 
 export async function pickFile(
@@ -108,6 +114,8 @@ export const api = {
 
   solve: (settings: SolveSettings) => call<SolveReport>("solve_power_flow", { settings }),
   setStudyEdits: (edits: StudyEdit[]) => call<void>("set_study_edits", { edits }),
+  loadDcGrids: (path: string) => call<DcGridsSummary>("load_dc_grids", { path }),
+  clearDcGrids: () => call<void>("clear_dc_grids"),
   sensitivities: (settings: SolveSettings) =>
     call<SensitivitySummary>("calculate_sensitivities", { settings }),
   responses: (column: number, quantity: string, engineering: boolean) =>
@@ -116,6 +124,7 @@ export const api = {
     call<void>("export_matpower", { path, solved }),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
+  elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>

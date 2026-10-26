@@ -10,6 +10,7 @@ mod raw;
 mod sensitivity;
 mod solver;
 mod vsc;
+mod vsc_grid;
 
 pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use controls::{ShuntMode, SwitchedShunt, TapControl, VoltageControls};
@@ -35,6 +36,11 @@ pub use solver::{
     DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
 };
 pub use vsc::{VscAcControl, VscConverter, VscDcControl, VscLine, VscSolution};
+pub use vsc_grid::{
+    AcControl, AcDcResult, AcState, ConverterLimits, ConverterLosses, DcControl, DcGrid, DcGridBus,
+    DcGridBusSolution, DcGridLine, DcGridLineSolution, DcGridSettings, DcGridSolution,
+    GridConverter, GridConverterSolution, check_dc_grids, solve_dc_grids,
+};
 
 /// Input, topology, or numerical failure. Nonconvergence is a result status.
 #[derive(Debug, thiserror::Error)]

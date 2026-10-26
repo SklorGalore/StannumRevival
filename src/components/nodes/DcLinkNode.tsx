@@ -1,7 +1,7 @@
 import type { NodeProps } from "@xyflow/react";
 import type { DcLinkNode as DcLinkNodeType } from "../../store/types";
 import { mw, useResults } from "../../lib/diagram/results";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
 const W = 40;
@@ -47,7 +47,7 @@ function Converter({ y, acOnTop, color }: { y: number; acOnTop: boolean; color: 
 export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
   const ink = useInk();
   const results = useResults();
-  const color = selected ? SELECTED : data.outOfService ? ink.off : ink.line;
+  const color = selected ? ink.selected : data.outOfService ? ink.off : ink.line;
   const stem = (kv: number) => (data.outOfService ? ink.off : ink.voltage(kv));
   const dcTop = TOP + BOX;
   const mid = (dcTop + BOTTOM) / 2;
@@ -58,6 +58,7 @@ export function DcLinkNode({ data, selected }: NodeProps<DcLinkNodeType>) {
     <SymbolFrame
       w={W}
       h={H}
+      focus={data.focus}
       rotation={data.rotation}
       terminals={TERMINALS}
       graphic={

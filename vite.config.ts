@@ -18,5 +18,20 @@ export default defineConfig(async () => ({
       process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
     minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    rolldownOptions: {
+      output: {
+        // Big libraries get chunks of their own so no single file passes
+        // Vite's 500 kB warning. Cytoscape only loads with the network view
+        // (see LazyNetworkGraph.tsx) and jsPDF only on PDF export.
+        codeSplitting: {
+          groups: [
+            { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: "xyflow", test: /node_modules[\\/](@xyflow|d3-[^\\/]+|classcat)[\\/]/ },
+            { name: "cytoscape", test: /node_modules[\\/]cytoscape[\\/]/ },
+            { name: "cytoscape-layouts", test: /node_modules[\\/](cytoscape-fcose|cose-base|layout-base)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
 }));

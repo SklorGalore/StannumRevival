@@ -11,10 +11,26 @@ import { EdgeForm } from "./forms/EdgeForm";
 import { RotationField } from "./forms/RotationField";
 import { LabelField } from "./forms/LabelField";
 import type { SLDNode, SLDEdge, CaseRef, LabelOffset } from "../../store/types";
-import { elementLabel } from "../../lib/elements";
-import { StudyActions } from "../../ui/StudyActions";
+import { ElementInspector } from "../../ui/ElementInspector";
 
-export function PropertiesPanel() {
+type Selection = { nodes: SLDNode[]; edges: SLDEdge[]; selectedNodeIds: string[]; selectedEdgeIds: string[] };
+
+/**
+ * The case element the selection stands for, when every selected symbol and
+ * wire stands for the same one (a bus and the load drawn on it, say).
+ */
+export function selectedCaseElement(s: Selection): string | null {
+  const items = [
+    ...s.nodes.filter((n) => s.selectedNodeIds.includes(n.id)),
+    ...s.edges.filter((e) => s.selectedEdgeIds.includes(e.id)),
+  ];
+  const ids = new Set(items.map((x) => (x.data?.caseRef as CaseRef | undefined)?.element ?? null));
+  if (items.length === 0 || ids.size !== 1) return null;
+  return [...ids][0];
+}
+
+/** The diagram's inspector. `missing` is a selected case element with no symbol in this drawing. */
+export function PropertiesPanel({ missing = null }: { missing?: string | null }) {
   const nodes = useDiagramStore((s) => s.nodes);
   const edges = useDiagramStore((s) => s.edges);
   const selectedNodeIds = useDiagramStore((s) => s.selectedNodeIds);
@@ -30,6 +46,21 @@ export function PropertiesPanel() {
       ? edges.find((e) => e.id === selectedEdgeIds[0])
       : null;
 
+  const shared = useDiagramStore(selectedCaseElement);
+  const item = selectedNode ?? selectedEdge;
+  const element = shared ?? (item || selectedNodeIds.length || selectedEdgeIds.length ? null : missing);
+  const form = selectedNode ? <NodeForm node={selectedNode} /> : selectedEdge ? <EdgeForm edge={selectedEdge} /> : null;
+
+  // A symbol drawn from the case is inspected as the case element; its
+  // drawing fields fold into a section of their own.
+  if (element) {
+    return (
+      <div className="h-full overflow-y-auto">
+        <ElementInspector element={element} from="diagram" drawing={form ?? undefined} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-3 py-2 border-b border-slate-200">
@@ -38,12 +69,7 @@ export function PropertiesPanel() {
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        <CaseElement caseRef={(selectedNode ?? selectedEdge)?.data?.caseRef as CaseRef | undefined} />
-        {selectedNode ? (
-          <NodeForm node={selectedNode} />
-        ) : selectedEdge ? (
-          <EdgeForm edge={selectedEdge} />
-        ) : (
+        {form ?? (
           <p className="text-xs text-slate-400 text-center mt-8">
             Select a component to edit its properties
           </p>
@@ -98,19 +124,4 @@ function SymbolForm({ node }: { node: SLDNode }) {
     default:
       return null;
   }
-}
-
-/** Which record of the open case the selected symbol stands for. */
-function CaseElement({ caseRef }: { caseRef?: CaseRef }) {
-  if (!caseRef?.element) return null;
-  return (
-    <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" title="Shared id used by every module">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">In the open case</p>
-      <p className="text-xs font-medium text-slate-700">{elementLabel(caseRef.element)}</p>
-      <p className="font-mono text-[10px] text-slate-500 break-all">{caseRef.element}</p>
-      <div className="mt-1 -ml-1.5">
-        <StudyActions element={caseRef.element} />
-      </div>
-    </div>
-  );
 }

@@ -5,15 +5,13 @@ import cytoscape, { type Core, type StylesheetJson } from "cytoscape";
 import fcose from "cytoscape-fcose";
 
 cytoscape.use(fcose);
-import type { GraphData, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
-import { nodeForBus } from "./viewModel";
+import type { GraphData, TopologySnapshot } from "../../lib/analysis/types";
+import type { LayerMarks, Mark } from "../../lib/diagram/layers";
+import { nodeForBus, type GraphSelection } from "./viewModel";
 import { useLog } from "../../store/logStore";
 import { duration } from "../../lib/log/log";
 
-export interface GraphSelection {
-  bus: number | null;
-  equipment: string | null;
-}
+export type { GraphSelection };
 
 // Palette and styling follow nodal's graph-presentation.ts (light theme).
 const LIGHT = {
@@ -46,27 +44,26 @@ const styleFor = (colors: typeof LIGHT): StylesheetJson => [
   { selector: "edge", style: { width: 1.7, "line-color": colors.edge, "curve-style": "bezier" } },
   { selector: "edge.transformer", style: { "line-style": "dashed" } },
   { selector: "edge.switch", style: { "line-style": "dotted" } },
-  { selector: "node.articulation", style: { "underlay-color": colors.finding, "underlay-opacity": 0.48, "underlay-padding": 5 } },
-  { selector: "edge.bridge", style: { "underlay-color": colors.finding, "underlay-opacity": 0.65, "underlay-padding": 4 } },
   { selector: "node.selected", style: { "border-color": colors.selection, "border-width": 4 } },
   { selector: "edge.selected", style: { "line-outline-color": colors.selection, "line-outline-width": 2 } },
-  { selector: "node.path", style: { "background-color": colors.path } },
-  { selector: "edge.path", style: { "line-color": colors.path, width: 4 } },
-  { selector: "node.selected, node.path, node.articulation", style: { "min-zoomed-font-size": 0 } },
+  { selector: "node[halo], node.bold", style: { "min-zoomed-font-size": 0 } },
   { selector: "node.hovered", style: { "border-style": "dashed", "border-width": 3 } },
   { selector: "edge.hovered", style: { width: 5 } },
   { selector: "node.label-hidden", style: { label: "" } },
-  // Colour rules from the Filters & colours panel. Path and selection still win.
+  // Layers (lib/diagram/layers.ts): fills and strokes, rings, and paths.
   // Coloured buses are a little larger and outlined so pale colours still read.
-  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 38, height: 38, "border-color": colors.outline, "border-width": 1.5 } },
+  { selector: "node[fill]", style: { "background-color": "data(fill)", width: 32, height: 32, "border-color": colors.outline, "border-width": 1.5 } },
   { selector: "node.junction[fill]", style: { width: 18, height: 18 } },
   { selector: "edge[stroke]", style: { "line-color": "data(stroke)", width: 2.2 } },
-  // Under a colour rule, critical buses and bridges get a ring instead of a
-  // filled halo, so the halo doesn't hide the colours.
-  { selector: "node.articulation[fill]", style: { "underlay-opacity": 0, "border-color": colors.finding, "border-width": 3.5 } },
-  { selector: "edge.bridge[stroke]", style: { "underlay-opacity": 0.25, "underlay-padding": 3 } },
-  { selector: "node.path", style: { "background-color": colors.path } },
-  { selector: "edge.path", style: { "line-color": colors.path } },
+  { selector: "node[halo]", style: { "underlay-color": "data(halo)", "underlay-opacity": 0.48, "underlay-padding": 5 } },
+  { selector: "edge[halo]", style: { "underlay-color": "data(halo)", "underlay-opacity": 0.6, "underlay-padding": 4 } },
+  // Over a colour, a ring instead of a filled halo, so the colour still shows.
+  { selector: "node[halo][fill]", style: { "underlay-opacity": 0, "border-color": "data(halo)", "border-width": 3.5 } },
+  { selector: "edge[halo][stroke]", style: { "underlay-opacity": 0.3, "underlay-padding": 3 } },
+  { selector: "edge.bold", style: { width: 4 } },
+  { selector: "node.selected", style: { "border-color": colors.selection, "border-width": 4 } },
+  // The bus a neighbourhood is drawn around (Diagram's Network style).
+  { selector: "node.focus", style: { "underlay-color": colors.selection, "underlay-opacity": 0.22, "underlay-padding": 9, "underlay-shape": "ellipse", "min-zoomed-font-size": 0, "font-weight": "bold" } },
 ];
 
 /**
@@ -111,7 +108,7 @@ function stretchToFit(cy: Core, el: HTMLElement) {
 function refreshLabels(cy: Core) {
   const hide = cy.zoom() < 0.6;
   cy.nodes().forEach((node) => {
-    const important = node.hasClass("selected") || node.hasClass("path") || node.hasClass("articulation");
+    const important = node.hasClass("selected") || node.hasClass("bold") || !!node.data("halo") || node.hasClass("focus");
     node.toggleClass("label-hidden", hide && !important);
   });
 }
@@ -119,26 +116,33 @@ function refreshLabels(cy: Core) {
 export function NetworkGraph({
   graph,
   snapshot,
-  path,
   selection,
   onInspect,
   visible,
   fitSignal,
-  colors,
+  marks,
+  focus,
+  onRecentre,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
-  path: TopoPath | null;
   selection: GraphSelection;
   onInspect: (s: GraphSelection) => void;
   visible: boolean;
   fitSignal: number;
-  colors?: { nodeColors: Record<string, string>; edgeColors: Record<string, string> };
+  /** What the Diagram's layers mark (see lib/diagram/layers.ts). */
+  marks: LayerMarks;
+  /** A bus to mark as the centre of the view. */
+  focus?: number | null;
+  /** Double-clicking a bus asks to centre the view on it. */
+  onRecentre?: (bus: number) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const inspect = useRef(onInspect);
   inspect.current = onInspect;
+  const recentre = useRef(onRecentre);
+  recentre.current = onRecentre;
   const dark = useTheme((s) => s.theme === "dark");
   const palette = useRef(dark ? DARK : LIGHT);
   palette.current = dark ? DARK : LIGHT;
@@ -150,11 +154,6 @@ export function NetworkGraph({
   // Rebuild only when the displayed graph changes.
   useEffect(() => {
     if (!container.current) return;
-    const bridges = new Set(snapshot.analysis.bridges.map((e) => e.id));
-    const cuts = new Set(snapshot.analysis.articulation_buses);
-    const syntheticCuts = new Set(snapshot.analysis.synthetic_articulations);
-    const pathNodes = new Set(path?.node_ids ?? []);
-    const pathEdges = new Set(path?.connection_ids ?? []);
     const kinds = new Map(snapshot.case.equipment.map((e) => [e.id, e.kind]));
     const laidOut = performance.now();
     const cy = cytoscape({
@@ -165,19 +164,14 @@ export function NetworkGraph({
             id: n.id,
             label: n.bus === null ? "T" : n.member_buses.length > 1 ? `${n.bus} · ${n.member_buses.length}` : String(n.bus),
             bus: n.bus,
+            members: n.member_buses?.length ? n.member_buses : n.bus !== null ? [n.bus] : [],
             equipment: n.equipment_id,
           },
-          classes: [
-            n.bus === null ? "junction" : "bus",
-            (n.bus !== null && cuts.has(n.bus)) || syntheticCuts.has(n.id) ? "articulation" : "",
-            pathNodes.has(n.id) ? "path" : "",
-          ].filter(Boolean).join(" "),
+          classes: n.bus === null ? "junction" : "bus",
         })),
         ...graph.edges.map((e) => ({
           data: { id: e.id, source: e.source, target: e.target, equipment: e.equipment_id },
-          classes: [kinds.get(e.equipment_id) ?? "line", bridges.has(e.id) ? "bridge" : "", pathEdges.has(e.id) ? "path" : ""]
-            .filter(Boolean)
-            .join(" "),
+          classes: kinds.get(e.equipment_id) ?? "line",
         })),
       ],
       style: styleFor(palette.current),
@@ -192,6 +186,10 @@ export function NetworkGraph({
     stretchToFit(cy, container.current);
     cy.on("tap", "node", (ev) => inspect.current({ bus: ev.target.data("bus") ?? null, equipment: ev.target.data("equipment") ?? null }));
     cy.on("tap", "edge", (ev) => inspect.current({ bus: null, equipment: ev.target.data("equipment") }));
+    cy.on("dbltap", "node", (ev) => {
+      const bus = ev.target.data("bus");
+      if (bus !== null && bus !== undefined) recentre.current?.(bus);
+    });
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));
     cy.on("mouseout", "node, edge", (ev) => ev.target.removeClass("hovered"));
     cy.on("zoom", () => refreshLabels(cy));
@@ -200,7 +198,7 @@ export function NetworkGraph({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [graph, snapshot, path]);
+  }, [graph, snapshot]);
 
   // Selection highlights without re-layout.
   useEffect(() => {
@@ -215,26 +213,37 @@ export function NetworkGraph({
       cy.edges().filter((e) => e.data("equipment") === selection.equipment).addClass("selected");
       cy.nodes().filter((n) => n.data("equipment") === selection.equipment).addClass("selected");
     }
+    cy.nodes().removeClass("focus");
+    if (focus !== null && focus !== undefined) {
+      const node = nodeForBus(graph, focus);
+      if (node) cy.getElementById(node.id).addClass("focus");
+    }
     refreshLabels(cy);
-  }, [selection, graph, snapshot, path]);
+  }, [selection, focus, graph, snapshot, marks]);
 
-  // Colour rules recolour in place, without a new layout.
+  // Layers restyle in place, without a new layout.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+    const set = (el: cytoscape.SingularElementArgument, key: string, value: string | undefined) =>
+      value ? el.data(key, value) : el.removeData(key);
     cy.batch(() => {
       cy.nodes().forEach((n) => {
-        const c = colors?.nodeColors[n.id()];
-        if (c) n.data("fill", c);
-        else n.removeData("fill");
+        const members: number[] = n.data("members") ?? [];
+        const m: Mark | undefined = members.length ? members.map((b) => marks.buses.get(b)).find(Boolean) : marks.nodes.get(n.id());
+        set(n, "fill", m?.color);
+        set(n, "halo", m?.halo);
+        n.toggleClass("bold", !!m?.bold);
       });
       cy.edges().forEach((e) => {
-        const c = colors?.edgeColors[e.id()];
-        if (c) e.data("stroke", c);
-        else e.removeData("stroke");
+        const m = marks.elements.get(e.data("equipment"));
+        set(e, "stroke", m?.color);
+        set(e, "halo", m?.halo);
+        e.toggleClass("bold", !!m?.bold);
       });
     });
-  }, [colors, graph, snapshot, path]);
+    refreshLabels(cy);
+  }, [marks, graph, snapshot]);
 
   // The pane may have been laid out while hidden; refit when it is shown.
   useEffect(() => {
@@ -243,6 +252,27 @@ export function NetworkGraph({
     cy.resize();
     cy.fit(undefined, 35);
   }, [visible, fitSignal]);
+
+  // Follow the container's size (a side panel opening, a split pane being
+  // dragged), keeping the middle of the view where it was.
+  useEffect(() => {
+    const el = container.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let last = { w: el.clientWidth, h: el.clientHeight };
+    const observer = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      const next = { w: el.clientWidth, h: el.clientHeight };
+      if (!cy || !next.w || !next.h || (next.w === last.w && next.h === last.h)) return;
+      // A pane coming out of hiding is refitted by the effect above instead.
+      if (last.w && last.h) {
+        cy.resize();
+        cy.panBy({ x: (next.w - last.w) / 2, y: (next.h - last.h) / 2 });
+      }
+      last = next;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Cytoscape restyles its container, so give it a full-size child of a positioned wrapper.
   return (

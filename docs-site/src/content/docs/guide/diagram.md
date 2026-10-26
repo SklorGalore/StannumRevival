@@ -9,6 +9,45 @@ draw by hand.
 
 ![A one-line generated around a bus, two hops deep, with solved flows](../../../assets/screens/diagram-local.png)
 
+## Two drawing styles
+
+The switch at the start of the toolbar draws the same neighbourhood in two
+styles:
+
+- **One-line**: symbols, routed wires, results and editing (everything below).
+- **Network**: the bus-branch graph of the case's topology. Buses are dots
+  and branches are lines (transformers dashed), so it stays quick and readable
+  for hundreds of buses. The bus it is drawn around has a teal halo.
+
+![The Network style, two hops around a bus, with a bus selected](../../../assets/screens/diagram-network.png)
+
+Switching keeps the bus the drawing is centred on, the hop count and the
+selection. Change the hops in the Network style and switch back, and the
+one-line is redrawn to match (undoably; a hand-drawn diagram is never
+replaced).
+
+In the Network style:
+
+- Click a bus or branch to inspect it in the same inspector as the one-line
+  (case data, results, limits, study edits). Its **Network** section adds its
+  island and connections, and whether it is a bridge or a cut bus.
+- Double-click a bus, or **Centre here** in its Network section, to draw
+  around it.
+- The bar at the bottom changes the hop count, up to six.
+- **Draw as one-line** switches to the one-line drawn around the selection,
+  with the same hop count.
+
+"Draw around" from another module and selections from linked modules move
+both styles.
+
+## Layers and tables
+
+**Layers** draws the case's topology on either style: bridges and cut buses,
+islands, zero-impedance groups, a shortest path, and filters and colours by
+field. **Tables** opens the topology tables (buses, islands, critical
+connections, equipment, diagnostics) in a drawer under the drawing. See
+[Topology](/StannumRevival/guide/topology/).
+
 ## Generating from the case
 
 **From case** draws a one-line of the open case (MATPOWER or RAW): the whole
@@ -17,7 +56,9 @@ case, one area, or the buses within a few hops of a chosen bus.
 - Buses, generators, loads, lines and transformers are laid out top to bottom
   with right-angle wiring (ELK layered layout, run in the background).
 - Branches that leave the selection end in **off-page markers** naming the far
-  bus.
+  bus. When several leave the same bus they share one marker, drawn as two
+  flags with a count ("To 3 buses"). Hover it for each branch's far bus and
+  flow; it turns amber or red when one of them is heavily loaded.
 - Three-winding transformers appear as their star point with a two-winding
   symbol per winding.
 - Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
@@ -25,18 +66,33 @@ case, one area, or the buses within a few hops of a chosen bus.
 - DC lines are drawn with their converters.
 
 Cases with more than 20 buses default to drawing **around a bus**, which is
-how a one-line is usually used. The studied bus sits at the top, highlighted,
-and each row below is one more hop out. The bar at the bottom of the canvas
-changes the hop count.
+how a one-line is usually used. The studied bus sits in the middle,
+highlighted, with its neighbours shared between the rows above and below it,
+each row one more hop out. Long hops fold into several rows, so the drawing
+comes out about the shape of the canvas and stays readable when fitted to the
+screen (in a half-width split pane it comes out taller). The bar at the bottom
+of the canvas changes the hop count.
 
 The quickest way in is **Draw around** on any selected element, or
 <kbd>Shift</kbd>+<kbd>Enter</kbd> in the [palette](/StannumRevival/guide/command-palette/).
+Drawn around a line or transformer, the drawing grows from both its ends: the
+from-side above, the to-side below, and the branch in the middle with a halo.
+A generator gets the same halo.
+
+![case300 drawn two hops around transformer 37–9001: one side above it, the other below, the transformer haloed in the middle](../../../assets/screens/diagram-around-branch.png)
+
+With a case open and nothing drawn, the canvas offers to draw around the
+selected element or the worst violation of the last solve (the most
+overloaded branch, else the bus furthest outside its voltage limits).
+
+![An empty diagram offering to draw around the worst violation](../../../assets/screens/diagram-prompt.png)
 
 ### Growing a drawing
 
 On a drawing linked to the open case:
 
-- Double-click an off-page marker to bring its bus in.
+- Double-click an off-page marker to bring its bus in (all of them for a shared
+  marker), or right-click a shared marker to pick one.
 - Right-click a bus for **Show neighbours** and **Draw N hops around** it.
 
 Brought-in buses are placed below what is already drawn, and nothing that is
@@ -85,15 +141,20 @@ round with it, and its other wires move to the side facing where they go.
 
 Any label can be dragged to a clearer spot: a symbol's text, a bus's name and
 voltage, or the flow figures on a wire. A label pulled clear gets a thin
-dashed leader back to its owner. **Reset label position** in the properties
-panel puts one back. Moved labels are saved and exported.
+dashed leader back to its owner. **Reset label position**, in the inspector's
+**Drawing** section, puts one back. Moved labels are saved and exported.
 
 ## Inspector
 
-Selecting a symbol opens its properties on the right: its case record, solved
-values, rotation, label controls and, for case elements, the
-[study](/StannumRevival/guide/studies/) actions. The symbol palette on the left
-collapses to give the drawing more room.
+Selecting a symbol drawn from the case opens the
+[element inspector](/StannumRevival/guide/shell/#element-inspector) on the
+right, the same one Power flow and Topology show: the element's results,
+limits, file data, connections and [study](/StannumRevival/guide/studies/)
+edits. The drawing's own fields (rotation, label position, the symbol's
+drawing values) are folded into its **Drawing** section. Symbols drawn by hand
+show those fields directly. A selected element this drawing doesn't include
+is inspected too, with **Draw around** to bring it in. The symbol palette on
+the left collapses to give the drawing more room.
 
 ## Saving and exporting
 
