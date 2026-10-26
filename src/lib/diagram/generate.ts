@@ -19,11 +19,14 @@ import type {
   SLDEdge,
   SLDNode,
   TransformerData,
+  Transformer3Data,
+  Transformer3Leg,
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
 import { busElement, elementLabel, parseElement } from "../elements";
 import { useLog } from "../../store/logStore";
 import { bestFold, hopGroups } from "./compact";
+import { T3, t3Terminal, type T3Handle } from "./transformer3";
 
 export type Scope =
   | { kind: "all" }
@@ -168,7 +171,7 @@ export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
 /** Level of each bus in a breadth-first walk from `root` (for a local
  *  drawing, the studied bus), else from the reference or highest-voltage bus
  *  of each connected part. Branches point down the levels. */
-function levels(buses: NetworkBus[], branches: NetworkBranch[], root?: number): Map<number, number> {
+function levels(buses: NetworkBus[], branches: { from: number; to: number }[], root?: number): Map<number, number> {
   const adj = new Map<number, number[]>();
   for (const b of buses) adj.set(b.id, []);
   for (const br of branches) {
@@ -384,6 +387,29 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
   const boundary = crossing.filter((br) => !drawn.has(chosen.has(br.from) ? br.to : br.from));
   const links = crossing.filter((br) => drawn.has(chosen.has(br.from) ? br.to : br.from));
   const gens = net.generators.filter((g) => chosen.has(g.bus));
+  // Three-winding transformers: the case joins three windings at an internal
+  // star bus. The drawing shows one symbol in its place, so star buses get
+  // no row or bar of their own: their windings' buses count as neighbours.
+  const isStar = (id: number) => !!busById.get(id)?.star;
+  const starOf = (br: Link) => (br.dc ? null : isStar(br.to) ? br.to : isStar(br.from) ? br.from : null);
+  const realEnd = (br: Link) => (isStar(br.to) ? br.from : br.to);
+  const starLegs = new Map<number, Link[]>();
+  for (const br of all) {
+    const s = starOf(br);
+    if (s == null || !chosen.has(s)) continue;
+    starLegs.set(s, [...(starLegs.get(s) ?? []), br]);
+  }
+  for (const legs of starLegs.values()) legs.sort((a, b) => a.winding - b.winding);
+  // Growing from a transformer drawn earlier (Expand on one of its
+  // windings' markers): its star stands in for it as the anchor row.
+  const anchorStar = anchor != null && isStar(anchor) ? anchor : null;
+  const rowBuses = buses.filter((b) => !b.star || b.id === anchorStar);
+  const rowLinks: { from: number; to: number }[] = inner.filter((br) => starOf(br) == null || starOf(br) === anchorStar);
+  for (const [s, legs] of starLegs) {
+    if (s === anchorStar) continue;
+    const ends = legs.map(realEnd).filter((b) => chosen.has(b));
+    for (let i = 1; i < ends.length; i++) rowLinks.push({ from: ends[0], to: ends[i] });
+  }
   // Star points carry a nominal 1 kV; treat them as having no voltage of their own.
   const kv = (id: number) => {
     const b = busById.get(id);
@@ -462,13 +488,16 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
 
   // Branches leaving the drawing, by the bus they leave from. A bus with
   // several gets one marker for all of them, so a local drawing isn't
-  // mostly off-page flags.
-  const outward = new Map<number, OffPageLink[]>();
+  // mostly off-page flags. A winding leaving a three-winding transformer
+  // gets a marker of its own, on that winding's terminal.
+  const outward = new Map<string, { inside: number; list: OffPageLink[] }>();
   for (const br of boundary) {
     const inside = chosen.has(br.from) ? br.from : br.to;
     const far = inside === br.from ? br.to : br.from;
     const farBus = busById.get(far);
-    const list = outward.get(inside) ?? [];
+    const key = isStar(inside) ? `w${br.index}` : String(inside);
+    const group = outward.get(key) ?? { inside, list: [] };
+    const list = group.list;
     list.push({
       bus: far,
       busName: farBus ? busLabel(farBus) : "",
@@ -477,7 +506,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       reversed: inside === br.to || undefined,
       outOfService: !br.online || undefined,
     });
-    outward.set(inside, list);
+    outward.set(key, group);
   }
 
   // Wires at each bus, and how wide its bar is drawn for them.
@@ -487,7 +516,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     bump(br.from);
     bump(br.to);
   }
-  for (const inside of outward.keys()) bump(inside);
+  for (const { inside } of outward.values()) bump(inside);
   const barWidth = (b: NetworkBus) => {
     if (b.star) return 20;
     const inj = injections.get(b.id);
@@ -510,16 +539,21 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const below = new Map<number, number>();
     const hang = (bus: number, w: number) => below.set(bus, (below.get(bus) ?? 0) + w);
     for (const br of inner) {
-      if (!br.dc && !br.transformer) continue;
+      if (starOf(br) != null || (!br.dc && !br.transformer)) continue;
       // Hangs from whichever end ends up higher; count half at each.
       const w = (XFMR.w + SIDE_LABEL + NODE_GAP) / 2;
       hang(br.from, w);
       hang(br.to, w);
     }
-    for (const [inside, list] of outward)
+    for (const legs of starLegs.values()) {
+      // A three-winding symbol hangs below one of its windings' buses.
+      const ends = legs.map(realEnd).filter((b) => chosen.has(b));
+      for (const b of ends) hang(b, (T3.w + SIDE_LABEL + NODE_GAP) / ends.length);
+    }
+    for (const { inside, list } of outward.values())
       hang(inside, OFF_PAGE.w + Math.max(textWidth(offPageLabel(list)), SIDE_LABEL) + NODE_GAP);
     const unit = new Map(
-      buses.map((b) => {
+      rowBuses.map((b) => {
         const bar = b.star ? 20 + NODE_GAP : nameWidth(b) + barWidth(b) + 84 + BAR_END + NODE_GAP;
         return [b.id, Math.max(bar, below.get(b.id) ?? 0)];
       })
@@ -527,8 +561,8 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const width = (bus: number) => unit.get(bus) ?? 100;
     const centres = piece.centres ?? [piece.root ?? anchor ?? buses[0].id];
     const { groups } = hopGroups(
-      buses.map((b) => b.id),
-      inner.map((br) => ({ a: br.from, b: br.to })),
+      rowBuses.map((b) => b.id),
+      rowLinks.map((l) => ({ a: l.from, b: l.to })),
       centres,
       width,
       !!piece.twoSided
@@ -537,7 +571,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     rowOf = rowsToMap(fit.rows);
     fold = { groups, width, rows: fit.rows.length, estimate: { w: fit.width, h: fit.height } };
   } else {
-    rowOf = levels(buses, inner, piece.root ?? anchor);
+    rowOf = levels(rowBuses, rowLinks, piece.root ?? anchor);
   }
 
   const build = (rowOf: Map<number, number>) => {
@@ -550,6 +584,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const rfNodes = new Map<string, SLDNode>();
 
     for (const br of inner) {
+      if (starOf(br) != null) continue;
       // Draw each branch from the bus nearer the top of the drawing.
       const [la, lb] = [rowOf.get(br.from) ?? 0, rowOf.get(br.to) ?? 0];
       const reversed = lb < la || (lb === la && kv(br.to) > kv(br.from));
@@ -624,10 +659,80 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       }
     }
 
-    for (const [inside, list] of outward) {
-      const data = offPageData(list, kv(inside));
-      const single = list.length === 1;
+    // Each three-winding transformer: one symbol hanging below the highest of
+    // its windings' buses. One winding above it takes the top terminal; with
+    // two above, the symbol is drawn upside down so they both get one.
+    const legEnd = new Map<number, { node: string; port: string; handle: T3Handle }>();
+    const starPartition = new Map<number, number>();
+    for (const [s, legs] of starLegs) {
+      const id = `x${s}`;
+      const rowAt = (br: Link) => (chosen.has(realEnd(br)) ? (rowOf.get(realEnd(br)) ?? 0) : Infinity);
+      const sorted = [...legs].sort((a, b) => rowAt(a) - rowAt(b) || kv(realEnd(b)) - kv(realEnd(a)) || a.winding - b.winding);
+      const r = sorted.map(rowAt);
+      const flip = sorted.length === 3 && r[0] === r[1] && r[1] < r[2];
+      const left = (a: Link, b: Link) => (rowAt(a) === Infinity ? 1 : 0) - (rowAt(b) === Infinity ? 1 : 0) || order(realEnd(a)) - order(realEnd(b));
+      // Upright: a on top, b and c below. Upside down: c (left) and b on top, a below.
+      const handles: [Link, T3Handle][] = flip
+        ? [...([sorted[0], sorted[1]].sort(left).map((br, i) => [br, i === 0 ? "x3-c" : "x3-b"]) as [Link, T3Handle][]), [sorted[2], "x3-a"]]
+        : [[sorted[0], "x3-a"], ...(sorted.slice(1).sort(left).map((br, i) => [br, i === 0 ? "x3-b" : "x3-c"]) as [Link, T3Handle][])];
+      const rotation = flip ? 180 : 0;
+      const partition = s === anchorStar ? 2 * (rowOf.get(s) ?? 0) : Number.isFinite(r[0]) ? 2 * r[0] + 1 : 1;
+      starPartition.set(s, partition);
+      const leg = (br: Link, handle: T3Handle): Transformer3Leg => ({
+        handle,
+        winding: br.winding,
+        bus: realEnd(br),
+        kv: kv(realEnd(br)),
+        ratingMVA: br.rate_a,
+        caseRef: linkRef(br),
+        outOfService: !br.online || undefined,
+      });
+      const legData = handles.map(([br, h]) => leg(br, h));
+      const byWinding = [...legData].sort((a, b) => a.winding - b.winding);
+      const data: Transformer3Data = {
+        label: `T ${byWinding.map((l) => l.bus).join("-")}`,
+        legs: legData,
+        star: s,
+        rotation: rotation || undefined,
+        caseRef: { kind: "branch", id: legs[0].index, element: legs[0].element },
+        outOfService: legs.every((br) => !br.online) || undefined,
+      };
+      nodes.push({
+        id,
+        width: T3.w,
+        height: T3.h,
+        ports: handles.map(([, h]) => {
+          const t = t3Terminal(h, rotation);
+          return port(`${id}:${h}`, t.x, t.y, t.up ? "NORTH" : "SOUTH");
+        }),
+        labels: [outside(data.label, "H_RIGHT", SIDE_LABEL)],
+        layoutOptions: piece.byHop ? { ...fixedPorts, "elk.partitioning.partition": String(partition) } : fixedPorts,
+      });
+      rfNodes.set(id, { id, type: "transformer3", position: { x: 0, y: 0 }, data } as SLDNode);
+      for (const [br, h] of handles) {
+        const end = { node: id, port: `${id}:${h}`, handle: h };
+        legEnd.set(br.index, end);
+        const bus = realEnd(br);
+        if (!chosen.has(bus)) continue;
+        const up = t3Terminal(h, rotation).up;
+        const source = up ? { node: `b${bus}` } : end;
+        const target = up ? end : { node: `b${bus}` };
+        specs.push({
+          id: `e-br${br.index}`,
+          source,
+          target,
+          // Flow is read where the wire starts: at the star end for the
+          // windings below the symbol.
+          data: conductor(kv(bus), { caseRef: linkRef(br), reversed: (up ? bus : s) === br.to || undefined, outOfService: !br.online || undefined }),
+        });
+      }
+    }
+
+    for (const { inside, list } of outward.values()) {
       const br0 = boundary.find((br) => linkRef(br).id === list[0].caseRef?.id && linkRef(br).kind === list[0].caseRef?.kind)!;
+      const winding = isStar(inside) ? legEnd.get(br0.index) : undefined;
+      const data = offPageData(list, winding ? kv(list[0].bus) : kv(inside));
+      const single = list.length === 1;
       // A single branch keeps the id it has always had; a bundle is named by its bus.
       const id = single ? `o${br0.index}` : `ob${inside}`;
       nodes.push({
@@ -636,15 +741,18 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         height: OFF_PAGE.h,
         ports: [port(`${id}:p`, OFF_PAGE.w / 2, 0, "NORTH")],
         labels: [outside(data.label, "H_RIGHT", Math.max(textWidth(data.label), SIDE_LABEL))],
-        layoutOptions: { ...fixedPorts, ...row(inside, true) },
+        layoutOptions: {
+          ...fixedPorts,
+          ...(winding && piece.byHop ? { "elk.partitioning.partition": String(starPartition.get(inside)! + 1) } : row(inside, true)),
+        },
       });
       rfNodes.set(id, { id, type: "offPage", position: { x: 0, y: 0 }, data } as SLDNode);
       specs.push({
         id: `e-${id}`,
-        source: { node: `b${inside}` },
+        source: winding ?? { node: `b${inside}` },
         target: { node: id, port: `${id}:p`, handle: "op-top" },
         data: conductor(
-          kv(inside),
+          data.voltageKV,
           single
             ? { caseRef: data.caseRef, reversed: data.reversed, outOfService: data.outOfService }
             : { outOfService: data.outOfService }
@@ -670,10 +778,9 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     // Buses go first so ELK keeps them in case order where it can; folded
     // rows go in row order so each row keeps the order it was filled in.
     const ordered = piece.byHop
-      ? [...buses].sort((a, b) => (rowOf.get(a.id) ?? 0) - (rowOf.get(b.id) ?? 0) || order(a.id) - order(b.id))
-      : buses;
-    const busNodes: ElkNode[] = ordered.map((b) => {
-      if (b.star) return { id: `b${b.id}`, width: 20, height: BUS_BAR, layoutOptions: row(b.id) };
+      ? [...rowBuses].sort((a, b) => (rowOf.get(a.id) ?? 0) - (rowOf.get(b.id) ?? 0) || order(a.id) - order(b.id))
+      : rowBuses;
+    const busNodes: ElkNode[] = ordered.filter((b) => !b.star).map((b) => {
       const left = outside(busLabel(b), "H_LEFT", nameWidth(b));
       const inj = injections.get(b.id);
       if (inj) {
@@ -874,10 +981,11 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
       } as SLDEdge);
     });
   }
-  for (const b of buses) {
+  for (const b of rowBuses) {
+    if (b.star) continue;
     const n = at.get(`b${b.id}`)!;
     const data: BusData = {
-      label: b.star ? "" : busLabel(b),
+      label: busLabel(b),
       voltageKV: b.base_kv,
       orientation: "horizontal",
       length: Math.max(
@@ -885,7 +993,6 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
         ...(taps.get(`b${b.id}`) ?? []).map((t) => t.x)
       ),
       taps: taps.get(`b${b.id}`) ?? [],
-      star: b.star || undefined,
       focus: b.id === piece.focus || undefined,
       caseRef: { kind: "bus", id: b.id, element: busElement(b.id) },
     };

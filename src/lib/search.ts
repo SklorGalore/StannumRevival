@@ -28,9 +28,29 @@ export function paletteElements(net: CaseNetwork): PaletteElement[] {
       numbers: [b.id],
     });
   }
+  // A three-winding transformer's windings meet at an internal star bus:
+  // it is listed once, by the buses of its three windings.
+  const star = new Set(net.buses.filter((b) => b.star).map((b) => b.id));
+  const windings = new Map<string, number[]>();
   for (const br of net.branches) {
-    // A three-winding transformer is listed once, by its first winding.
+    if (!br.winding) continue;
+    const list = windings.get(br.element) ?? [];
+    list[br.winding - 1] = star.has(br.to) ? br.from : br.to;
+    windings.set(br.element, list);
+  }
+  for (const br of net.branches) {
     if (br.winding > 1) continue;
+    const three = br.winding ? windings.get(br.element)?.filter((b) => b != null) : undefined;
+    if (three) {
+      out.push({
+        element: br.element,
+        title: `Transformer ${three.join("–")} circuit ${br.circuit}`,
+        detail: `Three-winding · ${three.map(bus).join(", ")}`,
+        haystack: `transformer three-winding 3-winding ${three.join(" ")} ${three.join("-")} ckt ${br.circuit} ${three.map((b) => names.get(b) ?? "").join(" ")}`.toLowerCase(),
+        numbers: three,
+      });
+      continue;
+    }
     const kind = br.transformer ? "Transformer" : "Line";
     out.push({
       element: br.element,

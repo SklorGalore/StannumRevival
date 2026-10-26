@@ -4,6 +4,7 @@ import type {
   LoadData,
   ShuntData,
   TransformerData,
+  Transformer3Data,
   CircuitBreakerData,
   DisconnectorData,
   FuseData,
@@ -50,6 +51,15 @@ export const defaultTransformerData: TransformerData = {
   impedancePct: 8,
 };
 
+export const defaultTransformer3Data: Transformer3Data = {
+  label: "T1",
+  legs: [
+    { handle: "x3-a", winding: 1, bus: 0, kv: 230, ratingMVA: 100 },
+    { handle: "x3-b", winding: 2, bus: 0, kv: 115, ratingMVA: 100 },
+    { handle: "x3-c", winding: 3, bus: 0, kv: 13.8, ratingMVA: 30 },
+  ],
+};
+
 export const defaultCircuitBreakerData: CircuitBreakerData = {
   label: "CB",
   state: "closed",
@@ -84,6 +94,7 @@ export const defaultsByType: Partial<Record<SLDNodeType, object>> = {
   load: defaultLoadData,
   shunt: defaultShuntData,
   transformer: defaultTransformerData,
+  transformer3: defaultTransformer3Data,
   circuitBreaker: defaultCircuitBreakerData,
   disconnector: defaultDisconnectorData,
   fuse: defaultFuseData,

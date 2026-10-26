@@ -59,8 +59,13 @@ case, one area, or the buses within a few hops of a chosen bus.
   bus. When several leave the same bus they share one marker, drawn as two
   flags with a count ("To 3 buses"). Hover it for each branch's far bus and
   flow; it turns amber or red when one of them is heavily loaded.
-- Three-winding transformers appear as their star point with a two-winding
-  symbol per winding.
+- Three-winding transformers are one symbol, three overlapping circles, with
+  a terminal for each winding. The case's internal star bus is not drawn.
+  Each winding's flow is shown on its own wire, and the symbol shows the
+  worst winding's loading. With two windings' buses above it, the symbol is
+  drawn upside down so both reach a terminal on top. A winding whose bus is
+  outside the drawing gets its own off-page marker; double-click it to bring
+  that bus in.
 - Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
   solved voltage) sit directly on their bus bar.
 - DC lines are drawn with their converters.

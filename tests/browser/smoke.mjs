@@ -705,6 +705,27 @@ if (STANNUM_RAW_DC) {
   );
   await shot("diagram-mtdc");
 
+  // A three-winding transformer is one symbol, not its internal star bus
+  // with a two-winding symbol per winding. One hop around bus 3004 reaches
+  // it through bus 3002; its other two windings end in a marker each.
+  await page.getByRole("button", { name: "From case" }).click();
+  await page.getByLabel(/Around a bus/).check();
+  await page.getByRole("combobox", { name: "Bus number" }).fill("3004");
+  await page.getByLabel("Hops out").selectOption("1");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  const t3 = page.locator(".react-flow__node-transformer3");
+  await t3.first().waitFor();
+  assert.equal(await t3.count(), 1, "one three-winding symbol around bus 3004");
+  assert.match(await t3.innerText(), /T 3002-3001-3011/, "named by its windings' buses");
+  assert.equal(await page.locator('.react-flow__node[data-id="b100003"]').count(), 0, "star bus not drawn");
+  assert.equal(await page.locator('.react-flow__node[data-id="o51"], .react-flow__node[data-id="o52"]').count(), 2, "a marker per winding leaving the drawing");
+  assert.doesNotMatch(await page.getByTestId("voltage-legend").innerText(), /(^|\s)1(,| kV)/, "no 1 kV star bus in the legend");
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  await shot("diagram-three-winding");
+
   // Power flow lists every DC line; with Q limits on, the case converges and
   // the line-commutated converters absorb reactive power. Two-terminal lines
   // use the detailed converter model: the rectifier holds the order.
