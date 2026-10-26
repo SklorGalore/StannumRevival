@@ -20,9 +20,10 @@ import { NetworkGraph, type GraphSelection } from "./NetworkGraph";
 import { FieldPanel, GraphLegend } from "./FieldPanel";
 import { filterGraph, matchesBus, matchesEquipment, type FilterRule } from "./fields/field-view";
 import { createColorPresentation, defaultColorSettings, loadColorSettings, saveColorSettings, type ColorSettings } from "./fields/field-colors";
-import { busElement, elementBus, parseElement } from "../../lib/elements";
+import { busElement } from "../../lib/elements";
+import { loadTopology, shareTopology } from "../../lib/analysis/topologyStore";
 import { ElementInspector, InspectorSection } from "../../ui/ElementInspector";
-import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
+import { DISPLAY_LIMIT, busRows, focusedGraph, islandGraph, locateElement, neighborhood, nodeForBus, type TopoBusRow } from "./viewModel";
 
 type Tab = "buses" | "islands" | "critical" | "equipment" | "diagnostics";
 type Scope = { kind: "neighborhood" | "island" | "full" | "path"; title: string; data: GraphData };
@@ -201,21 +202,9 @@ export function TopologyModule({ active }: { active: boolean }) {
     if (element) select(element, "topology");
   }
 
-  /** What a shared element is in this view, and a neighborhood to show it in when it is off screen. */
-  function locate(element: string, s: TopologySnapshot): { selection: GraphSelection; bus: number | null } | null {
-    const parsed = parseElement(element);
-    if (!parsed) return null;
-    if (parsed.kind === "line" || parsed.kind === "transformer" || parsed.kind === "switch") {
-      const e = s.case.equipment.find((x) => x.id === element);
-      return e ? { selection: { bus: null, equipment: e.id }, bus: e.buses[0] ?? null } : null;
-    }
-    const bus = elementBus(element);
-    return bus !== null && s.case.buses.some((b) => b.number === bus) ? { selection: { bus, equipment: null }, bus } : null;
-  }
-
   /** Inspect an element picked in the inspector: select it here, bringing it into view. */
   function goTo(element: string) {
-    const found = snapshot ? locate(element, snapshot) : null;
+    const found = snapshot ? locateElement(element, snapshot) : null;
     if (!found || !snapshot) {
       focus(element);
       return;
@@ -245,8 +234,7 @@ export function TopologyModule({ active }: { active: boolean }) {
     const version = caseVersion;
     setBusy(true);
     setError(null);
-    api
-      .topologySnapshot()
+    loadTopology(version)
       .then((s) => {
         if (version !== useWorkspace.getState().caseVersion) return;
         setSnapshot(s);
@@ -255,7 +243,7 @@ export function TopologyModule({ active }: { active: boolean }) {
         setRules(saved.rules);
         setColors(saved.colors);
         const current = useWorkspace.getState().selection;
-        const found = current ? locate(current.element, s) : null;
+        const found = current ? locateElement(current.element, s) : null;
         if (found && found.bus !== null) {
           setScope({ kind: "neighborhood", title: `Bus ${found.bus} · 2-hop neighborhood`, data: neighborhood(s.graph, found.bus, 2) });
           setSelection(found.selection);
@@ -276,7 +264,7 @@ export function TopologyModule({ active }: { active: boolean }) {
   // Follow a selection made in another module.
   useEffect(() => {
     if (!snapshot || !shared || shared.from === "topology") return;
-    const found = locate(shared.element, snapshot);
+    const found = locateElement(shared.element, snapshot);
     if (!found) return;
     setSelection(found.selection);
     setSide("selection");
@@ -304,6 +292,7 @@ export function TopologyModule({ active }: { active: boolean }) {
       const view = await api.topologySetMerge(enabled);
       const next = { ...snapshot, analysis: view.analysis, graph: view.graph };
       setSnapshot(next);
+      shareTopology(loadedVersion, next);
       setPath(null);
       setPathText("Choose two bus numbers to find the fewest equipment hops.");
       setScope(defaultScope(next));

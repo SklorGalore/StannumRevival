@@ -20,6 +20,7 @@ import { useDiagramStore } from "../../store/diagramStore";
 import { openDiagram, saveDiagram, saveAsDialog } from "../../lib/tauri/fileOps";
 import { useState } from "react";
 import { ExportDialog } from "../dialogs/ExportDialog";
+import { StyleSwitch } from "../../modules/diagram/network/StyleSwitch";
 
 interface ToolbarButtonProps {
   icon: React.ReactNode;
@@ -144,6 +145,7 @@ export function Toolbar() {
     <div className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-x-auto whitespace-nowrap shrink-0">
       {/* App name */}
       <span className="font-semibold text-slate-700 text-sm mr-3">Diagram</span>
+      <StyleSwitch />
 
       <ToolbarButton
         icon={<FilePlus size={14} />}

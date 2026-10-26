@@ -6,14 +6,11 @@ import fcose from "cytoscape-fcose";
 
 cytoscape.use(fcose);
 import type { GraphData, TopoPath, TopologySnapshot } from "../../lib/analysis/types";
-import { nodeForBus } from "./viewModel";
+import { nodeForBus, type GraphSelection } from "./viewModel";
 import { useLog } from "../../store/logStore";
 import { duration } from "../../lib/log/log";
 
-export interface GraphSelection {
-  bus: number | null;
-  equipment: string | null;
-}
+export type { GraphSelection };
 
 // Palette and styling follow nodal's graph-presentation.ts (light theme).
 const LIGHT = {
@@ -67,6 +64,8 @@ const styleFor = (colors: typeof LIGHT): StylesheetJson => [
   { selector: "edge.bridge[stroke]", style: { "underlay-opacity": 0.25, "underlay-padding": 3 } },
   { selector: "node.path", style: { "background-color": colors.path } },
   { selector: "edge.path", style: { "line-color": colors.path } },
+  // The bus a neighbourhood is drawn around (Diagram's Network style).
+  { selector: "node.focus", style: { "underlay-color": colors.selection, "underlay-opacity": 0.22, "underlay-padding": 9, "underlay-shape": "ellipse", "min-zoomed-font-size": 0, "font-weight": "bold" } },
 ];
 
 /**
@@ -111,7 +110,7 @@ function stretchToFit(cy: Core, el: HTMLElement) {
 function refreshLabels(cy: Core) {
   const hide = cy.zoom() < 0.6;
   cy.nodes().forEach((node) => {
-    const important = node.hasClass("selected") || node.hasClass("path") || node.hasClass("articulation");
+    const important = node.hasClass("selected") || node.hasClass("path") || node.hasClass("articulation") || node.hasClass("focus");
     node.toggleClass("label-hidden", hide && !important);
   });
 }
@@ -125,6 +124,8 @@ export function NetworkGraph({
   visible,
   fitSignal,
   colors,
+  focus,
+  onRecentre,
 }: {
   graph: GraphData;
   snapshot: TopologySnapshot;
@@ -134,11 +135,17 @@ export function NetworkGraph({
   visible: boolean;
   fitSignal: number;
   colors?: { nodeColors: Record<string, string>; edgeColors: Record<string, string> };
+  /** A bus to mark as the centre of the view. */
+  focus?: number | null;
+  /** Double-clicking a bus asks to centre the view on it. */
+  onRecentre?: (bus: number) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const inspect = useRef(onInspect);
   inspect.current = onInspect;
+  const recentre = useRef(onRecentre);
+  recentre.current = onRecentre;
   const dark = useTheme((s) => s.theme === "dark");
   const palette = useRef(dark ? DARK : LIGHT);
   palette.current = dark ? DARK : LIGHT;
@@ -192,6 +199,10 @@ export function NetworkGraph({
     stretchToFit(cy, container.current);
     cy.on("tap", "node", (ev) => inspect.current({ bus: ev.target.data("bus") ?? null, equipment: ev.target.data("equipment") ?? null }));
     cy.on("tap", "edge", (ev) => inspect.current({ bus: null, equipment: ev.target.data("equipment") }));
+    cy.on("dbltap", "node", (ev) => {
+      const bus = ev.target.data("bus");
+      if (bus !== null && bus !== undefined) recentre.current?.(bus);
+    });
     cy.on("mouseover", "node, edge", (ev) => ev.target.addClass("hovered"));
     cy.on("mouseout", "node, edge", (ev) => ev.target.removeClass("hovered"));
     cy.on("zoom", () => refreshLabels(cy));
@@ -215,8 +226,13 @@ export function NetworkGraph({
       cy.edges().filter((e) => e.data("equipment") === selection.equipment).addClass("selected");
       cy.nodes().filter((n) => n.data("equipment") === selection.equipment).addClass("selected");
     }
+    cy.nodes().removeClass("focus");
+    if (focus !== null && focus !== undefined) {
+      const node = nodeForBus(graph, focus);
+      if (node) cy.getElementById(node.id).addClass("focus");
+    }
     refreshLabels(cy);
-  }, [selection, graph, snapshot, path]);
+  }, [selection, focus, graph, snapshot, path]);
 
   // Colour rules recolour in place, without a new layout.
   useEffect(() => {
@@ -243,6 +259,27 @@ export function NetworkGraph({
     cy.resize();
     cy.fit(undefined, 35);
   }, [visible, fitSignal]);
+
+  // Follow the container's size (a side panel opening, a split pane being
+  // dragged), keeping the middle of the view where it was.
+  useEffect(() => {
+    const el = container.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let last = { w: el.clientWidth, h: el.clientHeight };
+    const observer = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      const next = { w: el.clientWidth, h: el.clientHeight };
+      if (!cy || !next.w || !next.h || (next.w === last.w && next.h === last.h)) return;
+      // A pane coming out of hiding is refitted by the effect above instead.
+      if (last.w && last.h) {
+        cy.resize();
+        cy.panBy({ x: (next.w - last.w) / 2, y: (next.h - last.h) / 2 });
+      }
+      last = next;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Cytoscape restyles its container, so give it a full-size child of a positioned wrapper.
   return (

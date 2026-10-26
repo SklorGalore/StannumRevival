@@ -364,6 +364,44 @@ await page.keyboard.press("Escape");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3);
 
+// The Network style draws the same neighbourhood as a bus-branch graph, and
+// switching keeps the focus bus, the hop count and the selection.
+const networkBus = (bus) =>
+  // Cytoscape keeps its instance on the container. Tap the bus through it: a
+  // mouse click could land on the selection card, wherever the layout put it.
+  page.evaluate((b) => {
+    const host = [...document.querySelectorAll('[data-testid="network-view"] div')].find((d) => d._cyreg);
+    host._cyreg.cy.nodes().filter((n) => n.data("bus") === b).emit("tap");
+  }, bus);
+await page.getByRole("radio", { name: "Network" }).click();
+const hopBar = page.getByTestId("network-hops");
+await hopBar.filter({ hasText: "Around Bus 4" }).filter({ hasText: "1 hop" }).filter({ hasText: "3 buses" }).waitFor();
+await page.locator('[data-testid="network-view"] canvas').first().waitFor();
+await page.waitForTimeout(300);
+await networkBus(5);
+await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
+await hopBar.getByRole("button", { name: "One hop more" }).click();
+await hopBar.filter({ hasText: "2 hops" }).filter({ hasText: "5 buses" }).waitFor();
+await shot("diagram-network");
+await page.getByRole("radio", { name: "One-line" }).click();
+await page.getByTestId("style-switch-status").waitFor({ state: "detached" });
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 5);
+await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor();
+await page.locator('.react-flow__node-bus.selected[data-id="b5"]').waitFor();
+assert.equal(await page.locator(".react-flow__node.selected").count(), 1, "the bus bar, not its load, is selected");
+await page.waitForTimeout(600); // fit, then centre on the selection
+await shot("diagram-network-oneline");
+// And back: the network keeps the redrawn focus and the selection.
+await page.getByRole("radio", { name: "Network" }).click();
+await hopBar.filter({ hasText: "Around Bus 4" }).filter({ hasText: "2 hops" }).waitFor();
+await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
+// "Draw as one-line" from the selection redraws around it.
+await page.getByTestId("network-selection").getByRole("button", { name: "Draw as one-line" }).click();
+await page.getByRole("radio", { name: "One-line", checked: true }).waitFor();
+await page.getByTestId("style-switch-status").waitFor({ state: "detached" });
+await page.locator('.react-flow__node-bus.selected[data-id="b5"]').waitFor();
+await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor();
+
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 page.once("dialog", (d) => d.accept());
 await page.getByRole("button", { name: "New", exact: true }).click();
@@ -891,7 +929,7 @@ if (STANNUM_VIOLATIONS) {
   await page.getByRole("tab", { name: /Branches/ }).click();
   const branchRow = page.locator("table:visible tbody tr:not([data-spacer])").first();
   await branchRow.click();
-  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByTestId("power-inspector").getByRole("button", { name: /Draw around/ }).click();
   await page.getByText(/^Around\b/).filter({ hasText: /Line|Transformer/ }).first().waitFor();
   await page.getByTestId("draw-request").waitFor({ state: "detached" });
   await page.getByTestId("focus-halo").first().waitFor();

@@ -23,6 +23,10 @@ The Cytoscape graph starts from a bus's two-hop neighbourhood. From there:
 Three-winding transformers appear with a star point in the middle, so each
 winding is its own edge.
 
+The same graph is also the Diagram's
+[Network style](/StannumRevival/guide/diagram/#two-drawing-styles), where it
+shares its centre bus, hop count and selection with the one-line.
+
 ## Paths
 
 **Path** finds the fewest equipment hops between two buses and highlights the
