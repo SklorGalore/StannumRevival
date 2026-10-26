@@ -1,3 +1,4 @@
+import { useLog } from "./logStore";
 import { create } from "zustand";
 import { api, CASE_FILTERS, pickFile } from "../lib/analysis/api";
 import type { CaseSummary, SolveReport } from "../lib/analysis/types";
@@ -143,6 +144,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const chosen = path ?? (await pickFile(CASE_FILTERS));
     if (!chosen) return;
     set({ opening: true, openError: null });
+    // The log's badge counts what this case raised, not every case so far.
+    useLog.getState().newCase();
     try {
       const summary = await api.openCase(chosen);
       set((s) => ({
@@ -166,6 +169,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closeCase: async () => {
     await api.closeCase();
+    useLog.getState().newCase();
     set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));
   },
 }));

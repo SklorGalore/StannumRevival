@@ -40,6 +40,7 @@ import { useWidth } from "../../ui/useWidth";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
+import { WarningsTab } from "./WarningsTab";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
@@ -1224,16 +1225,14 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
               {tab === "warnings" && (
-                <div className="h-full bg-white">
-                  <DataTable
-                    rows={warnings.map((w, i) => ({ ...w, i }))}
-                    rowKey={(w) => w.i}
-                    columns={[
-                      { key: "line", header: "Line", value: (w) => w.line, align: "right" },
-                      { key: "message", header: "Warning", value: (w) => w.message },
-                    ]}
-                  />
-                </div>
+                <WarningsTab
+                  warnings={warnings}
+                  onShow={(e) => {
+                    pick(e);
+                    const next = tabFor(e);
+                    if (next && report) setTab(next);
+                  }}
+                />
               )}
             </div>
           </>

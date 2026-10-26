@@ -6,6 +6,7 @@ use rs_power::{
     PowerFlowSensitivity, SolveStatus, StateVariable,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// A case loaded for power flow, with any RAW conversion warnings.
 #[derive(Clone, Debug)]
@@ -40,6 +41,10 @@ fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
 pub struct Warning {
     pub line: usize,
     pub message: String,
+    /// The branch or generator whose record the warning is about, as a
+    /// shared element id, when the line is one of theirs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element: Option<String>,
 }
 
 /// Parse MATPOWER (`.m`) or PSS/E RAW text.
@@ -67,13 +72,23 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             ..Default::default()
         };
         let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
+        let elements = Elements::from_raw(
+            &import.case,
+            &import.branch_sources,
+            &import.generator_sources,
+            &import.dc_line_names,
+        );
+        // Which element each record's first line belongs to, so a warning
+        // can name what it is about.
+        let mut by_line: HashMap<usize, String> = HashMap::new();
+        for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
+            by_line.entry(s.line).or_insert_with(|| e.element.clone());
+        }
+        for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
+            by_line.entry(s.line).or_insert_with(|| e.element.clone());
+        }
         Ok(PowerCase {
-            elements: Elements::from_raw(
-                &import.case,
-                &import.branch_sources,
-                &import.generator_sources,
-                &import.dc_line_names,
-            ),
+            elements,
             dc_line_kinds: import
                 .dc_line_kinds
                 .iter()
@@ -89,6 +104,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
                 .warnings
                 .into_iter()
                 .map(|w| Warning {
+                    element: by_line.get(&w.line).cloned(),
                     line: w.line,
                     message: w.message,
                 })
