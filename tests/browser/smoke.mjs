@@ -384,8 +384,20 @@ const wireVsSymbol = () =>
     }
     return { points: pts, crosses };
   });
+/** Whether the wire still crosses the generator once routing settles (up to 3 s). */
+const settledCrossing = async () => {
+  const until = Date.now() + 3000;
+  let { crosses } = await wireVsSymbol();
+  while (crosses && Date.now() < until) {
+    await page.waitForTimeout(100);
+    ({ crosses } = await wireVsSymbol());
+  }
+  return crosses;
+};
 await page.waitForFunction(() => document.querySelector(".react-flow__edge-path")?.getAttribute("d")?.split("L").length > 3);
-assert.equal((await wireVsSymbol()).crosses, false, "routed wire avoids the generator");
+// The route can be redrawn once more as the new symbols finish measuring,
+// so give it a moment to settle before checking.
+assert.equal(await settledCrossing(), false, "routed wire avoids the generator");
 await shot("diagram-routed");
 // Moving the load reroutes its wire on release, still clear of the generator.
 const loadBox = await load.boundingBox();
@@ -396,7 +408,7 @@ await page.mouse.move(loadBox.x + loadBox.width / 2 - 80, loadBox.y + loadBox.he
 await page.mouse.up();
 await page.waitForFunction((before) => document.querySelector(".react-flow__edge-path").getAttribute("d") !== before, path);
 await page.waitForTimeout(200);
-assert.equal((await wireVsSymbol()).crosses, false, "rerouted wire avoids the moved generator");
+assert.equal(await settledCrossing(), false, "rerouted wire avoids the moved generator");
 // Drag a segment of the selected wire, then undo it.
 {
   const { points } = await wireVsSymbol();

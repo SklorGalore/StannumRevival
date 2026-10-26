@@ -413,23 +413,6 @@ function SolvePanel({
           ))}
         </div>
       </Field>
-      <Field label="Starting voltages">
-        <select
-          className={inputClass}
-          value={settings.start}
-          disabled={!ac}
-          title={
-            settings.start === "last"
-              ? "Start where the last solve of this case ended, with generators at Q limits, shunts and taps where it left them. Uses the case voltages when there is no earlier solve."
-              : undefined
-          }
-          onChange={(e) => setSettings({ ...settings, start: e.target.value as SolveSettings["start"] })}
-        >
-          <option value="case">From case</option>
-          <option value="last">From last solution</option>
-          <option value="flat">Flat start (1 p.u.)</option>
-        </select>
-      </Field>
       <Field label="Mismatch tolerance (MVA)">
         <input
           className={inputClass}
@@ -453,6 +436,18 @@ function SolvePanel({
           onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
         />
       </Field>
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title="Without it, each solve starts where the last one ended (the case voltages for the first solve)."
+      >
+        <input
+          type="checkbox"
+          checked={settings.start === "flat" && ac}
+          disabled={!ac}
+          onChange={(e) => setSettings({ ...settings, start: e.target.checked ? "flat" : "last" })}
+        />
+        Flat start (1 p.u.)
+      </label>
       <label className="flex items-center gap-2 text-xs text-slate-700">
         <input
           type="checkbox"

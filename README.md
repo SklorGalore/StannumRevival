@@ -1,3 +1,5 @@
+<img src="src/assets/stannum-logo.svg" alt="" width="96" align="right">
+
 # Stannum
 
 A desktop workbench for power system engineers, built with Tauri 2, Rust and
@@ -244,3 +246,11 @@ rs-power is BSD-3-Clause with MATPOWER attribution (see
 `crates/rs-power/NOTICE`). The
 `case9.m` test fixture is MATPOWER case data; see
 `crates/stannum-core/tests/fixtures/README.md`.
+
+## Logo
+
+The mark is an S traced along the edges of a cube, a tin (Sn) crystal cell drawn as
+a network. The masters are `src/assets/stannum-logo.svg` (48 px and up) and
+`src/assets/stannum-logo-small.svg` (16 to 32 px). After editing either one, run
+`pwsh scripts/update-icons.ps1` to regenerate the Tauri icons, the favicon and the
+docs-site logo.
