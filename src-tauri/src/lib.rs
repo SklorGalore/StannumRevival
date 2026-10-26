@@ -26,11 +26,12 @@ async fn save_binary(path: String, data_b64: String) -> Result<(), String> {
 #[tauri::command]
 fn show_snap_layouts(window: tauri::Window) {
     // Win+Z acts on the foreground window, so only send it for our own.
-    if !window.is_focused().unwrap_or(false) {
-        return;
-    }
     #[cfg(windows)]
-    snap::win_z();
+    if window.is_focused().unwrap_or(false) {
+        snap::win_z();
+    }
+    #[cfg(not(windows))]
+    let _ = window;
 }
 
 #[cfg(windows)]
