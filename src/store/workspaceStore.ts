@@ -1,7 +1,7 @@
 import { useLog } from "./logStore";
 import { create } from "zustand";
-import { api, CASE_FILTERS, pickFile } from "../lib/analysis/api";
-import type { CaseSummary, SolveReport } from "../lib/analysis/types";
+import { api, CASE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
+import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
 
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 
@@ -63,11 +63,27 @@ interface WorkspaceState {
   drawRequest: { element: string; n: number } | null;
   /** Open the diagram drawn around an element (selecting it too while linked). */
   drawAround: (element: string, from: ModuleId) => void;
+  /**
+   * The caseVersion that applying edits in Records produced: the same file,
+   * changed, so a view can keep its place (and the study its edits).
+   */
+  editedVersion: number;
+  /** Write cell edits from Records into the case; every module reloads it. Throws when an edit is refused. */
+  applyRecordEdits: (edits: RecordEdit[]) => Promise<void>;
+  /** Save the edited case to a new file, which then becomes the open case. */
+  saveCaseAs: () => Promise<boolean>;
   openCase: (path?: string) => Promise<void>;
   closeCase: () => Promise<void>;
 }
 
 const LINKED_KEY = "stannum-linked-selection";
+
+/** Before the case is replaced: ask when it has edits that aren't saved. */
+function unsavedEditsOk(summary: CaseSummary | null): boolean {
+  const n = summary?.record_edits ?? 0;
+  if (n === 0 || typeof window === "undefined" || typeof window.confirm !== "function") return true;
+  return window.confirm(`${summary!.name} has ${n} edited value${n === 1 ? "" : "s"} that aren't saved. Discard ${n === 1 ? "it" : "them"}?`);
+}
 
 function loadLinked(): boolean {
   try {
@@ -139,8 +155,35 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({ drawRequest: { element, n: (s.drawRequest?.n ?? 0) + 1 }, ...showing(s, "diagram") }));
   },
 
+  editedVersion: -1,
+  applyRecordEdits: async (edits) => {
+    const summary = await api.applyRecordEdits(edits);
+    set((s) => ({
+      caseSummary: summary,
+      caseVersion: s.caseVersion + 1,
+      editedVersion: s.caseVersion + 1,
+      // Results describe the case before the edits.
+      solveReport: null,
+      drawRequest: null,
+    }));
+  },
+  saveCaseAs: async () => {
+    const summary = get().caseSummary;
+    if (!summary) return false;
+    const matpower = summary.format === "matpower";
+    const base = summary.name.replace(/\.(raw|m)$/i, "");
+    const path = await pickSavePath(`${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : "raw"}`, [
+      matpower ? { name: "MATPOWER", extensions: ["m"] } : { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
+    ]);
+    if (!path) return false;
+    const saved = await api.saveCaseAs(path);
+    set({ caseSummary: saved });
+    return true;
+  },
+
   openCase: async (path) => {
     if (get().opening) return;
+    if (!unsavedEditsOk(get().caseSummary)) return;
     const chosen = path ?? (await pickFile(CASE_FILTERS));
     if (!chosen) return;
     set({ opening: true, openError: null });
@@ -168,6 +211,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   closeCase: async () => {
+    if (!unsavedEditsOk(get().caseSummary)) return;
     await api.closeCase();
     useLog.getState().newCase();
     set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));

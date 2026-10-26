@@ -12,7 +12,8 @@ use crate::contingency::{
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
-use crate::records::{RecordBook, RecordTable, Records};
+use crate::record_edit::{self, RecordEdit};
+use crate::records::{RecordBook, RecordSource, RecordTable, Records};
 use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
@@ -57,6 +58,10 @@ pub struct OpenCase {
     pub contingencies: Option<ContingencyResults>,
     /// The file's records as tables, read the first time they're asked for.
     pub records: Option<Result<Records, String>>,
+    /// The case's text as opened, or as edited in Records since.
+    pub bytes: Vec<u8>,
+    /// Cells edited in Records since the file was opened or saved.
+    pub record_edits: usize,
 }
 
 #[derive(Default)]
@@ -115,6 +120,8 @@ pub struct CaseSummary {
     pub topology: ModuleStatus<TopologyInfo>,
     /// RAW files can be used as a comparison baseline.
     pub diffable: bool,
+    /// Cells edited in Records and not yet saved to a file.
+    pub record_edits: usize,
     /// The attached DC grid file, if any.
     pub dc_grids: Option<DcGridsSummary>,
 }
@@ -294,6 +301,8 @@ impl OpenCase {
             dc_grids: None,
             contingencies: None,
             records: None,
+            bytes: bytes.to_vec(),
+            record_edits: 0,
         }
     }
 
@@ -314,6 +323,7 @@ impl OpenCase {
                 titles: t.case.titles.clone(),
             }),
             diffable: self.format == CaseFormat::Raw,
+            record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(LoadedDcGrids::summary),
         }
     }
@@ -682,12 +692,8 @@ impl OpenCase {
             let start = Instant::now();
             let raw = match self.format {
                 CaseFormat::Raw => Some(
-                    std::fs::read(&self.path)
-                        .map_err(|e| format!("{}: {e}", self.path.display()))
-                        .and_then(|bytes| {
-                            crate::diff::parser::parse_bytes_for_viewing(&self.name, &bytes)
-                                .map_err(|e| e.to_string())
-                        }),
+                    crate::diff::parser::parse_bytes_for_viewing(&self.name, &self.bytes)
+                        .map_err(|e| e.to_string()),
                 ),
                 CaseFormat::Matpower => None,
             };
@@ -728,6 +734,90 @@ impl OpenCase {
 
     pub fn record_table(&mut self, section: &str) -> Result<RecordTable, String> {
         Ok(self.records()?.table(section)?.clone())
+    }
+
+    /// Write edits from Records into the case and open the edited case in
+    /// its place, keeping the study's edits and any DC grid file. Nothing
+    /// changes when an edit is invalid or the edited case can't be read.
+    pub fn apply_record_edits(&mut self, edits: &[RecordEdit]) -> Result<CaseSummary, String> {
+        if edits.is_empty() {
+            return Ok(self.summary());
+        }
+        let start = Instant::now();
+        self.records()?;
+        let Some(Ok(records)) = self.records.as_ref() else {
+            unreachable!("records were just read")
+        };
+        if !records.editable {
+            return Err("This case's records can't be edited: Stannum writes RAW revisions 33 and 35, and MATPOWER.".into());
+        }
+        let (bytes, updates) = match records.source {
+            RecordSource::Raw => {
+                let (text, updates) =
+                    record_edit::apply_raw(&decode_text(&self.bytes), records, edits)?;
+                // Keep the file's encoding: UTF-8 if it was, else Windows-1252.
+                let bytes = if std::str::from_utf8(&self.bytes).is_ok() {
+                    text.into_bytes()
+                } else {
+                    let (encoded, _, unmappable) = encoding_rs::WINDOWS_1252.encode(&text);
+                    if unmappable {
+                        return Err("A new value has a character this file's encoding (Windows-1252) can't hold.".into());
+                    }
+                    encoded.into_owned()
+                };
+                (bytes, Some(updates))
+            }
+            RecordSource::Model => {
+                let power = self.power.as_ref().map_err(|e| e.clone())?;
+                let case = record_edit::apply_model(&power.case, records, edits)?;
+                let text = rs_power::format_matpower(&case).map_err(|e| e.to_string())?;
+                (text.into_bytes(), None)
+            }
+        };
+        let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        if let (Ok(_), Err(e)) = (&self.power, &next.power) {
+            return Err(format!("The edited case can't be solved: {e}"));
+        }
+        next.record_edits = self.record_edits + edits.len();
+        next.dc_grids = self.dc_grids.take();
+        if let Some(updates) = updates {
+            // The RAW tables only change in the edited cells.
+            let mut records = self.records.take().and_then(Result::ok);
+            if let Some(r) = records.as_mut() {
+                record_edit::patch(r, updates)?;
+            }
+            next.records = records.map(Ok);
+        }
+        if !self.edits.is_empty()
+            && let Err(e) = next.set_edits(self.edits.clone())
+        {
+            log::warn!("The study's edits no longer apply to the edited case: {e}");
+        }
+        log::info!(
+            "Applied {} to {} ({:.0} ms)",
+            if edits.len() == 1 {
+                "1 record edit".to_string()
+            } else {
+                format!("{} record edits", edits.len())
+            },
+            self.name,
+            elapsed_ms(start)
+        );
+        *self = next;
+        Ok(self.summary())
+    }
+
+    /// Save the case, with its edits, to a new file, and carry on with that file.
+    pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, String> {
+        std::fs::write(path, &self.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        log::info!("Saved {} as {}", self.name, path.display());
+        self.path = path.to_path_buf();
+        self.name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        self.record_edits = 0;
+        Ok(self.summary())
     }
 
     fn topology_state(&self) -> Result<&TopologyState, String> {

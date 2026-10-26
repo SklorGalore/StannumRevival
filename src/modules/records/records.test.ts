@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { RecordBook, RecordTable } from "../../lib/analysis/types";
-import { columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
+import { cellProblem, columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
 
 const table: RecordTable = {
   id: "BUS",
   label: "Buses",
   columns: [
-    { name: "I", kind: "integer" },
-    { name: "NAME", kind: "text" },
-    { name: "BASKV", kind: "number" },
-    { name: "AREA", kind: "integer" },
+    { name: "I", kind: "integer", editable: false },
+    { name: "NAME", kind: "text", editable: true },
+    { name: "BASKV", kind: "number", editable: true },
+    { name: "AREA", kind: "integer", editable: true },
   ],
   rows: [
     { line: 5, element: "bus:101", cells: [101, "NORTH", 138, 1] },
@@ -38,15 +38,24 @@ describe("records helpers", () => {
   });
 
   it("finds the table that lists an element", () => {
-    const raw: RecordBook = { source: "raw", revision: 35, note: null, sections: [{ id: "BUS", label: "Buses", count: 3, skipped: 0 }, { id: "BRANCH", label: "Branches", count: 0, skipped: 0 }] };
+    const raw: RecordBook = { source: "raw", revision: 35, note: null, editable: true, sections: [{ id: "BUS", label: "Buses", count: 3, skipped: 0 }, { id: "BRANCH", label: "Branches", count: 0, skipped: 0 }] };
     expect(sectionFor(raw, "bus:101")).toBe("BUS");
     expect(sectionFor(raw, "line:1:2:1")).toBe("BRANCH");
     expect(sectionFor(raw, "generator:1:1")).toBeNull();
-    const model: RecordBook = { source: "model", revision: null, note: null, sections: [{ id: "branch", label: "Branches", count: 1, skipped: 0 }] };
+    const model: RecordBook = { source: "model", revision: null, note: null, editable: true, sections: [{ id: "branch", label: "Branches", count: 1, skipped: 0 }] };
     expect(sectionFor(model, "transformer:1:2:1")).toBe("branch");
   });
 
   it("exports rows by column name with their RAW line", () => {
     expect(csvRows(table, table.rows.slice(0, 1))).toEqual([{ I: 101, NAME: "NORTH", BASKV: 138, AREA: 1, "RAW line": 5 }]);
+  });
+
+  it("checks a typed value against the column's kind", () => {
+    expect(cellProblem("integer", "12")).toBeNull();
+    expect(cellProblem("integer", "1.5")).toMatch(/whole number/);
+    expect(cellProblem("number", "-1.2e3")).toBeNull();
+    expect(cellProblem("number", "abc")).toMatch(/number/);
+    expect(cellProblem("number", "")).toMatch(/number/);
+    expect(cellProblem("text", "")).toBeNull();
   });
 });

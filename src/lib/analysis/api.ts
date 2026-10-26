@@ -16,6 +16,7 @@ import type {
   ElementDetail,
   GraphData,
   RecordBook,
+  RecordEdit,
   RecordTable,
   Analysis,
   ResponseTable,
@@ -49,6 +50,8 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   element_detail: { label: "Reading an element", quiet: true },
   case_records: { label: "Reading the case's records", quiet: true },
   record_table: { label: "Reading records", quiet: true },
+  apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
+  save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
 };
 
@@ -155,6 +158,8 @@ export const api = {
   elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),
   caseRecords: () => call<RecordBook>("case_records"),
   recordTable: (section: string) => call<RecordTable>("record_table", { section }),
+  applyRecordEdits: (edits: RecordEdit[]) => call<CaseSummary>("apply_record_edits", { edits }),
+  saveCaseAs: (path: string) => call<CaseSummary>("save_case_as", { path }),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>

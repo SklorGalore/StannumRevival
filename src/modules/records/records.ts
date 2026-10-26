@@ -2,7 +2,7 @@
 // matching on a record, and which table lists an element.
 import { distinctValues, matchesValue, ruleReady, type FieldDefinition, type FieldValue, type FilterRule } from "../../lib/filters";
 import { elementSection, parseElement } from "../../lib/elements";
-import type { CaseRecord, RecordBook, RecordTable } from "../../lib/analysis/types";
+import type { CaseRecord, RecordBook, RecordColumnKind, RecordTable } from "../../lib/analysis/types";
 
 /** Columns with this many distinct values or fewer filter by picking a value. */
 export const CATEGORY_LIMIT = 40;
@@ -53,4 +53,12 @@ export function csvRows(table: RecordTable, rows: CaseRecord[]): Record<string, 
     if (r.line > 0) out["RAW line"] = r.line;
     return out;
   });
+}
+
+/** Why a typed value doesn't fit its column, or null when it does (the backend checks again). */
+export function cellProblem(kind: RecordColumnKind, text: string): string | null {
+  const t = text.trim();
+  if (kind === "text") return /[\r\n]/.test(text) ? "Text can't span lines." : null;
+  if (kind === "integer") return /^[+-]?\d+$/.test(t) ? null : "Enter a whole number.";
+  return t !== "" && Number.isFinite(Number(t)) ? null : "Enter a number.";
 }

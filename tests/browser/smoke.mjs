@@ -1173,6 +1173,32 @@ await recordRows.first().click();
 const recordInspector = page.getByTestId("records-inspector");
 await recordInspector.getByTestId("inspector-title").filter({ hasText: /^Load / }).waitFor();
 await shot("records-inspector");
+// Edit a load's MW, apply it, and see the inspector read the new value.
+const plIndex = await records.locator("thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent.trim() === "PL"));
+await recordRows.first().locator(`td:nth-child(${plIndex + 1}) span`).dblclick();
+await records.getByLabel("Cell value").fill("abc");
+await records.getByLabel("Cell value").press("Enter");
+assert.equal(await records.getByLabel("Cell value").getAttribute("aria-invalid"), "true", "a non-number is refused");
+await records.getByLabel("Cell value").fill("95.5");
+await records.getByLabel("Cell value").press("Enter");
+const editBar = page.getByTestId("records-edits");
+await editBar.getByText("1 change not applied").waitFor();
+await records.locator("[data-pending]").filter({ hasText: "95.5" }).waitFor();
+await shot("records-edit-pending");
+await editBar.getByRole("button", { name: "Apply" }).click();
+await editBar.getByText("1 edited value not saved to a file").waitFor();
+await recordRows.first().locator(`td:nth-child(${plIndex + 1})`).filter({ hasText: /^95\.5$/ }).waitFor();
+await recordRows.first().click();
+await recordInspector.getByText("95.50").first().waitFor();
+await shot("records-edit-applied");
+// Save as writes the edited case to a new file, which becomes the open case.
+const savedCase = `${(await import("node:os")).tmpdir()}/five_bus_edited_${Date.now()}.raw`;
+await queue(savedCase);
+await editBar.getByRole("button", { name: "Save as…" }).click();
+await editBar.waitFor({ state: "detached" });
+await page.getByText(/five_bus_edited_\d+\.raw/).first().waitFor();
+const savedText = (await import("node:fs")).readFileSync(savedCase, "utf8");
+assert.match(savedText, /\n {4}2,'1 ',1, {3}1, {3}1, {6}95\.5, {4}30\.000,/, "only the edited field changed");
 await recordInspector.getByRole("button", { name: "Draw around" }).click();
 await page.locator(".react-flow__node-bus").first().waitFor();
 // A MATPOWER case lists the power flow model's tables.

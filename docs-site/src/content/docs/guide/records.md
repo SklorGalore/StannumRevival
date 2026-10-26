@@ -1,6 +1,6 @@
 ---
 title: Records
-description: Every record in the open case as a table, with every field, to sort, search and filter.
+description: Every record in the open case as a table, with every field, to sort, search, filter and edit.
 ---
 
 ![Records: the generators of an 82,000-bus case sorted by output, with the picked generator in the inspector](../../../assets/screens/records.png)
@@ -29,7 +29,8 @@ Where the records come from depends on the file:
   branches, DC lines and generator costs. For a RAW file this sums loads and
   fixed shunts into each bus, and a note says so.
 
-The tables show the file as opened. A study's edits aren't applied here.
+The tables show the case's records. A study's edits aren't applied here;
+edit a record (below) to change the case itself.
 
 ## Sort, search and filter
 
@@ -49,3 +50,30 @@ switching device or DC line opens it in the element inspector, with its
 results, limits, connections and **Draw around**. Shunts and induction
 machines open their bus. While selections are linked, a pick here selects the
 element in every module, and an element picked elsewhere is found here.
+
+## Edit records
+
+Double-click a cell to change it. Enter or Tab keeps the new value, Esc
+leaves the cell as it was, and a number field won't take text. Changed cells
+are shaded until you act on them:
+
+- **Apply** writes every change into the case. Power flow, the diagram, the
+  inspector and the other modules then use the new values, and the last
+  solution is cleared. A study's edits stay and are applied on top.
+- **Discard** drops the changes not yet applied.
+
+Fields that identify a record (bus numbers, IDs, the case details) show a lock
+and can't be edited, because other records refer to them.
+
+Applied changes live in Stannum until you save them; the file on disk is not
+touched. **Save as…** writes the edited case to a new file, and **Revert to
+file** opens the file again without them. Closing the case or opening another
+asks first while edits are unsaved.
+
+- A **RAW** file keeps its layout: only the edited fields change, padded to
+  their old width, and every other line, comment and number is as it was.
+- A **MATPOWER** file is written again from the power flow model, so its
+  comments and formatting aren't kept.
+
+A change that the power flow can't read (a load on a bus that isn't there, for
+example) is refused, and the case stays as it was.

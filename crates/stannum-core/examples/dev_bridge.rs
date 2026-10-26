@@ -67,6 +67,14 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             ws.current_mut()?
                 .record_table(&arg::<String>(args, "section")?)?,
         ),
+        "apply_record_edits" => {
+            let edits: Vec<stannum_core::record_edit::RecordEdit> = arg(args, "edits")?;
+            to_json(ws.current_mut()?.apply_record_edits(&edits)?)
+        }
+        "save_case_as" => to_json(
+            ws.current_mut()?
+                .save_as(&PathBuf::from(arg::<String>(args, "path")?))?,
+        ),
         "diagram_network" => to_json(ws.current()?.diagram_network()?),
         "topology_snapshot" => to_json(ws.current()?.topology_snapshot()?),
         "topology_set_merge" => to_json(
