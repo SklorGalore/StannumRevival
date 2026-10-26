@@ -2,7 +2,7 @@ import type { NodeProps } from "@xyflow/react";
 import type { TransformerNode as TransformerNodeType } from "../../store/types";
 import { branchFlow, loadingColor, mvar, mw, useResults } from "../../lib/diagram/results";
 import { useResultMarks } from "../../lib/diagram/detail";
-import { useInk, SELECTED, STROKE } from "../../lib/diagram/ink";
+import { useInk, STROKE } from "../../lib/diagram/ink";
 import { Ground } from "./shared/Ground";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
 
@@ -50,7 +50,7 @@ export function TransformerNode({ data, selected }: NodeProps<TransformerNodeTyp
   const flow = row ? branchFlow(row, data.reversed) : null;
   const overload = loadingColor(row?.loading_pct);
   const offline = data.outOfService || (row && !row.online);
-  const outline = selected ? SELECTED : offline ? ink.off : overload ? ink.alert(overload) : ink.line;
+  const outline = selected ? ink.selected : offline ? ink.off : overload ? ink.alert(overload) : ink.line;
   const dash = offline ? "4 3" : undefined;
   const grounded = !data.windingsUnknown && data.groundingSecondary === "solidly" && secondaryWinding === "Wye";
 

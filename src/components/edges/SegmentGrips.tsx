@@ -1,7 +1,7 @@
 import { useReactFlow } from "@xyflow/react";
 import { useDiagramStore } from "../../store/diagramStore";
 import { moveSegment, type Pt } from "../../lib/diagram/router";
-import { SELECTED } from "../../lib/diagram/ink";
+import { useInk } from "../../lib/diagram/ink";
 
 /** Segments shorter than this get no grip: too small to aim at. */
 const MIN_GRIP = 16;
@@ -10,6 +10,7 @@ const MIN_GRIP = 16;
  *  wire then keeps that shape until it is rerouted. */
 export function SegmentGrips({ id, points }: { id: string; points: Pt[] }) {
   const { screenToFlowPosition } = useReactFlow();
+  const ink = useInk();
 
   const startDrag = (k: number) => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -69,7 +70,7 @@ export function SegmentGrips({ id, points }: { id: string; points: Pt[] }) {
               height={vertical ? 12 : 6}
               rx={1.5}
               fill="white"
-              stroke={SELECTED}
+              stroke={ink.selected}
               strokeWidth={1.25}
             />
           </g>

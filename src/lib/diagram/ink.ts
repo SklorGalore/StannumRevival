@@ -6,7 +6,6 @@ import { RESULT_TEXT } from "./results";
 
 /** One stroke weight for every symbol, so the drawing reads as one set. */
 export const STROKE = 1.5;
-export const SELECTED = "#3b82f6";
 
 export interface Ink {
   mono: boolean;
@@ -18,6 +17,8 @@ export interface Ink {
   muted: string;
   /** Power flow numbers. */
   result: string;
+  /** Selected symbols and wires: the shell's teal accent. */
+  selected: string;
   /** Out of service equipment. */
   off: string;
   /** Wires while power flow results are shown (neutral, so loading stands out). */
@@ -34,6 +35,7 @@ const COLOR: Ink = {
   text: "#475569",
   muted: "#64748b",
   result: RESULT_TEXT,
+  selected: "#009689",
   off: "#94a3b8",
   wire: "#334155",
   voltage: (kv) => (kv > 0 ? getVoltageColor(kv) : "#475569"),
@@ -47,6 +49,7 @@ const DARK: Ink = {
   text: "#cbd5e1",
   muted: "#94a3b8",
   result: "#5eead4",
+  selected: "#00d5be",
   off: "#64748b",
   wire: "#94a3b8",
   voltage: (kv) => (kv > 0 ? getVoltageColor(kv, true) : "#cbd5e1"),
@@ -59,6 +62,7 @@ const MONO: Ink = {
   text: "#000000",
   muted: "#333333",
   result: "#000000",
+  selected: "#009689",
   off: "#808080",
   wire: "#000000",
   voltage: () => "#000000",
