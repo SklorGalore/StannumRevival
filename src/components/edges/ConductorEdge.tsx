@@ -6,6 +6,7 @@ import { useInk } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
 import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
+import { arrowPath, flowDirection, pathPoints } from "../../lib/diagram/flowArrow";
 import { SegmentGrips } from "./SegmentGrips";
 import { Leader, useBBox, useLabelDrag } from "../nodes/shared/labels";
 import { useElementMark } from "../../store/layerStore";
@@ -134,7 +135,7 @@ export function ConductorEdge({
     // the step path would loop out past the terminals.
     path = `M${s.x},${s.y} L${t.x},${t.y}`;
     seg = { a: s, b: t };
-    mid = { x: s.x, y: (s.y + t.y) / 2 };
+    mid = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
   } else {
     [path] = getSmoothStepPath({
       sourceX,
@@ -145,8 +146,11 @@ export function ConductorEdge({
       targetPosition,
       borderRadius: 0,
     });
-    seg = { a: s, b: t };
-    mid = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+    // Put the arrow on a run of the step path itself, not on the straight
+    // line between the ends (which is diagonal whenever the ends are offset).
+    const steps = pathPoints(path);
+    seg = steps.length > 1 ? longestSegment(steps) : { a: s, b: t };
+    mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
   }
 
   const kv = data?.voltageKV ?? 0;
@@ -169,14 +173,10 @@ export function ConductorEdge({
   const width = asMarks && flow ? flowWidth(row?.loading_pct, flow.p, maxFlow, baseWidth) : baseWidth;
   const k = asMarks ? 2 : 1;
 
-  const vertical = Math.abs(seg.a.x - seg.b.x) < 0.5;
-  // Unit vector of the flow, along the labelled segment.
-  const dx = Math.sign(seg.b.x - seg.a.x) * (flow && flow.p < 0 ? -1 : 1);
-  const dy = Math.sign(seg.b.y - seg.a.y) * (flow && flow.p < 0 ? -1 : 1);
-  const arrow =
-    flow && Math.abs(flow.p) > 0.05
-      ? `M${mid.x + dx * 5 * k},${mid.y + dy * 5 * k} L${mid.x - (dx + dy) * 4 * k},${mid.y + (dx - dy) * 4 * k} L${mid.x + (dy - dx) * 4 * k},${mid.y - (dy + dx) * 4 * k} Z`
-      : null;
+  // Unit step of the flow along the labelled segment's run.
+  const dir = flowDirection(seg.a, seg.b, !!flow && flow.p < 0);
+  const vertical = dir.x === 0;
+  const arrow = flow && Math.abs(flow.p) > 0.05 ? arrowPath(mid, dir, k) : null;
   const numbers = flow
     ? [
         mw(Math.abs(flow.p)),
