@@ -317,18 +317,32 @@ await page.getByText(/^Around\b/).waitFor();
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "bus 4 and its neighbours 2 and 5");
 const studied = page.locator(".react-flow__node-bus").filter({ has: page.locator("title", { hasText: "Studied bus" }) });
 assert.equal(await studied.count(), 1, "studied bus highlighted");
+// Branches leaving one bus share a marker that counts them.
 const markers = page.locator(".react-flow__node-offPage");
-assert.equal(await markers.count(), 2, "markers toward buses 1 and 3");
+assert.equal(await markers.count(), 1, "one marker for the branches toward buses 1 and 3");
+assert.equal((await markers.getByTestId("off-page-count").textContent()).trim(), "2");
+await markers.filter({ hasText: "To 2 buses" }).waitFor();
 await page.waitForTimeout(400);
 const studiedAt = await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform);
 await markers.first().dblclick();
-await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 5);
 assert.equal(await page.evaluate(() => document.querySelector('[data-id="b4"]').style.transform), studiedAt, "expand moved bus 4");
+assert.equal(await markers.count(), 0, "both branches drawn, so the marker goes");
 await page.waitForTimeout(500); // wires go in a frame after the taps
 await shot("diagram-local");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__node-bus").count(), 3, "undo removes the expansion");
+// One bus brought in from the bundle's menu leaves a plain marker for the other.
+await markers.first().click({ button: "right" });
+const bringIn = page.getByRole("menuitem", { name: /^Bring in (?!all)/ });
+assert.equal(await bringIn.count(), 2, "each far bus offered");
+await bringIn.first().click();
+await page.waitForFunction(() => document.querySelectorAll(".react-flow__node-bus").length === 4);
+assert.equal(await markers.getByTestId("off-page-count").count(), 0, "the bundle is down to a single branch");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+assert.equal(await page.locator(".react-flow__node-bus").count(), 3);
 
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 page.once("dialog", (d) => d.accept());
@@ -837,6 +851,35 @@ if (STANNUM_VIOLATIONS) {
   await page.locator("[data-pane=right]").getByRole("button", { name: "Close split view" }).click();
   await page.locator("[data-pane]").first().waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Link selection" }).waitFor();
+
+  // Drawn around a branch, a local drawing grows from both its ends (neither
+  // is the studied bus) and the branch itself is marked.
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  const branchRow = page.locator("table:visible tbody tr:not([data-spacer])").first();
+  await branchRow.click();
+  await page.getByTestId("table-selection").getByRole("button", { name: /Draw around/ }).click();
+  await page.getByText(/^Around\b/).filter({ hasText: /Line|Transformer/ }).first().waitFor();
+  await page.getByTestId("draw-request").waitFor({ state: "detached" });
+  await page.getByTestId("focus-halo").first().waitFor();
+  assert.equal(await studied.count(), 0, "a branch has no studied bus");
+  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+  await shot("around-branch");
+
+  // An empty drawing offers to draw around the worst violation.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  const prompt = page.getByTestId("draw-prompt");
+  await prompt.waitFor();
+  await prompt.getByRole("button", { name: new RegExp(`worst violation: ${worst}(?!\\d)`) }).waitFor();
+  await shot("draw-prompt");
+  await prompt.getByRole("button", { name: /worst violation/ }).click();
+  await prompt.waitFor({ state: "detached" });
+  await page.getByText(/^Around\b/).filter({ hasText: /\S/ }).first().waitFor();
+  await studied.first().waitFor();
+  assert.equal(await studied.count(), 1, "drawn around the worst bus");
 
   // Tables draw only the rows in view, carry bus names, and show loading and
   // limits as bars and marks.

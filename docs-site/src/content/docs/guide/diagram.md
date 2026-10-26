@@ -17,7 +17,9 @@ case, one area, or the buses within a few hops of a chosen bus.
 - Buses, generators, loads, lines and transformers are laid out top to bottom
   with right-angle wiring (ELK layered layout, run in the background).
 - Branches that leave the selection end in **off-page markers** naming the far
-  bus.
+  bus. When several leave the same bus they share one marker, drawn as two
+  flags with a count ("To 3 buses"). Hover it for each branch's far bus and
+  flow; it turns amber or red when one of them is heavily loaded.
 - Three-winding transformers appear as their star point with a two-winding
   symbol per winding.
 - Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
@@ -25,18 +27,33 @@ case, one area, or the buses within a few hops of a chosen bus.
 - DC lines are drawn with their converters.
 
 Cases with more than 20 buses default to drawing **around a bus**, which is
-how a one-line is usually used. The studied bus sits at the top, highlighted,
-and each row below is one more hop out. The bar at the bottom of the canvas
-changes the hop count.
+how a one-line is usually used. The studied bus sits in the middle,
+highlighted, with its neighbours shared between the rows above and below it,
+each row one more hop out. Long hops fold into several rows, so the drawing
+comes out about the shape of the canvas and stays readable when fitted to the
+screen (in a half-width split pane it comes out taller). The bar at the bottom
+of the canvas changes the hop count.
 
 The quickest way in is **Draw around** on any selected element, or
 <kbd>Shift</kbd>+<kbd>Enter</kbd> in the [palette](/StannumRevival/guide/command-palette/).
+Drawn around a line or transformer, the drawing grows from both its ends: the
+from-side above, the to-side below, and the branch in the middle with a halo.
+A generator gets the same halo.
+
+![case300 drawn two hops around transformer 37–9001: one side above it, the other below, the transformer haloed in the middle](../../../assets/screens/diagram-around-branch.png)
+
+With a case open and nothing drawn, the canvas offers to draw around the
+selected element or the worst violation of the last solve (the most
+overloaded branch, else the bus furthest outside its voltage limits).
+
+![An empty diagram offering to draw around the worst violation](../../../assets/screens/diagram-prompt.png)
 
 ### Growing a drawing
 
 On a drawing linked to the open case:
 
-- Double-click an off-page marker to bring its bus in.
+- Double-click an off-page marker to bring its bus in (all of them for a shared
+  marker), or right-click a shared marker to pick one.
 - Right-click a bus for **Show neighbours** and **Draw N hops around** it.
 
 Brought-in buses are placed below what is already drawn, and nothing that is

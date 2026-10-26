@@ -79,6 +79,7 @@ export function SymbolFrame({
   terminals,
   title,
   onDoubleClick,
+  focus,
 }: {
   w: number;
   h: number;
@@ -92,6 +93,8 @@ export function SymbolFrame({
   terminals: Terminal[];
   title?: string;
   onDoubleClick?: () => void;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }) {
   const size = rotatedSize(w, h, rotation);
   // Handles move when the symbol turns: re-measure so wires follow.
@@ -112,6 +115,7 @@ export function SymbolFrame({
     <div className="node-wrapper relative" style={{ width: size.w, height: size.h }}>
       <svg width={size.w} height={size.h} overflow="visible" style={{ display: "block" }} onDoubleClick={onDoubleClick}>
         {title && <title>{title}</title>}
+        {focus && <FocusHalo w={size.w} h={size.h} />}
         <g transform={TURN[rotation](w, h)}>{graphic}</g>
         {label && labelOffset && labelBox && (
           <Leader
@@ -146,5 +150,27 @@ export function SymbolFrame({
         );
       })}
     </div>
+  );
+}
+
+/** Halo behind the element a local drawing was made around. */
+export function FocusHalo({ w, h, x = 0, y = 0 }: { w: number; h: number; x?: number; y?: number }) {
+  const ink = useInk();
+  return (
+    <rect
+      x={x - 7}
+      y={y - 7}
+      width={w + 14}
+      height={h + 14}
+      rx={6}
+      fill={ink.mono ? "none" : ink.halo}
+      fillOpacity={ink.mono ? undefined : 0.18}
+      stroke={ink.halo}
+      strokeWidth={ink.mono ? 1 : 1.5}
+      strokeDasharray={ink.mono ? "4 3" : undefined}
+      data-testid="focus-halo"
+    >
+      <title>Studied element</title>
+    </rect>
   );
 }

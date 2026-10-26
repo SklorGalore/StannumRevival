@@ -196,6 +196,22 @@ export function ConductorEdge({
 
   return (
     <>
+      {data?.focus && (
+        // The branch a local drawing was made around.
+        <path
+          d={path}
+          fill="none"
+          stroke={ink.halo}
+          strokeOpacity={ink.mono ? 1 : 0.35}
+          strokeWidth={ink.mono ? 1 : 14}
+          strokeDasharray={ink.mono ? "4 3" : undefined}
+          strokeLinejoin="round"
+          data-testid="focus-halo"
+          transform={ink.mono ? "translate(0,-6)" : undefined}
+        >
+          <title>Studied element</title>
+        </path>
+      )}
       <BaseEdge
         id={id}
         path={path}
