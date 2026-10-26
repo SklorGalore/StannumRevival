@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 pub const CASE_DETAILS: &str = "CASE DETAILS";
 
-fn schema() -> &'static Json {
+pub(crate) fn schema() -> &'static Json {
     static SCHEMA: OnceLock<Json> = OnceLock::new();
     SCHEMA.get_or_init(|| {
         serde_json::from_str(include_str!("../../schemas/raw.schema.json"))
@@ -89,6 +89,10 @@ struct Parser<'a> {
     keys: BTreeMap<String, HashSet<Key>>,
     diagnostics: Vec<Diagnostic>,
     system_keys: HashSet<String>,
+    /// For viewing: keep records with a repeated key, and accept a file that
+    /// ends (Q) before its last sections, noting both as diagnostics instead
+    /// of failing. Comparison needs the strict reading.
+    lenient: bool,
 }
 
 type Result<T> = std::result::Result<T, RawParseError>;
@@ -192,6 +196,22 @@ impl<'a> Parser<'a> {
         let normalized: Key = key.iter().map(Value::normalized).collect();
         let seen = self.keys.entry(section.to_string()).or_default();
         if !seen.insert(normalized.clone()) {
+            if self.lenient {
+                self.diagnostics.push(Diagnostic {
+                    section: section.to_string(),
+                    line_number: index + 1,
+                    message: "Duplicate record key".into(),
+                    raw_lines: raw.clone(),
+                });
+                self.section_mut(section).push(Record {
+                    section: section.to_string(),
+                    key: normalized,
+                    fields,
+                    raw_lines: raw,
+                    line_number: index + 1,
+                });
+                return Ok(());
+            }
             let shown = normalized
                 .iter()
                 .map(Value::display)
@@ -390,7 +410,11 @@ impl<'a> Parser<'a> {
             .flatten()
             .filter_map(|s| s.as_str().map(str::to_string))
             .collect();
+        let mut ended = false;
         for section in &order {
+            if ended {
+                break;
+            }
             self.section_mut(section);
             let layout = &schema["sections"][section]["layouts"][&rev];
             let evidence = layout["evidence"].as_str().unwrap_or_default();
@@ -418,6 +442,16 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 if structural.eq_ignore_ascii_case("q") {
+                    if self.lenient {
+                        self.diagnostics.push(Diagnostic {
+                            section: section.clone(),
+                            line_number: position + 1,
+                            message: "File ends before this section".into(),
+                            raw_lines: vec![],
+                        });
+                        ended = true;
+                        break;
+                    }
                     return self.fail(section, position, "Early Q before section terminator");
                 }
                 if section == "SYSTEM-WIDE" {
@@ -564,6 +598,16 @@ fn effective_keys(section: &str, revision: &str) -> Vec<String> {
 
 /// Parse a RAW file's bytes. `name` is used only in error messages.
 pub fn parse_bytes(name: &str, bytes: &[u8]) -> Result<DiffCase> {
+    parse(name, bytes, false)
+}
+
+/// Like [`parse_bytes`], but records whose key repeats an earlier one are
+/// kept (with a diagnostic) rather than failing the whole file.
+pub fn parse_bytes_for_viewing(name: &str, bytes: &[u8]) -> Result<DiffCase> {
+    parse(name, bytes, true)
+}
+
+fn parse(name: &str, bytes: &[u8], lenient: bool) -> Result<DiffCase> {
     let text = decode_cp1252(bytes).map_err(|reason| RawParseError {
         name: name.to_string(),
         section: CASE_DETAILS.into(),
@@ -585,6 +629,7 @@ pub fn parse_bytes(name: &str, bytes: &[u8]) -> Result<DiffCase> {
         keys: BTreeMap::new(),
         diagnostics: Vec::new(),
         system_keys: HashSet::new(),
+        lenient,
     }
     .run()
 }

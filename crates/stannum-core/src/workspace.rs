@@ -12,6 +12,7 @@ use crate::contingency::{
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
+use crate::records::{RecordBook, RecordTable, Records};
 use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
@@ -52,6 +53,8 @@ pub struct OpenCase {
     pub dc_grids: Option<LoadedDcGrids>,
     /// The last contingency run, until the study's edits change.
     pub contingencies: Option<ContingencyResults>,
+    /// The file's records as tables, read the first time they're asked for.
+    pub records: Option<Result<Records, String>>,
 }
 
 #[derive(Default)]
@@ -285,6 +288,7 @@ impl OpenCase {
             edited: None,
             dc_grids: None,
             contingencies: None,
+            records: None,
         }
     }
 
@@ -647,6 +651,61 @@ impl OpenCase {
             .filter(|t| !t.derived)
             .map(|t| &t.case);
         crate::inspect::element(power, topology, element)
+    }
+
+    /// The file's records as tables: RAW revisions 33 and 35 record by
+    /// record, anything else as the power flow model.
+    pub fn records(&mut self) -> Result<&Records, String> {
+        if self.records.is_none() {
+            let start = Instant::now();
+            let raw = match self.format {
+                CaseFormat::Raw => Some(
+                    std::fs::read(&self.path)
+                        .map_err(|e| format!("{}: {e}", self.path.display()))
+                        .and_then(|bytes| {
+                            crate::diff::parser::parse_bytes_for_viewing(&self.name, &bytes)
+                                .map_err(|e| e.to_string())
+                        }),
+                ),
+                CaseFormat::Matpower => None,
+            };
+            let built = match (raw, &self.power) {
+                (Some(Ok(case)), _) => Ok(crate::records::from_raw(&case)),
+                (raw, Ok(power)) => {
+                    if let Some(Err(e)) = &raw {
+                        log::info!(
+                            "Showing {}'s records from the power flow model: {e}",
+                            self.name
+                        );
+                    }
+                    Ok(crate::records::from_model(power, raw.is_some()))
+                }
+                (Some(Err(e)), Err(_)) => Err(e),
+                (None, Err(e)) => Err(e.clone()),
+            };
+            if let Ok(r) = &built {
+                let count: usize = r.tables.iter().map(|t| t.rows.len()).sum();
+                log::info!(
+                    "Read {count} records in {} tables ({:.0} ms)",
+                    r.tables.len(),
+                    elapsed_ms(start)
+                );
+            }
+            self.records = Some(built);
+        }
+        match self.records.as_ref() {
+            Some(Ok(r)) => Ok(r),
+            Some(Err(e)) => Err(e.clone()),
+            None => unreachable!(),
+        }
+    }
+
+    pub fn record_book(&mut self) -> Result<RecordBook, String> {
+        Ok(self.records()?.book())
+    }
+
+    pub fn record_table(&mut self, section: &str) -> Result<RecordTable, String> {
+        Ok(self.records()?.table(section)?.clone())
     }
 
     fn topology_state(&self) -> Result<&TopologyState, String> {

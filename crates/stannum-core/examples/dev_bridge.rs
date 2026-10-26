@@ -64,6 +64,11 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             ws.current()?
                 .element_detail(&arg::<String>(args, "element")?)?,
         ),
+        "case_records" => to_json(ws.current_mut()?.record_book()?),
+        "record_table" => to_json(
+            ws.current_mut()?
+                .record_table(&arg::<String>(args, "section")?)?,
+        ),
         "diagram_network" => to_json(ws.current()?.diagram_network()?),
         "topology_snapshot" => to_json(ws.current()?.topology_snapshot()?),
         "topology_set_merge" => to_json(

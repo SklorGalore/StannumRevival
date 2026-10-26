@@ -124,6 +124,8 @@ pub fn run() {
             analysis::export_matpower,
             analysis::diagram_network,
             analysis::element_detail,
+            analysis::case_records,
+            analysis::record_table,
             analysis::topology_snapshot,
             analysis::topology_set_merge,
             analysis::topology_shortest_path,

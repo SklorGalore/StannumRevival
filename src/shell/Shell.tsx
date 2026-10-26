@@ -10,6 +10,7 @@ import { MODULES } from "./ModuleRail";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
 import { PowerFlowModule } from "../modules/power/PowerFlowModule";
 import { CaseDiffModule } from "../modules/diff/CaseDiffModule";
+import { RecordsModule } from "../modules/records/RecordsModule";
 
 const CASE_EXTENSIONS = /\.(raw|m)$/i;
 
@@ -161,6 +162,7 @@ export function Shell() {
         <div ref={body} className="flex-1 min-h-0 relative">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}
           {pane("power", <PowerFlowModule active={shown("power")} />)}
+          {pane("records", <RecordsModule active={shown("records")} />)}
           {pane("diff", <CaseDiffModule active={shown("diff")} />)}
           {split && <Divider container={body} />}
         </div>

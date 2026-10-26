@@ -143,6 +143,23 @@ pub async fn element_detail(
     with(state, move |ws| ws.current()?.element_detail(&element)).await
 }
 
+/// The open case's record types and their counts, for the Records module.
+#[tauri::command]
+pub async fn case_records(
+    state: State<'_, SharedWorkspace>,
+) -> Result<stannum_core::records::RecordBook, String> {
+    with(state, |ws| ws.current_mut()?.record_book()).await
+}
+
+/// Every record of one type, with every field.
+#[tauri::command]
+pub async fn record_table(
+    state: State<'_, SharedWorkspace>,
+    section: String,
+) -> Result<stannum_core::records::RecordTable, String> {
+    with(state, move |ws| ws.current_mut()?.record_table(&section)).await
+}
+
 /// Serialized inside the lock: the snapshot borrows the parsed case.
 #[tauri::command]
 pub async fn topology_snapshot(

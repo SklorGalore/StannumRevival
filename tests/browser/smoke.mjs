@@ -1132,6 +1132,58 @@ if (STANNUM_VIOLATIONS) {
   await page.getByTestId("tables-drawer").getByRole("button", { name: "Hide tables" }).click();
 }
 
+// Records: every record type of the open case with every field, sorted,
+// filtered, and picked into the inspector and onto the diagram.
+await queue(STANNUM_RAW);
+await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Records", exact: true }).click();
+const recordTypes = page.getByTestId("record-types");
+await recordTypes.getByRole("button", { name: /^Buses/ }).waitFor();
+const records = page.getByTestId("records-table");
+const recordRows = records.locator("tbody tr:not([data-spacer])");
+await recordRows.first().waitFor();
+assert.equal(await recordRows.count(), 5, "five buses");
+for (const field of ["I", "NAME", "BASKV", "IDE", "AREA", "ZONE", "VM", "VA", "EVLO"])
+  await records.getByRole("columnheader", { name: field, exact: true }).waitFor();
+// Sort by base kV, highest first.
+const kvHeader = records.getByRole("columnheader", { name: "BASKV", exact: true });
+await kvHeader.click();
+await kvHeader.click();
+const kvIndex = await records.locator("thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent.trim() === "BASKV"));
+const kvs = (await recordRows.locator(`td:nth-child(${kvIndex + 1})`).allInnerTexts()).map(Number);
+assert.deepEqual(kvs, [...kvs].sort((a, b) => b - a), "sorted by base kV, highest first");
+await shot("records-buses");
+// A filter chip on any field.
+const recordChips = page.getByTestId("records-module").getByTestId("filter-chips");
+await recordChips.getByRole("button", { name: "Add filter" }).click();
+const recordEditor = page.getByRole("dialog", { name: "Edit filter" });
+await recordEditor.getByLabel("Filter field").selectOption({ label: "BASKV" });
+await recordEditor.getByLabel("Filter operator").selectOption("lte");
+await recordEditor.getByLabel("Filter value").fill("100");
+await recordEditor.getByRole("button", { name: "Done" }).click();
+await recordChips.getByTestId("filter-chip").filter({ hasText: "BASKV ≤ 100" }).waitFor();
+await recordChips.getByText(/^\d+ of 5 buses$/).waitFor();
+for (const kv of await recordRows.locator(`td:nth-child(${kvIndex + 1})`).allInnerTexts()) assert.equal(kv.trim(), "69");
+await shot("records-filtered");
+await recordChips.getByRole("button", { name: /^Remove filter/ }).click();
+// Loads, and a pick that opens the inspector, then Draw around.
+await recordTypes.getByRole("button", { name: /^Loads/ }).click();
+await records.getByRole("columnheader", { name: "PL", exact: true }).waitFor();
+await recordRows.first().click();
+const recordInspector = page.getByTestId("records-inspector");
+await recordInspector.getByTestId("inspector-title").filter({ hasText: /^Load / }).waitFor();
+await shot("records-inspector");
+await recordInspector.getByRole("button", { name: "Draw around" }).click();
+await page.locator(".react-flow__node-bus").first().waitFor();
+// A MATPOWER case lists the power flow model's tables.
+await queue(STANNUM_MATPOWER);
+await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Records", exact: true }).click();
+await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
+await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
+assert.equal(await recordRows.count(), 9, "nine buses in case9");
+await shot("records-matpower");
+
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();
 console.log("smoke test passed");

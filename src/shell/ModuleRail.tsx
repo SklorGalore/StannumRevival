@@ -1,4 +1,4 @@
-import { GitCompareArrows, Monitor, Moon, PencilRuler, Sun, Zap } from "lucide-react";
+import { GitCompareArrows, Monitor, Moon, PencilRuler, Sheet, Sun, Zap } from "lucide-react";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
@@ -9,6 +9,7 @@ import { dragRegion } from "./WindowControls";
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
   { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC/DC power flow and sensitivities (rs-power)" },
+  { id: "records", label: "Records", icon: <Sheet size={18} />, hint: "Every record in the open case as a table: all fields, sort and filter" },
   { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Exact RAW case comparison (case-diff)" },
 ];
 

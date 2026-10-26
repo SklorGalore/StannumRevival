@@ -14,6 +14,7 @@ import {
   PencilRuler,
   Play,
   Search,
+  Sheet,
   Sun,
   Terminal,
   Wand2,
@@ -39,6 +40,7 @@ interface Command {
 const MODULE_COMMANDS: { id: ModuleId; title: string; icon: ReactNode }[] = [
   { id: "diagram", title: "Go to Diagram", icon: <PencilRuler size={14} /> },
   { id: "power", title: "Go to Power flow", icon: <Zap size={14} /> },
+  { id: "records", title: "Go to Records", icon: <Sheet size={14} /> },
   { id: "diff", title: "Go to Case diff", icon: <GitCompareArrows size={14} /> },
 ];
 
