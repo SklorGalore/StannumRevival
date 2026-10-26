@@ -25,11 +25,16 @@ jobs:
           persist-credentials: false
       # The .deb files are cached per runner image, so a slow Ubuntu mirror
       # only costs time when the image changes (about once a week).
+      # ImageOS and ImageVersion are runner environment variables, which
+      # the env context can't see, so pass them on as a step output.
+      - name: Read the runner image
+        id: image
+        run: echo "id=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
       - name: Restore Tauri system packages
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/tauri-apt
-          key: tauri-apt-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/ci/install-tauri-deps.ps1') }}
+          key: tauri-apt-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ hashFiles('scripts/ci/install-tauri-deps.ps1') }}
       - name: Install Tauri system dependencies
         shell: pwsh
         timeout-minutes: 15

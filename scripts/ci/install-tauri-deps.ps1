@@ -4,11 +4,12 @@ Installs the Linux packages Tauri needs to build, from a local cache of .deb
 files when one is there.
 
 .DESCRIPTION
-CI restores -CacheDir with actions/cache before this runs. On a cache hit the
-packages install straight from the cached .deb files, so a slow Ubuntu mirror
-can't stall the job. On a miss (or if the cached files don't install) it falls
-back to apt-get with retries and timeouts, then copies the downloaded .deb
-files into -CacheDir for the next run to save.
+CI restores -CacheDir with actions/cache before this runs. The cached .deb
+files are copied into apt's archive folder, so apt-get only downloads what
+the cache doesn't already hold and a slow Ubuntu mirror can't stall the job.
+apt still resolves the install itself, so packages the runner image already
+has at newer versions are never downgraded. Afterwards the .deb files are
+copied back into -CacheDir for the next run to save.
 
 .EXAMPLE
 pwsh scripts/ci/install-tauri-deps.ps1 -CacheDir ~/.cache/tauri-apt
@@ -37,27 +38,22 @@ $aptOptions = @(
 New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
 $cached = @(Get-ChildItem -Path $CacheDir -Filter '*.deb' -ErrorAction SilentlyContinue)
 
+# Start from an empty archive folder, seeded with the cached downloads.
+& sudo apt-get clean
 if ($cached.Count -gt 0) {
-    Write-Host "Installing $($cached.Count) cached packages from $CacheDir"
-    & sudo dpkg -i @($cached.FullName)
-    if ($LASTEXITCODE -eq 0) {
-        & dpkg -s @packages | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host 'Tauri packages installed from the cache.'
-            exit 0
-        }
-    }
-    Write-Warning 'The cached packages did not install cleanly; falling back to apt-get.'
+    Write-Host "Seeding apt with $($cached.Count) cached packages from $CacheDir"
+    & sudo cp @($cached.FullName) /var/cache/apt/archives/
+    if ($LASTEXITCODE -ne 0) { throw 'Could not copy the cached packages' }
 }
 
 & sudo apt-get @aptOptions update
 if ($LASTEXITCODE -ne 0) { throw 'apt-get update failed' }
 
-# Clear the archive folder so only this install's downloads get cached.
-& sudo apt-get clean
 & sudo apt-get @aptOptions install -y --no-install-recommends @packages
 if ($LASTEXITCODE -ne 0) { throw 'apt-get install failed' }
 
+# Drop versions the mirror no longer offers, then keep the rest for next time.
+& sudo apt-get autoclean
 $downloaded = @(Get-ChildItem -Path '/var/cache/apt/archives' -Filter '*.deb' -ErrorAction SilentlyContinue)
 Remove-Item -Path (Join-Path $CacheDir '*.deb') -ErrorAction SilentlyContinue
 foreach ($deb in $downloaded) {
