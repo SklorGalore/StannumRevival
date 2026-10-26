@@ -1,6 +1,8 @@
 mod analysis;
+mod splash;
 
 use base64::{engine::general_purpose, Engine as _};
+use tauri::Manager;
 
 #[tauri::command]
 async fn save_diagram(path: String, content: String) -> Result<(), String> {
@@ -29,14 +31,32 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(analysis::SharedWorkspace::default())
         .manage(analysis::ContingencyRun::default())
+        .manage(splash::Splash::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
+            splash::start(app.handle());
             Ok(())
+        })
+        .on_page_load(|webview, payload| {
+            if webview.label() == splash::SPLASH
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+            {
+                splash::page_loaded(webview.app_handle());
+            }
+        })
+        .on_window_event(|window, event| {
+            // Closing the splash early still brings up the app.
+            if window.label() == splash::SPLASH {
+                if let tauri::WindowEvent::Destroyed = event {
+                    splash::reveal(window.app_handle());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             save_diagram,
             load_diagram,
             save_binary,
+            splash::app_ready,
             analysis::open_case,
             analysis::close_case,
             analysis::case_summary,

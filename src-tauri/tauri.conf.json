@@ -12,13 +12,31 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Stannum",
+        "visible": false,
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
         "minHeight": 640,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "splash",
+        "url": "splash.html",
+        "backgroundColor": "#0f2e30",
+        "title": "Stannum",
+        "width": 360,
+        "height": 380,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "center": true,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "focus": false
       }
     ],
     "security": {
