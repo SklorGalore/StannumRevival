@@ -550,6 +550,8 @@ await page.mouse.move(barNow.x + 100, barNow.y + barNow.height + 40, { steps: 10
 await page.mouse.up();
 const back = await loadY((y) => Math.abs(y - (barNow.y + barNow.height)) < 3);
 assert(Math.abs(back - (barNow.y + barNow.height)) < 3, `load dragged back snaps onto the bar again (${back})`);
+// The wire moves to its new tap a couple of frames after the drop.
+await page.waitForTimeout(300);
 assert.equal(await page.locator(".react-flow__edge").count(), 2, "re-attached load keeps one wire");
 await page.waitForFunction(() =>
   [...document.querySelectorAll(".react-flow__edge-path:not(.react-flow__edge-interaction)")].every((p) => p.getAttribute("d").split("L").length === 2)

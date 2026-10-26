@@ -250,23 +250,33 @@ export function DiagramCanvas() {
       let tap = busTapsNow.find((t) => t.side === side && Math.abs(t.x - x) < 1);
       if (!tap && bus.id === wiredBus!.id && !keepOld) tap = { id: oldTapId!, x, side };
       tap ??= { id: `bus-tap-${nanoid(6)}`, x, side };
-      const nextTaps = (n: SLDNode) => {
-        const list = tapsOf(n);
-        return n.id === bus.id && !list.some((t) => t.id === tap!.id) ? [...list, tap!] : list;
+      // The old tap stays until the wire has moved off it, so the wire is
+      // never left pointing at a handle that isn't there.
+      const dropOld = !keepOld && tap.id !== oldTapId;
+      const withNew = (n: SLDNode) => {
+        const list = n.id === wiredBus!.id && !keepOld && tap!.id === oldTapId ? tapsOf(n) : busTaps(n.data as BusData);
+        return list.some((t) => t.id === tap!.id) ? list : [...list, tap!];
       };
       useDiagramStore.getState().setNodes(
-        placed.map((n) =>
-          n.id === bus.id || (n.id === wiredBus!.id && !keepOld) ? ({ ...n, data: { ...n.data, taps: nextTaps(n) } } as SLDNode) : n
-        )
+        placed.map((n) => (n.id === bus.id ? ({ ...n, data: { ...n.data, taps: withNew(n) } } as SLDNode) : n))
       );
       const { route: _r, pinnedRoute: _p, labelAt: _l, ...data } = wired.data ?? ({} as NonNullable<SLDEdge["data"]>);
       const moved = { ...wired, [wiredEnd!]: bus.id, [`${wiredEnd!}Handle`]: tap.id, data } as SLDEdge;
       // The tap must be measured before the wire can attach to it.
       requestAnimationFrame(() => {
-        updateNodeInternals([bus.id, wiredBus!.id]);
+        updateNodeInternals(bus.id);
         requestAnimationFrame(() => {
-          const { edges: now, setEdges: put } = useDiagramStore.getState();
+          const { edges: now, setEdges: put, nodes: all2, setNodes: putNodes } = useDiagramStore.getState();
           put(now.map((e) => (e.id === wired.id ? moved : e)));
+          if (!dropOld) return;
+          putNodes(
+            all2.map((n) =>
+              n.id === wiredBus!.id
+                ? ({ ...n, data: { ...n.data, taps: busTaps(n.data as BusData).filter((t) => t.id !== oldTapId) } } as SLDNode)
+                : n
+            )
+          );
+          requestAnimationFrame(() => updateNodeInternals(wiredBus!.id));
         });
       });
       return true;
