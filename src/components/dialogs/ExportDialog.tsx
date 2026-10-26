@@ -89,7 +89,7 @@ export function ExportDialog({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 whitespace-normal">
       <div className="bg-white rounded-lg shadow-xl w-80 p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700">Export Diagram</h2>
