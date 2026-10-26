@@ -26,6 +26,7 @@ import type {
   TopoPath,
   TopologySnapshot,
 } from "./types";
+import { decodeSolveReport, type WireSolveReport } from "./wire";
 
 /** How each command reads in the log. Quiet ones only log when they fail. */
 const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean }> = {
@@ -66,7 +67,9 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   } catch (e) {
     const error = new Error(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
     await catchUpLog();
-    end({ error: error.message });
+    // Stopping on request is not a failure.
+    if (error.message.startsWith("Solve cancelled")) end({ cancelled: true });
+    else end({ error: error.message });
     throw error;
   }
 }
@@ -124,7 +127,10 @@ export const api = {
   closeCase: () => call<void>("close_case"),
   caseSummary: () => call<CaseSummary | null>("case_summary"),
 
-  solve: (settings: SolveSettings) => call<SolveReport>("solve_power_flow", { settings }),
+  solve: async (settings: SolveSettings): Promise<SolveReport> =>
+    decodeSolveReport(await call<WireSolveReport>("solve_power_flow", { settings })),
+  /** Stops the solve in progress; it keeps the previous results. */
+  cancelSolve: () => invoke<void>("cancel_solve"),
   setStudyEdits: (edits: StudyEdit[]) => call<void>("set_study_edits", { edits }),
   loadDcGrids: (path: string) => call<DcGridsSummary>("load_dc_grids", { path }),
   clearDcGrids: () => call<void>("clear_dc_grids"),

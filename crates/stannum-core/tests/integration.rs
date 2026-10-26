@@ -581,6 +581,92 @@ fn a_dc_grid_file_that_does_not_fit_the_case_is_refused() {
 }
 
 #[test]
+fn a_cancelled_solve_keeps_the_previous_results() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let case = ws.current_mut().unwrap();
+    case.solve(SolveSettings::default()).unwrap();
+    let err = case
+        .solve_cancellable(
+            SolveSettings::default(),
+            Some(Arc::new(AtomicBool::new(true))),
+        )
+        .unwrap_err();
+    assert_eq!(err, stannum_core::workspace::SOLVE_CANCELLED);
+    assert!(case.solved.is_some());
+}
+
+#[test]
+fn the_report_sends_its_tables_as_columns() {
+    let mut ws = Workspace::default();
+    ws.open(&fixture("case9.m")).unwrap();
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(SolveSettings::default())
+        .unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let buses = &json["buses"];
+    assert_eq!(buses["count"], 9);
+    assert_eq!(buses["id"].as_array().unwrap().len(), 9);
+    let branches = &json["branches"];
+    assert_eq!(branches["count"], report.branches.len());
+    for (i, row) in report.branches.iter().enumerate() {
+        assert_eq!(branches["element"][i], row.element.as_str());
+        let pf = branches["pf"][i].as_f64().unwrap();
+        assert!((pf - row.pf).abs() <= 5e-5, "rounded to 0.1 kW");
+        assert_eq!(
+            branches["loading_pct"][i].is_null(),
+            row.loading_pct.is_none()
+        );
+    }
+    let vm = buses["vm"][0].as_f64().unwrap();
+    assert!((vm - report.buses[0].vm).abs() <= 5e-7);
+    assert_eq!(json["generators"]["online"][0], true);
+}
+
+#[test]
+fn every_row_field_has_a_column() {
+    // A field added to a row struct must also be added to its column list
+    // in `power::wire`, or the frontend never sees it.
+    let mut ws = Workspace::default();
+    ws.open(&fixture("five_bus_zip.raw")).unwrap();
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(SolveSettings::default())
+        .unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let keys = |v: &serde_json::Value| {
+        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        k.retain(|k| k != "count");
+        k.sort();
+        k
+    };
+    let rows = [
+        ("buses", serde_json::to_value(&report.buses[0]).unwrap()),
+        (
+            "generators",
+            serde_json::to_value(&report.generators[0]).unwrap(),
+        ),
+        (
+            "branches",
+            serde_json::to_value(&report.branches[0]).unwrap(),
+        ),
+    ];
+    for (table, row) in rows {
+        assert_eq!(keys(&json[table]), keys(&row), "{table}");
+    }
+    let parts = json["buses"]["load_parts"].as_array().unwrap();
+    assert!(
+        parts.iter().any(|p| !p.is_null()),
+        "ZIP load parts are sent"
+    );
+}
+
+#[test]
 fn zip_loads_vary_with_voltage_and_show_their_parts() {
     let mut ws = Workspace::default();
     ws.open(&fixture("five_bus_zip.raw")).unwrap();

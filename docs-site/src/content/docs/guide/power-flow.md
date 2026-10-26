@@ -26,6 +26,13 @@ holds:
 diagram toolbar. The [technical manual](/StannumRevival/manual/ac-power-flow/)
 explains what each setting does to the solve.
 
+While a solve runs, **Solve** becomes **Cancel solve**, in the settings panel
+and on the rail. Cancelling stops the solve before its next Newton step, and
+the previous results stay on screen. On a large case this takes about a
+second; the log records the solve as cancelled, not failed.
+
+![Cancel solve on a 78,400-bus case, and the notice once it stops](../../../assets/screens/solve-cancel.png)
+
 A nonconverged result is kept and labelled, so you can inspect the final
 iterate and see where the mismatch is.
 

@@ -196,7 +196,8 @@ pub struct RunHandle(Arc<RunState>);
 
 #[derive(Default)]
 struct RunState {
-    cancel: AtomicBool,
+    /// Shared with each AC solve, so cancelling stops one mid-solve too.
+    cancel: Arc<AtomicBool>,
     phase: AtomicUsize,
     done: AtomicUsize,
     total: AtomicUsize,
@@ -865,11 +866,13 @@ impl<'a> Context<'a> {
             .collect();
         let case = self.outage_case(outage, &cut);
         let mut options = settings.options_for(self.power);
+        options.cancel = Some(handle.0.cancel.clone());
         let warm = power::warm_start(&case, self.base, &mut options);
         let mut row = screened.row.clone();
         row.checked = "ac";
         let result = match rs_power::solve(&warm, &options) {
             Ok(r) => r,
+            Err(rs_power::Error::Cancelled) => return None,
             Err(e) => {
                 log::debug!("{}: AC solve failed: {e}", outage.element);
                 row.converged = Some(false);

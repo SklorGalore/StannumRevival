@@ -53,6 +53,15 @@ another.
 A [study](/StannumRevival/guide/studies/) is a list of edits applied to a copy
 of the power flow case before each solve. The file is never changed.
 
+## Results on the wire
+
+A solve report goes to the interface as JSON. Its bus, generator and branch
+tables travel as one array per field rather than one object per row, with
+flows rounded to 0.1 kW and per-unit voltages to six decimals; the interface
+turns them back into rows (`src/lib/analysis/wire.ts`). On a 78,400-bus case
+this cuts the report from 62 MB to 22 MB. A solve can be cancelled: the shell
+hands the core a flag, which the Newton loop checks before each step.
+
 ## Logging
 
 Every crate logs through the Rust `log` facade. stannum-core installs a

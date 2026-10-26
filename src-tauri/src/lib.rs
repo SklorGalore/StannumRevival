@@ -85,6 +85,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(analysis::SharedWorkspace::default())
         .manage(analysis::ContingencyRun::default())
+        .manage(analysis::SolveRun::default())
         .manage(splash::Splash::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
@@ -139,6 +140,7 @@ pub fn run() {
             analysis::contingency_rows,
             analysis::contingency_detail,
             analysis::trip_and_compare,
+            analysis::cancel_solve,
             analysis::log_entries,
         ])
         .run(tauri::generate_context!())

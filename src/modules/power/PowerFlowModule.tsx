@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, Zap } from "lucide-react";
+import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
@@ -407,6 +407,7 @@ function SolvePanel({
   setSettings,
   busy,
   onSolve,
+  onCancelSolve,
   onSensitivities,
   report,
   onExport,
@@ -417,6 +418,7 @@ function SolvePanel({
   setSettings: (s: SolveSettings) => void;
   busy: string | null;
   onSolve: () => void;
+  onCancelSolve: () => void;
   onSensitivities: () => void;
   report: SolveReport | null;
   onExport: (solved: boolean) => void;
@@ -533,9 +535,15 @@ function SolvePanel({
         />
         Adjust DC converter taps
       </label>
-      <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
-        <Play size={14} /> {busy === "solve" ? "Solving…" : "Solve"}
-      </Button>
+      {busy === "solve" ? (
+        <Button className="py-2 text-sm" onClick={onCancelSolve} data-testid="cancel-solve" title="Stop this solve and keep the previous results">
+          <X size={14} /> Cancel solve
+        </Button>
+      ) : (
+        <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
+          <Play size={14} /> Solve
+        </Button>
+      )}
       <Button onClick={onSensitivities} disabled={!!busy}>
         <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
       </Button>
@@ -1094,6 +1102,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           setSettings={setSettings}
           busy={busy}
           onSolve={solve}
+          onCancelSolve={() => void api.cancelSolve()}
           onSensitivities={sensitivities}
           report={report}
           onExport={exportMatpower}
@@ -1114,19 +1123,19 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           <button
             type="button"
             className="p-1.5 rounded text-teal-700 hover:bg-teal-50 disabled:opacity-40"
-            onClick={solve}
-            disabled={!!busy}
-            title={`Solve (${settings.model.toUpperCase()})`}
-            aria-label="Solve"
+            onClick={busy === "solve" ? () => void api.cancelSolve() : solve}
+            disabled={!!busy && busy !== "solve"}
+            title={busy === "solve" ? "Cancel solve" : `Solve (${settings.model.toUpperCase()})`}
+            aria-label={busy === "solve" ? "Cancel solve" : "Solve"}
           >
-            <Play size={16} />
+            {busy === "solve" ? <X size={16} /> : <Play size={16} />}
           </button>
         </div>
       )}
       <div className="flex-1 min-w-0 flex flex-col">
         {error && (
           <div className="p-3 pb-0">
-            <ErrorBanner>{error}</ErrorBanner>
+            {error.startsWith("Solve cancelled") ? <Notice>{error}</Notice> : <ErrorBanner>{error}</ErrorBanner>}
           </div>
         )}
         {stale && (
