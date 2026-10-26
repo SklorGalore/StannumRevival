@@ -1366,8 +1366,10 @@ fn solve_core(
     let limits = opt.enforce_q_limits || !setup.continuous.is_empty();
     // While reactive limits may still switch buses, solves stop at a looser
     // tolerance: the next pass changes the equations anyway. The last solve
-    // always meets `opt.tolerance`.
-    let mut loose = limits;
+    // always meets `opt.tolerance`. A tolerance already at or above the
+    // loose one has nothing to gain from a looser stage, so it is skipped.
+    let staged = limits && opt.tolerance < LOOSE_TOLERANCE;
+    let mut loose = staged;
     {
         let id = |i: usize| case.buses[net.external[i]].id;
         let count = |k: BusType| kinds.iter().filter(|&&x| x == k).count();
@@ -1691,7 +1693,7 @@ fn solve_core(
                 case.generators[net.gens[remote[k]][0]].vg
             );
         }
-        loose = true;
+        loose = staged;
         let mut fixed = false;
         for &(i, g, limit, upper) in &violations {
             kinds[i] = BusType::Pq;

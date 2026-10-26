@@ -14,7 +14,7 @@ holds:
 | --- | --- | --- |
 | **Model** | **AC** Newton–Raphson, or **DC** linear flow | AC |
 | **Starting voltages** | **From case** (the voltages saved in the file) or **Flat** (1 p.u., reference angles) | From case |
-| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 1e-6 on a 100 MVA base (1e-8 p.u.) |
+| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2 on a 100 MVA base (0.02 p.u.) |
 | **Newton iterations per pass** | Newton steps allowed in each pass | 10 |
 | **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | Off |
 | **Switch shunts** | Let switched shunts in voltage control move (RAW only) | On |

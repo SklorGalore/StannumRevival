@@ -38,9 +38,14 @@ fn matpower_case_solves_and_reports_limits() {
     assert_eq!(report.limits.branch_overloads, 0);
     let worst = report.limits.worst_branch.unwrap();
     assert!(worst.2 > 0.0 && worst.2 < 100.0);
-    // Generation balances load plus losses.
+    // Generation balances load plus losses, to within the bus mismatches
+    // the default 2 MVA tolerance leaves.
     let balance = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
-    assert!(balance.abs() < 1e-6, "power balance off by {balance}");
+    let allowed = report.buses.len() as f64 * report.residual_mva + 1e-6;
+    assert!(
+        balance.abs() < allowed,
+        "power balance off by {balance}, allowed {allowed}"
+    );
 
     let dc = ws
         .current_mut()
