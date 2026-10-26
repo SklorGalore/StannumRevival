@@ -16,7 +16,7 @@ export default defineConfig({
     starlight({
       title: "Stannum",
       description: "Documentation for Stannum, a desktop workbench for power system engineers.",
-      logo: { src: "./src/assets/logo.svg" },
+      logo: { src: "./src/assets/logo-small.svg" },
       favicon: "/favicon.svg",
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/SklorGalore/StannumRevival" }],
       editLink: { baseUrl: "https://github.com/SklorGalore/StannumRevival/edit/main/docs-site/" },
