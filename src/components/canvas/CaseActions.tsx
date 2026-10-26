@@ -187,6 +187,12 @@ export function NodeMenu({ menu, onClose }: { menu: Menu; onClose: () => void })
   );
 }
 
+/**
+ * Centred over the canvas, or, in a narrow pane where the inspector floats
+ * over the right side, beside the zoom controls on the left.
+ */
+export const NARROW_LEFT = "absolute left-1/2 -translate-x-1/2 @max-3xl:left-14 @max-3xl:translate-x-0";
+
 /** Shows the studied bus of a local drawing and lets you change the hop count. */
 export function LocalScopeBar() {
   const around = useDiagramStore((s) => s.metadata.around);
@@ -202,15 +208,15 @@ export function LocalScopeBar() {
   const name = kind && kind !== "bus" && kind !== "load" ? elementLabel(around.element!) : (focusName ?? `Bus ${around.bus}`);
   const btn = "p-1 rounded text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent";
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600">
-      <span className="px-1">
+    <div className={`${NARROW_LEFT} bottom-3 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600 whitespace-nowrap max-w-[calc(100%-4.5rem)]`}>
+      <span className="px-1 min-w-0 truncate">
         Around <span className="font-semibold text-slate-800">{name}</span>
       </span>
       <span className="w-px h-4 bg-slate-200 mx-1" />
       <button className={btn} title="One hop fewer" aria-label="One hop fewer" disabled={busy || around.depth <= 1} onClick={() => step(-1)}>
         <Minus size={13} />
       </button>
-      <span className="tabular-nums w-12 text-center" aria-label="Hops">
+      <span className="shrink-0 tabular-nums w-12 text-center" aria-label="Hops">
         {busy ? "…" : `${around.depth} hop${around.depth === 1 ? "" : "s"}`}
       </span>
       <button className={btn} title="One hop more" aria-label="One hop more" disabled={busy || around.depth >= 6} onClick={() => step(1)}>

@@ -4,7 +4,7 @@ import { useWorkspace } from "../../../store/workspaceStore";
 import { showNetwork, showOneLine } from "./switchStyle";
 
 /** The Network / One-line switch at the start of the Diagram's toolbar. */
-export function StyleSwitch() {
+export function StyleSwitch({ compact = false }: { compact?: boolean }) {
   const style = useDrawingStyle((s) => s.style);
   const busy = useDrawingStyle((s) => s.busy);
   const summary = useWorkspace((s) => s.caseSummary);
@@ -40,17 +40,18 @@ export function StyleSwitch() {
             aria-checked={on}
             disabled={o.disabled || busy}
             title={o.title}
+            aria-label={o.label}
             onClick={() => {
               if (on) return;
               if (o.id === "network") showNetwork();
               else void showOneLine();
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs whitespace-nowrap font-medium transition-colors ${
               on ? "bg-white text-teal-800 shadow-sm ring-1 ring-inset ring-teal-200" : "text-slate-600 hover:text-slate-900"
             } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             {o.icon}
-            {o.label}
+            {!compact && o.label}
           </button>
         );
       })}

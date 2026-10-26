@@ -18,6 +18,12 @@ import { DrawPrompt } from "./DrawPrompt";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useDrawingStyle } from "../../store/drawingStyleStore";
 import { NetworkCanvas, NetworkInspector, NetworkToolbar } from "./network/NetworkView";
+import { inspectorClass } from "../../ui/ElementInspector";
+import { useWidth } from "../../ui/useWidth";
+import { useLayers } from "../../store/layerStore";
+import { useLayerSync } from "./layers/useLayerSync";
+import { LayerLegend, LayersPanel } from "./layers/LayersPanel";
+import { TablesDrawer } from "./tables/TablesDrawer";
 
 /**
  * Keep the style's shared state in step with the rest of the app: a new case
@@ -157,6 +163,13 @@ function Inner({ active }: { active: boolean }) {
   const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
   const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
   const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
+  // Layers (topology findings, filters and colours) are drawn on both
+  // styles; the one-line needs them only when it is drawn from the case.
+  useLayerSync(active && (network || generated));
+  const layersOpen = useLayers((s) => s.panel);
+  const legends = useLayers((s) => s.legends);
+  const tablesOpen = useLayers((s) => s.tables);
+  const showLegend = network || generated;
   // The inspector only takes room while there is one thing to inspect: a
   // single symbol, a single wire, or a selected element this drawing lacks.
   const hasSelection = useDiagramStore(
@@ -165,11 +178,18 @@ function Inner({ active }: { active: boolean }) {
       (s.selectedNodeIds.length === 0 && s.selectedEdgeIds.length === 1) ||
       selectedCaseElement(s) !== null
   );
+  // In a narrow pane (side by side) the inspector floats over the canvas
+  // instead of taking a third of the width.
+  const [rowRef, rowWidth] = useWidth<HTMLDivElement>(1200);
+  const floating = rowWidth < 900;
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       {network ? <NetworkToolbar /> : <Toolbar />}
-      <div className="flex flex-1 min-h-0">
-        {network ? null : paletteOpen ? (
+      <div ref={rowRef} className="relative flex flex-1 min-h-0">
+        {layersOpen && floating && <LayersPanel floating />}
+        {layersOpen && !floating ? (
+          <LayersPanel />
+        ) : network ? null : paletteOpen ? (
           <aside className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
             <button
               className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
@@ -193,7 +213,7 @@ function Inner({ active }: { active: boolean }) {
             </button>
           </aside>
         )}
-        <main className={`flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
+        <main className={`@container flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
           {!drawing.busy && !network && <DrawPrompt />}
           {missing && !drawing.busy && !blank && !network && <NotDrawn element={missing} />}
@@ -202,6 +222,7 @@ function Inner({ active }: { active: boolean }) {
               <NetworkCanvas visible={active && network} />
             </div>
           )}
+          {showLegend && <LayerLegend legends={legends} />}
           {(styleBusy || styleError) && (
             <div
               className={`absolute left-1/2 top-3 -translate-x-1/2 z-30 flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs shadow-sm whitespace-nowrap ${
@@ -233,13 +254,14 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
-        {network && <NetworkInspector />}
+        {network && <NetworkInspector floating={floating} />}
         {!network && (hasSelection || missing) && (
-          <aside className="w-72 shrink-0 border-l border-slate-200 bg-white overflow-y-auto" data-testid="inspector">
+          <aside className={inspectorClass(floating)} data-testid="inspector">
             <PropertiesPanel missing={hasSelection ? null : missing} />
           </aside>
         )}
       </div>
+      {tablesOpen && <TablesDrawer />}
       {!network && <StatusBar />}
     </div>
   );

@@ -10,6 +10,12 @@ export interface Focus {
   depth: number;
 }
 
+/**
+ * What the Network style shows: the neighbourhood of the focus bus, a whole
+ * island (from the Islands table), or the buses on the shortest path.
+ */
+export type NetworkView = { kind: "around" } | { kind: "island"; island: number } | { kind: "path" };
+
 interface DrawingStyleState {
   style: DrawingStyle;
   setStyle: (style: DrawingStyle) => void;
@@ -19,6 +25,13 @@ interface DrawingStyleState {
   /** The element selected in the Diagram (a shared element id), kept across styles. */
   element: string | null;
   setElement: (element: string | null) => void;
+  view: NetworkView;
+  /** Show a whole island in the Network style. */
+  showIsland: (island: number) => void;
+  /** Show the shortest path's buses in the Network style. */
+  showPath: () => void;
+  /** Back to the neighbourhood of the focus bus. */
+  showAround: () => void;
   /** Incremented to fit the network to the view. */
   fit: number;
   requestFit: () => void;
@@ -39,7 +52,17 @@ export const useDrawingStyle = create<DrawingStyleState>((set) => ({
   setStyle: (style) => set({ style }),
   focus: null,
   setFocus: (focus) =>
-    set({ focus: focus && { bus: focus.bus, depth: Math.min(MAX_HOPS, Math.max(1, focus.depth)) } }),
+    set((s) => {
+      const next = focus && { bus: focus.bus, depth: Math.min(MAX_HOPS, Math.max(1, focus.depth)) };
+      // The same focus again (the one-line catching up) keeps an island or
+      // path view, and so does a first focus (the network catching up).
+      if (next && s.focus && next.bus === s.focus.bus && next.depth === s.focus.depth) return {};
+      return s.focus ? { view: { kind: "around" }, focus: next } : { focus: next };
+    }),
+  view: { kind: "around" },
+  showIsland: (island) => set({ style: "network", view: { kind: "island", island } }),
+  showPath: () => set({ style: "network", view: { kind: "path" } }),
+  showAround: () => set({ view: { kind: "around" } }),
   element: null,
   setElement: (element) => set({ element }),
   fit: 0,
@@ -47,5 +70,5 @@ export const useDrawingStyle = create<DrawingStyleState>((set) => ({
   requestFit: () => set((s) => ({ fit: s.fit + 1 })),
   busy: false,
   error: null,
-  reset: () => set({ focus: null, element: null, error: null }),
+  reset: () => set({ focus: null, element: null, error: null, view: { kind: "around" } }),
 }));

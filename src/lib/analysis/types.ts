@@ -18,6 +18,8 @@ export interface CaseCounts {
 export interface RawWarning {
   line: number;
   message: string;
+  /** The branch or generator the warning's record describes, when known. */
+  element?: string;
 }
 
 export interface CaseSummary {
