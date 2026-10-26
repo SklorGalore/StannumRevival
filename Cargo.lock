@@ -3687,6 +3687,7 @@ dependencies = [
  "encoding_rs",
  "log",
  "nodal",
+ "num-complex",
  "rs-power",
  "serde",
  "serde_json",

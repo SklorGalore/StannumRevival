@@ -41,6 +41,8 @@ pub fn run() {
             analysis::case_summary,
             analysis::solve_power_flow,
             analysis::set_study_edits,
+            analysis::load_dc_grids,
+            analysis::clear_dc_grids,
             analysis::calculate_sensitivities,
             analysis::sensitivity_responses,
             analysis::export_matpower,

@@ -614,6 +614,9 @@ pub struct SolveReport {
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
     pub dc_systems: Vec<DcSystemReport>,
+    /// VSC DC grids from an attached DC grid file, solved in sequence with
+    /// the AC network.
+    pub vsc_grids: Option<crate::dc_grids::VscGridsReport>,
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -943,6 +946,7 @@ pub fn report(
         branches,
         dc_lines,
         dc_systems,
+        vsc_grids: None,
     }
 }
 

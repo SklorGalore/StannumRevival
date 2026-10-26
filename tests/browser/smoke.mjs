@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
-const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_SHOTS } = process.env;
+const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_VSC_CASE, STANNUM_VSC_GRIDS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
 
@@ -642,6 +642,32 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await chip.getByRole("button", { name: "Show in Diagram" }).click();
   await page.locator(".react-flow__node-dcLink.selected").waitFor();
   await shot("dc-diff-back");
+}
+
+// VSC DC grids: attach a Stannum DC grid file to a case, solve, and read the
+// converters, DC buses and DC lines of each grid.
+if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
+  await queue(STANNUM_VSC_CASE);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByTestId("open-vsc-grids").click();
+  await queue(STANNUM_VSC_GRIDS);
+  await page.getByRole("button", { name: "Attach DC grid file…" }).click();
+  await page.getByTestId("dc-grid-file").getByText("two_area.dcgrid.json").waitFor();
+  await page.getByText("Solve to include these DC grids.").waitFor();
+  await shot("vsc-grids-attached");
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  const tab = page.getByTestId("vsc-grids");
+  await tab.getByText("AC/DC iterations").waitFor();
+  assert.equal(await tab.getByTestId("vsc-grid").count(), 2, "both DC grids reported");
+  await tab.getByRole("cell", { name: "Offshore", exact: true }).first().waitFor();
+  await tab.getByRole("cell", { name: "DC slack" }).waitFor();
+  await tab.getByRole("cell", { name: "Droop" }).first().waitFor();
+  await shot("vsc-grids");
+  await tab.getByTestId("vsc-grid").nth(1).scrollIntoViewIfNeeded();
+  await shot("vsc-grids-droop");
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await page.getByText("Converged").first().waitFor();
 }
 
 // Findings lead somewhere: on a case with limit violations, a check opens the

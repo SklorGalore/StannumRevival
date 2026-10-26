@@ -290,6 +290,67 @@ converter naming its `Case::dcline` row. Pass them as
   PSS/E) and link inductance. Import warns about margins and ground
   resistances.
 
+### Meshed VSC DC grids
+
+`solve_dc_grids` solves meshed and multi-terminal VSC DC grids (`DcGrid`)
+in sequence with the AC case, after Beerten, Cole and Belmans, "Generalized
+steady-state VSC MTDC model for sequential AC/DC power flow algorithms",
+IEEE Trans. Power Syst. 27(2), 2012. Converters hold a DC voltage (slack), a
+power order or a DC voltage droop, and a reactive power or AC voltage, with
+optional current and converter-voltage limits. Several grids, and several
+asynchronous AC islands, solve together:
+
+```rust
+use num_complex::Complex64 as C;
+use rs_power::*;
+
+let case = load_matpower("tests/fixtures/case9.m")?;
+let converter = |name: &str, ac_bus, dc_bus, dc_control| GridConverter {
+    name: name.into(),
+    ac_bus,
+    dc_bus,
+    in_service: true,
+    dc_control,
+    ac_control: AcControl::Reactive { q_mvar: 0.0 },
+    transformer: C::new(0.0015, 0.1121),
+    filter_b: 0.0,
+    reactor: C::new(0.0001, 0.16428),
+    losses: ConverterLosses::default(),
+    limits: ConverterLimits::default(),
+};
+let grid = DcGrid {
+    name: "Link".into(),
+    base_kv: 150.0,
+    poles: 2,
+    buses: vec![
+        DcGridBus { number: 1, name: "A".into() },
+        DcGridBus { number: 2, name: "B".into() },
+    ],
+    lines: vec![DcGridLine {
+        from: 1,
+        to: 2,
+        name: "A-B".into(),
+        resistance_ohm: 5.0,
+        in_service: true,
+    }],
+    converters: vec![
+        converter("A", 5, 1, DcControl::Slack { v_dc_pu: 1.0 }),
+        converter("B", 9, 2, DcControl::Power { p_mw: 50.0 }),
+    ],
+};
+let r = solve_dc_grids(&case, &PowerFlowOptions::default(), &[grid], &DcGridSettings::default())?;
+assert_eq!(r.status, SolveStatus::Converged);
+let [a, b] = &r.grids[0].converters[..] else { unreachable!() };
+assert!((b.ps_mw - 50.0).abs() < 1e-9 && a.ps_mw < -50.0);
+# Ok::<(), rs_power::Error>(())
+```
+
+`AcDcResult::grids` reports each converter's station quantities (AC
+injection, converter voltage and current, loss, DC power and voltage,
+reactive range and limit state), DC bus voltages and DC line flows.
+`AcDcResult::ac` is the last AC solve on the input case. Per-unit converter
+data is on the case's MVA base and the AC bus's base kV.
+
 Conversion tests compare every numeric bus, generator, branch and DC-line field,
 and bus names, against generated MATPOWER 8.1 results. They cover all supported
 revision layouts, all transformer CW/CZ combinations, partial winding statuses,

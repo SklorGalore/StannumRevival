@@ -80,6 +80,30 @@ When the case has DC lines, two more tabs appear:
 
 The models behind these numbers are in [HVDC](/StannumRevival/manual/hvdc/overview/).
 
+## VSC grids
+
+**VSC grids** adds meshed and multi-terminal VSC DC grids that aren't in the
+case file. **Attach DC grid file…** reads a [Stannum DC grid
+file](/StannumRevival/reference/dc-grid-file/), checks it against the case,
+and every AC solve after that includes its grids. Before the first solve,
+**Attach VSC DC grids…** on the ready-to-solve page leads here.
+
+After a solve the tab shows how many AC/DC iterations the converters took to
+settle, the DC grids' losses, and for each grid:
+
+- **Converters**: control modes, the AC injection ($P_s$, $Q_s$), the
+  converter's voltage and current, its loss, the DC power and voltage, the
+  reactive range its limits allow, and whether a limit reduced its order or
+  is still exceeded.
+- **DC buses**: voltages in per unit and kV, and what converters inject.
+- **DC lines**: current per pole, power at each end and loss.
+
+![VSC grids tab after a solve](../../../assets/screens/vsc-grids.png)
+
+**Replace…** attaches another file and **Detach** removes the grids; either
+solves again when results are showing. The DC (linear) model leaves VSC grids
+out. The model is in [Meshed VSC grids](/StannumRevival/manual/hvdc/vsc-grids/).
+
 ## Sensitivities
 
 **Calculate sensitivities** linearizes the solved case. Pick an injection bus
