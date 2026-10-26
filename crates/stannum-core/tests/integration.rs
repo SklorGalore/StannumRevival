@@ -38,9 +38,14 @@ fn matpower_case_solves_and_reports_limits() {
     assert_eq!(report.limits.branch_overloads, 0);
     let worst = report.limits.worst_branch.unwrap();
     assert!(worst.2 > 0.0 && worst.2 < 100.0);
-    // Generation balances load plus losses.
+    // Generation balances load plus losses, to within the bus mismatches
+    // the default 2 MVA tolerance leaves.
     let balance = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
-    assert!(balance.abs() < 1e-6, "power balance off by {balance}");
+    let allowed = report.buses.len() as f64 * report.residual_mva + 1e-6;
+    assert!(
+        balance.abs() < allowed,
+        "power balance off by {balance}, allowed {allowed}"
+    );
 
     let dc = ws
         .current_mut()
@@ -336,7 +341,12 @@ fn study_edits_change_what_is_solved() {
     let mut ws = Workspace::default();
     ws.open(&fixture("case9.m")).unwrap();
     let case = ws.current_mut().unwrap();
-    let base = case.solve(SolveSettings::default()).unwrap();
+    // Results are compared to 1e-6, so solve tighter than the 2 MVA default.
+    let tight = || SolveSettings {
+        tolerance: 1e-8,
+        ..SolveSettings::default()
+    };
+    let base = case.solve(tight()).unwrap();
     // A line on the ring, so taking it out leaves every bus connected.
     let line = base
         .branches
@@ -358,7 +368,7 @@ fn study_edits_change_what_is_solved() {
         },
     ])
     .unwrap();
-    let out = case.solve(SolveSettings::default()).unwrap();
+    let out = case.solve(tight()).unwrap();
     assert!(out.converged);
     let row = out.branches.iter().find(|b| b.element == element).unwrap();
     assert!(
@@ -386,7 +396,7 @@ fn study_edits_change_what_is_solved() {
         mw: 100.0,
     }])
     .unwrap();
-    let redispatched = case.solve(SolveSettings::default()).unwrap();
+    let redispatched = case.solve(tight()).unwrap();
     assert!((redispatched.generators[1].pg - 100.0).abs() < 1e-6);
 
     // Cutting generator 2's only line leaves an island the solver can't take.
@@ -395,7 +405,7 @@ fn study_edits_change_what_is_solved() {
         online: false,
     }])
     .unwrap();
-    let err = case.solve(SolveSettings::default()).unwrap_err();
+    let err = case.solve(tight()).unwrap_err();
     assert!(
         err.starts_with("The study's outages split the network"),
         "{err}"
@@ -404,7 +414,7 @@ fn study_edits_change_what_is_solved() {
     // No edits: back to the file. This solve starts from the redispatched
     // one, so it agrees with the first to the solver's tolerance.
     case.set_edits(vec![]).unwrap();
-    let again = case.solve(SolveSettings::default()).unwrap();
+    let again = case.solve(tight()).unwrap();
     assert!((again.total_losses_mw - base.total_losses_mw).abs() < 1e-6);
 }
 
@@ -417,6 +427,8 @@ fn last_solution_start_resumes_the_previous_solve() {
     let last = SolveSettings {
         start: StartChoice::Last,
         enforce_q_limits: true,
+        // Tight enough that a 1 MW load edit needs Newton steps.
+        tolerance: 1e-8,
         ..SolveSettings::default()
     };
     // Nothing solved yet: the case voltages, like "From case".

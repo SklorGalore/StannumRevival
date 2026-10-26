@@ -154,13 +154,18 @@ pub struct SolveSettings {
     pub adjust_transformer_taps: bool,
 }
 
+/// Default mismatch tolerance in per unit: 2 MVA on the usual 100 MVA base.
+/// Looser than the solver library's own default, which suits reference
+/// checks rather than day-to-day studies.
+pub const DEFAULT_TOLERANCE: f64 = 0.02;
+
 impl Default for SolveSettings {
     fn default() -> Self {
         let d = PowerFlowOptions::default();
         Self {
             model: ModelChoice::Ac,
             start: StartChoice::Last,
-            tolerance: d.tolerance,
+            tolerance: DEFAULT_TOLERANCE,
             max_iterations: d.max_iterations,
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,

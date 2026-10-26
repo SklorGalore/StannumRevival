@@ -506,3 +506,32 @@ fn solution_start_keeps_reactive_limits_and_needs_no_newton_steps() {
         assert!((a.qg - b.qg).abs() < 1e-5 && (a.pg - b.pg).abs() < 1e-5);
     }
 }
+
+#[test]
+fn tolerance_looser_than_the_staged_one_still_enforces_reactive_limits() {
+    // 2 MVA on 100 MVA is looser than the loose stage used while limits
+    // switch, so that stage is skipped and limits are checked at face value.
+    let mut c = parse_matpower(include_str!("fixtures/case30.m")).unwrap();
+    for g in &mut c.generators[1..] {
+        g.qmax = g.qmax.min(10.0);
+    }
+    let tight = PowerFlowOptions {
+        enforce_q_limits: true,
+        ..Default::default()
+    };
+    let loose = PowerFlowOptions {
+        tolerance: 0.02,
+        ..tight.clone()
+    };
+    let reference = solve(&c, &tight).unwrap();
+    let result = solve(&c, &loose).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    assert!(result.residual <= 0.02);
+    assert!(result.q_limit_passes > 0);
+    let kinds =
+        |r: &rs_power::PowerFlowResult| r.case.buses.iter().map(|b| b.kind).collect::<Vec<_>>();
+    assert_eq!(kinds(&result), kinds(&reference));
+    for g in &result.case.generators {
+        assert!(g.qg <= g.qmax + 1e-6 && g.qg >= g.qmin - 1e-6, "{g:?}");
+    }
+}
