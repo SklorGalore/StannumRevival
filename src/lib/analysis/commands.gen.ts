@@ -77,9 +77,12 @@ export type BusCoordinates = {
   /** Null for a bus with no place. */
   latitude: (number | null)[];
   longitude: (number | null)[];
-  /** "file", "estimated" or "none". */
-  source: ("file" | "estimated" | "none")[];
-  /** The substation the file names, if any. */
+  /**
+   * "file" (the coordinates file), "case" (the case's own substation
+   * data), "estimated" or "none".
+   */
+  source: ("file" | "case" | "estimated" | "none")[];
+  /** The substation the file or the case names, if any. */
   substation: (string | null)[];
   summary: CoordinatesSummary;
 };
@@ -138,7 +141,11 @@ export type CaseNetwork = {
 };
 
 export type CaseSummary = {
-  /** The attached bus coordinates file, if any. */
+  /**
+   * Where the bus places for the map come from: the attached coordinates
+   * file, the case's own substation data, or both. Null when neither
+   * places any bus.
+   */
   coordinates: CoordinatesSummary | null;
   /** The attached DC grid file, if any. */
   dc_grids: DcGridsSummary | null;
@@ -294,16 +301,25 @@ export type ContingencySummary = {
   worst: ContingencyRow | null;
 };
 
-/** What the app shows about the attached coordinates file. */
+/** What the app shows about where the case's bus places come from. */
 export type CoordinatesSummary = {
+  /** Substations in the case's own data with a place and buses. */
+  case_substations: number;
   /** Buses placed from their neighbours. */
   estimated: number;
+  /** Buses placed by the case's own substation data (and not by the file). */
+  from_case: number;
   /** Buses of the case placed by the file. */
   from_file: number;
   /** Buses with no place at all (no placed bus in their island). */
   missing: number;
+  /** The attached file's name, else the case's. */
   name: string;
-  path: string;
+  /**
+   * The attached coordinates file; null when the places come only from
+   * the case's own substation data.
+   */
+  path: string | null;
   /** Lines skipped in all. */
   problem_count: number;
   /** Lines skipped, with the reason; at most 20 are listed. */

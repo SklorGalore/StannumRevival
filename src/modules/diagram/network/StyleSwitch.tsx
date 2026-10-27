@@ -38,7 +38,7 @@ export function StyleSwitch({ compact = false }: { compact?: boolean }) {
           ? "This case can't be read for power flow, so it has no buses to place"
           : summary.coordinates
             ? "Draw the whole case at its bus coordinates, with the neighbourhood highlighted"
-            : "Draw the case on a map: attach a CSV of bus coordinates first",
+            : "Draw the case on a map: attach a CSV of bus coordinates first (RAW files with substation places draw on their own)",
       disabled: !summary?.power.available,
     },
   ];

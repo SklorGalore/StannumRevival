@@ -494,16 +494,105 @@ fn revision_34_mixes_revision_33_and_35_layouts() {
     assert_eq!((b.rate_a, b.rate_c, b.online), (100.0, 120.0, true));
     // BINIT 25 from the switched shunt plus BJ 0.04 p.u. from the line end.
     assert_eq!(imported.case.buses[1].bs, 29.0);
-    // Substation blocks after the known sections are reported once.
-    let extra: Vec<_> = imported
+    // Substation records after the known sections are read; at 0, 0 they
+    // have no place, and without nodes no buses.
+    let names: Vec<_> = imported
+        .substations
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(names, ["Sub", "Sub 2"]);
+    assert!(
+        imported
+            .substations
+            .iter()
+            .all(|s| s.place.is_none() && s.buses.is_empty())
+    );
+    assert!(
+        !imported
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("skipped") && w.message.contains("substation"))
+    );
+}
+
+/// Revision 35 with two substations in node-breaker form.
+fn with_substations(substations: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../stannum-core/tests/fixtures/five_bus.raw");
+    let text = std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
+    text.replace(
+        "0 / END OF INDUCTION MACHINE DATA\n",
+        &format!("0 / END OF INDUCTION MACHINE DATA, BEGIN SUBSTATION DATA\n{substations}0 / END OF SUBSTATION DATA\n"),
+    )
+}
+
+#[test]
+fn reads_substation_places_and_buses() {
+    let text = with_substations(
+        "@! IS,'NAME', LATITUDE, LONGITUDE, SRG\n\
+1,'North', 30.2672, -97.7431, 0.1\n\
+@! NI,'NAME', I, STATUS, VM, VA\n\
+1,'N1', 1, 1, 1.0, 0.0\n\
+2,'N2', 2, 1, 1.0, 0.0\n\
+3,'N3', 1, 1, 1.0, 0.0\n\
+0 / END OF SUBSTATION NODE DATA, BEGIN SUBSTATION SWITCHING DEVICE DATA\n\
+1, 3, '1', 'BRK', 2, 1, 1, 0.0001, 0, 0, 0\n\
+0 / END OF SUBSTATION SWITCHING DEVICE DATA, BEGIN SUBSTATION TERMINAL DATA\n\
+1, 1, 'L', 2, '1'\n\
+0 / END OF SUBSTATION TERMINAL DATA\n\
+2,'South', 0, 0, 0.1\n\
+1,'S1', 3, 1, 1.0, 0.0\n\
+0 / END OF SUBSTATION NODE DATA, BEGIN SUBSTATION SWITCHING DEVICE DATA\n\
+0 / END OF SUBSTATION SWITCHING DEVICE DATA, BEGIN SUBSTATION TERMINAL DATA\n\
+0 / END OF SUBSTATION TERMINAL DATA\n",
+    );
+    let imported = parse_raw_with_options(&text, &RawOptions::default()).unwrap();
+    let s = &imported.substations;
+    assert_eq!(s.len(), 2);
+    assert_eq!((s[0].number, s[0].name.as_str()), (1, "North"));
+    assert_eq!(s[0].place, Some((30.2672, -97.7431)));
+    assert_eq!(s[0].buses, [1, 2]);
+    assert_eq!(s[1].place, None);
+    assert_eq!(s[1].buses, [3]);
+    // The switching device and terminal are node-breaker detail, reported once.
+    let skipped: Vec<_> = imported
         .warnings
         .iter()
-        .filter(|w| w.message.contains("additional section"))
+        .filter(|w| w.message.contains("node-breaker"))
         .collect();
-    assert_eq!(extra.len(), 1);
-    assert_eq!(
-        extra[0].message,
-        "skipped 2 records of additional section data"
+    assert_eq!(skipped.len(), 1, "{:?}", imported.warnings);
+    assert!(skipped[0].message.starts_with("skipped 2 records"));
+    // Strict mode still refuses to drop the node-breaker detail.
+    let strict = RawOptions {
+        strict: true,
+        ..Default::default()
+    };
+    assert!(parse_raw_with_options(&text, &strict).is_err());
+}
+
+#[test]
+fn substation_problems_are_warnings() {
+    let text = with_substations(
+        "1,'Far', 95, -97, 0.1\n\
+1,'N1', 99, 1, 1.0, 0.0\n\
+0\n0\n0\n",
+    );
+    let imported = parse_raw_with_options(&text, &RawOptions::default()).unwrap();
+    assert_eq!(imported.substations[0].place, None);
+    assert!(imported.substations[0].buses.is_empty());
+    let messages: Vec<_> = imported
+        .warnings
+        .iter()
+        .map(|w| w.message.as_str())
+        .collect();
+    assert!(
+        messages.iter().any(|m| m.contains("no usable latitude")),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("doesn't have")),
+        "{messages:?}"
     );
 }
 

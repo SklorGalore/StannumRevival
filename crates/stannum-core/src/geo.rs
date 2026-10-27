@@ -1,4 +1,5 @@
-//! Bus coordinates for the map: a CSV side file beside the case.
+//! Bus coordinates for the map: a CSV side file beside the case, and the
+//! substation places a RAW revision 34-35 file carries itself.
 //!
 //! The file names buses by number, so one file serves every variant of a
 //! case. Each row gives a latitude and longitude in decimal degrees (WGS84)
@@ -15,7 +16,11 @@
 //! extra columns are ignored. Rows that can't be read are skipped and
 //! reported with their line number; the rest of the file still attaches.
 //!
-//! A bus the file leaves out is placed at the average of its neighbours that
+//! A RAW file's substation records give a latitude and longitude, and their
+//! node records name the buses inside. Where both sources place a bus, the
+//! side file wins, so a CSV can correct or fill in a case's own places.
+//!
+//! A bus neither source places is placed at the average of its neighbours that
 //! have a place, working outward from the placed buses, and is marked as
 //! estimated. Buses with no placed bus anywhere in their island stay without
 //! coordinates.
@@ -172,22 +177,92 @@ impl LoadedCoordinates {
             file,
         })
     }
-
-    /// Where every bus of `case` goes, and how the file matched the case.
-    pub fn resolve(&self, case: &Case) -> BusCoordinates {
-        resolve(&self.file, case, &self.path)
-    }
 }
 
-/// What the app shows about the attached coordinates file.
+/// The places a case file gives its buses: each bus of a RAW substation
+/// with a latitude and longitude, named by its substation. A substation
+/// without a name is called "Substation N", and a name two substations share
+/// gets the number added, so each names one site on the map.
+pub fn case_places(substations: &[rs_power::RawSubstation]) -> HashMap<u32, Place> {
+    let mut uses: HashMap<&str, usize> = HashMap::new();
+    for s in substations {
+        *uses.entry(s.name.as_str()).or_default() += 1;
+    }
+    let mut places = HashMap::new();
+    for s in substations {
+        let Some((latitude, longitude)) = s.place else {
+            continue;
+        };
+        let name = if s.name.is_empty() {
+            format!("Substation {}", s.number)
+        } else if uses[s.name.as_str()] > 1 {
+            format!("{} ({})", s.name, s.number)
+        } else {
+            s.name.clone()
+        };
+        for &bus in &s.buses {
+            // A bus with nodes in two substations stays in the first.
+            places.entry(bus).or_insert_with(|| Place {
+                latitude,
+                longitude,
+                substation: Some(name.clone()),
+            });
+        }
+    }
+    places
+}
+
+/// Where every bus of `case` goes: from the side file if one is attached,
+/// else from the case's own places (`from_case`, see [`case_places`]), else
+/// estimated. None when neither source places any bus. `case_name` names
+/// the source in the summary when no file is attached.
+pub fn resolve(
+    file: Option<&LoadedCoordinates>,
+    from_case: &HashMap<u32, Place>,
+    case: &Case,
+    case_name: &str,
+) -> Option<BusCoordinates> {
+    if file.is_none() && from_case.is_empty() {
+        return None;
+    }
+    let empty = CoordinateFile::default();
+    let mut c = place_buses(file.map_or(&empty, |f| &f.file), from_case, case);
+    let s = &mut c.summary;
+    match file {
+        Some(f) => {
+            s.path = Some(f.path.display().to_string());
+            s.name = f
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+        }
+        None => s.name = case_name.to_string(),
+    }
+    s.case_substations = from_case
+        .values()
+        .filter_map(|p| p.substation.as_deref())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    Some(c)
+}
+
+/// What the app shows about where the case's bus places come from.
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct CoordinatesSummary {
-    pub path: String,
+    /// The attached coordinates file; null when the places come only from
+    /// the case's own substation data.
+    pub path: Option<String>,
+    /// The attached file's name, else the case's.
     pub name: String,
     /// Rows read from the file.
     pub rows: usize,
     /// Buses of the case placed by the file.
     pub from_file: usize,
+    /// Buses placed by the case's own substation data (and not by the file).
+    pub from_case: usize,
+    /// Substations in the case's own data with a place and buses.
+    pub case_substations: usize,
     /// Buses placed from their neighbours.
     pub estimated: usize,
     /// Buses with no place at all (no placed bus in their island).
@@ -207,10 +282,11 @@ pub struct BusCoordinates {
     /// Null for a bus with no place.
     pub latitude: Vec<Option<f64>>,
     pub longitude: Vec<Option<f64>>,
-    /// "file", "estimated" or "none".
-    #[schemars(extend("items" = { "enum": ["file", "estimated", "none"] }))]
+    /// "file" (the coordinates file), "case" (the case's own substation
+    /// data), "estimated" or "none".
+    #[schemars(extend("items" = { "enum": ["file", "case", "estimated", "none"] }))]
     pub source: Vec<&'static str>,
-    /// The substation the file names, if any.
+    /// The substation the file or the case names, if any.
     pub substation: Vec<Option<String>>,
     pub summary: CoordinatesSummary,
 }
@@ -228,7 +304,11 @@ impl BusCoordinates {
     }
 }
 
-fn resolve(file: &CoordinateFile, case: &Case, path: &Path) -> BusCoordinates {
+fn place_buses(
+    file: &CoordinateFile,
+    from_case: &HashMap<u32, Place>,
+    case: &Case,
+) -> BusCoordinates {
     let n = case.buses.len();
     let index: HashMap<u32, usize> = case
         .buses
@@ -240,13 +320,18 @@ fn resolve(file: &CoordinateFile, case: &Case, path: &Path) -> BusCoordinates {
     let mut source = vec!["none"; n];
     let mut substation = vec![None; n];
     for (i, b) in case.buses.iter().enumerate() {
-        if let Some(p) = file.places.get(&b.id) {
+        let found = match file.places.get(&b.id) {
+            Some(p) => Some((p, "file")),
+            None => from_case.get(&b.id).map(|p| (p, "case")),
+        };
+        if let Some((p, from)) = found {
             place[i] = Some((p.latitude, p.longitude));
-            source[i] = "file";
+            source[i] = from;
             substation[i] = p.substation.clone();
         }
     }
     let from_file = source.iter().filter(|s| **s == "file").count();
+    let from_case = source.iter().filter(|s| **s == "case").count();
 
     // Neighbours by branch, in or out of service: geography doesn't change
     // with switching.
@@ -298,15 +383,14 @@ fn resolve(file: &CoordinateFile, case: &Case, path: &Path) -> BusCoordinates {
         .filter(|b| !index.contains_key(b))
         .count();
     let summary = CoordinatesSummary {
-        path: path.display().to_string(),
-        name: path
-            .file_name()
-            .map(|f| f.to_string_lossy().into_owned())
-            .unwrap_or_default(),
+        path: None,
+        name: String::new(),
         rows: file.places.len(),
         from_file,
+        from_case,
+        case_substations: 0,
         estimated,
-        missing: n - from_file - estimated,
+        missing: n - from_file - from_case - estimated,
         unknown_buses,
         problems: file
             .problems

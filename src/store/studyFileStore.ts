@@ -105,7 +105,8 @@ async function collect(studyPath: string): Promise<StudyFile> {
     api.studyRelativePath(studyPath, summary.path),
   ]);
   const grids = summary.dc_grids;
-  const coordinates = summary.coordinates;
+  // Only an attached file is saved; a case's own substation places come with it.
+  const coordinates = summary.coordinates?.path ? { path: summary.coordinates.path } : null;
   return {
     format: STUDY_FORMAT,
     version: STUDY_VERSION,

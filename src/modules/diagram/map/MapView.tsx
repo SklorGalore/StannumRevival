@@ -11,7 +11,7 @@ import { LayersButton } from "../layers/LayersPanel";
 import { TablesButton } from "../tables/TablesDrawer";
 import { MAX_HOPS, useDrawingStyle } from "../../../store/drawingStyleStore";
 import { api } from "../../../lib/analysis/api";
-import type { BusCoordinates, CaseNetwork } from "../../../lib/analysis/types";
+import type { BusCoordinates, CaseNetwork, CoordinatesSummary } from "../../../lib/analysis/types";
 import { caseNetwork } from "../../../lib/diagram/network";
 import { useDarkCanvas, useInk } from "../../../lib/diagram/ink";
 import { useTheme } from "../../../store/themeStore";
@@ -43,10 +43,11 @@ interface MapData {
 
 let cache: { key: string; data: Promise<MapData> } | null = null;
 
-/** The case network and bus places, fetched once per case and coordinates file. */
+/** The case network and bus places, fetched once per case and source of places. */
 function useMapData(enabled: boolean): { data: MapData | null; error: string | null } {
   const caseVersion = useWorkspace((s) => s.caseVersion);
-  const file = useWorkspace((s) => s.caseSummary?.coordinates?.path ?? null);
+  // The attached file, or the case's own substation places when there is none.
+  const file = useWorkspace((s) => (s.caseSummary?.coordinates ? (s.caseSummary.coordinates.path ?? "case") : null));
   // A Records edit can move buses between sites, so it counts too.
   const edits = useWorkspace((s) => s.caseSummary?.record_edits ?? 0);
   const key = `${caseVersion}:${file}:${edits}`;
@@ -69,6 +70,14 @@ function useMapData(enabled: boolean): { data: MapData | null; error: string | n
     };
   }, [enabled, file, key]);
   return state.key === key ? state : { data: null, error: null };
+}
+
+/** The tooltip of the toolbar's coordinates button: where the places come from. */
+function placesTitle(c: CoordinatesSummary | null): string {
+  if (!c) return "Attach a CSV of bus latitudes and longitudes";
+  const fromCase = c.from_case ? `${c.from_case} bus${c.from_case === 1 ? "" : "es"} from the case's substation data` : "";
+  if (!c.path) return `${fromCase}. Attach a CSV of bus coordinates to correct or add places`;
+  return `Bus places from ${c.path}${fromCase ? `, and ${fromCase}` : ""}. Attach another file`;
 }
 
 /** The Diagram toolbar while the Map style is shown. */
@@ -117,10 +126,10 @@ export function MapToolbar() {
       <button
         className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100"
         onClick={() => void attach()}
-        title={coordinates ? `Bus places from ${coordinates.path}. Attach another file` : "Attach a CSV of bus latitudes and longitudes"}
+        title={placesTitle(coordinates)}
       >
         <MapPin size={14} />
-        {width >= 720 && <span className="max-w-48 truncate">{coordinates ? coordinates.name : "Attach coordinates…"}</span>}
+        {width >= 720 && <span className="max-w-48 truncate">{coordinates ? (coordinates.path ? coordinates.name : "Case substations") : "Attach coordinates…"}</span>}
       </button>
       <button
         className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -200,6 +209,7 @@ export function MapCanvas({ visible }: { visible: boolean }) {
           A CSV with <code className="rounded bg-slate-100 px-1">bus, latitude, longitude</code> and, if you have it,{" "}
           <code className="rounded bg-slate-100 px-1">substation</code>. Buses it leaves out are placed next to their neighbours.
         </p>
+        <p>RAW revision 34 and 35 files with substation latitudes and longitudes draw without one.</p>
         <button className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800" onClick={() => void attach()}>
           Attach bus coordinates…
         </button>
@@ -378,7 +388,7 @@ function MapSection({ element, data, onPick }: { element: string; data: MapData;
       {site ? (
         <>
           <p className="mb-1.5 font-medium text-slate-800">{siteLabel(site, data.net)}</p>
-          {site.estimated && <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-amber-900">Placed from its neighbours: the coordinates file doesn't list it.</p>}
+          {site.estimated && <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-amber-900">Placed from its neighbours: no coordinates file or case substation places it.</p>}
           {site.buses.length > 1 && (
             <div className="mb-1.5">
               <p className="text-slate-500 mb-1">{site.buses.length} buses here</p>
@@ -397,7 +407,7 @@ function MapSection({ element, data, onPick }: { element: string; data: MapData;
           )}
         </>
       ) : element.startsWith("bus:") ? (
-        <p className="text-slate-500">No place on the map: nothing in its island is in the coordinates file.</p>
+        <p className="text-slate-500">No place on the map: nothing in its island has a place.</p>
       ) : null}
       {bus !== null && (
         <div className="mt-2 flex flex-wrap gap-1.5">

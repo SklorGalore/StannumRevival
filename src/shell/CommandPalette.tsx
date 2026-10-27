@@ -126,12 +126,12 @@ function useCommands(): Command[] {
       if (summary.power.available) {
         list.push({
           id: "coordinates",
-          title: summary.coordinates ? "Attach other bus coordinates…" : "Attach bus coordinates…",
+          title: summary.coordinates?.path ? "Attach other bus coordinates…" : "Attach bus coordinates…",
           icon: <MapPin size={14} />,
           keywords: "map geography latitude longitude csv location substation place",
           run: () => void w.attachCoordinates(),
         });
-        if (summary.coordinates)
+        if (summary.coordinates?.path)
           list.push({
             id: "coordinates-clear",
             title: `Detach bus coordinates (${summary.coordinates.name})`,

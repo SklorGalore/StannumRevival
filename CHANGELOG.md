@@ -31,6 +31,10 @@ section into the next version's when a release is cut (see
   colours) draws on the Map style too, and **Flows** adds an arrow on each
   line pointing the way power flows in the shown result, with flows and
   voltages on hover. A shortest path is highlighted where it runs.
+- RAW revision 34 and 35 files that carry substation data draw on the map
+  without a coordinates file: each substation's latitude and longitude places
+  the buses its nodes name. An attached coordinates CSV still wins for the
+  buses it lists.
 
 ### Changed
 

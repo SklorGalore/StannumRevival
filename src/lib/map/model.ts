@@ -10,11 +10,11 @@ export interface Site {
   lat: number;
   /** Buses here, highest voltage first. */
   buses: number[];
-  /** The substation the coordinates file names, if any. */
+  /** The substation the coordinates file or the case names, if any. */
   substation: string | null;
   /** Highest base kV here. */
   kv: number;
-  /** Every bus here was placed from its neighbours, not by the file. */
+  /** Every bus here was placed from its neighbours, not by the file or the case. */
   estimated: boolean;
 }
 
@@ -62,7 +62,7 @@ export function buildMap(net: CaseNetwork, coords: BusCoordinates): MapModel {
     const lat = coords.latitude[i];
     const lon = coords.longitude[i];
     if (lat === null || lon === null) return;
-    place.set(bus, { lat, lon, file: coords.source[i] === "file", substation: coords.substation[i] });
+    place.set(bus, { lat, lon, file: coords.source[i] !== "estimated", substation: coords.substation[i] });
   });
   // A three-winding transformer's star point sits between its windings' buses.
   for (const star of net.buses.filter((b) => b.star && !place.has(b.id))) {

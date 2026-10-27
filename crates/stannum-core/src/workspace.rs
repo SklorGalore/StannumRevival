@@ -76,9 +76,12 @@ pub struct OpenCase {
     pub edited: Option<Arc<PowerCase>>,
     /// VSC DC grids from a DC grid file, solved with every AC solve.
     pub dc_grids: Option<Arc<LoadedDcGrids>>,
-    /// Bus coordinates from a CSV side file, for the map, with what they
-    /// covered when last matched to the case.
-    pub coordinates: Option<(LoadedCoordinates, CoordinatesSummary)>,
+    /// Bus coordinates from a CSV side file, for the map.
+    pub coordinates: Option<LoadedCoordinates>,
+    /// Where the bus places come from (the side file, the case's own
+    /// substation data, or both) and what they covered when last matched to
+    /// the case; None when nothing places any bus.
+    pub places: Option<CoordinatesSummary>,
     /// The last contingency run, until the study's edits change.
     pub contingencies: Option<ContingencyResults>,
     /// The report of the latest solve (named `base` or `study`, see
@@ -159,7 +162,9 @@ pub struct CaseSummary {
     pub record_edits: usize,
     /// The attached DC grid file, if any.
     pub dc_grids: Option<DcGridsSummary>,
-    /// The attached bus coordinates file, if any.
+    /// Where the bus places for the map come from: the attached coordinates
+    /// file, the case's own substation data, or both. Null when neither
+    /// places any bus.
     pub coordinates: Option<CoordinatesSummary>,
 }
 
@@ -336,7 +341,7 @@ impl OpenCase {
             ),
             Err(e) => log::warn!("Topology can't use {name}: {e}"),
         }
-        Self {
+        let mut case = Self {
             id: CaseId(0),
             path: path.to_path_buf(),
             name,
@@ -351,13 +356,37 @@ impl OpenCase {
             edited: None,
             dc_grids: None,
             coordinates: None,
+            places: None,
             contingencies: None,
             report: None,
             trip: None,
             records: None,
             bytes: bytes.to_vec(),
             record_edits: 0,
+        };
+        case.places = case.resolve_places().map(|c| c.summary);
+        if let Some(p) = &case.places {
+            log::info!(
+                "{} places {} of its buses at {} substation{}",
+                case.name,
+                p.from_case,
+                p.case_substations,
+                if p.case_substations == 1 { "" } else { "s" }
+            );
         }
+        case
+    }
+
+    /// Where every bus goes on the map, from the attached file and the
+    /// case's own substation data; None when neither places any bus.
+    fn resolve_places(&self) -> Option<BusCoordinates> {
+        let power = self.power.as_ref().ok()?;
+        crate::geo::resolve(
+            self.coordinates.as_ref(),
+            &crate::geo::case_places(&power.substations),
+            &power.case,
+            &self.name,
+        )
     }
 
     pub fn summary(&self) -> CaseSummary {
@@ -380,7 +409,7 @@ impl OpenCase {
             diffable: self.format == CaseFormat::Raw,
             record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
-            coordinates: self.coordinates.as_ref().map(|(_, s)| s.clone()),
+            coordinates: self.places.clone(),
         }
     }
 
@@ -685,13 +714,20 @@ impl OpenCase {
     /// listed in the summary; a file with no usable header changes nothing.
     pub fn load_coordinates(&mut self, path: &Path) -> Result<CoordinatesSummary, Error> {
         let loaded = LoadedCoordinates::read(path)?;
-        let summary = loaded
-            .resolve(&self.power.as_ref().map_err(|e| e.clone())?.case)
-            .summary;
+        let power = self.power.as_ref().map_err(|e| e.clone())?;
+        let summary = crate::geo::resolve(
+            Some(&loaded),
+            &crate::geo::case_places(&power.substations),
+            &power.case,
+            &self.name,
+        )
+        .expect("a file always resolves")
+        .summary;
         log::info!(
-            "Attached {}: {} buses placed from the file, {} estimated from neighbours, {} without a place",
+            "Attached {}: {} buses placed from the file, {} from the case, {} estimated from neighbours, {} without a place",
             summary.name,
             summary.from_file,
+            summary.from_case,
             summary.estimated,
             summary.missing
         );
@@ -717,24 +753,28 @@ impl OpenCase {
                 )
             );
         }
-        self.coordinates = Some((loaded, summary.clone()));
+        self.coordinates = Some(loaded);
+        self.places = Some(summary.clone());
         Ok(summary)
     }
 
+    /// Detach the coordinates file. The case's own substation places, if
+    /// any, still place its buses.
     pub fn clear_coordinates(&mut self) {
-        if let Some((c, _)) = self.coordinates.take() {
+        if let Some(c) = self.coordinates.take() {
             log::info!("Detached {}", c.path.display());
         }
+        self.places = self.resolve_places().map(|c| c.summary);
     }
 
     /// Where every bus goes on the map, in the case's bus order. Fails when
-    /// no coordinates file is attached.
+    /// neither a coordinates file nor the case's own data places any bus.
     pub fn bus_coordinates(&self) -> Result<BusCoordinates, Error> {
-        let (loaded, _) = self
-            .coordinates
-            .as_ref()
-            .ok_or_else(|| Error::not_ready("Attach a bus coordinates file first."))?;
-        Ok(loaded.resolve(&self.power.as_ref().map_err(|e| e.clone())?.case))
+        if let Err(e) = &self.power {
+            return Err(e.clone().into());
+        }
+        self.resolve_places()
+            .ok_or_else(|| Error::not_ready("Attach a bus coordinates file first."))
     }
 
     pub fn clear_dc_grids(&mut self) {
@@ -828,13 +868,12 @@ impl OpenCase {
             .filter(|t| !t.derived)
             .map(|t| &t.case);
         let mut detail = crate::inspect::element(power, topology, element)?;
-        if let (Some(number), Some((loaded, _))) = (
+        if let (Some(number), Some(coordinates)) = (
             element
                 .strip_prefix("bus:")
                 .and_then(|n| n.parse::<u32>().ok()),
-            &self.coordinates,
+            self.places.as_ref().and_then(|_| self.resolve_places()),
         ) {
-            let coordinates = loaded.resolve(&power.case);
             detail
                 .data
                 .push(crate::inspect::location(coordinates.of(number)));
@@ -943,13 +982,11 @@ impl OpenCase {
         next.record_edits = self.record_edits + count;
         next.dc_grids = self.dc_grids.take();
         // Matched again, since an edit can add, remove or reconnect buses.
-        next.coordinates = self.coordinates.take().map(|(c, old)| match &next.power {
-            Ok(p) => {
-                let summary = c.resolve(&p.case).summary;
-                (c, summary)
-            }
-            Err(_) => (c, old),
-        });
+        next.coordinates = self.coordinates.take();
+        next.places = match &next.power {
+            Ok(_) => next.resolve_places().map(|c| c.summary),
+            Err(_) => self.places.take(),
+        };
         if let Some(updates) = updates {
             // The RAW tables only change in the edited cells.
             let mut records = self
