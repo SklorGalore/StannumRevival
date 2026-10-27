@@ -168,14 +168,13 @@ function Inner({ active }: { active: boolean }) {
   const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
   const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
   const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
-  // Layers (topology findings, filters and colours) are drawn on both
-  // styles; the one-line needs them only when it is drawn from the case.
-  useLayerSync(active && (style === "network" || generated));
+  // Layers (topology findings, filters and colours) are drawn on every
+  // style; the one-line needs them only when it is drawn from the case.
+  useLayerSync(active && (network || generated));
   const layersOpen = useLayers((s) => s.panel);
   const legends = useLayers((s) => s.legends);
   const tablesOpen = useLayers((s) => s.tables);
-  // The map doesn't draw layers yet.
-  const showLegend = !map && (network || generated);
+  const showLegend = network || generated;
   // The inspector only takes room while there is one thing to inspect: a
   // single symbol, a single wire, or a selected element this drawing lacks.
   const hasSelection = useDiagramStore(
@@ -192,8 +191,8 @@ function Inner({ active }: { active: boolean }) {
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       {map ? <MapToolbar /> : network ? <NetworkToolbar /> : <Toolbar />}
       <div ref={rowRef} className="relative flex flex-1 min-h-0">
-        {layersOpen && floating && !map && <LayersPanel floating />}
-        {layersOpen && !floating && !map ? (
+        {layersOpen && floating && <LayersPanel floating />}
+        {layersOpen && !floating ? (
           <LayersPanel />
         ) : network ? null : paletteOpen ? (
           <aside className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
