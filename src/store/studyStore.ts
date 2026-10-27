@@ -1,8 +1,8 @@
 // The open case's study: edits (outages, generator output, bus load) that
 // every solve uses. The list lives here; stannum-core applies it.
 import { create } from "zustand";
-import { api } from "../lib/analysis/api";
-import type { SolveReport, StudyEdit } from "../lib/analysis/types";
+import { api, DEFAULT_SOLVE_SETTINGS } from "../lib/analysis/api";
+import type { SolveReport, SolveSettings, StudyEdit } from "../lib/analysis/types";
 import { useWorkspace } from "./workspaceStore";
 
 /** What an edit replaced, for showing "was …" beside it. */
@@ -39,7 +39,12 @@ export interface SavedSolve {
 export type CompareSide = number | "current";
 
 interface StudyState {
+  /** Power flow's solve settings, kept here so a study file can save them. */
+  settings: SolveSettings;
+  setSettings: (settings: SolveSettings) => void;
   saved: SavedSolve[];
+  /** Put back saved solves read from a study file, numbering them afresh. */
+  restoreSolves: (solves: Omit<SavedSolve, "id">[], compare: { a: CompareSide; b: CompareSide } | null) => void;
   saveSolve: (report: SolveReport, name: string) => void;
   renameSolve: (id: number, name: string) => void;
   deleteSolve: (id: number) => void;
@@ -56,6 +61,9 @@ interface StudyState {
   add: (entry: StudyEntry) => Promise<boolean>;
   remove: (index: number) => Promise<boolean>;
   clear: () => Promise<boolean>;
+  /** Asks Case diff to compare the working case with its file. */
+  diffRequest: number;
+  showInDiff: () => void;
   /** Asks Power flow to show the study tab. */
   showRequest: number;
   show: () => void;
@@ -64,7 +72,17 @@ interface StudyState {
 let nextSolve = 1;
 
 export const useStudy = create<StudyState>((set, get) => ({
+  settings: DEFAULT_SOLVE_SETTINGS,
+  setSettings: (settings) => set({ settings }),
   saved: [],
+  restoreSolves: (solves, compare) => {
+    // A compare side names a solve by its place in the list it came with.
+    const restored = solves.map((x) => ({ ...x, id: nextSolve++ }));
+    const side = (c: CompareSide): CompareSide | null => (c === "current" ? c : restored[c]?.id ?? null);
+    const a = compare && side(compare.a);
+    const b = compare && side(compare.b);
+    set({ saved: restored, compare: a != null && b != null ? { a, b } : null });
+  },
   saveSolve: (report, name) =>
     set((s) => {
       const solve = { id: nextSolve++, name, report, entries: s.entries };
@@ -101,6 +119,11 @@ export const useStudy = create<StudyState>((set, get) => ({
   add: (entry) => get().setEntries(withEdit(get().entries, entry)),
   remove: (index) => get().setEntries(get().entries.filter((_, i) => i !== index)),
   clear: () => get().setEntries([]),
+  diffRequest: 0,
+  showInDiff: () => {
+    set((s) => ({ diffRequest: s.diffRequest + 1 }));
+    useWorkspace.getState().setModule("diff");
+  },
   showRequest: 0,
   show: () => {
     set((s) => ({ showRequest: s.showRequest + 1 }));

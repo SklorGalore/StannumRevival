@@ -17,6 +17,8 @@ import { FilterChips } from "../../ui/FilterChips";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import { DrawAroundButton } from "../../ui/DrawAround";
 import { useWidth } from "../../ui/useWidth";
+import { useStudyFile } from "../../store/studyFileStore";
+import { RecentFiles } from "../../ui/RecentFiles";
 import { cellProblem, columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
 
 /** Below this width the record types fold into a menu. */
@@ -182,6 +184,7 @@ export function RecordsModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
   const openCase = useWorkspace((s) => s.openCase);
+  const openFile = useStudyFile((s) => s.openFile);
   const selection = useWorkspace((s) => s.selection);
   const linked = useWorkspace((s) => s.linked);
   const select = useWorkspace((s) => s.select);
@@ -349,10 +352,11 @@ export function RecordsModule({ active }: { active: boolean }) {
         icon={<Sheet size={22} />}
         title="Records"
         action={
-          <Button variant="primary" onClick={() => openCase()}>
+          <Button variant="primary" onClick={() => void openFile()}>
             <FolderOpen size={14} /> Open case…
           </Button>
         }
+        footer={<RecentFiles />}
       >
         Open a PSS/E RAW or MATPOWER case to see every bus, load, generator, branch, transformer, shunt and DC record as a table, with every
         field. Sort, search and filter them, and pick one to inspect it.

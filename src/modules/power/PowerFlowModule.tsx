@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
-import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
   DcLineKind,
   DcGridsSummary,
@@ -37,6 +37,8 @@ import { LoadingBar, RangeMark } from "../../ui/CellBars";
 import { FilterChips } from "../../ui/FilterChips";
 import { TopBranches, VoltageProfile } from "./OverviewCharts";
 import { useWidth } from "../../ui/useWidth";
+import { useStudyFile } from "../../store/studyFileStore";
+import { RecentFiles } from "../../ui/RecentFiles";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
@@ -62,7 +64,6 @@ type Tab =
   | "study"
   | "warnings";
 
-const DEFAULT_SETTINGS = DEFAULT_SOLVE_SETTINGS;
 
 const busColumns: Column<BusRow>[] = [
   { key: "id", header: "Bus", value: (r) => r.id, align: "right" },
@@ -863,9 +864,10 @@ function tabFor(element: string): Tab | null {
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
-  const openCase = useWorkspace((s) => s.openCase);
+  const openFile = useStudyFile((s) => s.openFile);
 
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const settings = useStudy((s) => s.settings);
+  const setSettings = useStudy((s) => s.setSettings);
   const [tab, setTab] = useState<Tab>("overview");
   // Shared so the diagram can overlay the same results.
   const report = useWorkspace((s) => s.solveReport);
@@ -1074,10 +1076,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         icon={<Zap size={22} />}
         title="Power flow"
         action={
-          <Button variant="primary" onClick={() => openCase()}>
+          <Button variant="primary" onClick={() => void openFile()}>
             <FolderOpen size={14} /> Open case…
           </Button>
         }
+        footer={<RecentFiles />}
       >
         Open a MATPOWER (.m) or PSS/E RAW (revisions 23–35) case to run AC or DC power flow, check operating limits and
         calculate sensitivities. Powered by rs-power.

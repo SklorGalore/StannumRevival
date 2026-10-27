@@ -823,3 +823,10 @@ export interface RecordTable {
   skipped: number;
   note: string | null;
 }
+
+/** Size, hash and date of a file (stannum-core study_file::Fingerprint). */
+export interface FileFingerprint {
+  size: number;
+  sha256: string;
+  modified_ms: number | null;
+}

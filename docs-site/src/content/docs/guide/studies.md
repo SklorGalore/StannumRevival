@@ -1,6 +1,6 @@
 ---
 title: Studies
-description: Outages, generator output and load edits that every solve uses, with saved solves to compare.
+description: Outages, generator output and load edits that every solve uses, with saved solves to compare, kept in a study file.
 ---
 
 A **study** is a list of edits to the open case that every solve uses, without
@@ -46,6 +46,59 @@ side: generation, load, losses and limit violations, then the branch flows and
 bus voltages that moved, largest first.
 
 ![Comparing the case as filed with the study: branch flows and voltages that moved](../../../assets/screens/study-compare.png)
+
+## Saving a study to a file
+
+**Save study** in the case bar writes the work to a `.stannum` file so it
+survives closing Stannum and can be handed to someone else. It keeps:
+
+- the study edits and saved solves (with the compare choice),
+- the solve settings and the contingency settings,
+- the one-line drawing, if there is one,
+- which modules are showing, side by side or not,
+- the attached DC grid file, by path.
+
+The case itself isn't copied in. The study refers to the case file by its
+path, by its path relative to the study, and by a fingerprint (its SHA-256),
+so keep the study beside the case or in a folder near it. Once a study is
+saved, the button shows its name, with a dot while there are changes since the
+last save; click it to save again. **Save study as…** in the command palette
+(Ctrl+K) writes a copy.
+
+If the case has values edited in [Records](/StannumRevival/guide/records/)
+that aren't in a file yet, Stannum asks you to save the edited case first, and
+the study then refers to that file.
+
+## Opening a study
+
+**Open case…** (or **Open another…**) also opens `.stannum` files, as does
+**Open study…** in the command palette and dropping one on the window. The
+case opens, the edits are applied, saved solves come back and the case is
+solved again with the saved settings.
+
+Stannum says so under the case bar when:
+
+- **the case moved.** It looks for the case where it was, then at the same
+  place relative to the study, then beside the study. If none of those has it,
+  it asks you to find it.
+- **the case changed.** If the file's contents differ from when the study was
+  saved, the study still opens, and the saved solves keep showing the results
+  of the case as it was then.
+- **an edit no longer fits.** An edit naming an element that is no longer in
+  the case is left out, and the message lists it.
+
+![A study opened after its case moved and changed: the notice under the case bar, the edits and the saved solve](../../../assets/screens/study-reopened.png)
+
+Before a different case or study replaces one with unsaved changes, Stannum
+asks whether to discard them.
+
+## Recent files
+
+With no case open, Power flow and Records list the cases and studies opened
+most recently. Click one to open it, or hover and press **×** to drop it from
+the list. The list is kept on this computer only.
+
+![The empty Power flow screen listing recent studies and cases](../../../assets/screens/recent-files.png)
 
 ## Scope
 

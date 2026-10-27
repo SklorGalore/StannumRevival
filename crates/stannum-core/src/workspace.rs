@@ -807,6 +807,39 @@ impl OpenCase {
         Ok(self.summary())
     }
 
+    /// The case as it is being worked on, as RAW text: the file as opened,
+    /// with Records edits and the study's edits written in. Only RAW
+    /// revisions Records can edit (33 and 35) can carry study edits.
+    pub fn working_bytes(&mut self) -> Result<Vec<u8>, String> {
+        if self.format != CaseFormat::Raw {
+            return Err("Case diff reads PSS/E RAW files, and this case is MATPOWER.".into());
+        }
+        if self.edits.is_empty() {
+            return Ok(self.bytes.clone());
+        }
+        self.records()?;
+        let Some(Ok(records)) = self.records.as_ref() else {
+            unreachable!("records were just read")
+        };
+        if !records.editable {
+            return Err("Stannum can only write study edits into RAW revisions 33 and 35, so this case's study can't be compared with its file.".into());
+        }
+        let base = self.power.as_ref().map_err(|e| e.clone())?;
+        let edits = crate::working_case::study_record_edits(records, base, &self.edits)?;
+        let (text, _) = record_edit::apply_raw(&decode_text(&self.bytes), records, &edits)?;
+        if std::str::from_utf8(&self.bytes).is_ok() {
+            return Ok(text.into_bytes());
+        }
+        let (encoded, _, unmappable) = encoding_rs::WINDOWS_1252.encode(&text);
+        if unmappable {
+            return Err(
+                "The working case has a character this file's encoding (Windows-1252) can't hold."
+                    .into(),
+            );
+        }
+        Ok(encoded.into_owned())
+    }
+
     /// Save the case, with its edits, to a new file, and carry on with that file.
     pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, String> {
         std::fs::write(path, &self.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -916,6 +949,31 @@ impl Workspace {
             } else {
                 ", comparison incomplete"
             },
+            elapsed_ms(start)
+        );
+        self.comparison = Some(result);
+        Ok(summary)
+    }
+
+    /// Compare the file on disk (baseline) with the case as it is being
+    /// worked on: Records edits and the study's edits.
+    pub fn compare_working(&mut self) -> Result<diff::DiffSummary, String> {
+        self.comparison = None;
+        let start = Instant::now();
+        let case = self.current_mut()?;
+        let file =
+            std::fs::read(&case.path).map_err(|e| format!("{}: {e}", case.path.display()))?;
+        let working = case.working_bytes()?;
+        let name = case.name.clone();
+        let (record_edits, study_edits) = (case.record_edits, case.edits.len());
+        let before = diff::parse_bytes(&name, &file).map_err(|e| e.to_string())?;
+        let after =
+            diff::parse_bytes(&format!("{name} (working)"), &working).map_err(|e| e.to_string())?;
+        let result = diff::compare_cases(before, after);
+        let summary = result.summary();
+        log::info!(
+            "Case diff of {name} with its {record_edits} record edit(s) and {study_edits} study edit(s): {} differing records ({:.0} ms)",
+            summary.differing,
             elapsed_ms(start)
         );
         self.comparison = Some(result);

@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import {
   Columns2,
   CornerDownLeft,
+  FlaskConical,
   FolderOpen,
+  Save,
   GitCompareArrows,
   Link2,
   Moon,
@@ -23,6 +25,7 @@ import {
 } from "lucide-react";
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
+import { useStudyFile } from "../store/studyFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
@@ -52,12 +55,20 @@ function useCommands(): Command[] {
   const module = useWorkspace((s) => s.module);
   const split = useWorkspace((s) => s.split);
   const logOpen = useLog((s) => s.open);
+  const studyPath = useStudyFile((s) => s.path);
   return useMemo(() => {
     const w = useWorkspace.getState();
     const next = NEXT_PREFERENCE[preference];
     const list: Command[] = [
       { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
+      { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
     ];
+    if (summary) {
+      const studyFile = useStudyFile.getState();
+      list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
+      if (studyPath)
+        list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+    }
     if (summary?.power.available)
       list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
     for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
@@ -124,7 +135,7 @@ function useCommands(): Command[] {
       run: () => useLog.getState().setOpen(!logOpen),
     });
     return list;
-  }, [summary, linked, selection, preference, module, split, logOpen]);
+  }, [summary, linked, selection, preference, module, split, logOpen, studyPath]);
 }
 
 type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };
