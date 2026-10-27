@@ -152,7 +152,8 @@ impl Session {
         limit_pct: f64,
     ) -> Result<crate::contingency::ContingencyDetail, String> {
         let job = self.workspace()?.case(case)?.trip_job(element, limit_pct)?;
-        job.run()
+        let done = job.run()?;
+        self.workspace()?.case_mut(case)?.finish_trip(done)
     }
 
     /// Read the case's records the first time they're asked for, without
@@ -316,6 +317,22 @@ commands! {
         Ok(())
     };
 
+    /// Attach a bus coordinates CSV (bus, latitude, longitude, optional
+    /// substation) to the case, for the map.
+    load_coordinates { case: Option<CaseId>, path: PathBuf } =>
+        |s, a| s.workspace()?.case_mut(a.case)?.load_coordinates(&a.path);
+
+    /// Detach the bus coordinates file.
+    clear_coordinates { case: Option<CaseId> } => |s, a| {
+        s.workspace()?.case_mut(a.case)?.clear_coordinates();
+        Ok(())
+    };
+
+    /// Where every bus goes on the map, as columns in bus order, with the
+    /// source of each place ("file", "estimated" or "none").
+    bus_coordinates { case: Option<CaseId> } =>
+        |s, a| s.workspace()?.case(a.case)?.bus_coordinates();
+
     /// Replace the study's edits; every later solve uses them.
     set_study_edits { case: Option<CaseId>, edits: Vec<Edit> } =>
         |s, a| s.workspace()?.case_mut(a.case)?.set_edits(a.edits);
@@ -428,6 +445,11 @@ commands! {
     trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } =>
         |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct);
 
+    /// A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
+    /// as a full solve report.
+    result_report { case: Option<CaseId>, name: String } =>
+        |s, a| s.workspace()?.case_mut(a.case)?.result(&a.name);
+
     /// Log lines numbered above `since`.
     log_entries { since: u64 } => |_, a| Ok(logbook::since(a.since));
 
@@ -523,7 +545,7 @@ mod tests {
         // arguments only need to parse.
         let value = |name: &str| match name {
             "settings" => json!({ "solve": SolveSettings::default() }),
-            "path" | "quantity" | "element" | "section" => json!("unused"),
+            "path" | "quantity" | "element" | "section" | "name" => json!("unused"),
             "edits" => json!([]),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),

@@ -11,9 +11,11 @@ use crate::contingency::{
 };
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
+use crate::geo::{BusCoordinates, CoordinatesSummary, LoadedCoordinates};
 use crate::power::{self, PowerCase, SolveSettings};
 use crate::record_edit::{self, RecordEdit};
 use crate::records::{RecordBook, RecordSource, RecordTable, Records};
+use crate::results::ResultName;
 use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
@@ -72,8 +74,16 @@ pub struct OpenCase {
     pub edited: Option<Arc<PowerCase>>,
     /// VSC DC grids from a DC grid file, solved with every AC solve.
     pub dc_grids: Option<Arc<LoadedDcGrids>>,
+    /// Bus coordinates from a CSV side file, for the map, with what they
+    /// covered when last matched to the case.
+    pub coordinates: Option<(LoadedCoordinates, CoordinatesSummary)>,
     /// The last contingency run, until the study's edits change.
     pub contingencies: Option<ContingencyResults>,
+    /// The report of the latest solve (named `base` or `study`, see
+    /// [`crate::results`]), until the study's edits change.
+    pub report: Option<power::SolveReport>,
+    /// The last "Trip and compare", kept so its whole solution can be shown.
+    pub trip: Option<(String, ContingencyResults)>,
     /// The file's records as tables, read the first time they're asked for.
     pub records: Option<Result<Arc<Records>, String>>,
     /// The case's text as opened, or as edited in Records since.
@@ -146,6 +156,8 @@ pub struct CaseSummary {
     pub record_edits: usize,
     /// The attached DC grid file, if any.
     pub dc_grids: Option<DcGridsSummary>,
+    /// The attached bus coordinates file, if any.
+    pub coordinates: Option<CoordinatesSummary>,
 }
 
 #[derive(Serialize)]
@@ -334,7 +346,10 @@ impl OpenCase {
             edits: vec![],
             edited: None,
             dc_grids: None,
+            coordinates: None,
             contingencies: None,
+            report: None,
+            trip: None,
             records: None,
             bytes: bytes.to_vec(),
             record_edits: 0,
@@ -361,6 +376,7 @@ impl OpenCase {
             diffable: self.format == CaseFormat::Raw,
             record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
+            coordinates: self.coordinates.as_ref().map(|(_, s)| s.clone()),
         }
     }
 
@@ -411,6 +427,8 @@ impl OpenCase {
             self.before_edits = Some(solved);
         }
         self.sensitivity = None;
+        self.report = None;
+        self.trip = None;
         if self.contingencies.take().is_some() {
             log::info!("Contingency results cleared: they were for the case before this change");
         }
@@ -496,11 +514,20 @@ impl OpenCase {
     /// in AC with the same settings: "Trip and compare". The contingency
     /// run in hand, if any, is kept.
     pub fn trip_and_compare(
-        &self,
+        &mut self,
         element: &str,
         limit_pct: f64,
     ) -> Result<ContingencyDetail, String> {
-        self.trip_job(element, limit_pct)?.run()
+        let done = self.trip_job(element, limit_pct)?.run()?;
+        self.finish_trip(done)
+    }
+
+    /// Keep a finished trip so its whole solution can be shown, unless the
+    /// case changed while it ran.
+    pub fn finish_trip(&mut self, done: TripDone) -> Result<ContingencyDetail, String> {
+        self.check_version(done.version)?;
+        self.trip = Some((done.element, done.results));
+        Ok(done.detail)
     }
 
     /// [`Self::trip_and_compare`]'s solve, to run with [`TripJob::run`]
@@ -526,9 +553,40 @@ impl OpenCase {
             }
         })?;
         Ok(TripJob {
+            version: self.version,
             element: element.to_string(),
             job,
         })
+    }
+
+    /// A result by name (see [`crate::results`]): the latest solve, one
+    /// outage of the last contingency run, or the last trip, as a full solve
+    /// report that every view can show.
+    pub fn result(&mut self, name: &str) -> Result<power::SolveReport, String> {
+        let study = !self.edits.is_empty();
+        match name.parse::<ResultName>()? {
+            ResultName::Base if study => {
+                Err("The latest solve includes the study's edits: it's named \"study\".".into())
+            }
+            ResultName::Study if !study => {
+                Err("There are no study edits: the latest solve is named \"base\".".into())
+            }
+            ResultName::Base | ResultName::Study => self
+                .report
+                .clone()
+                .ok_or_else(|| "Solve the case first.".into()),
+            ResultName::Contingency(rank) => self
+                .contingencies
+                .as_mut()
+                .ok_or("Run contingencies first.")?
+                .report(rank),
+            ResultName::Trip(element) => match self.trip.as_mut() {
+                Some((tripped, results)) if *tripped == element => results.report(1),
+                _ => Err(format!(
+                    "Trip and compare {element} first: only the last trip is kept."
+                )),
+            },
+        }
     }
 
     pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
@@ -589,6 +647,7 @@ impl OpenCase {
         }
         self.solved = Some(Arc::new((done.result, done.settings)));
         self.before_edits = None;
+        self.report = Some(done.report.clone());
         Ok(done.report)
     }
 
@@ -608,6 +667,62 @@ impl OpenCase {
         );
         self.dc_grids = Some(Arc::new(loaded));
         Ok(summary)
+    }
+
+    /// Attach a bus coordinates CSV. Rows that can't be read are skipped and
+    /// listed in the summary; a file with no usable header changes nothing.
+    pub fn load_coordinates(&mut self, path: &Path) -> Result<CoordinatesSummary, String> {
+        let loaded = LoadedCoordinates::read(path)?;
+        let summary = loaded
+            .resolve(&self.power.as_ref().map_err(|e| e.clone())?.case)
+            .summary;
+        log::info!(
+            "Attached {}: {} buses placed from the file, {} estimated from neighbours, {} without a place",
+            summary.name,
+            summary.from_file,
+            summary.estimated,
+            summary.missing
+        );
+        if summary.unknown_buses > 0 {
+            log::warn!(
+                "{}: {} name{} a bus this case doesn't have",
+                summary.name,
+                plural(summary.unknown_buses, "row", "rows"),
+                if summary.unknown_buses == 1 { "s" } else { "" }
+            );
+        }
+        for p in &summary.problems {
+            log::warn!("{} line {}: {}", summary.name, p.line, p.message);
+        }
+        if summary.problem_count > summary.problems.len() {
+            log::warn!(
+                "{}: {} more skipped",
+                summary.name,
+                plural(
+                    summary.problem_count - summary.problems.len(),
+                    "line",
+                    "lines"
+                )
+            );
+        }
+        self.coordinates = Some((loaded, summary.clone()));
+        Ok(summary)
+    }
+
+    pub fn clear_coordinates(&mut self) {
+        if let Some((c, _)) = self.coordinates.take() {
+            log::info!("Detached {}", c.path.display());
+        }
+    }
+
+    /// Where every bus goes on the map, in the case's bus order. Fails when
+    /// no coordinates file is attached.
+    pub fn bus_coordinates(&self) -> Result<BusCoordinates, String> {
+        let (loaded, _) = self
+            .coordinates
+            .as_ref()
+            .ok_or("Attach a bus coordinates file first.")?;
+        Ok(loaded.resolve(&self.power.as_ref().map_err(|e| e.clone())?.case))
     }
 
     pub fn clear_dc_grids(&mut self) {
@@ -693,7 +808,19 @@ impl OpenCase {
             .ok()
             .filter(|t| !t.derived)
             .map(|t| &t.case);
-        crate::inspect::element(power, topology, element)
+        let mut detail = crate::inspect::element(power, topology, element)?;
+        if let (Some(number), Some((loaded, _))) = (
+            element
+                .strip_prefix("bus:")
+                .and_then(|n| n.parse::<u32>().ok()),
+            &self.coordinates,
+        ) {
+            let coordinates = loaded.resolve(&power.case);
+            detail
+                .data
+                .push(crate::inspect::location(coordinates.of(number)));
+        }
+        Ok(detail)
     }
 
     /// The file's records as tables: RAW revisions 33 and 35 record by
@@ -794,6 +921,14 @@ impl OpenCase {
         next.name = self.name.clone();
         next.record_edits = self.record_edits + count;
         next.dc_grids = self.dc_grids.take();
+        // Matched again, since an edit can add, remove or reconnect buses.
+        next.coordinates = self.coordinates.take().map(|(c, old)| match &next.power {
+            Ok(p) => {
+                let summary = c.resolve(&p.case).summary;
+                (c, summary)
+            }
+            Err(_) => (c, old),
+        });
         if let Some(updates) = updates {
             // The RAW tables only change in the edited cells.
             let mut records = self
@@ -1168,12 +1303,21 @@ impl SolveJob {
 
 /// A "Trip and compare" solve taken out of the open case.
 pub struct TripJob {
+    version: u64,
     element: String,
     job: ContingencyJob,
 }
 
+/// A finished [`TripJob`], to keep with [`OpenCase::finish_trip`].
+pub struct TripDone {
+    version: u64,
+    element: String,
+    results: ContingencyResults,
+    detail: ContingencyDetail,
+}
+
 impl TripJob {
-    pub fn run(self) -> Result<ContingencyDetail, String> {
+    pub fn run(self) -> Result<TripDone, String> {
         let mut results = self.job.run()?;
         let detail = results.detail(1)?;
         log::info!(
@@ -1182,7 +1326,12 @@ impl TripJob {
             detail.overloads.len(),
             if detail.overloads.len() == 1 { "" } else { "s" }
         );
-        Ok(detail)
+        Ok(TripDone {
+            version: self.version,
+            element: self.element,
+            results,
+            detail,
+        })
     }
 }
 

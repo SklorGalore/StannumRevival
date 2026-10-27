@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
-import { useWorkspace } from "../../store/workspaceStore";
+import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
 import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
 import type {
   DcLineKind,
@@ -861,6 +861,31 @@ function tabFor(element: string): Tab | null {
   return kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
 }
 
+/** Says which result the tables show when it isn't the latest solve. */
+function ShownResultNotice({ shown, onBack }: { shown: ShownResult; onBack: () => void }) {
+  return (
+    <div className="p-3 pb-0" data-testid="shown-result-notice">
+      <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <span className="min-w-0 flex-1">
+          {shown.error ? (
+            <>
+              Couldn't show {shown.label.toLowerCase()} ({elementLabel(shown.element)} out): {shown.error} These are the latest solve's results.
+            </>
+          ) : (
+            <>
+              Showing <strong>{shown.label}</strong>, the case with {elementLabel(shown.element)} out
+              {shown.report ? "" : " (solving…)"}. Every view shows this result until you go back.
+            </>
+          )}
+        </span>
+        <button type="button" className="shrink-0 font-medium text-amber-900 underline" onClick={onBack} data-testid="show-latest">
+          Back to the latest solve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
@@ -869,8 +894,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const settings = useStudy((s) => s.settings);
   const setSettings = useStudy((s) => s.setSettings);
   const [tab, setTab] = useState<Tab>("overview");
-  // Shared so the diagram can overlay the same results.
-  const report = useWorkspace((s) => s.solveReport);
+  // The latest solve, and the result every view shows (the latest solve, or
+  // the outage drawn on the diagram). The tables show the second.
+  const latest = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
+  const shown = useWorkspace((s) => s.shown);
+  const showLatest = useWorkspace((s) => s.showLatest);
   // Solve settings fold away in a narrow pane (side by side) unless asked for.
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
@@ -997,7 +1026,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const studyRevision = useStudy((s) => s.revision);
   const studyCount = useStudy((s) => s.entries.length);
   const [solvedRevision, setSolvedRevision] = useState(studyRevision);
-  const stale = !!report && solvedRevision !== studyRevision;
+  const stale = !!latest && solvedRevision !== studyRevision;
   const lastStudyRevision = useRef(studyRevision);
   useEffect(() => {
     if (studyRevision === lastStudyRevision.current) return;
@@ -1006,7 +1035,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
-    if (report && power?.available) void solve();
+    if (latest && power?.available) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyRevision]);
   const studyShowRequest = useStudy((s) => s.showRequest);
@@ -1064,10 +1093,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
-      { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !report },
+      { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
-    [report, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
   );
 
   if (!summary) {
@@ -1107,7 +1136,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           onSolve={solve}
           onCancelSolve={() => void api.cancelSolve()}
           onSensitivities={sensitivities}
-          report={report}
+          report={latest}
           onExport={exportMatpower}
           onHide={() => setSettingsOpen(false)}
         />
@@ -1146,6 +1175,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <Notice>These results are from before your latest study edits. Solve again to update them.</Notice>
           </div>
         )}
+        {shown && <ShownResultNotice shown={shown} onBack={showLatest} />}
         {!report && !sensitivity && tab !== "warnings" && tab !== "study" && tab !== "vsc" ? (
           <EmptyState icon={<Play size={20} />} title="Ready to solve">
             {count(power.info!.counts.buses)} buses, {count(power.info!.counts.generators)} generators and{" "}
@@ -1296,13 +1326,13 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "contingencies" && (
                 <ContingencyTab
-                  report={report}
+                  report={latest}
                   settings={settings}
                   scope={contingencyScope}
                   onPick={pick}
                 />
               )}
-              {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
+              {tab === "study" && <StudyPanel onShow={pick} report={latest} stale={stale} />}
               {tab === "warnings" && (
                 <WarningsTab
                   warnings={warnings}

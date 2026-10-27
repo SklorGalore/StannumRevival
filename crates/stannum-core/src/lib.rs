@@ -8,10 +8,12 @@
 //! - [`derived_topology`]: topology for cases nodal can't read, from the power model.
 //! - [`diagram`]: the case as a drawable network for one-line diagrams.
 //! - [`diff`]: exact RAW case comparison (ported from case-diff).
+//! - [`geo`]: bus coordinates for the map, from a CSV side file.
 //! - [`inspect`]: one element's data and limits, for the element inspector.
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
 //! - [`record_edit`]: edits from the Records module, written into the case.
 //! - [`records`]: the open case's records as tables, one per record type.
+//! - [`results`]: names for every solution the open case can show.
 //! - [`logbook`]: the application log shown in the log panel.
 
 pub mod commands;
@@ -21,11 +23,13 @@ pub mod derived_topology;
 pub mod diagram;
 pub mod diff;
 pub mod elements;
+pub mod geo;
 pub mod inspect;
 pub mod logbook;
 pub mod power;
 pub mod record_edit;
 pub mod records;
+pub mod results;
 pub mod study;
 pub mod study_file;
 pub mod working_case;

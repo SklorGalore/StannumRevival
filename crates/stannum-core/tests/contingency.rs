@@ -246,3 +246,74 @@ fn trip_and_compare_matches_the_ac_run() {
     let err = case.trip_and_compare(&element, 100.0).unwrap_err();
     assert!(err.contains("already out"), "{err}");
 }
+
+/// Every named result is a full solve report: a contingency or a trip
+/// matches solving the case with that element out as a study edit.
+#[test]
+fn named_results_match_a_study_solve() {
+    let mut ws = solved("case30.m");
+    let case = ws.current_mut().unwrap();
+    let base = case.result("base").unwrap();
+    assert!(base.converged);
+    assert!(case.result("study").unwrap_err().contains("\"base\""));
+    assert!(
+        case.result("contingency 1")
+            .unwrap_err()
+            .contains("Run contingencies")
+    );
+
+    let mut all = settings(Method::Ac);
+    all.generators = false;
+    case.run_contingencies(all).unwrap();
+    let element = case.contingency_rows(0, 1).unwrap()[0].element.clone();
+    let outage = case.result("contingency 1").unwrap();
+    assert!(outage.converged);
+    let out = outage
+        .branches
+        .iter()
+        .find(|b| b.element == element)
+        .unwrap();
+    assert!(!out.online && out.pf == 0.0, "{out:?}");
+
+    case.trip_and_compare(&element, 100.0).unwrap();
+    let tripped = case.result(&format!("trip {element}")).unwrap();
+    assert!(
+        case.result("trip line:999-998-1")
+            .unwrap_err()
+            .contains("only the last trip")
+    );
+
+    case.set_edits(vec![Edit::Status {
+        element: element.clone(),
+        online: false,
+    }])
+    .unwrap();
+    // A study change drops results that described the case before it.
+    assert!(case.result("trip x").is_err());
+    assert!(
+        case.result("study")
+            .unwrap_err()
+            .contains("Solve the case first")
+    );
+    let study = case.solve(SolveSettings::default()).unwrap();
+    assert!(case.result("base").unwrap_err().contains("\"study\""));
+    assert_eq!(
+        case.result("study").unwrap().branches.len(),
+        study.branches.len()
+    );
+    for ((a, b), c) in outage
+        .branches
+        .iter()
+        .zip(&tripped.branches)
+        .zip(&study.branches)
+    {
+        assert!(
+            (a.pf - c.pf).abs() < 1e-3 && (b.pf - c.pf).abs() < 1e-3,
+            "{} {} {} {}",
+            a.element,
+            a.pf,
+            b.pf,
+            c.pf
+        );
+    }
+}

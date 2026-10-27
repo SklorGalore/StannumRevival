@@ -10,6 +10,8 @@ import {
   Save,
   GitCompareArrows,
   Link2,
+  MapPin,
+  MapPinOff,
   Moon,
   Layers,
   Table2,
@@ -117,6 +119,23 @@ function useCommands(): Command[] {
         keywords: "linked selection follow modules",
         run: () => w.setLinked(!linked),
       });
+      if (summary.power.available) {
+        list.push({
+          id: "coordinates",
+          title: summary.coordinates ? "Attach other bus coordinates…" : "Attach bus coordinates…",
+          icon: <MapPin size={14} />,
+          keywords: "map geography latitude longitude csv location substation place",
+          run: () => void w.attachCoordinates(),
+        });
+        if (summary.coordinates)
+          list.push({
+            id: "coordinates-clear",
+            title: `Detach bus coordinates (${summary.coordinates.name})`,
+            icon: <MapPinOff size={14} />,
+            keywords: "map geography latitude longitude csv location remove",
+            run: () => void w.detachCoordinates(),
+          });
+      }
       if (selection) list.push({ id: "clear", title: "Clear selection", icon: <X size={14} />, keywords: "deselect escape", run: () => w.select(null, w.module) });
       list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
     }

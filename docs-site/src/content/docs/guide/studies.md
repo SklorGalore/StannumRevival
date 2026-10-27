@@ -56,7 +56,8 @@ survives closing Stannum and can be handed to someone else. It keeps:
 - the solve settings and the contingency settings,
 - the one-line drawing, if there is one,
 - which modules are showing, side by side or not,
-- the attached DC grid file, by path.
+- the attached DC grid file, by path,
+- the attached bus coordinates file, by path.
 
 The case itself isn't copied in. The study refers to the case file by its
 path, by its path relative to the study, and by a fingerprint (its SHA-256),

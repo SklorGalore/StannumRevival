@@ -8,6 +8,13 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+### Added
+
+- One result shown in every view: showing an outage on the diagram (from
+  Contingencies or Trip and compare) switches the diagram's flow labels, the
+  Power flow tables and the inspector to that outage's solution, and the
+  case bar says which result is shown, with a menu to switch back.
+
 ### Changed
 
 - Solves, sensitivities, "Trip and compare" and Records reads and edits no

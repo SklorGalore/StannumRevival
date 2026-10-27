@@ -433,3 +433,31 @@ pub fn element(
     }
     Ok(detail)
 }
+
+/// A bus's place on the map, from the attached coordinates file: "from
+/// file", "estimated" from its neighbours, or "nowhere" when nothing in its
+/// island is in the file.
+pub fn location(place: Option<(f64, f64, &'static str, Option<&str>)>) -> Group {
+    let fields = match place {
+        Some((lat, lon, source, substation)) => {
+            let mut f = vec![num("Latitude", lat, "°"), num("Longitude", lon, "°")];
+            f.push(text(
+                "Placed",
+                if source == "file" {
+                    "from file"
+                } else {
+                    "estimated"
+                },
+            ));
+            if let Some(s) = substation {
+                f.push(text("Substation", s));
+            }
+            f
+        }
+        None => vec![text("Placed", "nowhere")],
+    };
+    Group {
+        title: "Location".to_string(),
+        fields,
+    }
+}
