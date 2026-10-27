@@ -26,11 +26,14 @@ export function OverflowMenu({
   label = "More",
   showLabel = false,
   className = "",
+  icon,
 }: {
   items: MenuItem[];
   label?: string;
   showLabel?: boolean;
   className?: string;
+  /** Drawn on the button in place of the "More" dots. */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -80,7 +83,7 @@ export function OverflowMenu({
             <ChevronDown size={12} />
           </>
         ) : (
-          <MoreHorizontal size={15} />
+          (icon ?? <MoreHorizontal size={15} />)
         )}
       </button>
       {open &&

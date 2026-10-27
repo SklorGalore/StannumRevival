@@ -137,9 +137,10 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
         ),
         "contingency_detail" => to_json(ws.current_mut()?.contingency_detail(arg(args, "rank")?)?),
         "trip_and_compare" => to_json(
-            ws.current()?
+            ws.current_mut()?
                 .trip_and_compare(&arg::<String>(args, "element")?, arg(args, "limitPct")?)?,
         ),
+        "result_report" => to_json(ws.current_mut()?.result(&arg::<String>(args, "name")?)?),
         "log_entries" => to_json(logbook::since(arg(args, "since")?)),
         other => Err(format!("unknown command {other}")),
     }

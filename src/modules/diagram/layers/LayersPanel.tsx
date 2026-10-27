@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ChevronRight, Layers, Route, X } from "lucide-react";
-import { useWorkspace } from "../../../store/workspaceStore";
+import { useShownReport, useWorkspace } from "../../../store/workspaceStore";
 import { useLayers } from "../../../store/layerStore";
 import { useTopology, shareTopology } from "../../../lib/analysis/topologyStore";
 import { api } from "../../../lib/analysis/api";
@@ -142,7 +142,7 @@ const RESULT_MODES: { mode: ResultMode; label: string }[] = [
 
 /** Pick what the Results layer colours by. */
 function ResultsLayerControls() {
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
   const mode = useLayers((s) => s.resultMode);
   const compareWith = useLayers((s) => s.compareWith);
   const sensitivity = useLayers((s) => s.sensitivity);

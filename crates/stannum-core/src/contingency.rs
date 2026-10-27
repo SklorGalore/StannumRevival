@@ -441,6 +441,7 @@ impl ContingencyJob {
             base: self.base,
             settings: self.settings,
             last_detail: None,
+            last_solution: None,
         })
     }
 }
@@ -855,6 +856,16 @@ impl<'a> Context<'a> {
     /// Solve the outage in AC from the base solution. `None` only when the
     /// run was cancelled first.
     fn ac(&self, outage: &Outage, settings: &SolveSettings, handle: &RunHandle) -> Option<Outcome> {
+        self.ac_solved(outage, settings, handle).map(|(o, _)| o)
+    }
+
+    /// [`Self::ac`], keeping the solution too when the solve converged.
+    fn ac_solved(
+        &self,
+        outage: &Outage,
+        settings: &SolveSettings,
+        handle: &RunHandle,
+    ) -> Option<(Outcome, Option<PowerFlowResult>)> {
         if handle.cancelled() {
             return None;
         }
@@ -878,7 +889,7 @@ impl<'a> Context<'a> {
                 row.converged = Some(false);
                 row.severity = f64::INFINITY;
                 row.note = Some(format!("The AC solve failed: {e}"));
-                return Some(Outcome { row, ..screened });
+                return Some((Outcome { row, ..screened }, None));
             }
         };
         let converged = result.status == SolveStatus::Converged;
@@ -896,7 +907,7 @@ impl<'a> Context<'a> {
             } else {
                 "Doesn't converge.".into()
             });
-            return Some(Outcome { row, ..screened });
+            return Some((Outcome { row, ..screened }, None));
         }
         let solved = &result.case;
         let mut overloads = Vec::new();
@@ -993,14 +1004,17 @@ impl<'a> Context<'a> {
         row.overloads = overloads.len();
         row.worst_voltage = voltage_problems.first().cloned();
         row.voltage_violations = voltage_problems.len();
-        Some(Outcome {
-            row,
-            overloads,
-            voltage_problems,
-            branches,
-            buses,
-            cut_off: screened.cut_off,
-        })
+        Some((
+            Outcome {
+                row,
+                overloads,
+                voltage_problems,
+                branches,
+                buses,
+                cut_off: screened.cut_off,
+            },
+            Some(result),
+        ))
     }
 }
 
@@ -1015,12 +1029,20 @@ pub struct ContingencyResults {
     base: PowerFlowResult,
     settings: ContingencySettings,
     last_detail: Option<(usize, ContingencyDetail)>,
+    /// The converged AC solution of the last outage solved in full, by rank.
+    last_solution: Option<(usize, PowerFlowResult)>,
 }
 
 impl ContingencyResults {
     /// Ranked rows `offset..offset + limit`.
     pub fn page(&self, offset: usize, limit: usize) -> Vec<ContingencyRow> {
         self.rows.iter().skip(offset).take(limit).cloned().collect()
+    }
+
+    fn index(&self, rank: usize) -> Result<usize, String> {
+        rank.checked_sub(1)
+            .filter(|&i| i < self.rows.len())
+            .ok_or_else(|| format!("No contingency ranked {rank}."))
     }
 
     /// One outage in full, by rank (from 1). Solved again on demand, in AC
@@ -1031,22 +1053,19 @@ impl ContingencyResults {
         {
             return Ok(d.clone());
         }
-        let i = rank
-            .checked_sub(1)
-            .filter(|&i| i < self.rows.len())
-            .ok_or_else(|| format!("No contingency ranked {rank}."))?;
+        let i = self.index(rank)?;
         let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
         let row = &self.rows[i];
-        let outcome = if row.checked == "ac" {
+        let (outcome, solution) = if row.checked == "ac" {
             context
-                .ac(
+                .ac_solved(
                     &self.outages[i],
                     &self.settings.solve,
                     &RunHandle::default(),
                 )
                 .ok_or("Cancelled")?
         } else {
-            context.screen(&self.outages[i])
+            (context.screen(&self.outages[i]), None)
         };
         let detail = ContingencyDetail {
             row: ContingencyRow {
@@ -1060,6 +1079,58 @@ impl ContingencyResults {
             cut_off: outcome.cut_off,
         };
         self.last_detail = Some((rank, detail.clone()));
+        if let Some(solution) = solution {
+            self.last_solution = Some((rank, solution));
+        }
         Ok(detail)
+    }
+
+    /// One outage's whole AC solution as a solve report, by rank, so every
+    /// view can show it like the base solve. Solved in AC even when the run
+    /// only screened the outage.
+    pub fn report(&mut self, rank: usize) -> Result<power::SolveReport, String> {
+        let i = self.index(rank)?;
+        let start = Instant::now();
+        let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);
+        if !cached {
+            let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+            let (outcome, solution) = context
+                .ac_solved(
+                    &self.outages[i],
+                    &self.settings.solve,
+                    &RunHandle::default(),
+                )
+                .ok_or("Cancelled")?;
+            let solution = solution.ok_or_else(|| {
+                format!(
+                    "{}: {}",
+                    self.rows[i].element,
+                    outcome
+                        .row
+                        .note
+                        .unwrap_or_else(|| "the AC solve did not converge.".into())
+                )
+            })?;
+            self.last_solution = Some((rank, solution));
+        }
+        let (_, solution) = self.last_solution.as_ref().expect("solved above");
+        let controls = self
+            .settings
+            .solve
+            .options_for(&self.power)
+            .voltage_controls;
+        Ok(power::report(
+            solution,
+            &self.power.elements,
+            &self.power.dc_line_kinds,
+            &controls,
+            &self.settings.solve,
+            start.elapsed().as_secs_f64() * 1000.0,
+        ))
+    }
+
+    /// The element each rank takes out.
+    pub fn element(&self, rank: usize) -> Option<&str> {
+        self.index(rank).ok().map(|i| self.rows[i].element.as_str())
     }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useWorkspace } from "../../../store/workspaceStore";
+import { useShownReport, useWorkspace } from "../../../store/workspaceStore";
 import { useLayers } from "../../../store/layerStore";
 import { NO_MARKS, resolveLayers } from "../../../lib/diagram/layers";
 import { isComplete, loadFieldSettings, saveFieldSettings } from "../../topology/fields/storage";
@@ -23,7 +23,7 @@ export function useLayerSync(want: boolean) {
   const onDiagram = useContingencies((s) => s.onDiagram);
   const detail = useContingencies((s) => s.detail);
   const limitPct = useContingencies((s) => s.summary?.limit_pct ?? 100);
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
   const resultMode = useLayers((s) => s.resultMode);
   const compareWith = useLayers((s) => s.compareWith);
   const sensitivity = useLayers((s) => s.sensitivity);

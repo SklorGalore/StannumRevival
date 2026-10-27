@@ -385,9 +385,19 @@ pub async fn trip_and_compare(
     limit_pct: f64,
 ) -> Result<ContingencyDetail, String> {
     with(state, move |ws| {
-        ws.current()?.trip_and_compare(&element, limit_pct)
+        ws.current_mut()?.trip_and_compare(&element, limit_pct)
     })
     .await
+}
+
+/// A result by name ("base", "study", "contingency 3", "trip line:1-2-1"),
+/// as a full solve report for every view to show.
+#[tauri::command]
+pub async fn result_report(
+    state: State<'_, SharedWorkspace>,
+    name: String,
+) -> Result<SolveReport, String> {
+    with(state, move |ws| ws.current_mut()?.result(&name)).await
 }
 
 /// Log lines numbered above `since`, for the log panel to catch up.

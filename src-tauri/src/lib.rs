@@ -146,6 +146,7 @@ pub fn run() {
             analysis::contingency_rows,
             analysis::contingency_detail,
             analysis::trip_and_compare,
+            analysis::result_report,
             analysis::cancel_solve,
             analysis::log_entries,
         ])
