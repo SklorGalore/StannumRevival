@@ -1,6 +1,7 @@
 //! Power flow and sensitivities (rs-power), shaped for the frontend.
 
 use crate::elements::Elements;
+use crate::table::{self, Table};
 use rs_power::{
     BusType, Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
     PowerFlowSensitivity, SolveStatus, StateVariable,
@@ -362,18 +363,26 @@ pub struct BusRow {
     pub name: String,
     #[schemars(extend("enum" = ["PQ", "PV", "Ref", "Isolated"]))]
     pub kind: &'static str,
+    #[serde(serialize_with = "table::mw")]
     pub base_kv: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vm: f64,
+    #[serde(serialize_with = "table::mw")]
     pub va: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vmin: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vmax: f64,
     /// Load drawn at the solved voltage, all parts together.
+    #[serde(serialize_with = "table::mw")]
     pub pd: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qd: f64,
     /// The load split by how it varies with voltage, when any of it does.
     pub load_parts: Option<LoadParts>,
     pub area: u32,
     /// Distance outside [vmin, vmax] in p.u.; zero when within limits.
+    #[serde(serialize_with = "table::pu")]
     pub violation: f64,
 }
 
@@ -405,13 +414,20 @@ pub struct GeneratorRow {
     pub bus: u32,
     pub bus_name: String,
     pub online: bool,
+    #[serde(serialize_with = "table::mw")]
     pub pg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qmin: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qmax: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub pmax: f64,
     /// MVAr outside [qmin, qmax]; zero when within limits or offline.
+    #[serde(serialize_with = "table::mw")]
     pub q_violation: f64,
 }
 
@@ -427,13 +443,20 @@ pub struct BranchRow {
     pub to: u32,
     pub online: bool,
     pub is_transformer: bool,
+    #[serde(serialize_with = "table::mw")]
     pub pf: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qf: f64,
+    #[serde(serialize_with = "table::mw")]
     pub pt: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qt: f64,
+    #[serde(serialize_with = "table::mw")]
     pub loss_mw: f64,
+    #[serde(serialize_with = "table::mw")]
     pub rate_a: f64,
     /// Highest end MVA as a percent of rate A; `None` when unrated or offline.
+    #[serde(serialize_with = "table::pct")]
     pub loading_pct: Option<f64>,
 }
 
@@ -668,163 +691,16 @@ pub struct SolveReport {
     pub total_load_mw: f64,
     pub total_losses_mw: f64,
     pub limits: LimitSummary,
-    /// Sent as columns (see [`wire`]); the frontend turns them back into rows.
-    #[serde(serialize_with = "wire::bus_columns")]
-    #[schemars(with = "wire::Columns<BusRow>")]
-    pub buses: Vec<BusRow>,
-    #[serde(serialize_with = "wire::generator_columns")]
-    #[schemars(with = "wire::Columns<GeneratorRow>")]
-    pub generators: Vec<GeneratorRow>,
-    #[serde(serialize_with = "wire::branch_columns")]
-    #[schemars(with = "wire::Columns<BranchRow>")]
-    pub branches: Vec<BranchRow>,
+    /// Sent as columns (see [`Table`]); the frontend turns them back into rows.
+    pub buses: Table<BusRow>,
+    pub generators: Table<GeneratorRow>,
+    pub branches: Table<BranchRow>,
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
     pub dc_systems: Vec<DcSystemReport>,
     /// VSC DC grids from an attached DC grid file, solved in sequence with
     /// the AC network.
     pub vsc_grids: Option<crate::dc_grids::VscGridsReport>,
-}
-
-/// How the row tables travel to the frontend. A large case has hundreds of
-/// thousands of rows, and as JSON objects every row repeats its field names.
-/// Sending one array per field, with numbers rounded to what any table or
-/// chart shows, cuts the report to about a third (62 MB to 23 MB on a
-/// 78,000-bus case). `src/lib/analysis/api.ts` turns the columns back into
-/// row objects.
-pub mod wire {
-    use super::{BranchRow, BusRow, GeneratorRow};
-    use schemars::{JsonSchema, Schema, SchemaGenerator};
-    use serde::Serialize;
-    use serde::ser::{SerializeMap, Serializer};
-    use serde_json::{Map, Value, json};
-    use std::borrow::Cow;
-    use std::marker::PhantomData;
-
-    /// The schema of a row table sent as columns: `count`, then one array
-    /// per field of `R`, all the same length.
-    pub struct Columns<R>(PhantomData<R>);
-
-    impl<R: JsonSchema> JsonSchema for Columns<R> {
-        fn schema_name() -> Cow<'static, str> {
-            format!("{}Columns", R::schema_name()).into()
-        }
-
-        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
-            let row = R::json_schema(generator);
-            let mut properties = Map::new();
-            properties.insert(
-                "count".into(),
-                json!({ "type": "integer", "format": "uint", "minimum": 0 }),
-            );
-            if let Some(fields) = row.get("properties").and_then(Value::as_object) {
-                for (name, field) in fields {
-                    properties.insert(name.clone(), json!({ "type": "array", "items": field }));
-                }
-            }
-            let required: Vec<_> = properties.keys().cloned().collect();
-            json!({
-                "type": "object",
-                "description": format!(
-                    "{} rows as columns: one array per field, each `count` long.",
-                    R::schema_name()
-                ),
-                "properties": properties,
-                "required": required,
-            })
-            .try_into()
-            .expect("an object is a schema")
-        }
-    }
-
-    /// One field of every row, serialized as an array without copying.
-    struct Column<'a, T, V>(&'a [T], fn(&'a T) -> V);
-
-    impl<'a, T, V: Serialize> Serialize for Column<'a, T, V> {
-        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-            s.collect_seq(self.0.iter().map(self.1))
-        }
-    }
-
-    fn round(x: f64, places: i32) -> f64 {
-        if !x.is_finite() {
-            return x;
-        }
-        let k = 10f64.powi(places);
-        let r = (x * k).round() / k;
-        // Keep a tiny value tiny rather than rounding it to zero, so
-        // "outside limits" checks (violation > 0) still hold.
-        if r == 0.0 && x != 0.0 { x } else { r }
-    }
-    /// MW, MVAr, kV and degrees: 0.1 kW is far below anything shown.
-    fn mw(x: f64) -> f64 {
-        round(x, 4)
-    }
-    /// Per-unit voltages.
-    fn pu(x: f64) -> f64 {
-        round(x, 6)
-    }
-
-    macro_rules! columns {
-        ($name:ident, $row:ty, { $($field:ident => $value:expr),* $(,)? }) => {
-            pub fn $name<S: Serializer>(rows: &[$row], s: S) -> Result<S::Ok, S::Error> {
-                let mut map = s.serialize_map(None)?;
-                map.serialize_entry("count", &rows.len())?;
-                $(map.serialize_entry(stringify!($field), &Column::<$row, _>(rows, $value))?;)*
-                map.end()
-            }
-        };
-    }
-
-    columns!(bus_columns, BusRow, {
-        id => |r| r.id,
-        name => |r| r.name.as_str(),
-        kind => |r| r.kind,
-        base_kv => |r| mw(r.base_kv),
-        vm => |r| pu(r.vm),
-        va => |r| mw(r.va),
-        vmin => |r| pu(r.vmin),
-        vmax => |r| pu(r.vmax),
-        pd => |r| mw(r.pd),
-        qd => |r| mw(r.qd),
-        load_parts => |r| r.load_parts.as_ref(),
-        area => |r| r.area,
-        violation => |r| pu(r.violation),
-    });
-
-    columns!(generator_columns, GeneratorRow, {
-        index => |r| r.index,
-        element => |r| r.element.as_str(),
-        machine_id => |r| r.machine_id.as_str(),
-        bus => |r| r.bus,
-        bus_name => |r| r.bus_name.as_str(),
-        online => |r| r.online,
-        pg => |r| mw(r.pg),
-        qg => |r| mw(r.qg),
-        qmin => |r| mw(r.qmin),
-        qmax => |r| mw(r.qmax),
-        vg => |r| pu(r.vg),
-        pmax => |r| mw(r.pmax),
-        q_violation => |r| mw(r.q_violation),
-    });
-
-    columns!(branch_columns, BranchRow, {
-        index => |r| r.index,
-        element => |r| r.element.as_str(),
-        circuit => |r| r.circuit.as_str(),
-        winding => |r| r.winding,
-        from => |r| r.from,
-        to => |r| r.to,
-        online => |r| r.online,
-        is_transformer => |r| r.is_transformer,
-        pf => |r| mw(r.pf),
-        qf => |r| mw(r.qf),
-        pt => |r| mw(r.pt),
-        qt => |r| mw(r.qt),
-        loss_mw => |r| mw(r.loss_mw),
-        rate_a => |r| mw(r.rate_a),
-        loading_pct => |r| r.loading_pct.map(|p| round(p, 3)),
-    });
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -1151,9 +1027,9 @@ pub fn report(
         total_load_mw,
         total_losses_mw,
         limits,
-        buses,
-        generators,
-        branches,
+        buses: buses.into(),
+        generators: generators.into(),
+        branches: branches.into(),
         dc_lines,
         dc_systems,
         vsc_grids: None,

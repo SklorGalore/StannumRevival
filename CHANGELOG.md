@@ -53,6 +53,9 @@ section into the next version's when a release is cut (see
 - Solves, sensitivities, "Trip and compare" and Records reads and edits no
   longer hold up the rest of the app: on a 30,000-bus case, Records opens
   in a fraction of a second during a 5 s solve instead of waiting for it.
+- Records tables and ranked contingency rows travel as columns, like the
+  solve report, through one table type in the core: about 15% less to send
+  for the largest Records table of a 12,000-bus case. Command API version 3.
 
 ### Fixed
 

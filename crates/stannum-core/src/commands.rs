@@ -32,7 +32,8 @@ use std::time::Instant;
 /// argument or result changes in a way existing callers would notice.
 ///
 /// 2: errors are `{kind, message}` objects instead of text.
-pub const API_VERSION: u32 = 2;
+/// 3: `record_table` rows and `contingency_rows` come as columns.
+pub const API_VERSION: u32 = 3;
 
 /// How many times work done without the workspace lock is redone when the
 /// case changes under it, before it waits for the lock instead.
@@ -703,7 +704,7 @@ commands! {
         |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
 
     /// A page of the last run's ranked results.
-    contingency_rows { case: Option<CaseId>, offset: usize, limit: usize } -> Vec<crate::contingency::ContingencyRow> =>
+    contingency_rows { case: Option<CaseId>, offset: usize, limit: usize } -> crate::table::Table<crate::contingency::ContingencyRow> =>
         |s, a| s.workspace()?.case(a.case)?.contingency_rows(a.offset, a.limit);
 
     /// One outage's flow and voltage changes, by rank.

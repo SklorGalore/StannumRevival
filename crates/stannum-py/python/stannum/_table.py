@@ -30,7 +30,10 @@ def _column(values: Sequence[Any]) -> np.ndarray:
     if len(present) == len(values) and all(isinstance(v, str) for v in present):
         return np.array(values, dtype=str)
     out = np.empty(len(values), dtype=object)
-    out[:] = list(values)
+    # One by one: a slice assignment would read equal-length lists (such as
+    # Records cells) as a second dimension.
+    for i, v in enumerate(values):
+        out[i] = v
     return out
 
 

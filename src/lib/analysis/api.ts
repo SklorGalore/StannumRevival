@@ -20,6 +20,7 @@ import type {
   RecordBook,
   RecordEdit,
   RecordTable,
+  CaseRecord,
   ResponseTable,
   SensitivitySummary,
   SolveReport,
@@ -29,7 +30,7 @@ import type {
   TopoCase,
   TopoPath,
 } from "./types";
-import { decodeSolveReport } from "./wire";
+import { decodeSolveReport, fromColumns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
 import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, Step } from "./commands.gen";
 
@@ -238,8 +239,8 @@ export const api = {
   // Polled while a run is going, so they skip the log.
   cancelContingencies: () => invokeCore("cancel_contingencies"),
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
-  contingencyRows: (offset: number, limit: number): Promise<ContingencyRow[]> =>
-    call("contingency_rows", { offset, limit }),
+  contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
+    fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
   tripAndCompare: (element: string, limitPct: number): Promise<ContingencyDetail> => call("trip_and_compare", { element, limitPct }),
   /** A named result ("base", "study", "contingency 3", "trip line:1-2-1") as a full solve report. */
@@ -249,7 +250,10 @@ export const api = {
   diagramNetwork: (): Promise<CaseNetwork> => call("diagram_network"),
   elementDetail: (element: string): Promise<ElementDetail> => call("element_detail", { element }),
   caseRecords: (): Promise<RecordBook> => call("case_records"),
-  recordTable: (section: string): Promise<RecordTable> => call("record_table", { section }),
+  recordTable: async (section: string): Promise<RecordTable> => {
+    const table = await call("record_table", { section });
+    return { ...table, rows: fromColumns<CaseRecord>(table.rows) };
+  },
   applyRecordEdits: (edits: RecordEdit[]): Promise<CaseSummary> => call("apply_record_edits", { edits }),
   saveCaseAs: (path: string): Promise<CaseSummary> => call("save_case_as", { path }),
 

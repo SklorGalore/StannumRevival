@@ -1067,7 +1067,7 @@ pub struct ContingencyResults {
 
 impl ContingencyResults {
     /// Ranked rows `offset..offset + limit`.
-    pub fn page(&self, offset: usize, limit: usize) -> Vec<ContingencyRow> {
+    pub fn page(&self, offset: usize, limit: usize) -> crate::table::Table<ContingencyRow> {
         self.rows.iter().skip(offset).take(limit).cloned().collect()
     }
 

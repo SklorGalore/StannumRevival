@@ -634,8 +634,8 @@ fn the_report_sends_its_tables_as_columns() {
 
 #[test]
 fn every_row_field_has_a_column() {
-    // A field added to a row struct must also be added to its column list
-    // in `power::wire`, or the frontend never sees it.
+    // Columns come from the row's own fields (`stannum_core::table`), so a
+    // field added to a row is always sent.
     let mut ws = Workspace::default();
     ws.open(&fixture("five_bus_zip.raw")).unwrap();
     let report = ws
