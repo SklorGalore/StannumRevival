@@ -4,8 +4,9 @@ Checks that the app version is the same everywhere it is written down, and
 that CHANGELOG.md has notes for it.
 
 .DESCRIPTION
-The version lives in package.json, src-tauri/tauri.conf.json and
-src-tauri/Cargo.toml. All three must agree. With -Tag, the tag must be "v"
+The version lives in package.json, src-tauri/tauri.conf.json and the
+Cargo.toml of the app (src-tauri), stannum-cli and the Python package
+(crates/stannum-py). All must agree. With -Tag, the tag must be "v"
 followed by that version. With -NotesFile, the version's section of
 CHANGELOG.md is written to that file for the GitHub release. Without -Tag,
 an "Unreleased" section is accepted in place of the version's own section,
