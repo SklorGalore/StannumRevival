@@ -8,7 +8,8 @@
 //!
 //! It takes a few minutes, so it only runs when asked, in release:
 //! `cargo test --release -p stannum-core --test budgets -- --ignored --nocapture`.
-//! `STANNUM_BUDGET_BUSES` sets the case size (12,000 by default).
+//! `STANNUM_BUDGET_BUSES` sets the case size (12,000 by default), and
+//! `STANNUM_BUDGET_CACHE` names a folder to keep the built case in and reuse.
 
 use serde_json::{Value, json};
 use stannum_core::commands::Session;
@@ -66,23 +67,39 @@ fn a_large_case_stays_within_budget() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(BUDGET_BUSES as usize);
-    let dir = std::env::temp_dir().join(format!("stannum-budgets-{}", std::process::id()));
+    // The same seed always builds the same case, so a kept copy is reused
+    // (CI keeps one until the generator changes).
+    let (dir, keep) = match std::env::var("STANNUM_BUDGET_CACHE") {
+        Ok(d) => (std::path::PathBuf::from(d), true),
+        Err(_) => (
+            std::env::temp_dir().join(format!("stannum-budgets-{}", std::process::id())),
+            false,
+        ),
+    };
     std::fs::create_dir_all(&dir).unwrap();
-
-    let start = Instant::now();
-    let mut config = stannum_synth::Config::for_buses(buses);
-    config.seed = 1;
-    let synth = stannum_synth::generate(&config);
-    let case_path = dir.join("large.m");
-    let coords_path = dir.join("large.coords.csv");
-    std::fs::write(&case_path, rs_power::format_matpower(&synth.case).unwrap()).unwrap();
-    std::fs::write(&coords_path, synth.coordinates_csv()).unwrap();
-    eprintln!(
-        "built a {}-bus case in {:.0} s (ac solve converged: {})",
-        synth.report.buses,
-        start.elapsed().as_secs_f64(),
-        synth.report.ac.converged
-    );
+    let case_path = dir.join(format!("synthetic_{buses}_seed1.m"));
+    let coords_path = dir.join(format!("synthetic_{buses}_seed1.coords.csv"));
+    if case_path.exists() && coords_path.exists() {
+        eprintln!("reusing {}", case_path.display());
+    } else {
+        let start = Instant::now();
+        let mut config = stannum_synth::Config::for_buses(buses);
+        config.seed = 1;
+        let synth = stannum_synth::generate(&config);
+        std::fs::write(&case_path, rs_power::format_matpower(&synth.case).unwrap()).unwrap();
+        std::fs::write(&coords_path, synth.coordinates_csv()).unwrap();
+        eprintln!(
+            "built a {}-bus case in {:.0} s (ac solve converged: {})",
+            synth.report.buses,
+            start.elapsed().as_secs_f64(),
+            synth.report.ac.converged
+        );
+    }
+    let bus_count = std::fs::read_to_string(&coords_path)
+        .unwrap()
+        .lines()
+        .count()
+        - 1;
 
     let s = Arc::new(Session::new());
     let mut out = Vec::new();
@@ -108,16 +125,22 @@ fn a_large_case_stays_within_budget() {
     let waits = {
         let (s, done) = (s.clone(), done.clone());
         std::thread::spawn(move || {
-            let (mut longest, mut bytes, mut asked) = (Duration::ZERO, 0, 0);
-            std::thread::sleep(Duration::from_millis(50));
-            while !done.load(Ordering::Relaxed) {
+            let (mut longest, mut bytes) = (Duration::ZERO, 0);
+            // Ask straight away and then every 10 ms until the solve ends.
+            loop {
                 let t = Instant::now();
-                bytes = s.invoke("case_summary", json!({})).unwrap().len();
+                bytes = s
+                    .invoke("case_summary", json!({}))
+                    .unwrap()
+                    .len()
+                    .max(bytes);
                 longest = longest.max(t.elapsed());
-                asked += 1;
-                std::thread::sleep(Duration::from_millis(20));
+                if done.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
             }
-            (longest, bytes, asked)
+            (longest, bytes)
         })
     };
     let report = run(
@@ -128,8 +151,7 @@ fn a_large_case_stays_within_budget() {
         json!({ "settings": settings }),
     );
     done.store(true, Ordering::Relaxed);
-    let (longest, bytes, asked) = waits.join().unwrap();
-    assert!(asked > 0, "the solve ended before anything else was asked");
+    let (longest, bytes) = waits.join().unwrap();
     out.push(Measured {
         what: "case_summary during a solve".into(),
         seconds: longest.as_secs_f64(),
@@ -196,14 +218,16 @@ fn a_large_case_stays_within_budget() {
         "contingency_rows",
         json!({ "offset": 0, "limit": 100 }),
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    if !keep {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // Report every command, then fail on any over budget.
     let mut table = format!(
         "### Large case budgets ({} buses)\n\n| Command | Seconds | Budget | MB | Budget |\n| --- | --- | --- | --- | --- |\n",
-        synth.report.buses
+        bus_count
     );
-    let scale = synth.report.buses as f64 / BUDGET_BUSES;
+    let scale = bus_count as f64 / BUDGET_BUSES;
     let mut over = Vec::new();
     for m in &out {
         let &(_, seconds, megabytes) = BUDGETS

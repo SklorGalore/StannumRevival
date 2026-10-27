@@ -69,10 +69,19 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      # Builds a 12,000-bus synthetic case and times the app's commands on
-      # it; the table lands in the run summary.
+      # The case is the same for the same generator code, so it's built
+      # once and kept until stannum-synth or rs-power changes.
+      - name: Restore the synthetic case
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .budget-case
+          key: budget-case-${{ hashFiles('crates/stannum-synth/**', 'crates/rs-power/src/**', 'Cargo.lock') }}
+      # Times the app's commands on a 12,000-bus synthetic case; the table
+      # lands in the run summary.
       - name: Time and size budgets
         timeout-minutes: 30
+        env:
+          STANNUM_BUDGET_CACHE: ${{ github.workspace }}/.budget-case
         run: cargo test --locked --release -p stannum-core --test budgets -- --ignored --nocapture
 
   frontend:

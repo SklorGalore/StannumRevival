@@ -76,6 +76,9 @@ cargo test --release -p stannum-core --test budgets -- --ignored --nocapture
 ```
 
 `STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion.
+The same seed always builds the same case, so `STANNUM_BUDGET_CACHE` can name
+a folder to keep it in and reuse; CI keeps one until the generator or the
+solver changes.
 
 ## Interface
 
