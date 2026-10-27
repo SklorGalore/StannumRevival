@@ -1,6 +1,7 @@
 //! Stannum's analysis core, independent of the desktop shell.
 //!
 //! - [`dc_grids`]: Stannum DC grid files (meshed VSC grids beside a case).
+//! - [`commands`]: every command the clients use, listed once.
 //! - [`contingency`]: N-1 contingency analysis (linear screen, then AC).
 //! - [`power`]: AC/DC power flow and sensitivities via rs-power.
 //! - [`workspace`]: the shared open case, with topology via nodal.
@@ -14,6 +15,7 @@
 //! - [`results`]: names for every solution the open case can show.
 //! - [`logbook`]: the application log shown in the log panel.
 
+pub mod commands;
 pub mod contingency;
 pub mod dc_grids;
 pub mod derived_topology;
@@ -31,4 +33,4 @@ pub mod study_file;
 pub mod working_case;
 pub mod workspace;
 
-pub use workspace::{CaseSummary, OpenCase, Workspace};
+pub use workspace::{CaseId, CaseSummary, OpenCase, Workspace};

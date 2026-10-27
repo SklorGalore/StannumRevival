@@ -12,9 +12,10 @@ in one Cargo workspace and one repository.
 │  Module rail · case bar · palette · log dock · side by side                              │
 │  Diagram (React Flow + ELK; network: Cytoscape)   Power flow   Case diff                 │
 └──────────────────────────────────────┬──────────────────────────────────────────────────┘
-                                       │ Tauri commands (src-tauri/src/analysis.rs)
+                                       │ stannum_command (src-tauri/src/analysis.rs)
 ┌──────────────────────────────────────┴───────── stannum-core ───────────────────────────┐
-│  Workspace: the open case, parsed once per engine · study edits · solve settings        │
+│  commands.rs: every command, listed once · Workspace: the open case, parsed once per    │
+│  engine · study edits · solve settings                                                    │
 │  power.rs   derived_topology.rs   diagram.rs   diff/ (case-diff port)   logbook.rs        │
 └───────────────┬────────────────────────────────┬───────────────────────────────────────┘
                 │                                │
@@ -34,7 +35,27 @@ in one Cargo workspace and one repository.
 | `crates/rs-power` | Case loading (MATPOWER version 2, PSS/E RAW revisions 23–35), AC Newton and DC power flow, reactive limits, remote regulation, switched shunts and taps, detailed HVDC, sensitivities, PTDF and LODF. Numerical behaviour targets the MATPOWER 8.1 legacy core. |
 | `crates/nodal` | A RAW revision 35 parser that keeps every record, and topology analysis (islands, bridges, articulation points, shortest paths) on a graph built with rustworkx-core. |
 | `crates/stannum-core` | The analysis core, with no Tauri dependency. Holds the open case, shapes engine results for the interface, applies study edits, derives a topology from the power flow model when nodal can't read a file, builds the one-line network, and contains the Rust port of case-diff. |
-| `src-tauri` | The desktop shell. `analysis.rs` exposes the core's workspace as Tauri commands. |
+| `src-tauri` | The desktop shell. `analysis.rs` passes core commands to the core's command list through one Tauri command. |
+
+## Commands
+
+Every operation the interface asks of the core (open, solve, run
+contingencies, read records and so on) is a **command** in
+`crates/stannum-core/src/commands.rs`. Each command is declared once there,
+with its arguments and a one-line description. The desktop shell sends them
+all through a single Tauri command, `stannum_command`, and the `dev_bridge`
+test server answers the same list over HTTP, so the two can't drift apart.
+The planned Python package will use the same list.
+
+Commands that work on a case take an optional `case` argument: the `id` from
+the case summary. Left out, a command uses the open case. Given, it must name
+the open case, so a caller holding an old id gets an error rather than
+reaching a different case. `list_commands` returns every command with its
+description and the API version.
+
+Long runs (solves and contingency runs) can be cancelled with `cancel_solve`
+and `cancel_contingencies`, and `contingency_progress` reports how far a run
+has got. These work while the run is going, from any client.
 
 ## The workspace
 

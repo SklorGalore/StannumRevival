@@ -18,7 +18,7 @@ use crate::results::ResultName;
 use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -39,7 +39,21 @@ pub struct TopologyState {
     pub merge_zero_impedance: bool,
 }
 
+/// Names one open case in commands and scripts. Ids are never reused within
+/// a workspace, so a stale id is refused instead of reaching another case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CaseId(pub u64);
+
+impl std::fmt::Display for CaseId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub struct OpenCase {
+    /// Set by [`Workspace::open`]; kept when the case is rebuilt in place.
+    pub id: CaseId,
     pub path: PathBuf,
     pub name: String,
     pub format: CaseFormat,
@@ -74,6 +88,8 @@ pub struct OpenCase {
 pub struct Workspace {
     pub case: Option<OpenCase>,
     pub comparison: Option<Comparison>,
+    /// The id the last opened case got.
+    last_id: u64,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -119,6 +135,8 @@ pub struct TopologyInfo {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CaseSummary {
+    /// The handle commands take to name this case.
+    pub id: CaseId,
     pub path: String,
     pub name: String,
     pub format: CaseFormat,
@@ -294,6 +312,7 @@ impl OpenCase {
             Err(e) => log::warn!("Topology can't use {name}: {e}"),
         }
         Self {
+            id: CaseId(0),
             path: path.to_path_buf(),
             name,
             format,
@@ -316,6 +335,7 @@ impl OpenCase {
 
     pub fn summary(&self) -> CaseSummary {
         CaseSummary {
+            id: self.id,
             path: self.path.display().to_string(),
             name: self.name.clone(),
             format: self.format,
@@ -817,6 +837,7 @@ impl OpenCase {
             }
         };
         let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        next.id = self.id;
         if let (Ok(_), Err(e)) = (&self.power, &next.power) {
             return Err(format!("The edited case can't be solved: {e}"));
         }
@@ -937,14 +958,30 @@ impl OpenCase {
     }
 }
 
+fn not_open(id: Option<CaseId>) -> String {
+    match id {
+        Some(id) => format!("Case {id} isn't open."),
+        None => "Open a case first.".into(),
+    }
+}
+
+fn check_id(case: &OpenCase, id: Option<CaseId>) -> Result<(), String> {
+    match id {
+        Some(id) if id != case.id => Err(not_open(Some(id))),
+        _ => Ok(()),
+    }
+}
+
 impl Workspace {
     pub fn open(&mut self, path: &Path) -> Result<CaseSummary, String> {
         log::info!("Opening {}", path.display());
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let case = OpenCase::from_bytes(path, &bytes);
+        let mut case = OpenCase::from_bytes(path, &bytes);
         if case.power.is_err() && case.topology.is_err() && case.format == CaseFormat::Matpower {
             return Err(case.power.err().unwrap_or_default());
         }
+        self.last_id += 1;
+        case.id = CaseId(self.last_id);
         let summary = case.summary();
         self.case = Some(case);
         Ok(summary)
@@ -955,15 +992,24 @@ impl Workspace {
     }
 
     pub fn current(&self) -> Result<&OpenCase, String> {
-        self.case
-            .as_ref()
-            .ok_or_else(|| "Open a case first.".into())
+        self.case(None)
     }
 
     pub fn current_mut(&mut self) -> Result<&mut OpenCase, String> {
-        self.case
-            .as_mut()
-            .ok_or_else(|| "Open a case first.".into())
+        self.case_mut(None)
+    }
+
+    /// The case `id` names, or the open case when `id` is None.
+    pub fn case(&self, id: Option<CaseId>) -> Result<&OpenCase, String> {
+        let case = self.case.as_ref().ok_or_else(|| not_open(id))?;
+        check_id(case, id)?;
+        Ok(case)
+    }
+
+    pub fn case_mut(&mut self, id: Option<CaseId>) -> Result<&mut OpenCase, String> {
+        let case = self.case.as_mut().ok_or_else(|| not_open(id))?;
+        check_id(case, id)?;
+        Ok(case)
     }
 
     pub fn compare(
