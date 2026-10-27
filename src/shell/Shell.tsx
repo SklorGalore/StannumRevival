@@ -3,6 +3,9 @@ import { ArrowLeftRight, X } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
+import { StudyNoticeBar } from "./StudyFileControls";
+import { useStudyFile } from "../store/studyFileStore";
+import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
 import { LogDock } from "./LogDock";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
@@ -14,7 +17,7 @@ import { RecordsModule } from "../modules/records/RecordsModule";
 
 const CASE_EXTENSIONS = /\.(raw|m)$/i;
 
-/** Open a case dropped anywhere on the window (outside the diff file pickers). */
+/** Open a case or study dropped anywhere on the window (outside the diff file pickers). */
 function useCaseDrop() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -28,9 +31,8 @@ function useCaseDrop() {
     webview
       .onDragDropEvent((event) => {
         if (event.payload.type !== "drop") return;
-        const path = event.payload.paths.find((p) => CASE_EXTENSIONS.test(p));
-        const state = useWorkspace.getState();
-        if (path) void state.openCase(path);
+        const path = event.payload.paths.find((p) => CASE_EXTENSIONS.test(p) || STUDY_EXTENSION.test(p));
+        if (path) void useStudyFile.getState().openFile(path);
       })
       .then((fn) => {
         if (cancelled) fn();
@@ -158,6 +160,7 @@ export function Shell() {
       <ModuleRail />
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
+        <StudyNoticeBar />
         <CommandPalette />
         <div ref={body} className="flex-1 min-h-0 relative">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}

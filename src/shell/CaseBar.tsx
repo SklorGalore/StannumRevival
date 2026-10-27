@@ -6,6 +6,8 @@ import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
 import { useWidth } from "../ui/useWidth";
 import { WindowControls, dragRegion } from "./WindowControls";
+import { StudyFileButton } from "./StudyFileControls";
+import { useStudyFile } from "../store/studyFileStore";
 
 const SHORTCUT = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
@@ -14,7 +16,8 @@ export function CaseBar() {
   const summary = useWorkspace((s) => s.caseSummary);
   const opening = useWorkspace((s) => s.opening);
   const openError = useWorkspace((s) => s.openError);
-  const openCase = useWorkspace((s) => s.openCase);
+  const openFile = useStudyFile((s) => s.openFile);
+  const studyOpening = useStudyFile((s) => s.busy === "opening");
   const closeCase = useWorkspace((s) => s.closeCase);
   const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
   const module = useWorkspace((s) => s.module);
@@ -49,7 +52,7 @@ export function CaseBar() {
         </div>
       ) : (
         <span className="text-sm text-slate-500">
-          {opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file, or drop one on the window."}
+          {studyOpening ? "Opening study…" : opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file or a Stannum study, or drop one on the window."}
         </span>
       )}
       {summary && edits > 0 && (
@@ -70,6 +73,7 @@ export function CaseBar() {
         </span>
       )}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <StudyFileButton narrow={narrow} />
         <button
           type="button"
           onClick={() => setSplit(split ? null : SPLIT_PARTNER[module])}
@@ -93,10 +97,10 @@ export function CaseBar() {
         </button>
         <Button
           variant="primary"
-          onClick={() => openCase()}
-          disabled={opening}
+          onClick={() => void openFile()}
+          disabled={opening || studyOpening}
           aria-label={summary ? "Open another…" : "Open case…"}
-          title={summary ? "Open another case" : "Open a case"}
+          title={summary ? "Open another case or study" : "Open a case or a study"}
         >
           <FolderOpen size={14} /> {(!narrow || !summary) && (summary ? "Open another…" : "Open case…")}
         </Button>

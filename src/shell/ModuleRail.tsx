@@ -52,7 +52,9 @@ export function ModuleRail() {
         </button>
       ))}
       <ThemeButton />
-      <div className="text-center text-[9px] text-teal-100/40">v0.2</div>
+      <div className="text-center text-[9px] text-teal-100/40" title={`Stannum ${__APP_VERSION__}`}>
+        v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
+      </div>
     </nav>
   );
 }

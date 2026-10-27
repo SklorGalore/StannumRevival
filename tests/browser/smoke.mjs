@@ -50,6 +50,12 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
+// Questions such as "discard unsaved changes?" are answered yes, and kept.
+const dialogs = [];
+page.on("dialog", (d) => {
+  dialogs.push(d.message());
+  void d.accept();
+});
 await page.addInitScript(shim);
 await page.goto(APP, { waitUntil: "domcontentloaded" });
 const shot = async (name) => {
@@ -178,6 +184,23 @@ await page.getByTestId("solve-comparison").scrollIntoViewIfNeeded();
 await shot("study-compare");
 await page.getByRole("tab", { name: "Overview" }).click();
 await shot("study-overview");
+// Save the study to a .stannum file: the edits, the saved solve and a
+// fingerprint of the case file.
+const { mkdtempSync, readFileSync, writeFileSync, copyFileSync } = await import("node:fs");
+const { tmpdir } = await import("node:os");
+const { createHash } = await import("node:crypto");
+const studyDir = mkdtempSync(`${tmpdir()}/stannum-study-`);
+const studyPath = `${studyDir}/case9-outage.stannum`;
+await queue(studyPath);
+await page.getByTestId("save-study").click();
+await page.getByTestId("save-study").filter({ hasText: "case9-outage.stannum" }).waitFor();
+await shot("study-saved");
+const savedStudy = JSON.parse(await page.evaluate((p) => window.__files[p], studyPath));
+assert.equal(savedStudy.format, "stannum-study");
+assert.equal(savedStudy.edits.length, 2, "both study edits saved");
+assert.equal(savedStudy.solves.length, 1, "the saved solve is kept");
+assert.equal(savedStudy.solves[0].name, "Case as filed");
+assert.equal(savedStudy.case.fingerprint.sha256, createHash("sha256").update(readFileSync(STANNUM_MATPOWER)).digest("hex"));
 await page.getByRole("tab", { name: /Study/ }).click();
 await page.getByRole("button", { name: "Clear all" }).click();
 await page.getByTestId("study-badge").waitFor({ state: "detached" });
@@ -250,7 +273,7 @@ await shot("case-diff");
 // solved above drawn on it.
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
 await page.getByRole("button", { name: "From case" }).click();
-page.once("dialog", (d) => d.accept()); // replace the network's one-line from above
+// The dialog handler at the top answers yes: replace the network's one-line from above.
 await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.locator(".react-flow__node-bus").first().waitFor();
@@ -391,7 +414,7 @@ await page.getByRole("button", { name: "From case" }).click();
 await page.getByLabel(/Around a bus/).check();
 await page.getByRole("combobox", { name: "Bus number" }).fill("4");
 await page.getByLabel("Hops out").selectOption("1");
-page.once("dialog", (d) => d.accept()); // replace the edited drawing
+// The dialog handler at the top answers yes: replace the edited drawing.
 await page.getByRole("button", { name: "Generate", exact: true }).click();
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.getByText(/^Around\b/).first().waitFor();
@@ -465,7 +488,7 @@ await page.locator('.react-flow__node-bus.selected[data-id="b5"]').waitFor();
 await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor();
 
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
-page.once("dialog", (d) => d.accept());
+// The dialog handler at the top answers yes.
 await page.getByRole("button", { name: "New", exact: true }).click();
 const pane = page.locator(".react-flow__pane");
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
@@ -571,7 +594,7 @@ assert.equal(await page.evaluate(() => document.querySelector(".react-flow__edge
 
 // On a fresh drawing, a generator dropped on the bar and a load dragged up to
 // it sit on the bus and are wired to it with no visible line.
-page.once("dialog", (d) => d.accept());
+// The dialog handler at the top answers yes.
 await page.getByRole("button", { name: "New", exact: true }).click();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
@@ -621,7 +644,7 @@ await page.waitForFunction(() =>
 // Rotation: R turns the selection a quarter. A turned bus runs vertically;
 // symbols dropped beside it turn to face it and sit on it, and a wire released
 // on the bar gets a tap on the side it comes from.
-page.once("dialog", (d) => d.accept());
+// The dialog handler at the top answers yes.
 await page.getByRole("button", { name: "New", exact: true }).click();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 400, y: 150 } });
 const vbus = page.locator(".react-flow__node-bus");
@@ -692,7 +715,7 @@ if (STANNUM_RAW_DC) {
   await page.getByLabel(/Around a bus/).check();
   await page.getByRole("combobox", { name: "Bus number" }).fill("301");
   await page.getByLabel("Hops out").selectOption("1");
-  page.once("dialog", (d) => d.accept()); // replace the edited drawing
+  // The dialog handler at the top answers yes: replace the edited drawing.
   await page.getByRole("button", { name: "Generate", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.locator(".react-flow__node-dcLink").first().waitFor();
@@ -706,7 +729,7 @@ if (STANNUM_RAW_DC) {
     await page.getByLabel(/Around a bus/).check();
     await page.getByRole("combobox", { name: "Bus number" }).fill(String(bus));
     await page.getByLabel("Hops out").selectOption("1");
-    page.once("dialog", (d) => d.accept());
+    // The dialog handler at the top answers yes.
     await page.getByRole("button", { name: "Generate", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.locator(".react-flow__node-dcLink").first().waitFor();
@@ -735,7 +758,7 @@ if (STANNUM_RAW_DC) {
   await page.getByLabel(/Around a bus/).check();
   await page.getByRole("combobox", { name: "Bus number" }).fill("3004");
   await page.getByLabel("Hops out").selectOption("1");
-  page.once("dialog", (d) => d.accept());
+  // The dialog handler at the top answers yes.
   await page.getByRole("button", { name: "Generate", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "detached" });
   const t3 = page.locator(".react-flow__node-transformer3");
@@ -795,7 +818,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
   await page.getByRole("button", { name: "Diagram", exact: true }).click();
   await page.getByRole("button", { name: "From case" }).click();
   await page.getByLabel(/Whole case/).check();
-  page.once("dialog", (d) => d.accept()); // replace the edited drawing
+  // The dialog handler at the top answers yes: replace the edited drawing.
   await page.getByRole("button", { name: "Generate", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.waitForTimeout(400); // fit-to-screen animation
@@ -1059,7 +1082,7 @@ if (STANNUM_VIOLATIONS) {
   await shot("around-branch");
 
   // An empty drawing offers to draw around the worst violation.
-  page.once("dialog", (d) => d.accept());
+  // The dialog handler at the top answers yes.
   await page.getByRole("button", { name: "New", exact: true }).click();
   const prompt = page.getByTestId("draw-prompt");
   await prompt.waitFor();
@@ -1209,6 +1232,41 @@ await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
 await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
 assert.equal(await recordRows.count(), 9, "nine buses in case9");
 await shot("records-matpower");
+
+// Open the study again after the case moved beside it and changed: the
+// case is found, the change is pointed out, and the edits and saved solve
+// come back.
+const movedCase = `${studyDir}/case9.m`;
+copyFileSync(STANNUM_MATPOWER, movedCase);
+writeFileSync(movedCase, readFileSync(movedCase, "utf8") + "\n% edited after the study was saved\n");
+const movedStudy = `${studyDir}/moved.stannum`;
+const moved = { ...savedStudy, case: { ...savedStudy.case, path: `${studyDir}/gone/case9.m`, relative: "case9.m" } };
+await page.evaluate(([p, c]) => (window.__files[p] = c), [movedStudy, JSON.stringify(moved)]);
+await queue(movedStudy);
+await page.getByRole("button", { name: "Open another…" }).click();
+const studyNotice = page.getByTestId("study-notice");
+await studyNotice.getByText("Opened moved.stannum").waitFor();
+await studyNotice.getByText(/The case was found at .*case9\.m/).waitFor();
+await studyNotice.getByText(/case9\.m has changed since the study was saved/).waitFor();
+await page.getByTestId("study-badge").filter({ hasText: "2 edits" }).waitFor();
+await page.getByTestId("save-study").filter({ hasText: "moved.stannum" }).waitFor();
+await page.getByText("Converged").first().waitFor();
+assert.equal(await page.getByTestId("save-study").getByLabel("unsaved changes").count(), 0, "a study just opened has nothing to save");
+await page.getByTestId("study-badge").click();
+await page.getByTestId("study-edits").getByText("Line 4–5 circuit 1 out of service").waitFor();
+assert.equal(await page.getByTestId("saved-solves").getByRole("textbox").first().inputValue(), "Case as filed");
+await shot("study-reopened");
+// Closing a changed study asks first; then the empty screen lists it.
+await page.getByRole("button", { name: "Clear all" }).click();
+await page.getByTestId("study-badge").waitFor({ state: "detached" });
+const asked = dialogs.length;
+await page.getByRole("button", { name: "Close case" }).click();
+await page.getByText("No case open.").waitFor();
+assert.match(dialogs[asked] ?? "", /moved\.stannum has changes that aren't saved/);
+const recent = page.getByTestId("recent-files").first();
+await recent.getByText("moved.stannum").waitFor();
+await recent.getByText("case9.m").first().waitFor();
+await shot("recent-files");
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();

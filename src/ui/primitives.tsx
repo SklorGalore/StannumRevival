@@ -219,19 +219,23 @@ export function EmptyState({
   title,
   children,
   action,
+  footer,
 }: {
   icon?: ReactNode;
   title: string;
   children?: ReactNode;
   action?: ReactNode;
+  /** Below the action, such as a list of recent files. */
+  footer?: ReactNode;
 }) {
   return (
-    <div className="h-full flex items-center justify-center p-8">
-      <div className="max-w-md text-center">
+    <div className="h-full flex items-center justify-center p-8 overflow-auto">
+      <div className="max-w-md w-full text-center flex flex-col items-center">
         {icon && <div className="mx-auto mb-3 w-12 h-12 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">{icon}</div>}
         <h2 className="text-base font-semibold text-slate-800">{title}</h2>
         {children && <div className="mt-1.5 text-sm text-slate-500">{children}</div>}
         {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
+        {footer}
       </div>
     </div>
   );

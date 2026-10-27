@@ -7,6 +7,7 @@ use stannum_core::contingency::{
 use stannum_core::diff::{DiffSummary, RecordDetail, RecordRow};
 use stannum_core::power::{ResponseTable, SensitivitySummary, SolveReport, SolveSettings};
 use stannum_core::study::Edit;
+use stannum_core::study_file;
 use stannum_core::{logbook, CaseSummary, Workspace};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -407,4 +408,28 @@ pub fn stream_log(app: AppHandle) {
             }
         }
     });
+}
+
+/// Size, hash and date of a file, so a study can tell whether its case changed.
+#[tauri::command]
+pub async fn file_fingerprint(path: String) -> Result<study_file::Fingerprint, String> {
+    tauri::async_runtime::spawn_blocking(move || study_file::fingerprint(&PathBuf::from(path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The case's path relative to the study's folder, if there is one.
+#[tauri::command]
+pub fn study_relative_path(study: String, case: String) -> Option<String> {
+    study_file::relative_path(&PathBuf::from(study), &PathBuf::from(case))
+}
+
+/// Where a study's case is now (see `study_file::locate_case`).
+#[tauri::command]
+pub fn study_locate_case(
+    study: String,
+    absolute: String,
+    relative: Option<String>,
+) -> Option<String> {
+    study_file::locate_case(&PathBuf::from(study), &absolute, relative.as_deref())
 }

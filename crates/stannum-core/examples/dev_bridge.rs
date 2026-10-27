@@ -97,6 +97,21 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             ws.comparison()?
                 .record_detail(&arg::<String>(args, "section")?, arg(args, "index")?),
         ),
+        "load_diagram" => to_json(
+            std::fs::read_to_string(arg::<String>(args, "path")?).map_err(|e| e.to_string())?,
+        ),
+        "file_fingerprint" => to_json(stannum_core::study_file::fingerprint(&PathBuf::from(
+            arg::<String>(args, "path")?,
+        ))?),
+        "study_relative_path" => to_json(stannum_core::study_file::relative_path(
+            &PathBuf::from(arg::<String>(args, "study")?),
+            &PathBuf::from(arg::<String>(args, "case")?),
+        )),
+        "study_locate_case" => to_json(stannum_core::study_file::locate_case(
+            &PathBuf::from(arg::<String>(args, "study")?),
+            &arg::<String>(args, "absolute")?,
+            args.get("relative").and_then(|v| v.as_str()),
+        )),
         "save_diagram" => {
             std::fs::write(
                 arg::<String>(args, "path")?,

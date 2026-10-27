@@ -2,6 +2,7 @@ import { useLog } from "./logStore";
 import { create } from "zustand";
 import { api, CASE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
+import { addRecent } from "../lib/study/recent";
 
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 
@@ -72,11 +73,34 @@ interface WorkspaceState {
   applyRecordEdits: (edits: RecordEdit[]) => Promise<void>;
   /** Save the edited case to a new file, which then becomes the open case. */
   saveCaseAs: () => Promise<boolean>;
-  openCase: (path?: string) => Promise<void>;
-  closeCase: () => Promise<void>;
+  /**
+   * Open a case (asking for one when no path is given). Resolves true once it
+   * is open. `confirmed` skips the unsaved-work questions, for a caller that
+   * has already asked them.
+   */
+  openCase: (path?: string, opts?: { confirmed?: boolean }) => Promise<boolean>;
+  closeCase: () => Promise<boolean>;
 }
 
 const LINKED_KEY = "stannum-linked-selection";
+
+/**
+ * Questions to ask before the open case is replaced or closed, such as
+ * "the study has unsaved changes". Each returns false to stop.
+ */
+const beforeCaseChange: (() => boolean)[] = [];
+export function onBeforeCaseChange(check: () => boolean): () => void {
+  beforeCaseChange.push(check);
+  return () => {
+    const i = beforeCaseChange.indexOf(check);
+    if (i >= 0) beforeCaseChange.splice(i, 1);
+  };
+}
+
+/** Ask every question in turn; the first "no" stops. */
+export function caseChangeOk(summary: CaseSummary | null): boolean {
+  return unsavedEditsOk(summary) && beforeCaseChange.every((check) => check());
+}
 
 /** Before the case is replaced: ask when it has edits that aren't saved. */
 function unsavedEditsOk(summary: CaseSummary | null): boolean {
@@ -181,11 +205,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     return true;
   },
 
-  openCase: async (path) => {
-    if (get().opening) return;
-    if (!unsavedEditsOk(get().caseSummary)) return;
+  openCase: async (path, opts) => {
+    if (get().opening) return false;
+    if (!opts?.confirmed && !caseChangeOk(get().caseSummary)) return false;
     const chosen = path ?? (await pickFile(CASE_FILTERS));
-    if (!chosen) return;
+    if (!chosen) return false;
     set({ opening: true, openError: null });
     // The log's badge counts what this case raised, not every case so far.
     useLog.getState().newCase();
@@ -205,15 +229,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             ? "diagram"
             : s.module,
       }));
+      addRecent(summary.path, "case");
+      return true;
     } catch (e) {
       set({ opening: false, openError: (e as Error).message });
+      return false;
     }
   },
 
   closeCase: async () => {
-    if (!unsavedEditsOk(get().caseSummary)) return;
+    if (!caseChangeOk(get().caseSummary)) return false;
     await api.closeCase();
     useLog.getState().newCase();
     set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));
+    return true;
   },
 }));

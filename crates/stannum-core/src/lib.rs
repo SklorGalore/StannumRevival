@@ -25,6 +25,7 @@ pub mod power;
 pub mod record_edit;
 pub mod records;
 pub mod study;
+pub mod study_file;
 pub mod workspace;
 
 pub use workspace::{CaseSummary, OpenCase, Workspace};

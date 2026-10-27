@@ -14,6 +14,7 @@ import type {
   DiffRecordRow,
   DiffSummary,
   ElementDetail,
+  FileFingerprint,
   GraphData,
   RecordBook,
   RecordEdit,
@@ -42,6 +43,8 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   contingency_detail: { label: "Opening a contingency", quiet: true },
   trip_and_compare: { label: "Tripping and comparing", done: "Tripped and compared" },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
+  load_diagram: { label: "Reading file", quiet: true },
+  file_fingerprint: { label: "Checking the case file", quiet: true },
   load_dc_grids: { label: "Reading DC grid file", done: "Attached DC grid file" },
   clear_dc_grids: { label: "Detaching DC grid file", done: "Detached DC grid file" },
   diff_compare: { label: "Comparing cases", done: "Compared cases" },
@@ -160,6 +163,14 @@ export const api = {
   recordTable: (section: string) => call<RecordTable>("record_table", { section }),
   applyRecordEdits: (edits: RecordEdit[]) => call<CaseSummary>("apply_record_edits", { edits }),
   saveCaseAs: (path: string) => call<CaseSummary>("save_case_as", { path }),
+
+  readTextFile: (path: string) => call<string>("load_diagram", { path }),
+  writeTextFile: (path: string, content: string) => call<void>("save_diagram", { path, content }),
+  fileFingerprint: (path: string) => call<FileFingerprint>("file_fingerprint", { path }),
+  studyRelativePath: (study: string, casePath: string) =>
+    call<string | null>("study_relative_path", { study, case: casePath }),
+  studyLocateCase: (study: string, absolute: string, relative: string | null) =>
+    call<string | null>("study_locate_case", { study, absolute, relative }),
 
   topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
   topologySetMerge: (enabled: boolean) =>
