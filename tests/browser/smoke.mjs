@@ -1207,6 +1207,15 @@ await recordInspector.getByTestId("inspector-title").filter({ hasText: /^Load / 
 await shot("records-inspector");
 // Edit a load's MW, apply it, and see the inspector read the new value.
 const plIndex = await records.locator("thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent.trim() === "PL"));
+// Double-clicking a record not yet picked opens the inspector between the
+// two clicks, which narrows the columns: the cell clicked first is edited.
+await recordInspector.getByRole("button", { name: "Close inspector" }).click();
+await recordInspector.waitFor({ state: "detached" });
+await recordRows.nth(1).locator(`td:nth-child(${plIndex + 1}) span`).dblclick();
+await recordRows.nth(1).locator(`td:nth-child(${plIndex + 1})`).getByLabel("Cell value").waitFor();
+await shot("records-double-click");
+await records.getByLabel("Cell value").press("Escape");
+await recordRows.first().click();
 await recordRows.first().locator(`td:nth-child(${plIndex + 1}) span`).dblclick();
 await records.getByLabel("Cell value").fill("abc");
 await records.getByLabel("Cell value").press("Enter");

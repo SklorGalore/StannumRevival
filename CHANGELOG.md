@@ -73,6 +73,9 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- Records: double-clicking a cell of a record that wasn't picked yet edits
+  that cell. The first click opens the inspector, which narrows the columns,
+  and the edit used to land on the cell that slid under the pointer.
 - Generators holding a remote bus no longer leave a solve on a collapsed
   answer: a unit asked for far more reactive power than it has could end a
   pass with its own terminal near 0 pu, and the solve then settled there
