@@ -7,6 +7,11 @@ Stannum is a [Tauri 2](https://v2.tauri.app/) desktop app. The analysis runs
 in native Rust; the interface is React in the system web view. Everything is
 in one Cargo workspace and one repository.
 
+This page is the overview. The
+[developer guide](/StannumRevival/develop/overview/) goes through the code
+itself: each crate, the command registry, the desktop shell and the
+frontend, and how to add a command.
+
 ```
 ┌──────────────────────────────── React interface (src/) ────────────────────────────────┐
 │  Module rail · case bar · palette · log dock · side by side                              │

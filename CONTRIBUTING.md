@@ -40,7 +40,10 @@ shows it and the later one needs `main` merged in.
 The user guide and technical manual live in [`docs-site/`](docs-site), an
 [Astro Starlight](https://starlight.astro.build/) site published to
 <https://sklorgalore.github.io/StannumRevival/>. Change the docs in the same PR
-as the feature they describe. The **Docs** workflow builds the site on PRs that
+as the feature they describe. The site's
+[developer guide](https://sklorgalore.github.io/StannumRevival/develop/overview/)
+explains the codebase and how to add a command; update it when the
+architecture changes. The **Docs** workflow builds the site on PRs that
 touch it and publishes it when they merge; it is not a required check.
 
 ```sh
