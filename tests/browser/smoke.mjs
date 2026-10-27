@@ -468,6 +468,12 @@ await page.waitForTimeout(300);
 await networkBus(5);
 await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
 await page.getByTestId("network-selection").getByTestId("element-inspector").filter({ hasText: "Network" }).waitFor();
+// The snapshot leaves out RAW fields; opening the section fetches the bus's.
+await page.getByTestId("network-selection").getByText(/RAW fields · line \d+/).click();
+await page.getByTestId("source-fields").filter({ hasText: "BASKV" }).filter({ hasText: "Spur_69" }).waitFor();
+await page.getByTestId("source-fields").evaluate((el) => el.scrollIntoView({ block: "end" }));
+await shot("diagram-network-raw-fields");
+await page.getByTestId("network-selection").getByText(/RAW fields · line \d+/).click();
 await hopBar.getByRole("button", { name: "One hop more" }).click();
 await hopBar.filter({ hasText: "2 hops" }).filter({ hasText: "5 buses" }).waitFor();
 await shot("diagram-network");

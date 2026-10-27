@@ -18,6 +18,11 @@ section into the next version's when a release is cut (see
   substations and branches are drawn at their latitude and longitude over
   country and state outlines that ship with the app and follow the theme.
   Buses the file leaves out are placed next to their neighbours.
+- Layers and results on the map: every Diagram layer (colour by result,
+  contingency, bridges and cut buses, islands, shortest path, filters and
+  colours) draws on the Map style too, and **Flows** adds an arrow on each
+  line pointing the way power flows in the shown result, with flows and
+  voltages on hover. A shortest path is highlighted where it runs.
 
 ### Changed
 

@@ -63,9 +63,29 @@ rather than by the file, is drawn hollow.
 - The outlines (Natural Earth, public domain) ship with the app, so the map
   works offline. They follow the light and dark themes.
 
+### Layers and results on the map
+
+The map draws the same [layers](#layers-and-tables) as the other styles. A
+site stands for several buses, so it takes the colour of the first of its
+buses a layer colours (highest voltage first) and fades only when all of them
+are filtered out. A transformer inside a substation has no line of its own,
+so a layer that marks it (the outage, a bridge) rings its site instead.
+
+![The map coloured by branch loading, with flow arrows](../../../assets/screens/diagram-map-results.png)
+
+- **Flows** in the toolbar (after a solve) draws an arrow on each line
+  pointing the way power flows, larger for heavier flows. Hover a line for
+  its MW and loading, or a site for its voltages.
+- The map shows the same result as every other view: show an outage from
+  Contingencies or Trip and compare, and the flows, the colours and the
+  outage's status are that outage's. The outage is ringed in red and the map
+  highlights around it.
+- **Find** in the Shortest path layer highlights the path on the map, with
+  everything else dimmed; **Back to around** returns to the neighbourhood.
+
 ## Layers and tables
 
-**Layers** draws the case's topology on either style: bridges and cut buses,
+**Layers** draws the case's topology on every style: bridges and cut buses,
 islands, zero-impedance groups, a shortest path, and filters and colours by
 field. **Tables** opens the topology tables (buses, islands, critical
 connections, equipment, diagnostics) in a drawer under the drawing. See

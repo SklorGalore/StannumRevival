@@ -198,7 +198,7 @@ function MergeSwitch({ snapshot }: { snapshot: TopologySnapshot }) {
     setBusy(true);
     setError(null);
     try {
-      const view = await api.topologySetMerge(enabled);
+      const view = await api.topologySetMerge(enabled, snapshot.case);
       shareTopology(version, { ...snapshot, analysis: view.analysis, graph: view.graph });
       // A path found on the other graph no longer matches it.
       useLayers.getState().setPath(null);
@@ -312,7 +312,7 @@ export function LayersPanel({ floating = false }: { floating?: boolean }) {
           <X size={14} />
         </button>
       </header>
-      <p className="px-3 pt-2 text-[11px] text-slate-500">Drawn on the network and the one-line alike.</p>
+      <p className="px-3 pt-2 text-[11px] text-slate-500">Drawn on the network, the one-line and the map alike.</p>
       {body}
     </aside>
   );

@@ -459,9 +459,13 @@ export interface TopoDiagnostic {
   line: number;
   message: string;
 }
-export interface SourceRecord {
+/** Where a record was read: its line (0 when not from a RAW file) and section. */
+export interface SourceRef {
   line: number;
   section: string;
+}
+/** A record's fields as read, which `topology_source` sends for one element. */
+export interface SourceRecord extends SourceRef {
   fields: Record<string, string>;
   raw_lines: string[];
 }
@@ -473,7 +477,7 @@ export interface TopoBus {
   area: number | null;
   zone: number | null;
   voltage_pu: number | null;
-  source: SourceRecord;
+  source: SourceRef;
 }
 export interface Equipment {
   id: string;
@@ -483,7 +487,7 @@ export interface Equipment {
   buses: number[];
   status: number;
   active_terminals: boolean[];
-  source: SourceRecord;
+  source: SourceRef;
 }
 export interface Injection {
   id: string;
@@ -491,7 +495,7 @@ export interface Injection {
   status: number;
   p_mw: number;
   q_mvar: number;
-  source: SourceRecord;
+  source: SourceRef;
 }
 export interface TopoCase {
   revision: number;

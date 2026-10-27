@@ -2,8 +2,13 @@
 // offline outlines, with the focus bus's neighbourhood highlighted. It shares
 // the focus bus, hop count and selection with the Network and One-line styles.
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { MapPin, Maximize2, Minus, Plus, Spline } from "lucide-react";
-import { useWorkspace } from "../../../store/workspaceStore";
+import { Activity, MapPin, Maximize2, Minus, Plus, Spline } from "lucide-react";
+import { useShownReport, useWorkspace } from "../../../store/workspaceStore";
+import { useDiagramStore } from "../../../store/diagramStore";
+import { useLayers } from "../../../store/layerStore";
+import { mapOverlay } from "../../../lib/map/overlay";
+import { LayersButton } from "../layers/LayersPanel";
+import { TablesButton } from "../tables/TablesDrawer";
 import { MAX_HOPS, useDrawingStyle } from "../../../store/drawingStyleStore";
 import { api } from "../../../lib/analysis/api";
 import type { BusCoordinates, CaseNetwork } from "../../../lib/analysis/types";
@@ -74,12 +79,18 @@ export function MapToolbar() {
   const requestFit = useDrawingStyle((s) => s.requestFit);
   const coordinates = useWorkspace((s) => s.caseSummary?.coordinates ?? null);
   const attach = useWorkspace((s) => s.attachCoordinates);
+  const report = useShownReport();
+  // One switch for results on the one-line and the map.
+  const showResults = useDiagramStore((s) => s.showResults);
+  const toggleResults = useDiagramStore((s) => s.toggleResults);
   const bus = (element ? centreBus(element) : null) ?? focus?.bus ?? null;
   const [ref, width] = useWidth<HTMLDivElement>(1440);
   return (
     <div ref={ref} className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-hidden whitespace-nowrap shrink-0">
       {width >= 600 && <span className="shrink-0 font-semibold text-slate-700 text-sm mr-3">Diagram</span>}
       <StyleSwitch compact={width < 520} />
+      <LayersButton showLabel={width >= 640} />
+      <TablesButton showLabel={width >= 640} />
       <div className="w-px h-5 bg-slate-200 mx-1" />
       <button
         className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
@@ -89,6 +100,19 @@ export function MapToolbar() {
       >
         <Maximize2 size={14} />
         {width >= 520 && <span>Fit</span>}
+      </button>
+      <button
+        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed ${
+          report && showResults ? "bg-teal-50 text-teal-700 hover:bg-teal-100" : "text-slate-600 hover:bg-slate-100"
+        }`}
+        onClick={toggleResults}
+        disabled={!report || !coordinates}
+        aria-pressed={!!report && showResults}
+        title={report ? "Show which way power flows on each line, and flows and voltages on hover" : "Solve the case in Power flow to show its flows"}
+        data-testid="map-results"
+      >
+        <Activity size={14} />
+        {width >= 520 && <span>Flows</span>}
       </button>
       <button
         className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100"
@@ -122,17 +146,42 @@ export function MapCanvas({ visible }: { visible: boolean }) {
   const setElement = useDrawingStyle((s) => s.setElement);
   const fit = useDrawingStyle((s) => s.fit);
   const [whole, setWhole] = useState(false);
+  // "Draw around" from another module (an outage shown on the diagram, say)
+  // highlights around it here.
+  const request = useWorkspace((s) => s.drawRequest);
+  useEffect(() => {
+    const bus = request ? centreBus(request.element) : null;
+    if (bus === null) return;
+    const { focus, setFocus, showAround } = useDrawingStyle.getState();
+    setWhole(false);
+    showAround();
+    setFocus({ bus, depth: focus?.depth ?? 2 });
+  }, [request]);
   const ink = useInk();
   const dark = useDarkCanvas();
   // Tokens change with the theme, so the palette is read again when it does.
   const theme = useTheme((s) => s.theme);
   const palette = useMemo(() => mapPalette(ink, dark), [ink, dark, theme]);
   const [ref, width] = useWidth<HTMLDivElement>(1200);
-
-  const around = useMemo(
-    () => (data && focus && !whole ? neighbourhood(data.net, focus.bus, focus.depth) : null),
-    [data, focus, whole]
+  // The Diagram's layers and the shown result (contingency, trip, study...).
+  const marks = useLayers((s) => s.marks);
+  const report = useShownReport();
+  const showResults = useDiagramStore((s) => s.showResults);
+  const overlay = useMemo(
+    () => (data ? mapOverlay(data.model, marks, report, showResults && !!report) : null),
+    [data, marks, report, showResults]
   );
+
+  // A shortest path from the Layers panel is highlighted on its own, like the
+  // network's path view; otherwise the focus bus's neighbourhood.
+  const view = useDrawingStyle((s) => s.view);
+  const path = useLayers((s) => (s.on.path ? (s.path?.result ?? null) : null));
+  const onPath = view.kind === "path" && !!path;
+  const around = useMemo(() => {
+    if (!data) return null;
+    if (onPath) return new Set(path.buses);
+    return focus && !whole ? neighbourhood(data.net, focus.bus, focus.depth) : null;
+  }, [data, focus, whole, onPath, path]);
 
   function pick(next: string | null) {
     setElement(next);
@@ -170,12 +219,14 @@ export function MapCanvas({ visible }: { visible: boolean }) {
             model={data!.model}
             net={data!.net}
             palette={palette}
+            overlay={overlay!}
             around={around}
-            focusBus={whole ? null : (focus?.bus ?? null)}
+            focusBus={whole || onPath ? null : (focus?.bus ?? null)}
             element={element}
             onPick={pick}
             onRecentre={(bus) => {
               setWhole(false);
+              useDrawingStyle.getState().showAround();
               setFocus({ bus, depth: focus?.depth ?? 2 });
             }}
             fitSignal={fit}
@@ -184,8 +235,31 @@ export function MapCanvas({ visible }: { visible: boolean }) {
         </Suspense>
       )}
       {data && !message && (
-        <MapBar model={data.model} net={data.net} around={around} whole={whole} setWhole={setWhole} hint={width >= 820} />
+        onPath ? (
+          <PathBar from={path.buses[0]} to={path.buses[path.buses.length - 1]} hops={path.hops} />
+        ) : (
+          <MapBar model={data.model} net={data.net} around={around} whole={whole} setWhole={setWhole} hint={width >= 820} />
+        )
       )}
+    </div>
+  );
+}
+
+/** While a shortest path is highlighted: its ends, and the way back. */
+function PathBar({ from, to, hops }: { from: number; to: number; hops: number }) {
+  const showAround = useDrawingStyle((s) => s.showAround);
+  return (
+    <div
+      className={`${NARROW_LEFT} bottom-3 z-10 flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white shadow-sm text-[11px] text-slate-600 whitespace-nowrap`}
+      data-testid="map-hops"
+    >
+      <span className="px-1">
+        Path <span className="font-semibold text-slate-800">{from} → {to}</span>, {hops} hop{hops === 1 ? "" : "s"}
+      </span>
+      <span className="w-px h-4 bg-slate-200 mx-1" />
+      <button className="px-1.5 py-0.5 rounded text-teal-700 hover:bg-teal-50" onClick={showAround}>
+        Back to around
+      </button>
     </div>
   );
 }
