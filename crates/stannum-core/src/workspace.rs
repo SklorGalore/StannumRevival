@@ -20,7 +20,7 @@ use rs_power::{PowerFlowResult, PowerFlowSensitivity};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -56,22 +56,26 @@ pub struct OpenCase {
     pub path: PathBuf,
     pub name: String,
     pub format: CaseFormat,
-    pub power: Result<PowerCase, String>,
+    /// Changes whenever the case itself changes (opened, study edits,
+    /// Records edits), so work that ran without the workspace lock can tell
+    /// whether its results still describe this case.
+    pub version: u64,
+    pub power: Result<Arc<PowerCase>, String>,
     pub topology: Result<TopologyState, String>,
-    pub solved: Option<(PowerFlowResult, SolveSettings)>,
+    pub solved: Option<Arc<Solved>>,
     /// The last solve from before the study's edits changed, kept as a
     /// starting point for the next solve.
-    pub before_edits: Option<(PowerFlowResult, SolveSettings)>,
+    pub before_edits: Option<Arc<Solved>>,
     pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
-    pub edited: Option<PowerCase>,
+    pub edited: Option<Arc<PowerCase>>,
     /// VSC DC grids from a DC grid file, solved with every AC solve.
-    pub dc_grids: Option<LoadedDcGrids>,
+    pub dc_grids: Option<Arc<LoadedDcGrids>>,
     /// The last contingency run, until the study's edits change.
     pub contingencies: Option<ContingencyResults>,
     /// The file's records as tables, read the first time they're asked for.
-    pub records: Option<Result<Records, String>>,
+    pub records: Option<Result<Arc<Records>, String>>,
     /// The case's text as opened, or as edited in Records since.
     pub bytes: Vec<u8>,
     /// Cells edited in Records since the file was opened or saved.
@@ -168,17 +172,28 @@ pub fn decode_text(bytes: &[u8]) -> String {
     }
 }
 
-/// A solve to start the next one from: converged and AC.
+/// A solve's result and the settings it ran with.
+pub type Solved = (PowerFlowResult, SolveSettings);
+
 /// What a cancelled solve returns.
 pub const SOLVE_CANCELLED: &str = "Solve cancelled. The previous results are kept.";
 
-fn resumable(solve: &Option<(PowerFlowResult, SolveSettings)>) -> Option<&PowerFlowResult> {
-    solve
-        .as_ref()
-        .filter(|(r, settings)| {
-            settings.model == power::ModelChoice::Ac && r.status == rs_power::SolveStatus::Converged
-        })
-        .map(|(r, _)| r)
+/// What work returns when the case changed while it ran without the
+/// workspace lock: its results describe a case that is no longer open.
+pub const CASE_CHANGED: &str =
+    "The case changed while this was running, so its results were set aside. Run it again.";
+
+/// A new [`OpenCase::version`], never used before in this process.
+fn next_version() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// A solve to start the next one from: converged and AC.
+fn resumable(solve: &Option<Arc<Solved>>) -> Option<&Arc<Solved>> {
+    solve.as_ref().filter(|s| {
+        s.1.model == power::ModelChoice::Ac && s.0.status == rs_power::SolveStatus::Converged
+    })
 }
 
 fn elapsed_ms(start: Instant) -> f64 {
@@ -310,7 +325,8 @@ impl OpenCase {
             path: path.to_path_buf(),
             name,
             format,
-            power,
+            version: next_version(),
+            power: power.map(Arc::new),
             topology,
             solved: None,
             before_edits: None,
@@ -344,7 +360,7 @@ impl OpenCase {
             }),
             diffable: self.format == CaseFormat::Raw,
             record_edits: self.record_edits,
-            dc_grids: self.dc_grids.as_ref().map(LoadedDcGrids::summary),
+            dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
         }
     }
 
@@ -352,6 +368,24 @@ impl OpenCase {
     fn power_case(&self) -> Result<&PowerCase, String> {
         let base = self.power.as_ref().map_err(|e| e.clone())?;
         Ok(self.edited.as_ref().unwrap_or(base))
+    }
+
+    /// [`Self::power_case`], shared, for work that runs without the lock.
+    fn power_case_shared(&self) -> Result<Arc<PowerCase>, String> {
+        match &self.edited {
+            Some(edited) => Ok(edited.clone()),
+            None => self.power.clone(),
+        }
+    }
+
+    /// Fail with [`CASE_CHANGED`] unless this is still the case `version`
+    /// was taken from.
+    fn check_version(&self, version: u64) -> Result<(), String> {
+        if version == self.version {
+            Ok(())
+        } else {
+            Err(CASE_CHANGED.into())
+        }
     }
 
     /// Replace the study's edits. Results from before the change are dropped,
@@ -371,7 +405,8 @@ impl OpenCase {
             ),
         }
         self.edits = edits;
-        self.edited = edited;
+        self.edited = edited.map(Arc::new);
+        self.version = next_version();
         if let Some(solved) = self.solved.take() {
             self.before_edits = Some(solved);
         }
@@ -388,9 +423,11 @@ impl OpenCase {
     /// [`Self::set_contingencies`].
     pub fn contingency_job(&self, settings: ContingencySettings) -> Result<ContingencyJob, String> {
         let power = self.power_case()?;
-        let base = resumable(&self.solved).ok_or(
-            "Solve the case with the AC model first: contingencies start from that solution.",
-        )?;
+        let base = &resumable(&self.solved)
+            .ok_or(
+                "Solve the case with the AC model first: contingencies start from that solution.",
+            )?
+            .0;
         if self.dc_grids.is_some() {
             log::warn!("Contingencies leave out the attached VSC DC grids");
         }
@@ -401,6 +438,23 @@ impl OpenCase {
             if job.len() == 1 { "y" } else { "ies" }
         );
         Ok(job)
+    }
+
+    /// Keep a run finished without the workspace, unless the case changed
+    /// while it ran (`version` is the case's when the job was taken).
+    pub fn keep_contingencies(
+        &mut self,
+        version: u64,
+        results: ContingencyResults,
+    ) -> Result<ContingencySummary, String> {
+        if self.check_version(version).is_err() {
+            log::warn!("The case changed while contingencies ran, so their results were set aside");
+            return Err(
+                "The case changed while contingencies ran, so their results were set aside. Run them again."
+                    .into(),
+            );
+        }
+        Ok(self.set_contingencies(results))
     }
 
     /// Keep a finished run and return its summary.
@@ -446,13 +500,14 @@ impl OpenCase {
         element: &str,
         limit_pct: f64,
     ) -> Result<ContingencyDetail, String> {
+        self.trip_job(element, limit_pct)?.run()
+    }
+
+    /// [`Self::trip_and_compare`]'s solve, to run with [`TripJob::run`]
+    /// without the workspace.
+    pub fn trip_job(&self, element: &str, limit_pct: f64) -> Result<TripJob, String> {
         let power = self.power_case()?;
-        let (base, solve) = self
-            .solved
-            .as_ref()
-            .filter(|(r, s)| {
-                s.model == power::ModelChoice::Ac && r.status == rs_power::SolveStatus::Converged
-            })
+        let (base, solve) = &**resumable(&self.solved)
             .ok_or("Solve the case with the AC model first: the trip starts from that solution.")?;
         let settings = ContingencySettings {
             elements: Some(vec![element.to_string()]),
@@ -470,14 +525,10 @@ impl OpenCase {
                 e
             }
         })?;
-        let mut results = job.run()?;
-        let detail = results.detail(1)?;
-        log::info!(
-            "Tripped {element}: {} overload{} new or worse",
-            detail.overloads.len(),
-            if detail.overloads.len() == 1 { "" } else { "s" }
-        );
-        Ok(detail)
+        Ok(TripJob {
+            element: element.to_string(),
+            job,
+        })
     }
 
     pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
@@ -498,116 +549,47 @@ impl OpenCase {
         settings: SolveSettings,
         cancel: Option<Arc<AtomicBool>>,
     ) -> Result<power::SolveReport, String> {
-        let power = self.power_case()?;
-        let start = Instant::now();
-        let cold = settings.options_for(power);
-        let mut options = cold.clone();
-        options.cancel = cancel;
-        let failed = |e: rs_power::Error, edits: &[Edit]| match e {
-            rs_power::Error::Cancelled => {
-                log::info!("Solve cancelled; the previous results are kept");
-                SOLVE_CANCELLED.to_string()
-            }
-            e => study::explain(e.to_string(), edits),
-        };
+        let done = self.solve_job(settings, cancel)?.run()?;
+        self.finish_solve(done)
+    }
+
+    /// A solve of the case with the study's edits, to run with
+    /// [`SolveJob::run`] without the workspace and keep with
+    /// [`Self::finish_solve`]. Taking it is cheap: it shares the case.
+    pub fn solve_job(
+        &self,
+        settings: SolveSettings,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Result<SolveJob, String> {
         // The last converged AC solve: of this case, else from before the
         // study's edits changed.
         let last = resumable(&self.solved)
-            .map(|r| (r, true))
-            .or_else(|| resumable(&self.before_edits).map(|r| (r, false)));
-        let warm = match (last, settings.start) {
-            (Some((last, same_case)), power::StartChoice::Last)
-                if settings.model == power::ModelChoice::Ac =>
-            {
-                if !same_case {
-                    log::info!("Starting from the last solve, from before the study changed");
-                }
-                Some(power::warm_start(&power.case, last, &mut options))
-            }
-            (None, power::StartChoice::Last) if settings.model == power::ModelChoice::Ac => {
-                log::info!(
-                    "No converged AC solve to start from yet; starting from the case voltages"
-                );
-                None
-            }
-            _ => None,
-        };
-        let input = warm.as_ref().unwrap_or(&power.case);
-        let grids = self
-            .dc_grids
-            .as_ref()
-            .filter(|_| settings.model == power::ModelChoice::Ac);
-        if self.dc_grids.is_some() && grids.is_none() {
-            log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
-        }
-        let (result, vsc) = match grids {
-            Some(file) => {
-                let acdc = rs_power::solve_dc_grids(
-                    input,
-                    &options,
-                    &file.grids,
-                    &rs_power::DcGridSettings::default(),
-                )
-                .map_err(|e| failed(e, &self.edits))?;
-                let names = power::bus_names(&power.case);
-                let index: std::collections::HashMap<u32, usize> = power
-                    .case
-                    .buses
-                    .iter()
-                    .enumerate()
-                    .map(|(i, b)| (b.id, i))
-                    .collect();
-                let vsc = dc_grids::report(file, &acdc, |bus| {
-                    index
-                        .get(&bus)
-                        .and_then(|&i| names.get(i))
-                        .cloned()
-                        .unwrap_or_default()
-                });
-                let mut ac = acdc.ac;
-                // The AC/DC iteration's outcome, not only the last AC solve's.
-                ac.status = acdc.status;
-                ac.iterations = acdc.ac_iterations;
-                (ac, Some(vsc))
-            }
-            None => (
-                rs_power::solve(input, &options).map_err(|e| failed(e, &self.edits))?,
-                None,
-            ),
-        };
-        let solved_ms = elapsed_ms(start);
-        let mut report = power::report(
-            &result,
-            &power.elements,
-            &power.dc_line_kinds,
-            // Count moves from the file's settings, not from the last solve.
-            &cold.voltage_controls,
-            &settings,
-            elapsed_ms(start),
-        );
-        if let Some(vsc) = vsc {
-            let lost: f64 = vsc
-                .grids
-                .iter()
-                .map(|g| g.line_loss_mw + g.converter_loss_mw)
-                .sum();
-            report.total_losses_mw += lost;
-            log::info!(
-                "VSC DC grids: {} after {} AC/DC iterations; {:.1} MW lost in converters and DC lines",
-                if vsc.converged {
-                    "converged"
-                } else {
-                    "not converged"
-                },
-                vsc.iterations,
-                lost
+            .map(|r| (r.clone(), true))
+            .or_else(|| resumable(&self.before_edits).map(|r| (r.clone(), false)));
+        Ok(SolveJob {
+            version: self.version,
+            power: self.power_case_shared()?,
+            last,
+            dc_grids: self.dc_grids.clone(),
+            edits: self.edits.clone(),
+            settings,
+            cancel,
+        })
+    }
+
+    /// Keep a finished solve as the case's latest, unless the case changed
+    /// while it ran.
+    pub fn finish_solve(&mut self, done: SolveDone) -> Result<power::SolveReport, String> {
+        if self.check_version(done.version).is_err() {
+            log::warn!("The case changed during the solve, so its results were set aside");
+            return Err(
+                "The case changed during the solve, so its results were set aside. Solve again."
+                    .into(),
             );
-            report.vsc_grids = Some(vsc);
         }
-        self.solved = Some((result, settings));
+        self.solved = Some(Arc::new((done.result, done.settings)));
         self.before_edits = None;
-        log_report(&report, solved_ms);
-        Ok(report)
+        Ok(done.report)
     }
 
     /// Attach a DC grid file; the next AC solve includes its grids. The file
@@ -624,7 +606,7 @@ impl OpenCase {
             if summary.grids.len() == 1 { "" } else { "s" },
             summary.grids.iter().map(|g| g.converters).sum::<usize>()
         );
-        self.dc_grids = Some(loaded);
+        self.dc_grids = Some(Arc::new(loaded));
         Ok(summary)
     }
 
@@ -638,19 +620,28 @@ impl OpenCase {
         &mut self,
         settings: SolveSettings,
     ) -> Result<power::SensitivitySummary, String> {
-        let power = self.power_case()?;
-        let start = Instant::now();
-        let s = rs_power::calculate_sensitivities(&power.case, &settings.options_for(power))
-            .map_err(|e| e.to_string())?;
-        let summary = power::sensitivity_summary(&s, settings.model, elapsed_ms(start));
-        log::info!(
-            "Sensitivities: {} injection columns, {} branches ({:.0} ms)",
-            summary.injections.len(),
-            summary.branches,
-            summary.elapsed_ms
-        );
-        self.sensitivity = Some((s, settings.model));
-        Ok(summary)
+        let done = self.sensitivity_job(settings)?.run()?;
+        self.finish_sensitivities(done)
+    }
+
+    /// Sensitivities of the case with the study's edits, to run with
+    /// [`SensitivityJob::run`] without the workspace.
+    pub fn sensitivity_job(&self, settings: SolveSettings) -> Result<SensitivityJob, String> {
+        Ok(SensitivityJob {
+            version: self.version,
+            power: self.power_case_shared()?,
+            settings,
+        })
+    }
+
+    /// Keep finished sensitivities, unless the case changed while they ran.
+    pub fn finish_sensitivities(
+        &mut self,
+        done: SensitivitiesDone,
+    ) -> Result<power::SensitivitySummary, String> {
+        self.check_version(done.version)?;
+        self.sensitivity = Some((done.sensitivity, done.model));
+        Ok(done.summary)
     }
 
     pub fn responses(
@@ -708,44 +699,40 @@ impl OpenCase {
     /// The file's records as tables: RAW revisions 33 and 35 record by
     /// record, anything else as the power flow model.
     pub fn records(&mut self) -> Result<&Records, String> {
-        if self.records.is_none() {
-            let start = Instant::now();
-            let raw = match self.format {
-                CaseFormat::Raw => Some(
-                    crate::diff::parser::parse_bytes_for_viewing(&self.name, &self.bytes)
-                        .map_err(|e| e.to_string()),
-                ),
-                CaseFormat::Matpower => None,
-            };
-            let built = match (raw, &self.power) {
-                (Some(Ok(case)), _) => Ok(crate::records::from_raw(&case)),
-                (raw, Ok(power)) => {
-                    if let Some(Err(e)) = &raw {
-                        log::info!(
-                            "Showing {}'s records from the power flow model: {e}",
-                            self.name
-                        );
-                    }
-                    Ok(crate::records::from_model(power, raw.is_some()))
-                }
-                (Some(Err(e)), Err(_)) => Err(e),
-                (None, Err(e)) => Err(e.clone()),
-            };
-            if let Ok(r) = &built {
-                let count: usize = r.tables.iter().map(|t| t.rows.len()).sum();
-                log::info!(
-                    "Read {count} records in {} tables ({:.0} ms)",
-                    r.tables.len(),
-                    elapsed_ms(start)
-                );
-            }
-            self.records = Some(built);
+        if let Some(job) = self.records_job() {
+            let read = job.run();
+            self.keep_records(read)?;
         }
         match self.records.as_ref() {
-            Some(Ok(r)) => Ok(r),
+            Some(Ok(r)) => Ok(r.as_ref()),
             Some(Err(e)) => Err(e.clone()),
-            None => unreachable!(),
+            None => unreachable!("records were just read"),
         }
+    }
+
+    /// The first read of the records, to run with [`RecordsJob::run`]
+    /// without the workspace; None once they've been read.
+    pub fn records_job(&self) -> Option<RecordsJob> {
+        if self.records.is_some() {
+            return None;
+        }
+        Some(RecordsJob {
+            version: self.version,
+            name: self.name.clone(),
+            format: self.format,
+            bytes: self.bytes.clone(),
+            power: self.power.clone(),
+        })
+    }
+
+    /// Keep records read by a [`RecordsJob`], unless the case changed while
+    /// they were read. Records another read kept first stay.
+    pub fn keep_records(&mut self, read: RecordsRead) -> Result<(), String> {
+        self.check_version(read.version)?;
+        if self.records.is_none() {
+            self.records = Some(read.records.map(Arc::new));
+        }
+        Ok(())
     }
 
     pub fn record_book(&mut self) -> Result<RecordBook, String> {
@@ -763,7 +750,14 @@ impl OpenCase {
         if edits.is_empty() {
             return Ok(self.summary());
         }
-        let start = Instant::now();
+        let done = self.record_edit_job(edits)?.run()?;
+        self.finish_record_edits(done)
+    }
+
+    /// Record edits to write and reread with [`RecordEditJob::run`] without
+    /// the workspace, and keep with [`Self::finish_record_edits`]. Reads
+    /// the records here if they haven't been read yet.
+    pub fn record_edit_job(&mut self, edits: &[RecordEdit]) -> Result<RecordEditJob, String> {
         self.records()?;
         let Some(Ok(records)) = self.records.as_ref() else {
             unreachable!("records were just read")
@@ -771,55 +765,53 @@ impl OpenCase {
         if !records.editable {
             return Err("This case's records can't be edited: Stannum writes RAW revisions 33 and 35, and MATPOWER.".into());
         }
-        let (bytes, updates) = match records.source {
-            RecordSource::Raw => {
-                let (text, updates) =
-                    record_edit::apply_raw(&decode_text(&self.bytes), records, edits)?;
-                // Keep the file's encoding: UTF-8 if it was, else Windows-1252.
-                let bytes = if std::str::from_utf8(&self.bytes).is_ok() {
-                    text.into_bytes()
-                } else {
-                    let (encoded, _, unmappable) = encoding_rs::WINDOWS_1252.encode(&text);
-                    if unmappable {
-                        return Err("A new value has a character this file's encoding (Windows-1252) can't hold.".into());
-                    }
-                    encoded.into_owned()
-                };
-                (bytes, Some(updates))
-            }
-            RecordSource::Model => {
-                let power = self.power.as_ref().map_err(|e| e.clone())?;
-                let case = record_edit::apply_model(&power.case, records, edits)?;
-                let text = rs_power::format_matpower(&case).map_err(|e| e.to_string())?;
-                (text.into_bytes(), None)
-            }
-        };
-        let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        Ok(RecordEditJob {
+            version: self.version,
+            path: self.path.clone(),
+            name: self.name.clone(),
+            bytes: self.bytes.clone(),
+            records: records.clone(),
+            power: self.power.clone(),
+            study_edits: self.edits.clone(),
+            edits: edits.to_vec(),
+        })
+    }
+
+    /// Put the edited case in this one's place, unless the case changed
+    /// while the edits were written.
+    pub fn finish_record_edits(&mut self, done: RecordEditsDone) -> Result<CaseSummary, String> {
+        self.check_version(done.version)?;
+        let RecordEditsDone {
+            mut next,
+            updates,
+            count,
+            start,
+            ..
+        } = done;
         next.id = self.id;
-        if let (Ok(_), Err(e)) = (&self.power, &next.power) {
-            return Err(format!("The edited case can't be solved: {e}"));
-        }
-        next.record_edits = self.record_edits + edits.len();
+        // "Save as" may have moved the case to a new file meanwhile.
+        next.path = self.path.clone();
+        next.name = self.name.clone();
+        next.record_edits = self.record_edits + count;
         next.dc_grids = self.dc_grids.take();
         if let Some(updates) = updates {
             // The RAW tables only change in the edited cells.
-            let mut records = self.records.take().and_then(Result::ok);
+            let mut records = self
+                .records
+                .take()
+                .and_then(Result::ok)
+                .map(Arc::unwrap_or_clone);
             if let Some(r) = records.as_mut() {
                 record_edit::patch(r, updates)?;
             }
-            next.records = records.map(Ok);
-        }
-        if !self.edits.is_empty()
-            && let Err(e) = next.set_edits(self.edits.clone())
-        {
-            log::warn!("The study's edits no longer apply to the edited case: {e}");
+            next.records = records.map(|r| Ok(Arc::new(r)));
         }
         log::info!(
             "Applied {} to {} ({:.0} ms)",
-            if edits.len() == 1 {
+            if count == 1 {
                 "1 record edit".to_string()
             } else {
-                format!("{} record edits", edits.len())
+                format!("{count} record edits")
             },
             self.name,
             elapsed_ms(start)
@@ -1030,6 +1022,333 @@ impl Workspace {
         self.comparison
             .as_ref()
             .ok_or_else(|| "Compare two files first.".into())
+    }
+}
+
+/// A solve taken out of the open case. It shares what it reads with the
+/// case, so it runs without the workspace lock and the other modules stay
+/// usable meanwhile.
+pub struct SolveJob {
+    version: u64,
+    power: Arc<PowerCase>,
+    /// The solve to start from, and whether it was of this case (else from
+    /// before the study's edits changed).
+    last: Option<(Arc<Solved>, bool)>,
+    dc_grids: Option<Arc<LoadedDcGrids>>,
+    edits: Vec<Edit>,
+    settings: SolveSettings,
+    cancel: Option<Arc<AtomicBool>>,
+}
+
+/// A finished [`SolveJob`], to keep with [`OpenCase::finish_solve`].
+pub struct SolveDone {
+    version: u64,
+    result: PowerFlowResult,
+    settings: SolveSettings,
+    report: power::SolveReport,
+}
+
+impl SolveJob {
+    pub fn run(self) -> Result<SolveDone, String> {
+        let SolveJob {
+            version,
+            power,
+            last,
+            dc_grids,
+            edits,
+            settings,
+            cancel,
+        } = self;
+        let power = power.as_ref();
+        let start = Instant::now();
+        let cold = settings.options_for(power);
+        let mut options = cold.clone();
+        options.cancel = cancel;
+        let failed = |e: rs_power::Error| match e {
+            rs_power::Error::Cancelled => {
+                log::info!("Solve cancelled; the previous results are kept");
+                SOLVE_CANCELLED.to_string()
+            }
+            e => study::explain(e.to_string(), &edits),
+        };
+        let warm = match (&last, settings.start) {
+            (Some((last, same_case)), power::StartChoice::Last)
+                if settings.model == power::ModelChoice::Ac =>
+            {
+                if !same_case {
+                    log::info!("Starting from the last solve, from before the study changed");
+                }
+                Some(power::warm_start(&power.case, &last.0, &mut options))
+            }
+            (None, power::StartChoice::Last) if settings.model == power::ModelChoice::Ac => {
+                log::info!(
+                    "No converged AC solve to start from yet; starting from the case voltages"
+                );
+                None
+            }
+            _ => None,
+        };
+        let input = warm.as_ref().unwrap_or(&power.case);
+        let grids = dc_grids
+            .as_deref()
+            .filter(|_| settings.model == power::ModelChoice::Ac);
+        if dc_grids.is_some() && grids.is_none() {
+            log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
+        }
+        let (result, vsc) = match grids {
+            Some(file) => {
+                let acdc = rs_power::solve_dc_grids(
+                    input,
+                    &options,
+                    &file.grids,
+                    &rs_power::DcGridSettings::default(),
+                )
+                .map_err(failed)?;
+                let names = power::bus_names(&power.case);
+                let index: std::collections::HashMap<u32, usize> = power
+                    .case
+                    .buses
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| (b.id, i))
+                    .collect();
+                let vsc = dc_grids::report(file, &acdc, |bus| {
+                    index
+                        .get(&bus)
+                        .and_then(|&i| names.get(i))
+                        .cloned()
+                        .unwrap_or_default()
+                });
+                let mut ac = acdc.ac;
+                // The AC/DC iteration's outcome, not only the last AC solve's.
+                ac.status = acdc.status;
+                ac.iterations = acdc.ac_iterations;
+                (ac, Some(vsc))
+            }
+            None => (rs_power::solve(input, &options).map_err(failed)?, None),
+        };
+        let solved_ms = elapsed_ms(start);
+        let mut report = power::report(
+            &result,
+            &power.elements,
+            &power.dc_line_kinds,
+            // Count moves from the file's settings, not from the last solve.
+            &cold.voltage_controls,
+            &settings,
+            elapsed_ms(start),
+        );
+        if let Some(vsc) = vsc {
+            let lost: f64 = vsc
+                .grids
+                .iter()
+                .map(|g| g.line_loss_mw + g.converter_loss_mw)
+                .sum();
+            report.total_losses_mw += lost;
+            log::info!(
+                "VSC DC grids: {} after {} AC/DC iterations; {:.1} MW lost in converters and DC lines",
+                if vsc.converged {
+                    "converged"
+                } else {
+                    "not converged"
+                },
+                vsc.iterations,
+                lost
+            );
+            report.vsc_grids = Some(vsc);
+        }
+        log_report(&report, solved_ms);
+        Ok(SolveDone {
+            version,
+            result,
+            settings,
+            report,
+        })
+    }
+}
+
+/// A "Trip and compare" solve taken out of the open case.
+pub struct TripJob {
+    element: String,
+    job: ContingencyJob,
+}
+
+impl TripJob {
+    pub fn run(self) -> Result<ContingencyDetail, String> {
+        let mut results = self.job.run()?;
+        let detail = results.detail(1)?;
+        log::info!(
+            "Tripped {}: {} overload{} new or worse",
+            self.element,
+            detail.overloads.len(),
+            if detail.overloads.len() == 1 { "" } else { "s" }
+        );
+        Ok(detail)
+    }
+}
+
+/// Sensitivities taken out of the open case, to run without the lock.
+pub struct SensitivityJob {
+    version: u64,
+    power: Arc<PowerCase>,
+    settings: SolveSettings,
+}
+
+/// Finished sensitivities, to keep with [`OpenCase::finish_sensitivities`].
+pub struct SensitivitiesDone {
+    version: u64,
+    sensitivity: PowerFlowSensitivity,
+    model: power::ModelChoice,
+    summary: power::SensitivitySummary,
+}
+
+impl SensitivityJob {
+    pub fn run(self) -> Result<SensitivitiesDone, String> {
+        let power = self.power.as_ref();
+        let start = Instant::now();
+        let s = rs_power::calculate_sensitivities(&power.case, &self.settings.options_for(power))
+            .map_err(|e| e.to_string())?;
+        let summary = power::sensitivity_summary(&s, self.settings.model, elapsed_ms(start));
+        log::info!(
+            "Sensitivities: {} injection columns, {} branches ({:.0} ms)",
+            summary.injections.len(),
+            summary.branches,
+            summary.elapsed_ms
+        );
+        Ok(SensitivitiesDone {
+            version: self.version,
+            sensitivity: s,
+            model: self.settings.model,
+            summary,
+        })
+    }
+}
+
+/// The first read of a case's records, to run without the lock.
+pub struct RecordsJob {
+    version: u64,
+    name: String,
+    format: CaseFormat,
+    bytes: Vec<u8>,
+    power: Result<Arc<PowerCase>, String>,
+}
+
+/// Records read by a [`RecordsJob`], to keep with [`OpenCase::keep_records`].
+pub struct RecordsRead {
+    version: u64,
+    records: Result<Records, String>,
+}
+
+impl RecordsJob {
+    pub fn run(self) -> RecordsRead {
+        let start = Instant::now();
+        let raw = match self.format {
+            CaseFormat::Raw => Some(
+                crate::diff::parser::parse_bytes_for_viewing(&self.name, &self.bytes)
+                    .map_err(|e| e.to_string()),
+            ),
+            CaseFormat::Matpower => None,
+        };
+        let records = match (raw, &self.power) {
+            (Some(Ok(case)), _) => Ok(crate::records::from_raw(&case)),
+            (raw, Ok(power)) => {
+                if let Some(Err(e)) = &raw {
+                    log::info!(
+                        "Showing {}'s records from the power flow model: {e}",
+                        self.name
+                    );
+                }
+                Ok(crate::records::from_model(power, raw.is_some()))
+            }
+            (Some(Err(e)), Err(_)) => Err(e),
+            (None, Err(e)) => Err(e.clone()),
+        };
+        if let Ok(r) = &records {
+            let count: usize = r.tables.iter().map(|t| t.rows.len()).sum();
+            log::info!(
+                "Read {count} records in {} tables ({:.0} ms)",
+                r.tables.len(),
+                elapsed_ms(start)
+            );
+        }
+        RecordsRead {
+            version: self.version,
+            records,
+        }
+    }
+}
+
+/// Record edits taken out of the open case: writing them in and reading
+/// the edited case back runs without the lock.
+pub struct RecordEditJob {
+    version: u64,
+    path: PathBuf,
+    name: String,
+    bytes: Vec<u8>,
+    records: Arc<Records>,
+    power: Result<Arc<PowerCase>, String>,
+    study_edits: Vec<Edit>,
+    edits: Vec<RecordEdit>,
+}
+
+/// The edited case from a [`RecordEditJob`], to put in place with
+/// [`OpenCase::finish_record_edits`].
+pub struct RecordEditsDone {
+    version: u64,
+    next: OpenCase,
+    /// The cells to patch in the RAW tables (None: the model's tables are
+    /// read again).
+    updates: Option<Vec<record_edit::CellUpdate>>,
+    count: usize,
+    start: Instant,
+}
+
+impl RecordEditJob {
+    pub fn run(self) -> Result<RecordEditsDone, String> {
+        let start = Instant::now();
+        let records = self.records.as_ref();
+        let edits = &self.edits;
+        let (bytes, updates) = match records.source {
+            RecordSource::Raw => {
+                let (text, updates) =
+                    record_edit::apply_raw(&decode_text(&self.bytes), records, edits)?;
+                // Keep the file's encoding: UTF-8 if it was, else Windows-1252.
+                let bytes = if std::str::from_utf8(&self.bytes).is_ok() {
+                    text.into_bytes()
+                } else {
+                    let (encoded, _, unmappable) = encoding_rs::WINDOWS_1252.encode(&text);
+                    if unmappable {
+                        return Err("A new value has a character this file's encoding (Windows-1252) can't hold.".into());
+                    }
+                    encoded.into_owned()
+                };
+                (bytes, Some(updates))
+            }
+            RecordSource::Model => {
+                let power = self.power.as_ref().map_err(|e| e.clone())?;
+                let case = record_edit::apply_model(&power.case, records, edits)?;
+                let text = rs_power::format_matpower(&case).map_err(|e| e.to_string())?;
+                (text.into_bytes(), None)
+            }
+        };
+        let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        if let (Ok(_), Err(e)) = (&self.power, &next.power) {
+            return Err(format!("The edited case can't be solved: {e}"));
+        }
+        if !self.study_edits.is_empty()
+            && let Err(e) = next.set_edits(self.study_edits.clone())
+        {
+            log::warn!(
+                "The study's edits no longer apply to the edited {}: {e}",
+                self.name
+            );
+        }
+        Ok(RecordEditsDone {
+            version: self.version,
+            next,
+            updates,
+            count: edits.len(),
+            start,
+        })
     }
 }
 

@@ -89,6 +89,7 @@ pub struct RecordBook {
     pub sections: Vec<SectionInfo>,
 }
 
+#[derive(Clone)]
 pub struct Records {
     pub source: RecordSource,
     pub revision: Option<i64>,

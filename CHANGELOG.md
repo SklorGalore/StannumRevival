@@ -8,6 +8,17 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+### Changed
+
+- Solves, sensitivities, "Trip and compare" and Records reads and edits no
+  longer hold up the rest of the app: on a 30,000-bus case, Records opens
+  in a fraction of a second during a 5 s solve instead of waiting for it.
+
+### Fixed
+
+- A solve or contingency run that finishes after the case was edited is set
+  aside with a message instead of being shown as the edited case's results.
+
 ## 0.3.0 - 2026-10-26
 
 The first packaged release. Everything below is new since Stannum was

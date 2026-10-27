@@ -15,7 +15,7 @@ use crate::contingency::{ContingencySettings, ContingencySummary, Progress, RunH
 use crate::power::SolveSettings;
 use crate::record_edit::RecordEdit;
 use crate::study::Edit;
-use crate::workspace::{CaseId, Workspace};
+use crate::workspace::{CASE_CHANGED, CaseId, Workspace};
 use crate::{logbook, study_file};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,6 +26,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// Version of the command set. It goes up when a command is removed or an
 /// argument or result changes in a way existing callers would notice.
 pub const API_VERSION: u32 = 1;
+
+/// How many times work done without the workspace lock is redone when the
+/// case changes under it, before it waits for the lock instead.
+const RETRIES: usize = 3;
 
 /// One command, as `list_commands` describes it.
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -82,10 +86,13 @@ impl Session {
         if let Ok(mut slot) = self.solving.lock() {
             *slot = Some(flag.clone());
         }
-        let result = self.workspace().and_then(|mut ws| {
-            ws.case_mut(case)?
-                .solve_cancellable(settings, Some(flag.clone()))
-        });
+        // The solve runs without the workspace lock, so other commands
+        // keep answering meanwhile.
+        let result = self
+            .workspace()
+            .and_then(|ws| ws.case(case)?.solve_job(settings, Some(flag.clone())))
+            .and_then(|job| job.run())
+            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done));
         // Only clear the slot if a newer solve hasn't taken it.
         if let Ok(mut slot) = self.solving.lock()
             && slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag))
@@ -108,7 +115,11 @@ impl Session {
         case: Option<CaseId>,
         settings: ContingencySettings,
     ) -> Result<ContingencySummary, String> {
-        let job = self.workspace()?.case(case)?.contingency_job(settings)?;
+        let (job, version) = {
+            let ws = self.workspace()?;
+            let open = ws.case(case)?;
+            (open.contingency_job(settings)?, open.version)
+        };
         if let Ok(mut slot) = self.contingencies.lock() {
             *slot = Some(job.handle());
         }
@@ -117,7 +128,73 @@ impl Session {
             *slot = None;
         }
         let results = results?;
-        Ok(self.workspace()?.case_mut(case)?.set_contingencies(results))
+        self.workspace()?
+            .case_mut(case)?
+            .keep_contingencies(version, results)
+    }
+
+    /// Sensitivities, calculated without the workspace lock.
+    fn sensitivities(
+        &self,
+        case: Option<CaseId>,
+        settings: SolveSettings,
+    ) -> Result<crate::power::SensitivitySummary, String> {
+        let job = self.workspace()?.case(case)?.sensitivity_job(settings)?;
+        let done = job.run()?;
+        self.workspace()?.case_mut(case)?.finish_sensitivities(done)
+    }
+
+    /// "Trip and compare", solved without the workspace lock.
+    fn trip_and_compare(
+        &self,
+        case: Option<CaseId>,
+        element: &str,
+        limit_pct: f64,
+    ) -> Result<crate::contingency::ContingencyDetail, String> {
+        let job = self.workspace()?.case(case)?.trip_job(element, limit_pct)?;
+        job.run()
+    }
+
+    /// Read the case's records the first time they're asked for, without
+    /// the workspace lock. If the case changes meanwhile, read them again.
+    fn read_records(&self, case: Option<CaseId>) -> Result<(), String> {
+        for _ in 0..RETRIES {
+            let Some(job) = self.workspace()?.case(case)?.records_job() else {
+                return Ok(());
+            };
+            let read = job.run();
+            match self.workspace()?.case_mut(case)?.keep_records(read) {
+                Err(e) if e == CASE_CHANGED => continue,
+                kept => return kept,
+            }
+        }
+        // Still changing: the caller reads them under the lock.
+        Ok(())
+    }
+
+    /// Write cell edits into the case and read the edited case back
+    /// without the workspace lock. If the case changed meanwhile, the edits
+    /// are written again into the case as it is now, as if they had waited
+    /// their turn.
+    fn apply_record_edits(
+        &self,
+        case: Option<CaseId>,
+        edits: &[RecordEdit],
+    ) -> Result<crate::CaseSummary, String> {
+        if edits.is_empty() {
+            return Ok(self.workspace()?.case(case)?.summary());
+        }
+        for _ in 0..RETRIES {
+            self.read_records(case)?;
+            let job = self.workspace()?.case_mut(case)?.record_edit_job(edits)?;
+            let done = job.run()?;
+            match self.workspace()?.case_mut(case)?.finish_record_edits(done) {
+                Err(e) if e == CASE_CHANGED => continue,
+                applied => return applied,
+            }
+        }
+        // Still changing: apply them under the lock.
+        self.workspace()?.case_mut(case)?.apply_record_edits(edits)
     }
 
     fn cancel_contingencies(&self) {
@@ -245,7 +322,7 @@ commands! {
 
     /// Calculate sensitivities at the solved operating point.
     calculate_sensitivities { case: Option<CaseId>, settings: SolveSettings } =>
-        |s, a| s.workspace()?.case_mut(a.case)?.sensitivities(a.settings);
+        |s, a| s.sensitivities(a.case, a.settings);
 
     /// One sensitivity column's responses at every bus.
     sensitivity_responses {
@@ -268,16 +345,20 @@ commands! {
         |s, a| s.workspace()?.case(a.case)?.element_detail(&a.element);
 
     /// The case's record types and their counts.
-    case_records { case: Option<CaseId> } =>
-        |s, a| s.workspace()?.case_mut(a.case)?.record_book();
+    case_records { case: Option<CaseId> } => |s, a| {
+        s.read_records(a.case)?;
+        s.workspace()?.case_mut(a.case)?.record_book()
+    };
 
     /// Every record of one type, with every field.
-    record_table { case: Option<CaseId>, section: String } =>
-        |s, a| s.workspace()?.case_mut(a.case)?.record_table(&a.section);
+    record_table { case: Option<CaseId>, section: String } => |s, a| {
+        s.read_records(a.case)?;
+        s.workspace()?.case_mut(a.case)?.record_table(&a.section)
+    };
 
     /// Write cell edits into the case and reopen it in place.
     apply_record_edits { case: Option<CaseId>, edits: Vec<RecordEdit> } =>
-        |s, a| s.workspace()?.case_mut(a.case)?.apply_record_edits(&a.edits);
+        |s, a| s.apply_record_edits(a.case, &a.edits);
 
     /// Save the case, with its edits, to a new file.
     save_case_as { case: Option<CaseId>, path: PathBuf } =>
@@ -345,7 +426,7 @@ commands! {
 
     /// Take one element out of the last AC solve and solve again.
     trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } =>
-        |s, a| s.workspace()?.case(a.case)?.trip_and_compare(&a.element, a.limit_pct);
+        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct);
 
     /// Log lines numbered above `since`.
     log_entries { since: u64 } => |_, a| Ok(logbook::since(a.since));
