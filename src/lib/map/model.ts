@@ -21,6 +21,8 @@ export interface Site {
 export interface MapLine {
   index: number;
   element: string;
+  /** 1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise. */
+  winding: number;
   from: number;
   to: number;
   /** Site indexes at each end (never equal: lines inside a site aren't drawn). */
@@ -31,9 +33,18 @@ export interface MapLine {
   dc: boolean;
 }
 
+/** A branch with both ends at one site (a substation transformer): not drawn as a line. */
+export interface InnerBranch {
+  element: string;
+  winding: number;
+  site: number;
+}
+
 export interface MapModel {
   sites: Site[];
   lines: MapLine[];
+  /** Branches inside a site, so layers that mark them can mark the site. */
+  inner: InnerBranch[];
   /** Bus number to site index, for every bus with a place. */
   busSite: Map<number, number>;
   /** Buses (other than star points) with no place. */
@@ -95,15 +106,20 @@ export function buildMap(net: CaseNetwork, coords: BusCoordinates): MapModel {
   for (const s of sites) s.buses.sort((x, y) => (kv.get(y) ?? 0) - (kv.get(x) ?? 0) || x - y);
 
   const lines: MapLine[] = [];
-  const add = (element: string, from: number, to: number, online: boolean, dc: boolean) => {
+  const inner: InnerBranch[] = [];
+  const add = (element: string, winding: number, from: number, to: number, online: boolean, dc: boolean) => {
     const a = busSite.get(from);
     const b = busSite.get(to);
-    if (a === undefined || b === undefined || a === b) return;
+    if (a === undefined || b === undefined) return;
+    if (a === b) {
+      inner.push({ element, winding, site: a });
+      return;
+    }
     const v = Math.max(kv.get(from) ?? 0, kv.get(to) ?? 0);
-    lines.push({ index: lines.length, element, from, to, a, b, kv: v, online, dc });
+    lines.push({ index: lines.length, element, winding, from, to, a, b, kv: v, online, dc });
   };
-  for (const br of net.branches) add(br.element, br.from, br.to, br.online, false);
-  for (const dc of net.dc_lines) add(dc.element, dc.from, dc.to, dc.online, true);
+  for (const br of net.branches) add(br.element, br.winding, br.from, br.to, br.online, false);
+  for (const dc of net.dc_lines) add(dc.element, 0, dc.from, dc.to, dc.online, true);
 
   let bounds: MapModel["bounds"] = null;
   for (const s of sites) {
@@ -111,7 +127,7 @@ export function buildMap(net: CaseNetwork, coords: BusCoordinates): MapModel {
     else bounds = [Math.min(bounds[0], s.lon), Math.min(bounds[1], s.lat), Math.max(bounds[2], s.lon), Math.max(bounds[3], s.lat)];
   }
   const unplaced = net.buses.filter((b) => !b.star && !place.has(b.id)).length;
-  return { sites, lines, busSite, unplaced, bounds };
+  return { sites, lines, inner, busSite, unplaced, bounds };
 }
 
 /** Buses within `depth` branches of `bus` (in service or not: the map shows geography). */

@@ -64,7 +64,8 @@ export const useDrawingStyle = create<DrawingStyleState>((set) => ({
     }),
   view: { kind: "around" },
   showIsland: (island) => set({ style: "network", view: { kind: "island", island } }),
-  showPath: () => set({ style: "network", view: { kind: "path" } }),
+  // The map draws the path where it is; the other styles show it in the network.
+  showPath: () => set((s) => (s.style === "map" ? { view: { kind: "path" } } : { style: "network", view: { kind: "path" } })),
   showAround: () => set({ view: { kind: "around" } }),
   element: null,
   setElement: (element) => set({ element }),

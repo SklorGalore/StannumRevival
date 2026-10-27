@@ -16,6 +16,7 @@
 //! - [`records`]: the open case's records as tables, one per record type.
 //! - [`schema`]: checks values against the command schemas and writes them as TypeScript.
 //! - [`results`]: names for every solution the open case can show.
+//! - [`topology_wire`]: the topology snapshot as compact columns for the app.
 //! - [`logbook`]: the application log shown in the log panel.
 
 pub mod commands;
@@ -36,6 +37,7 @@ pub mod results;
 pub mod schema;
 pub mod study;
 pub mod study_file;
+pub mod topology_wire;
 pub mod working_case;
 pub mod workspace;
 

@@ -1,16 +1,18 @@
 // Generated from the core's command schemas (stannum_core::commands::schemas).
 // Don't edit: run `pwsh scripts/update-schemas.ps1` after changing a command.
 
-export type Analysis = {
+export type AnalysisWire = {
   absorbed_equipment: number;
   active_buses: number;
   active_equipment: number;
   articulation_buses: number[];
-  bridges: Connection[];
-  degrees: Degree[];
+  /** By position in the connection table. */
+  bridges: number[];
+  degrees: DegreeColumns;
   excluded_buses: number;
   excluded_equipment: number;
-  islands: Island[];
+  /** Each island's id and junctions; its buses come from `degrees`. */
+  islands: IslandWire[];
   original_active_buses: number;
   synthetic_articulations: string[];
   synthetic_junctions: number;
@@ -49,23 +51,24 @@ export type BranchRowColumns = {
   winding: number[];
 };
 
-export type Bus = {
-  area: number | null;
-  base_kv: number;
-  bus_type: number;
-  name: string;
-  number: number;
-  source: SourceRecord;
-  voltage_pu: number | null;
-  zone: number | null;
-};
-
 export type BusChange = {
   base_vm: number;
   bus: number;
   vm: number;
   vmax: number;
   vmin: number;
+};
+
+export type BusColumns = {
+  area: (number | null)[];
+  base_kv: number[];
+  bus_type: number[];
+  line: number[];
+  name: string[];
+  number: number[];
+  section: number[];
+  voltage_pu: (number | null)[];
+  zone: (number | null)[];
 };
 
 /** Where each bus goes, as columns in the case's bus order. */
@@ -103,21 +106,6 @@ export type BusRowColumns = {
   vm: number[];
   vmax: number[];
   vmin: number[];
-};
-
-export type Case = {
-  base_mva: number;
-  buses: Bus[];
-  diagnostics: Diagnostic[];
-  encoding: string;
-  equipment: Equipment[];
-  frequency_hz: number;
-  generators: Injection[];
-  loads: Injection[];
-  revision: number;
-  skipped_sections: Record<string, number>;
-  titles: string[];
-  zero_impedance_threshold: number;
 };
 
 export type CaseCounts = {
@@ -167,6 +155,23 @@ export type CaseSummary = {
   topology: ModuleStatusOfTopologyInfo;
 };
 
+export type CaseWire = {
+  base_mva: number;
+  buses: BusColumns;
+  diagnostics: Diagnostic[];
+  encoding: string;
+  equipment: EquipmentColumns;
+  frequency_hz: number;
+  generators: InjectionColumns;
+  loads: InjectionColumns;
+  revision: number;
+  /** Section names, which the tables refer to by position. */
+  sections: string[];
+  skipped_sections: Record<string, number>;
+  titles: string[];
+  zero_impedance_threshold: number;
+};
+
 export type ColumnKind = "integer" | "number" | "text";
 
 /** One command, as `list_commands` describes it. */
@@ -182,14 +187,6 @@ export type CommandInfo = {
 export type CommandList = {
   api_version: number;
   commands: CommandInfo[];
-};
-
-export type Connection = {
-  equipment_id: string;
-  id: string;
-  source: string;
-  target: string;
-  winding: number | null;
 };
 
 /**
@@ -422,10 +419,10 @@ export type DcSystemReport = {
   reduced_voltage: boolean;
 };
 
-export type Degree = {
-  bus: number;
-  degree: number;
-  island: number;
+export type DegreeColumns = {
+  bus: number[];
+  degree: number[];
+  island: number[];
 };
 
 export type Diagnostic = {
@@ -476,6 +473,15 @@ export type DiffSummary = {
   sections: SectionSummary[];
 };
 
+export type EdgeColumns = {
+  /** By position in the equipment table. */
+  equipment: number[];
+  /** By position in the node table. */
+  source: number[];
+  target: number[];
+  winding: (number | null)[];
+};
+
 /** One change to the case, by shared element id or bus number. */
 export type Edit = {
   element: string;
@@ -523,18 +529,19 @@ export type Entry = {
   time: number;
 };
 
-export type Equipment = {
-  active_terminals: boolean[];
-  buses: number[];
-  circuit: string;
-  id: string;
-  kind: EquipmentKind;
-  name: string;
-  source: SourceRecord;
-  status: number;
+export type EquipmentColumns = {
+  buses: number[][];
+  circuit: string[];
+  id: string[];
+  /** 0 line, 1 transformer, 2 switch. */
+  kind: number[];
+  line: number[];
+  name: string[];
+  /** Bit `i` set when terminal `i` is open: 0 for most equipment. */
+  open_terminals: number[];
+  section: number[];
+  status: number[];
 };
-
-export type EquipmentKind = "line" | "transformer" | "switch";
 
 /** An error from a command: what kind it is, and what to tell the person. */
 export type Error = {
@@ -593,21 +600,12 @@ export type GeneratorRowColumns = {
   vg: number[];
 };
 
-export type GraphData = {
+export type GraphWire = {
   absorbed_equipment_ids: string[];
-  edges: Connection[];
+  edges: EdgeColumns;
   merge_zero_impedance: boolean;
-  nodes: GraphNode[];
+  nodes: NodeColumns;
   zero_impedance_groups: number[][];
-};
-
-export type GraphNode = {
-  base_kv: number | null;
-  bus: number | null;
-  equipment_id: string | null;
-  id: string;
-  label: string;
-  member_buses: number[];
 };
 
 /** A titled list of fields, such as one winding of a transformer. */
@@ -615,15 +613,6 @@ export type Group = {
   fields: Field[];
   /** Empty when the element only has one group. */
   title: string;
-};
-
-export type Injection = {
-  bus: number;
-  id: string;
-  p_mw: number;
-  q_mvar: number;
-  source: SourceRecord;
-  status: number;
 };
 
 export type InjectionColumn = {
@@ -634,8 +623,17 @@ export type InjectionColumn = {
   kind: "p" | "q";
 };
 
-export type Island = {
-  buses: number[];
+export type InjectionColumns = {
+  bus: number[];
+  id: string[];
+  line: number[];
+  p_mw: number[];
+  q_mvar: number[];
+  section: number[];
+  status: number[];
+};
+
+export type IslandWire = {
   id: number;
   synthetic_nodes: string[];
 };
@@ -781,6 +779,18 @@ export type NetworkGenerator = {
   index: number;
   online: boolean;
   pmax: number;
+};
+
+export type NodeColumns = {
+  /** The bus a bus node stands for, or null for a junction. */
+  bus: (number | null)[];
+  /** A junction's equipment, by position in the equipment table. */
+  equipment: (number | null)[];
+  /**
+   * Bus nodes whose member buses are not just their own bus, as
+   * `[node, members]`. Junctions have no members.
+   */
+  members: ([number, number[]])[];
 };
 
 /** A branch over its limit after an outage. */
@@ -1005,16 +1015,16 @@ export type TopologyInfo = {
   titles: string[];
 };
 
-export type TopologySnapshot = {
-  analysis: Analysis;
-  /** The case as nodal reads it. */
-  case: Case;
-  graph: GraphData;
+/** The topology after a change of options: the case stays as it was. */
+export type TopologyViewWire = {
+  analysis: AnalysisWire;
+  graph: GraphWire;
 };
 
-export type TopologyView = {
-  analysis: Analysis;
-  graph: GraphData;
+export type TopologyWire = {
+  analysis: AnalysisWire;
+  case: CaseWire;
+  graph: GraphWire;
 };
 
 /** A bus outside its voltage limits after an outage. */
@@ -1420,13 +1430,16 @@ export interface CoreCommands {
     };
     result: string | null;
   };
-  /** Merge buses joined by zero-impedance lines, or split them again. */
+  /**
+   * Merge buses joined by zero-impedance lines, or split them again. The
+   * answer is the new analysis and graph in the same form as `topology_snapshot`.
+   */
   topology_set_merge: {
     args: {
       case?: CaseId | null;
       enabled: boolean;
     };
-    result: TopologyView;
+    result: TopologyViewWire;
   };
   /** The shortest path between two buses, or null. */
   topology_shortest_path: {
@@ -1437,12 +1450,24 @@ export interface CoreCommands {
     };
     result: Path | null;
   };
-  /** Islands, bridges and articulation buses, with the case's graph. */
+  /**
+   * Islands, bridges and articulation buses, with the case's graph, as
+   * compact columns (see `topology_wire`). Source fields are left out:
+   * `topology_source` sends one element's.
+   */
   topology_snapshot: {
     args: {
       case?: CaseId | null;
     };
-    result: TopologySnapshot;
+    result: TopologyWire;
+  };
+  /** The record an element was read from: its fields and RAW lines, or null. */
+  topology_source: {
+    args: {
+      case?: CaseId | null;
+      element: string;
+    };
+    result: SourceRecord | null;
   };
   /** Take one element out of the last AC solve and solve again. */
   trip_and_compare: {

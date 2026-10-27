@@ -18,6 +18,7 @@ use crate::record_edit::{self, RecordEdit};
 use crate::records::{RecordBook, RecordSource, RecordTable, Records};
 use crate::results::ResultName;
 use crate::study::{self, Edit};
+use crate::topology_wire;
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
 use serde::{Deserialize, Serialize};
@@ -1036,6 +1037,43 @@ impl OpenCase {
             analysis: t.topology.analyze(&t.case),
             graph: t.topology.graph_data(),
         })
+    }
+
+    /// The snapshot as the app receives it, in [`topology_wire`] form.
+    pub fn topology_wire(&self) -> Result<serde_json::Value, Error> {
+        let t = self.topology_state()?;
+        let analysis = t.topology.analyze(&t.case);
+        let graph = t.topology.graph_data();
+        let view = topology_wire::view_wire(&t.case, &analysis, &graph)?;
+        serde_json::to_value(topology_wire::TopologyWire {
+            case: topology_wire::case_wire(&t.case),
+            analysis: view.analysis,
+            graph: view.graph,
+        })
+        .map_err(|e| Error::internal(e.to_string()))
+    }
+
+    /// The record an element was read from, or `None` when there's no such element.
+    pub fn topology_source(
+        &self,
+        element: &str,
+    ) -> Result<Option<nodal::model::SourceRecord>, Error> {
+        let t = self.topology_state()?;
+        Ok(topology_wire::source(&t.case, element).cloned())
+    }
+
+    /// Merge zero-impedance branches or split them again, and send the new
+    /// analysis and graph in [`topology_wire`] form.
+    pub fn set_merge_zero_impedance_wire(
+        &mut self,
+        enabled: bool,
+    ) -> Result<serde_json::Value, Error> {
+        self.set_merge_zero_impedance(enabled)?;
+        let t = self.topology_state()?;
+        let analysis = t.topology.analyze(&t.case);
+        let graph = t.topology.graph_data();
+        serde_json::to_value(topology_wire::view_wire(&t.case, &analysis, &graph)?)
+            .map_err(|e| Error::internal(e.to_string()))
     }
 
     pub fn set_merge_zero_impedance(&mut self, enabled: bool) -> Result<TopologyView, Error> {

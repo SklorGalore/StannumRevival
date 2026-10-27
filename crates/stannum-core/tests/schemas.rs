@@ -200,6 +200,23 @@ fn answers_fit_their_schemas() {
         .cloned()
         .unwrap_or(json!(bus));
     c.ok("topology_shortest_path", json!({ "from": bus, "to": to }));
+    let source = c.ok(
+        "topology_source",
+        json!({ "element": format!("bus:{bus}") }),
+    );
+    assert!(!source.is_null());
+    let equipment = topology["case"]["equipment"]["id"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        !c.ok("topology_source", json!({ "element": equipment }))
+            .is_null()
+    );
+    assert!(
+        c.ok("topology_source", json!({ "element": "nothing" }))
+            .is_null()
+    );
     c.ok("topology_set_merge", json!({ "enabled": true }));
     c.ok("topology_set_merge", json!({ "enabled": false }));
     let run = c.ok(

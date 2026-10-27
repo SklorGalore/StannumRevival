@@ -73,6 +73,10 @@ pub struct CommandList {
 pub struct Json<T>(Value, PhantomData<T>);
 
 impl<T> Json<T> {
+    pub fn from_value(value: Value) -> Self {
+        Json(value, PhantomData)
+    }
+
     pub fn of<U: Serialize>(value: &U) -> Result<Self, Error> {
         serde_json::to_value(value)
             .map(|v| Json(v, PhantomData))
@@ -494,15 +498,20 @@ commands! {
     save_case_as { case: Option<CaseId>, path: PathBuf } -> crate::CaseSummary =>
         |s, a| s.workspace()?.case_mut(a.case)?.save_as(&a.path);
 
-    /// Islands, bridges and articulation buses, with the case's graph.
-    topology_snapshot { case: Option<CaseId> } -> Json<crate::workspace::TopologySnapshot<'static>> => |s, a| {
-        let ws = s.workspace()?;
-        Json::of(&ws.case(a.case)?.topology_snapshot()?)
-    };
+    /// Islands, bridges and articulation buses, with the case's graph, as
+    /// compact columns (see `topology_wire`). Source fields are left out:
+    /// `topology_source` sends one element's.
+    topology_snapshot { case: Option<CaseId> } -> Json<crate::topology_wire::TopologyWire<'static>> =>
+        |s, a| Ok(Json::from_value(s.workspace()?.case(a.case)?.topology_wire()?));
 
-    /// Merge buses joined by zero-impedance lines, or split them again.
-    topology_set_merge { case: Option<CaseId>, enabled: bool } -> crate::workspace::TopologyView =>
-        |s, a| s.workspace()?.case_mut(a.case)?.set_merge_zero_impedance(a.enabled);
+    /// The record an element was read from: its fields and RAW lines, or null.
+    topology_source { case: Option<CaseId>, element: String } -> Option<nodal::model::SourceRecord> =>
+        |s, a| s.workspace()?.case(a.case)?.topology_source(&a.element);
+
+    /// Merge buses joined by zero-impedance lines, or split them again. The
+    /// answer is the new analysis and graph in the same form as `topology_snapshot`.
+    topology_set_merge { case: Option<CaseId>, enabled: bool } -> Json<crate::topology_wire::TopologyViewWire<'static>> =>
+        |s, a| Ok(Json::from_value(s.workspace()?.case_mut(a.case)?.set_merge_zero_impedance_wire(a.enabled)?));
 
     /// The shortest path between two buses, or null.
     topology_shortest_path { case: Option<CaseId>, from: i32, to: i32 } -> Option<nodal::topology::Path> =>

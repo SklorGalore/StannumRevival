@@ -1,6 +1,6 @@
 {
   "$defs": {
-    "Analysis": {
+    "AnalysisWire": {
       "properties": {
         "absorbed_equipment": {
           "format": "uint",
@@ -25,16 +25,16 @@
           "type": "array"
         },
         "bridges": {
+          "description": "By position in the connection table.",
           "items": {
-            "$ref": "#/$defs/Connection"
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
           },
           "type": "array"
         },
         "degrees": {
-          "items": {
-            "$ref": "#/$defs/Degree"
-          },
-          "type": "array"
+          "$ref": "#/$defs/DegreeColumns"
         },
         "excluded_buses": {
           "format": "uint",
@@ -47,8 +47,9 @@
           "type": "integer"
         },
         "islands": {
+          "description": "Each island's id and junctions; its buses come from `degrees`.",
           "items": {
-            "$ref": "#/$defs/Island"
+            "$ref": "#/$defs/IslandWire"
           },
           "type": "array"
         },
@@ -281,60 +282,6 @@
       ],
       "type": "object"
     },
-    "Bus": {
-      "properties": {
-        "area": {
-          "format": "int32",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "base_kv": {
-          "format": "double",
-          "type": "number"
-        },
-        "bus_type": {
-          "format": "int32",
-          "type": "integer"
-        },
-        "name": {
-          "type": "string"
-        },
-        "number": {
-          "format": "int32",
-          "type": "integer"
-        },
-        "source": {
-          "$ref": "#/$defs/SourceRecord"
-        },
-        "voltage_pu": {
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "zone": {
-          "format": "int32",
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "number",
-        "name",
-        "base_kv",
-        "bus_type",
-        "area",
-        "zone",
-        "voltage_pu",
-        "source"
-      ],
-      "type": "object"
-    },
     "BusChange": {
       "properties": {
         "base_vm": {
@@ -365,6 +312,95 @@
         "base_vm",
         "vmin",
         "vmax"
+      ],
+      "type": "object"
+    },
+    "BusColumns": {
+      "properties": {
+        "area": {
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "base_kv": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "bus_type": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "number": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "voltage_pu": {
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "zone": {
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "base_kv",
+        "bus_type",
+        "area",
+        "zone",
+        "voltage_pu",
+        "line",
+        "section"
       ],
       "type": "object"
     },
@@ -590,88 +626,6 @@
       ],
       "type": "object"
     },
-    "Case": {
-      "properties": {
-        "base_mva": {
-          "format": "double",
-          "type": "number"
-        },
-        "buses": {
-          "items": {
-            "$ref": "#/$defs/Bus"
-          },
-          "type": "array"
-        },
-        "diagnostics": {
-          "items": {
-            "$ref": "#/$defs/Diagnostic"
-          },
-          "type": "array"
-        },
-        "encoding": {
-          "type": "string"
-        },
-        "equipment": {
-          "items": {
-            "$ref": "#/$defs/Equipment"
-          },
-          "type": "array"
-        },
-        "frequency_hz": {
-          "format": "double",
-          "type": "number"
-        },
-        "generators": {
-          "items": {
-            "$ref": "#/$defs/Injection"
-          },
-          "type": "array"
-        },
-        "loads": {
-          "items": {
-            "$ref": "#/$defs/Injection"
-          },
-          "type": "array"
-        },
-        "revision": {
-          "format": "int32",
-          "type": "integer"
-        },
-        "skipped_sections": {
-          "additionalProperties": {
-            "format": "uint",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "type": "object"
-        },
-        "titles": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "zero_impedance_threshold": {
-          "format": "double",
-          "type": "number"
-        }
-      },
-      "required": [
-        "revision",
-        "base_mva",
-        "frequency_hz",
-        "zero_impedance_threshold",
-        "titles",
-        "encoding",
-        "buses",
-        "equipment",
-        "loads",
-        "generators",
-        "diagnostics",
-        "skipped_sections"
-      ],
-      "type": "object"
-    },
     "CaseCounts": {
       "properties": {
         "base_mva": {
@@ -845,6 +799,84 @@
       ],
       "type": "object"
     },
+    "CaseWire": {
+      "properties": {
+        "base_mva": {
+          "format": "double",
+          "type": "number"
+        },
+        "buses": {
+          "$ref": "#/$defs/BusColumns"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": "array"
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "equipment": {
+          "$ref": "#/$defs/EquipmentColumns"
+        },
+        "frequency_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "generators": {
+          "$ref": "#/$defs/InjectionColumns"
+        },
+        "loads": {
+          "$ref": "#/$defs/InjectionColumns"
+        },
+        "revision": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "sections": {
+          "description": "Section names, which the tables refer to by position.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skipped_sections": {
+          "additionalProperties": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "titles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zero_impedance_threshold": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "revision",
+        "base_mva",
+        "frequency_hz",
+        "zero_impedance_threshold",
+        "titles",
+        "encoding",
+        "diagnostics",
+        "skipped_sections",
+        "sections",
+        "buses",
+        "equipment",
+        "loads",
+        "generators"
+      ],
+      "type": "object"
+    },
     "ColumnKind": {
       "enum": [
         "integer",
@@ -893,38 +925,6 @@
       "required": [
         "api_version",
         "commands"
-      ],
-      "type": "object"
-    },
-    "Connection": {
-      "properties": {
-        "equipment_id": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        },
-        "target": {
-          "type": "string"
-        },
-        "winding": {
-          "format": "uint",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "equipment_id",
-        "source",
-        "target",
-        "winding"
       ],
       "type": "object"
     },
@@ -1743,21 +1743,30 @@
       ],
       "type": "object"
     },
-    "Degree": {
+    "DegreeColumns": {
       "properties": {
         "bus": {
-          "format": "int32",
-          "type": "integer"
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
         },
         "degree": {
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
         },
         "island": {
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -1967,6 +1976,54 @@
       ],
       "type": "object"
     },
+    "EdgeColumns": {
+      "properties": {
+        "equipment": {
+          "description": "By position in the equipment table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "source": {
+          "description": "By position in the node table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "target": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "winding": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "equipment",
+        "source",
+        "target",
+        "winding"
+      ],
+      "type": "object"
+    },
     "Edit": {
       "description": "One change to the case, by shared element id or bus number.",
       "oneOf": [
@@ -2147,39 +2204,77 @@
       ],
       "type": "object"
     },
-    "Equipment": {
+    "EquipmentColumns": {
       "properties": {
-        "active_terminals": {
+        "buses": {
           "items": {
-            "type": "boolean"
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "array"
           },
           "type": "array"
         },
-        "buses": {
+        "circuit": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "description": "0 line, 1 transformer, 2 switch.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "open_terminals": {
+          "description": "Bit `i` set when terminal `i` is open: 0 for most equipment.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
           "items": {
             "format": "int32",
             "type": "integer"
           },
           "type": "array"
-        },
-        "circuit": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "kind": {
-          "$ref": "#/$defs/EquipmentKind"
-        },
-        "name": {
-          "type": "string"
-        },
-        "source": {
-          "$ref": "#/$defs/SourceRecord"
-        },
-        "status": {
-          "format": "int32",
-          "type": "integer"
         }
       },
       "required": [
@@ -2189,18 +2284,11 @@
         "circuit",
         "buses",
         "status",
-        "active_terminals",
-        "source"
+        "open_terminals",
+        "line",
+        "section"
       ],
       "type": "object"
-    },
-    "EquipmentKind": {
-      "enum": [
-        "line",
-        "transformer",
-        "switch"
-      ],
-      "type": "string"
     },
     "Error": {
       "description": "An error from a command: what kind it is, and what to tell the person.",
@@ -2492,7 +2580,7 @@
       ],
       "type": "object"
     },
-    "GraphData": {
+    "GraphWire": {
       "properties": {
         "absorbed_equipment_ids": {
           "items": {
@@ -2501,19 +2589,13 @@
           "type": "array"
         },
         "edges": {
-          "items": {
-            "$ref": "#/$defs/Connection"
-          },
-          "type": "array"
+          "$ref": "#/$defs/EdgeColumns"
         },
         "merge_zero_impedance": {
           "type": "boolean"
         },
         "nodes": {
-          "items": {
-            "$ref": "#/$defs/GraphNode"
-          },
-          "type": "array"
+          "$ref": "#/$defs/NodeColumns"
         },
         "zero_impedance_groups": {
           "items": {
@@ -2535,53 +2617,6 @@
       ],
       "type": "object"
     },
-    "GraphNode": {
-      "properties": {
-        "base_kv": {
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "bus": {
-          "format": "int32",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "equipment_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "id": {
-          "type": "string"
-        },
-        "label": {
-          "type": "string"
-        },
-        "member_buses": {
-          "default": [],
-          "items": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "label",
-        "bus",
-        "equipment_id",
-        "base_kv",
-        "member_buses"
-      ],
-      "type": "object"
-    },
     "Group": {
       "description": "A titled list of fields, such as one winding of a transformer.",
       "properties": {
@@ -2599,41 +2634,6 @@
       "required": [
         "title",
         "fields"
-      ],
-      "type": "object"
-    },
-    "Injection": {
-      "properties": {
-        "bus": {
-          "format": "int32",
-          "type": "integer"
-        },
-        "id": {
-          "type": "string"
-        },
-        "p_mw": {
-          "format": "double",
-          "type": "number"
-        },
-        "q_mvar": {
-          "format": "double",
-          "type": "number"
-        },
-        "source": {
-          "$ref": "#/$defs/SourceRecord"
-        },
-        "status": {
-          "format": "int32",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "bus",
-        "status",
-        "p_mw",
-        "q_mvar",
-        "source"
       ],
       "type": "object"
     },
@@ -2669,15 +2669,72 @@
       ],
       "type": "object"
     },
-    "Island": {
+    "InjectionColumns": {
       "properties": {
-        "buses": {
+        "bus": {
           "items": {
             "format": "int32",
             "type": "integer"
           },
           "type": "array"
         },
+        "id": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "p_mw": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "q_mvar": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "bus",
+        "status",
+        "p_mw",
+        "q_mvar",
+        "line",
+        "section"
+      ],
+      "type": "object"
+    },
+    "IslandWire": {
+      "properties": {
         "id": {
           "format": "uint",
           "minimum": 0,
@@ -2692,7 +2749,6 @@
       },
       "required": [
         "id",
-        "buses",
         "synthetic_nodes"
       ],
       "type": "object"
@@ -3245,6 +3301,62 @@
         "bus",
         "online",
         "pmax"
+      ],
+      "type": "object"
+    },
+    "NodeColumns": {
+      "properties": {
+        "bus": {
+          "description": "The bus a bus node stands for, or null for a junction.",
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "equipment": {
+          "description": "A junction's equipment, by position in the equipment table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Bus nodes whose member buses are not just their own bus, as\n`[node, members]`. Junctions have no members.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "items": {
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bus",
+        "equipment",
+        "members"
       ],
       "type": "object"
     },
@@ -4061,36 +4173,36 @@
       ],
       "type": "object"
     },
-    "TopologySnapshot": {
+    "TopologyViewWire": {
+      "description": "The topology after a change of options: the case stays as it was.",
       "properties": {
         "analysis": {
-          "$ref": "#/$defs/Analysis"
-        },
-        "case": {
-          "$ref": "#/$defs/Case",
-          "description": "The case as nodal reads it."
+          "$ref": "#/$defs/AnalysisWire"
         },
         "graph": {
-          "$ref": "#/$defs/GraphData"
+          "$ref": "#/$defs/GraphWire"
         }
       },
       "required": [
-        "case",
         "analysis",
         "graph"
       ],
       "type": "object"
     },
-    "TopologyView": {
+    "TopologyWire": {
       "properties": {
         "analysis": {
-          "$ref": "#/$defs/Analysis"
+          "$ref": "#/$defs/AnalysisWire"
+        },
+        "case": {
+          "$ref": "#/$defs/CaseWire"
         },
         "graph": {
-          "$ref": "#/$defs/GraphData"
+          "$ref": "#/$defs/GraphWire"
         }
       },
       "required": [
+        "case",
         "analysis",
         "graph"
       ],
@@ -5504,9 +5616,9 @@
         ],
         "type": "object"
       },
-      "doc": "Merge buses joined by zero-impedance lines, or split them again.",
+      "doc": "Merge buses joined by zero-impedance lines, or split them again. The\nanswer is the new analysis and graph in the same form as `topology_snapshot`.",
       "result": {
-        "$ref": "#/$defs/TopologyView"
+        "$ref": "#/$defs/TopologyViewWire"
       },
       "takes_case": true
     },
@@ -5569,9 +5681,45 @@
         },
         "type": "object"
       },
-      "doc": "Islands, bridges and articulation buses, with the case's graph.",
+      "doc": "Islands, bridges and articulation buses, with the case's graph, as\ncompact columns (see `topology_wire`). Source fields are left out:\n`topology_source` sends one element's.",
       "result": {
-        "$ref": "#/$defs/TopologySnapshot"
+        "$ref": "#/$defs/TopologyWire"
+      },
+      "takes_case": true
+    },
+    "topology_source": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "element": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "doc": "The record an element was read from: its fields and RAW lines, or null.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/SourceRecord"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "takes_case": true
     },

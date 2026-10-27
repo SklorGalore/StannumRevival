@@ -16,3 +16,6 @@ thiserror = "2"
 schemars = "1"
 log = "0.4"
 sha2 = "0.10"
+
+[dev-dependencies]
+stannum-synth = { path = "../stannum-synth" }

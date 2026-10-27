@@ -17,20 +17,20 @@ import type {
   DiffSummary,
   ElementDetail,
   FileFingerprint,
-  GraphData,
   RecordBook,
   RecordEdit,
   RecordTable,
-  Analysis,
   ResponseTable,
   SensitivitySummary,
   SolveReport,
   SolveSettings,
   StudyEdit,
+  SourceRecord,
+  TopoCase,
   TopoPath,
-  TopologySnapshot,
 } from "./types";
 import { decodeSolveReport } from "./wire";
+import { decodeTopology, decodeView } from "./topologyWire";
 import type { CoreArgs, CoreCommand, CoreError, CoreResult } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
@@ -66,6 +66,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
+  topology_source: { label: "Reading the record", quiet: true },
 };
 
 /** Arguments for a core command, left out when it takes none. */
@@ -242,9 +243,11 @@ export const api = {
   studyLocateCase: (study: string, absolute: string, relative: string | null): Promise<string | null> =>
     call("study_locate_case", { study, absolute, relative }),
 
-  topologySnapshot: (): Promise<TopologySnapshot> => call("topology_snapshot"),
-  topologySetMerge: (enabled: boolean): Promise<{ analysis: Analysis; graph: GraphData }> =>
-    call("topology_set_merge", { enabled }),
+  topologySnapshot: () => call("topology_snapshot").then(decodeTopology),
+  /** Merge or split zero-impedance branches; `c` is the snapshot's case. */
+  topologySetMerge: (enabled: boolean, c: TopoCase) =>
+    call("topology_set_merge", { enabled }).then((w) => decodeView(w, c)),
+  topologySource: (element: string): Promise<SourceRecord | null> => call("topology_source", { element }),
   shortestPath: (from: number, to: number): Promise<TopoPath | null> =>
     call("topology_shortest_path", { from, to }),
 
