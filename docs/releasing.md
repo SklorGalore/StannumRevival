@@ -1,14 +1,25 @@
 # Releasing Stannum
 
 Releases are built by `.github/workflows/release.yml` when a `v*` tag is
-pushed. The workflow builds the installers on each platform and attaches them
-to a **draft** GitHub release, so nothing is public until you publish it.
+pushed. The workflow builds the installers, the Python wheels and `stannum-cli` on
+each platform and attaches them all to a **draft** GitHub release, so
+nothing is public until you publish it.
 
 | Platform | Runner | Installers |
 | --- | --- | --- |
 | Windows x64 | `windows-latest` | `.msi`, `-setup.exe` (NSIS) |
 | macOS, Apple silicon | `macos-latest` | `.dmg` |
 | Linux x64 | `ubuntu-22.04` | `.deb`, `.rpm`, `.AppImage` |
+
+Beside the installers, the **Python wheel and CLI** jobs build, for the same
+three platforms:
+
+| File | What it is |
+| --- | --- |
+| `stannum-<version>-cp310-abi3-<platform>.whl` | The `stannum` Python package, for Python 3.10 and newer. The Linux wheel is linked against an old glibc with zig, so it is tagged `manylinux2014`. Each wheel's tests run against it before it is kept. |
+| `stannum-cli-<version>-<platform>.zip` / `.tar.gz` | `stannum-cli`, which runs run files without the app. |
+
+The wheels go on the release page only; they are not published to PyPI.
 
 ## Cutting a release
 
@@ -21,7 +32,8 @@ to a **draft** GitHub release, so nothing is public until you publish it.
    ```
 
    This updates `package.json`, `package-lock.json`,
-   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, and
+   `src-tauri/tauri.conf.json`, the `Cargo.toml` of the app, `stannum-cli`
+   and the Python package (`crates/stannum-py`), and `Cargo.lock`, and
    runs the same check the workflow runs.
 3. Open a pull request with those changes and merge it.
 4. Tag the merge commit on `main` and push the tag. Tags matching `v*` are
@@ -37,7 +49,7 @@ to a **draft** GitHub release, so nothing is public until you publish it.
    the three version fields and the changelog don't agree.
 6. Open the draft on the
    [releases page](https://github.com/SklorGalore/StannumRevival/releases),
-   try an installer or two, then press **Publish release**. The docs site's
+   try an installer or two (and `pip install` a wheel), then press **Publish release**. The docs site's
    Download page links to the latest published release.
 
 A version with a suffix (`0.3.0-beta.1`) is published as a pre-release.
@@ -57,6 +69,8 @@ Neither creates a GitHub release.
 pwsh scripts/release/check-release.ps1                  # versions agree, notes exist
 pwsh scripts/release/check-release.ps1 -Tag v0.3.0      # as the tag push will
 npm run tauri -- build --bundles deb                    # one installer for this machine
+pwsh scripts/ci/test-python.ps1 -Manylinux -Out wheels  # the Linux wheel, as the release builds it
+pwsh scripts/release/build-cli.ps1 -OutDir cli          # stannum-cli, packed
 pwsh scripts/release/collect-bundles.ps1 -OutDir out    # gather what was built
 ```
 

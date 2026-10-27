@@ -16,6 +16,19 @@ Pick the file for your computer from the **Assets** list:
 | Fedora, RHEL, openSUSE | `Stannum-<version>-1.x86_64.rpm` | `sudo dnf install ./Stannum-<version>-1.x86_64.rpm` |
 | Any other Linux | `Stannum_<version>_amd64.AppImage` | `chmod +x` it, then run it. |
 
+The same page has the [Python package](/StannumRevival/guide/python/) and
+`stannum-cli`, which [runs run files](/StannumRevival/guide/run-files/#running-without-the-app)
+without the app:
+
+| For | File | How to install |
+| --- | --- | --- |
+| Python 3.10 or newer, Windows | `stannum-<version>-cp310-abi3-win_amd64.whl` | `pip install stannum-<version>-cp310-abi3-win_amd64.whl` |
+| Python 3.10 or newer, Mac with Apple silicon | `stannum-<version>-cp310-abi3-macosx_11_0_arm64.whl` | `pip install` the file |
+| Python 3.10 or newer, Linux | `stannum-<version>-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl` | `pip install` the file |
+| A terminal, Windows | `stannum-cli-<version>-windows-x64.zip` | Unzip it and put `stannum-cli.exe` on your `PATH`. |
+| A terminal, Mac with Apple silicon | `stannum-cli-<version>-macos-arm64.tar.gz` | `tar -xzf` it and put `stannum-cli` on your `PATH`. |
+| A terminal, Linux | `stannum-cli-<version>-linux-x64.tar.gz` | `tar -xzf` it and put `stannum-cli` on your `PATH`. |
+
 What changed in each version is in the release notes on the same page, and in
 [CHANGELOG.md](https://github.com/SklorGalore/StannumRevival/blob/main/CHANGELOG.md).
 

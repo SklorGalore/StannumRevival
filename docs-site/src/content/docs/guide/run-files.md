@@ -86,5 +86,9 @@ It exits with 0 when every line ran, 1 when a line failed or the run was
 cancelled, and 2 when the file itself is wrong (a misspelled command or
 argument, or a file that can't be read).
 
-Build it from source with `cargo build --release -p stannum-cli`; the binary
-is `target/release/stannum-cli`.
+Each [release](https://github.com/SklorGalore/StannumRevival/releases/latest)
+has it for Windows, Macs with Apple silicon and Linux, as
+`stannum-cli-<version>-<platform>.zip` or `.tar.gz` (see
+[Download](/StannumRevival/start/download/)). To build it from source:
+`cargo build --release -p stannum-cli`; the binary is
+`target/release/stannum-cli`.

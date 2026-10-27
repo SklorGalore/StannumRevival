@@ -19,17 +19,27 @@ Folder the wheel is written to. Defaults to dist-py at the repository root.
 Folder for the virtual environment. Defaults to .venv-stannum at the
 repository root; it is made again on every run.
 
+.PARAMETER Manylinux
+Linux only: link against an old glibc with zig, so the wheel is tagged
+manylinux2014 and installs on any Linux from about 2014 on. The release
+workflow builds its Linux wheel this way; without it the wheel only fits
+Linux as new as the build machine.
+
 .EXAMPLE
 pwsh scripts/ci/test-python.ps1
 
 .EXAMPLE
 pwsh scripts/ci/test-python.ps1 -Python python3.12 -Out wheels/
+
+.EXAMPLE
+pwsh scripts/ci/test-python.ps1 -Manylinux -Out wheels/
 #>
 [CmdletBinding()]
 param(
     [string] $Python,
     [string] $Out,
-    [string] $Venv
+    [string] $Venv,
+    [switch] $Manylinux
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,12 +62,21 @@ $py = Join-Path $bin ($IsWindows ? 'python.exe' : 'python')
 
 & $py -m pip install --quiet --upgrade pip
 & $py -m pip install --quiet 'maturin>=1.9,<2' 'pytest>=7'
+# maturin finds zig, and anything else it runs, on the PATH.
+$env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+
+$extra = @()
+if ($Manylinux) {
+    if (-not $IsLinux) { throw '-Manylinux only applies on Linux.' }
+    & $py -m pip install --quiet 'ziglang<1'
+    $extra = @('--zig', '--compatibility', 'manylinux2014')
+}
 
 # A wheel left from an earlier build would be picked up below instead.
 if (Test-Path $Out) {
     Get-ChildItem $Out -Filter 'stannum-*.whl' | Remove-Item -Force
 }
-& $py -m maturin build --release --locked --manifest-path (Join-Path $crate 'Cargo.toml') --out $Out
+& $py -m maturin build --release --locked --manifest-path (Join-Path $crate 'Cargo.toml') --out $Out @extra
 
 $wheel = Get-ChildItem $Out -Filter 'stannum-*.whl' | Select-Object -First 1
 if (-not $wheel) { throw "maturin wrote no wheel to $Out." }

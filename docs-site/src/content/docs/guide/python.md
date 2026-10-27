@@ -19,16 +19,18 @@ print(report.converged, report.iterations, report.total_losses_mw)
 
 ## Install
 
-From the next release on, wheels are attached to each
-[release](https://github.com/SklorGalore/StannumRevival/releases) on GitHub.
-One wheel per platform works on Python 3.10 and newer. NumPy comes with it;
+Each [release](https://github.com/SklorGalore/StannumRevival/releases/latest)
+on GitHub has a wheel for Windows x64, Macs with Apple silicon and Linux x64
+(see [Download](/StannumRevival/start/download/) for the file names). One
+wheel per platform works on Python 3.10 and newer. NumPy comes with it;
 pandas is optional.
 
 ```sh
 pip install stannum-0.3.0-cp310-abi3-win_amd64.whl
 ```
 
-Until then, build one from a checkout (Rust and Python needed):
+The package isn't on PyPI yet. To build a wheel from a checkout (Rust and
+Python needed):
 
 ```sh
 pwsh scripts/ci/test-python.ps1      # wheel in dist-py/, tests run against it

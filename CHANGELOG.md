@@ -21,6 +21,9 @@ section into the next version's when a release is cut (see
   from a script or notebook (`import stannum as sn; sn.open("case9.m").solve()`).
   Results come as NumPy columns, failures as typed errors (`stannum.NotFound`,
   …), and Ctrl+C stops a long run. See the Python page of the user guide.
+- Each release now carries the Python package as a wheel for Windows, Macs
+  with Apple silicon and Linux (Python 3.10 and newer, `pip install` the
+  file), and `stannum-cli` packed for the same three.
 - `stannum-cli`, which runs, checks and lists run files from a terminal
   without the app (`stannum-cli run study.stnrun`).
 - One result shown in every view: showing an outage on the diagram (from
