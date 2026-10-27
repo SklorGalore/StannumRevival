@@ -164,6 +164,13 @@ shortcuts act on the diagram only while it is showing.
 
 Not yet: switched devices and HVDC from the case.
 
+## Install
+
+Installers for Windows, macOS (Apple silicon) and Linux are on the
+[releases page](https://github.com/SklorGalore/StannumRevival/releases/latest).
+See [docs/releasing.md](docs/releasing.md) for how a release is cut, and
+[CHANGELOG.md](CHANGELOG.md) for what changed.
+
 ## Development
 
 Prerequisites: Node.js 22+, Rust (stable, edition 2024), and the

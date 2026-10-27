@@ -11,12 +11,17 @@ apt still resolves the install itself, so packages the runner image already
 has at newer versions are never downgraded. Afterwards the .deb files are
 copied back into -CacheDir for the next run to save.
 
+.PARAMETER ExtraPackages
+More packages to install alongside Tauri's own, such as patchelf, which
+the release workflow needs to bundle an AppImage.
+
 .EXAMPLE
 pwsh scripts/ci/install-tauri-deps.ps1 -CacheDir ~/.cache/tauri-apt
 #>
 param(
     [Parameter(Mandatory)]
-    [string] $CacheDir
+    [string] $CacheDir,
+    [string[]] $ExtraPackages = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,7 +31,7 @@ $packages = @(
     'libgtk-3-dev'
     'librsvg2-dev'
     'libayatana-appindicator3-dev'
-)
+) + $ExtraPackages
 
 # Retry flaky mirrors and give up on a stuck connection instead of hanging.
 $aptOptions = @(
