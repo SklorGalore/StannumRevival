@@ -23,3 +23,12 @@ docs-site/.astro/
 # npm is the package manager for this repo (package-lock.json)
 pnpm-lock.yaml
 .budget-case/
+
+# Python package (crates/stannum-py): the native module maturin develop
+# writes next to the sources, wheels and caches
+crates/stannum-py/python/stannum/_native*.so
+crates/stannum-py/python/stannum/_native*.pyd
+/dist-py/
+__pycache__/
+.pytest_cache/
+.venv/

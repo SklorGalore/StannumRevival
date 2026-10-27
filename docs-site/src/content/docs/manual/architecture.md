@@ -35,6 +35,7 @@ in one Cargo workspace and one repository.
 | `crates/rs-power` | Case loading (MATPOWER version 2, PSS/E RAW revisions 23–35), AC Newton and DC power flow, reactive limits, remote regulation, switched shunts and taps, detailed HVDC, sensitivities, PTDF and LODF. Numerical behaviour targets the MATPOWER 8.1 legacy core. |
 | `crates/nodal` | A RAW revision 35 parser that keeps every record, and topology analysis (islands, bridges, articulation points, shortest paths) on a graph built with rustworkx-core. |
 | `crates/stannum-core` | The analysis core, with no Tauri dependency. Holds the open case, shapes engine results for the interface, applies study edits, derives a topology from the power flow model when nodal can't read a file, builds the one-line network, and contains the Rust port of case-diff. |
+| `crates/stannum-py` | The `stannum` Python package: PyO3 bindings over the command list (`src/lib.rs`) and the Python layer on top (`python/stannum/`), built into abi3 wheels with maturin. |
 | `src-tauri` | The desktop shell. `analysis.rs` passes core commands to the core's command list through one Tauri command. |
 
 ## Commands
@@ -45,7 +46,8 @@ contingencies, read records and so on) is a **command** in
 with its arguments and a one-line description. The desktop shell sends them
 all through a single Tauri command, `stannum_command`, and the `dev_bridge`
 test server answers the same list over HTTP, so the two can't drift apart.
-The planned Python package will use the same list.
+The Python package (`crates/stannum-py`, see
+[Python](/StannumRevival/guide/python/)) calls the same list in-process.
 
 Commands that work on a case take an optional `case` argument: the `id` from
 the case summary. Left out, a command uses the open case. Given, it must name
