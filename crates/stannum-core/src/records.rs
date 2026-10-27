@@ -8,12 +8,13 @@
 
 use crate::diff::parser::{DiffCase, Record};
 use crate::diff::value::Value;
+use crate::error::Error;
 use crate::power::PowerCase;
 use serde::Serialize;
 use serde_json::Value as Json;
 
 /// Where the tables come from.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RecordSource {
     /// The RAW file's own records.
@@ -22,7 +23,7 @@ pub enum RecordSource {
     Model,
 }
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ColumnKind {
     Integer,
@@ -30,7 +31,7 @@ pub enum ColumnKind {
     Text,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct RecordColumn {
     pub name: String,
     pub kind: ColumnKind,
@@ -38,20 +39,21 @@ pub struct RecordColumn {
     pub editable: bool,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct RecordRow {
     /// Line in the file where the record starts (0 when not from the file).
     pub line: usize,
     /// Shared element id (see `crate::elements`), when the record is one.
     pub element: Option<String>,
     /// One value per column: a number, text, or null when absent.
+    #[schemars(extend("items" = { "type": ["string", "number", "null"] }))]
     pub cells: Vec<Json>,
     /// Which of the table's layouts the record has (RAW only).
     #[serde(skip)]
     pub layout: usize,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct RecordTable {
     /// Stable id, such as "BUS" for RAW or "bus" for the model.
     pub id: String,
@@ -69,7 +71,7 @@ pub struct RecordTable {
 }
 
 /// One record type in the list, without its rows.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct SectionInfo {
     pub id: String,
     pub label: String,
@@ -77,7 +79,7 @@ pub struct SectionInfo {
     pub skipped: usize,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct RecordBook {
     pub source: RecordSource,
     /// RAW revision, when read from the file.
@@ -118,18 +120,18 @@ impl Records {
         }
     }
 
-    pub fn table(&self, id: &str) -> Result<&RecordTable, String> {
+    pub fn table(&self, id: &str) -> Result<&RecordTable, Error> {
         self.tables
             .iter()
             .find(|t| t.id == id)
-            .ok_or_else(|| format!("The case has no {id} records."))
+            .ok_or_else(|| Error::not_found(format!("The case has no {id} records.")))
     }
 
-    pub fn table_mut(&mut self, id: &str) -> Result<&mut RecordTable, String> {
+    pub fn table_mut(&mut self, id: &str) -> Result<&mut RecordTable, Error> {
         self.tables
             .iter_mut()
             .find(|t| t.id == id)
-            .ok_or_else(|| format!("The case has no {id} records."))
+            .ok_or_else(|| Error::not_found(format!("The case has no {id} records.")))
     }
 }
 

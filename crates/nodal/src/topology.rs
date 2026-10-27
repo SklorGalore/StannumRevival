@@ -7,18 +7,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Island {
     pub id: usize,
     pub buses: Vec<i32>,
     pub synthetic_nodes: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Degree {
     pub bus: i32,
     pub degree: usize,
     pub island: usize,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Connection {
     pub id: String,
     pub equipment_id: String,
@@ -27,6 +30,7 @@ pub struct Connection {
     pub winding: Option<usize>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct GraphNode {
     pub id: String,
     pub label: String,
@@ -37,6 +41,7 @@ pub struct GraphNode {
     pub member_buses: Vec<i32>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct GraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<Connection>,
@@ -45,6 +50,7 @@ pub struct GraphData {
     pub absorbed_equipment_ids: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Analysis {
     pub active_buses: usize,
     pub original_active_buses: usize,
@@ -65,6 +71,7 @@ pub struct TopologyOptions {
     pub merge_zero_impedance: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Path {
     pub buses: Vec<i32>,
     pub equipment_ids: Vec<String>,

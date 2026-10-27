@@ -9,12 +9,13 @@ use std::collections::HashMap;
 /// rs-power names the internal star bus of a three-winding transformer this way.
 const STAR_PREFIX: &str = "STR_PT_XF_";
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct NetworkBus {
     pub id: u32,
     pub name: String,
     pub base_kv: f64,
     pub area: u32,
+    #[schemars(extend("enum" = ["PQ", "PV", "Ref", "Isolated"]))]
     pub kind: &'static str,
     /// Load at the bus in MW / MVAr (rs-power aggregates loads per bus).
     pub pd: f64,
@@ -26,7 +27,7 @@ pub struct NetworkBus {
     pub star: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct NetworkGenerator {
     /// Index in the case's generator table (matches the power flow report).
     pub index: usize,
@@ -37,7 +38,7 @@ pub struct NetworkGenerator {
     pub pmax: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct NetworkBranch {
     /// Index in the case's branch table (matches the power flow report).
     pub index: usize,
@@ -59,7 +60,7 @@ pub struct NetworkBranch {
 /// A DC line, from its sending (rectifier) bus to its receiving (inverter)
 /// bus. A multi-terminal system gives one per scheduled converter, each
 /// running to the converter that holds the system's DC voltage.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct NetworkDcLine {
     /// Row in the case's DC line table.
     pub index: usize,
@@ -68,6 +69,7 @@ pub struct NetworkDcLine {
     /// The RAW name, or a number for MATPOWER cases.
     pub name: String,
     /// "two_terminal", "vsc" or "multi_terminal".
+    #[schemars(extend("enum" = ["two_terminal", "vsc", "multi_terminal"]))]
     pub kind: &'static str,
     pub from: u32,
     pub to: u32,
@@ -76,7 +78,7 @@ pub struct NetworkDcLine {
     pub mw: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct CaseNetwork {
     pub base_mva: f64,
     pub buses: Vec<NetworkBus>,

@@ -44,7 +44,7 @@ pub struct Place {
 }
 
 /// A line of the file that was skipped, and why.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Problem {
     pub line: usize,
     pub message: String,
@@ -180,7 +180,7 @@ impl LoadedCoordinates {
 }
 
 /// What the app shows about the attached coordinates file.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct CoordinatesSummary {
     pub path: String,
     pub name: String,
@@ -201,13 +201,14 @@ pub struct CoordinatesSummary {
 }
 
 /// Where each bus goes, as columns in the case's bus order.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BusCoordinates {
     pub bus: Vec<u32>,
     /// Null for a bus with no place.
     pub latitude: Vec<Option<f64>>,
     pub longitude: Vec<Option<f64>>,
     /// "file", "estimated" or "none".
+    #[schemars(extend("items" = { "enum": ["file", "estimated", "none"] }))]
     pub source: Vec<&'static str>,
     /// The substation the file names, if any.
     pub substation: Vec<Option<String>>,

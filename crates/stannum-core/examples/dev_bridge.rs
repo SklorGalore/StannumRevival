@@ -7,23 +7,24 @@
 //! are the core's shared list (`stannum_core::commands`), the same ones the
 //! desktop app runs; it is not part of the desktop app.
 use serde_json::{Value, json};
+use stannum_core::Error;
 use stannum_core::commands::Session;
 use stannum_core::logbook;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 
-fn text_arg(args: &Value, key: &str) -> Result<String, String> {
+fn text_arg(args: &Value, key: &str) -> Result<String, Error> {
     args.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("argument {key}: expected a string"))
+        .ok_or_else(|| Error::invalid_arguments(format!("argument {key}: expected a string")))
 }
 
 /// Answer one call: the desktop app's own file commands here, and every
 /// core command through the shared command list. `stannum_command` is how
 /// the app sends core commands; `/invoke/<name>` also works directly.
-fn invoke(session: &Session, command: &str, args: Value) -> Result<String, String> {
+fn invoke(session: &Session, command: &str, args: Value) -> Result<String, Error> {
     match command {
         "stannum_command" => {
             let name = text_arg(&args, "command")?;
@@ -31,13 +32,14 @@ fn invoke(session: &Session, command: &str, args: Value) -> Result<String, Strin
             session.invoke(&name, inner)
         }
         "load_diagram" => {
-            let text =
-                std::fs::read_to_string(text_arg(&args, "path")?).map_err(|e| e.to_string())?;
+            let path = text_arg(&args, "path")?;
+            let text = std::fs::read_to_string(&path).map_err(|e| Error::file(path.as_ref(), e))?;
             Ok(Value::String(text).to_string())
         }
         "save_diagram" => {
-            std::fs::write(text_arg(&args, "path")?, text_arg(&args, "content")?)
-                .map_err(|e| e.to_string())?;
+            let path = text_arg(&args, "path")?;
+            std::fs::write(&path, text_arg(&args, "content")?)
+                .map_err(|e| Error::file(path.as_ref(), e))?;
             Ok("null".into())
         }
         _ => session.invoke(command, args),
@@ -71,7 +73,10 @@ fn serve(session: &Session, mut stream: TcpStream) -> std::io::Result<()> {
         let args: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
         match invoke(session, command, args) {
             Ok(v) => ("200 OK", v),
-            Err(e) => ("500 Internal Server Error", Value::String(e).to_string()),
+            Err(e) => (
+                "500 Internal Server Error",
+                serde_json::to_string(&e).unwrap(),
+            ),
         }
     } else {
         ("404 Not Found", String::new())

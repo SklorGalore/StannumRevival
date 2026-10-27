@@ -26,6 +26,11 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- Core commands report failures as a kind and a message (for example
+  `cancelled`, `no_case` or `not_ready`), and every command's arguments and
+  result have a JSON Schema. The frontend's types for core commands are
+  generated from it, and a test checks every command's real answers
+  against it. Command API version 2.
 - Solves, sensitivities, "Trip and compare" and Records reads and edits no
   longer hold up the rest of the app: on a 30,000-bus case, Records opens
   in a fraction of a second during a 5 s solve instead of waiting for it.

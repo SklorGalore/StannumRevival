@@ -24,7 +24,7 @@ use nodal::topology::{Analysis, GraphData};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct TopologyWire<'a> {
     pub case: CaseWire<'a>,
     pub analysis: AnalysisWire<'a>,
@@ -32,13 +32,13 @@ pub struct TopologyWire<'a> {
 }
 
 /// The topology after a change of options: the case stays as it was.
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct TopologyViewWire<'a> {
     pub analysis: AnalysisWire<'a>,
     pub graph: GraphWire<'a>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct CaseWire<'a> {
     pub revision: i32,
     pub base_mva: f64,
@@ -56,7 +56,7 @@ pub struct CaseWire<'a> {
     pub generators: InjectionColumns<'a>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct BusColumns<'a> {
     pub number: Vec<i32>,
     pub name: Vec<&'a str>,
@@ -69,7 +69,7 @@ pub struct BusColumns<'a> {
     pub section: Vec<u32>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct EquipmentColumns<'a> {
     pub id: Vec<&'a str>,
     /// 0 line, 1 transformer, 2 switch.
@@ -84,7 +84,7 @@ pub struct EquipmentColumns<'a> {
     pub section: Vec<u32>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct InjectionColumns<'a> {
     pub id: Vec<&'a str>,
     pub bus: Vec<i32>,
@@ -95,7 +95,7 @@ pub struct InjectionColumns<'a> {
     pub section: Vec<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct GraphWire<'a> {
     pub nodes: NodeColumns,
     pub edges: EdgeColumns,
@@ -104,7 +104,7 @@ pub struct GraphWire<'a> {
     pub absorbed_equipment_ids: &'a [String],
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct NodeColumns {
     /// The bus a bus node stands for, or null for a junction.
     pub bus: Vec<Option<i32>>,
@@ -115,7 +115,7 @@ pub struct NodeColumns {
     pub members: Vec<(u32, Vec<i32>)>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct EdgeColumns {
     /// By position in the equipment table.
     pub equipment: Vec<u32>,
@@ -125,7 +125,7 @@ pub struct EdgeColumns {
     pub winding: Vec<Option<usize>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct AnalysisWire<'a> {
     pub active_buses: usize,
     pub original_active_buses: usize,
@@ -143,13 +143,13 @@ pub struct AnalysisWire<'a> {
     pub synthetic_articulations: &'a [String],
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct IslandWire<'a> {
     pub id: usize,
     pub synthetic_nodes: &'a [String],
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, schemars::JsonSchema)]
 pub struct DegreeColumns {
     pub bus: Vec<i32>,
     pub degree: Vec<usize>,

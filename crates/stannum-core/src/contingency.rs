@@ -6,6 +6,7 @@
 //! solve that starts from the base solution. Every outage can also be solved
 //! in AC. Runs use every core and can be cancelled between outages.
 
+use crate::error::Error;
 use crate::power::{self, PowerCase, SolveSettings};
 use rs_power::{BusType, Case, DcFactors, OutageFlows, PowerFlowResult, SolveStatus};
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 /// How each outage is checked.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Method {
     /// Linear screen of every outage, then an AC solve of the worst ones.
@@ -36,7 +39,7 @@ fn default_limit() -> f64 {
 }
 
 /// What to run.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ContingencySettings {
     /// Branch and generator ids to take out, one at a time. When absent,
     /// every in-service branch and/or generator, as chosen below.
@@ -58,7 +61,7 @@ pub struct ContingencySettings {
 }
 
 /// A branch over its limit after an outage.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Overload {
     pub element: String,
     pub from: u32,
@@ -72,7 +75,7 @@ pub struct Overload {
 }
 
 /// A bus outside its voltage limits after an outage.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct VoltageProblem {
     pub bus: u32,
     pub name: String,
@@ -85,15 +88,17 @@ pub struct VoltageProblem {
 }
 
 /// One outage's outcome, as a row of the ranked results.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ContingencyRow {
     /// Position in the ranked list, from 1.
     pub rank: usize,
     /// The element taken out.
     pub element: String,
     /// "branch" or "generator".
+    #[schemars(extend("enum" = ["branch", "generator"]))]
     pub kind: &'static str,
     /// "ac" when solved in AC, "linear" when only screened.
+    #[schemars(extend("enum" = ["ac", "linear"]))]
     pub checked: &'static str,
     /// AC only: whether the solve converged, and in how many iterations.
     pub converged: Option<bool>,
@@ -120,7 +125,7 @@ pub struct ContingencyRow {
     pub severity: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, schemars::JsonSchema)]
 pub struct ContingencySummary {
     pub method: Option<Method>,
     pub limit_pct: f64,
@@ -142,7 +147,7 @@ pub struct ContingencySummary {
 }
 
 /// A branch's flow after one outage, for drawing the change on a diagram.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BranchChange {
     pub element: String,
     pub from: u32,
@@ -155,7 +160,7 @@ pub struct BranchChange {
     pub tripped: bool,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BusChange {
     pub bus: u32,
     pub vm: f64,
@@ -166,7 +171,7 @@ pub struct BusChange {
 
 /// One outage in full: every overload and voltage problem, and the flow and
 /// voltage changes worth drawing.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ContingencyDetail {
     pub row: ContingencyRow,
     pub overloads: Vec<Overload>,
@@ -182,12 +187,24 @@ pub struct ContingencyDetail {
 }
 
 /// Progress of the run in hand, for a progress bar.
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Progress {
     /// "idle", "screening" or "ac".
+    #[schemars(extend("enum" = ["idle", "screening", "ac"]))]
     pub phase: &'static str,
     pub done: usize,
     pub total: usize,
+}
+
+impl Default for Progress {
+    /// No run in hand.
+    fn default() -> Self {
+        Self {
+            phase: "idle",
+            done: 0,
+            total: 0,
+        }
+    }
 }
 
 /// Cancels a run and reports its progress from another thread.
@@ -1039,15 +1056,15 @@ impl ContingencyResults {
         self.rows.iter().skip(offset).take(limit).cloned().collect()
     }
 
-    fn index(&self, rank: usize) -> Result<usize, String> {
+    fn index(&self, rank: usize) -> Result<usize, Error> {
         rank.checked_sub(1)
             .filter(|&i| i < self.rows.len())
-            .ok_or_else(|| format!("No contingency ranked {rank}."))
+            .ok_or_else(|| Error::not_found(format!("No contingency ranked {rank}.")))
     }
 
     /// One outage in full, by rank (from 1). Solved again on demand, in AC
     /// when the run checked it in AC.
-    pub fn detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
+    pub fn detail(&mut self, rank: usize) -> Result<ContingencyDetail, Error> {
         if let Some((r, d)) = &self.last_detail
             && *r == rank
         {
@@ -1088,7 +1105,7 @@ impl ContingencyResults {
     /// One outage's whole AC solution as a solve report, by rank, so every
     /// view can show it like the base solve. Solved in AC even when the run
     /// only screened the outage.
-    pub fn report(&mut self, rank: usize) -> Result<power::SolveReport, String> {
+    pub fn report(&mut self, rank: usize) -> Result<power::SolveReport, Error> {
         let i = self.index(rank)?;
         let start = Instant::now();
         let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);

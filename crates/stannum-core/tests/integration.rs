@@ -395,7 +395,7 @@ fn study_edits_change_what_is_solved() {
             online: false,
         }])
         .unwrap_err();
-    assert!(err.contains("line:1:99:1"));
+    assert!(err.message.contains("line:1:99:1"));
     assert_eq!(case.edits.len(), 2);
 
     let unit = out.generators[1].element.clone();
@@ -415,7 +415,8 @@ fn study_edits_change_what_is_solved() {
     .unwrap();
     let err = case.solve(tight()).unwrap_err();
     assert!(
-        err.starts_with("The study's outages split the network"),
+        err.message
+            .starts_with("The study's outages split the network"),
         "{err}"
     );
 
@@ -576,7 +577,10 @@ fn a_dc_grid_file_that_does_not_fit_the_case_is_refused() {
     let error = case
         .load_dc_grids(&fixture("vsc_grids/two_area.dcgrid.json"))
         .unwrap_err();
-    assert!(error.contains("AC bus 105 is not in the case"), "{error}");
+    assert!(
+        error.message.contains("AC bus 105 is not in the case"),
+        "{error}"
+    );
     assert!(case.dc_grids.is_none());
 }
 
@@ -595,6 +599,7 @@ fn a_cancelled_solve_keeps_the_previous_results() {
         )
         .unwrap_err();
     assert_eq!(err, stannum_core::workspace::SOLVE_CANCELLED);
+    assert_eq!(err.kind, stannum_core::ErrorKind::Cancelled);
     assert!(case.solved.is_some());
 }
 

@@ -38,7 +38,7 @@ impl Record {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct Diagnostic {
     pub section: String,
     pub line_number: usize,
@@ -55,7 +55,7 @@ pub struct DiffCase {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Clone, Debug, thiserror::Error, serde::Serialize)]
+#[derive(Clone, Debug, thiserror::Error, serde::Serialize, schemars::JsonSchema)]
 #[error("{name}: {section}, line {line}: {reason}")]
 pub struct RawParseError {
     pub name: String,

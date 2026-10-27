@@ -10,9 +10,11 @@
 //! - [`diff`]: exact RAW case comparison (ported from case-diff).
 //! - [`geo`]: bus coordinates for the map, from a CSV side file.
 //! - [`inspect`]: one element's data and limits, for the element inspector.
+//! - [`error`]: the typed errors every command returns.
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
 //! - [`record_edit`]: edits from the Records module, written into the case.
 //! - [`records`]: the open case's records as tables, one per record type.
+//! - [`schema`]: checks values against the command schemas and writes them as TypeScript.
 //! - [`results`]: names for every solution the open case can show.
 //! - [`topology_wire`]: the topology snapshot as compact columns for the app.
 //! - [`logbook`]: the application log shown in the log panel.
@@ -24,6 +26,7 @@ pub mod derived_topology;
 pub mod diagram;
 pub mod diff;
 pub mod elements;
+pub mod error;
 pub mod geo;
 pub mod inspect;
 pub mod logbook;
@@ -31,10 +34,12 @@ pub mod power;
 pub mod record_edit;
 pub mod records;
 pub mod results;
+pub mod schema;
 pub mod study;
 pub mod study_file;
 pub mod topology_wire;
 pub mod working_case;
 pub mod workspace;
 
+pub use error::{Error, ErrorKind};
 pub use workspace::{CaseId, CaseSummary, OpenCase, Workspace};

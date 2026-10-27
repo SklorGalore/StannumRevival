@@ -1,0 +1,5765 @@
+{
+  "$defs": {
+    "AnalysisWire": {
+      "properties": {
+        "absorbed_equipment": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "active_buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "active_equipment": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "articulation_buses": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "bridges": {
+          "description": "By position in the connection table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "degrees": {
+          "$ref": "#/$defs/DegreeColumns"
+        },
+        "excluded_buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "excluded_equipment": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "islands": {
+          "description": "Each island's id and junctions; its buses come from `degrees`.",
+          "items": {
+            "$ref": "#/$defs/IslandWire"
+          },
+          "type": "array"
+        },
+        "original_active_buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "synthetic_articulations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "synthetic_junctions": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "active_buses",
+        "original_active_buses",
+        "absorbed_equipment",
+        "excluded_buses",
+        "active_equipment",
+        "excluded_equipment",
+        "synthetic_junctions",
+        "islands",
+        "degrees",
+        "bridges",
+        "articulation_buses",
+        "synthetic_articulations"
+      ],
+      "type": "object"
+    },
+    "BranchChange": {
+      "description": "A branch's flow after one outage, for drawing the change on a diagram.",
+      "properties": {
+        "base_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "base_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "element": {
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "pct": {
+          "description": "Percent of rate A, after and before; `None` when unrated.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tripped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "element",
+        "from",
+        "to",
+        "mw",
+        "base_mw",
+        "pct",
+        "base_pct",
+        "tripped"
+      ],
+      "type": "object"
+    },
+    "BranchRowColumns": {
+      "description": "BranchRow rows as columns: one array per field, each `count` long.",
+      "properties": {
+        "circuit": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "items": {
+            "description": "Shared id, such as `line:101:102:1`.",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "index": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "is_transformer": {
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "loading_pct": {
+          "items": {
+            "description": "Highest end MVA as a percent of rate A; `None` when unrated or offline.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "loss_mw": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "online": {
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "pf": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "pt": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qf": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qt": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "rate_a": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "to": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "winding": {
+          "items": {
+            "description": "1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise.",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "circuit",
+        "count",
+        "element",
+        "from",
+        "index",
+        "is_transformer",
+        "loading_pct",
+        "loss_mw",
+        "online",
+        "pf",
+        "pt",
+        "qf",
+        "qt",
+        "rate_a",
+        "to",
+        "winding"
+      ],
+      "type": "object"
+    },
+    "BusChange": {
+      "properties": {
+        "base_vm": {
+          "format": "double",
+          "type": "number"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vm": {
+          "format": "double",
+          "type": "number"
+        },
+        "vmax": {
+          "format": "double",
+          "type": "number"
+        },
+        "vmin": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bus",
+        "vm",
+        "base_vm",
+        "vmin",
+        "vmax"
+      ],
+      "type": "object"
+    },
+    "BusColumns": {
+      "properties": {
+        "area": {
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "base_kv": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "bus_type": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "number": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "voltage_pu": {
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "zone": {
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "base_kv",
+        "bus_type",
+        "area",
+        "zone",
+        "voltage_pu",
+        "line",
+        "section"
+      ],
+      "type": "object"
+    },
+    "BusCoordinates": {
+      "description": "Where each bus goes, as columns in the case's bus order.",
+      "properties": {
+        "bus": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "latitude": {
+          "description": "Null for a bus with no place.",
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "longitude": {
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "source": {
+          "description": "\"file\", \"estimated\" or \"none\".",
+          "items": {
+            "enum": [
+              "file",
+              "estimated",
+              "none"
+            ]
+          },
+          "type": "array"
+        },
+        "substation": {
+          "description": "The substation the file names, if any.",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/CoordinatesSummary"
+        }
+      },
+      "required": [
+        "bus",
+        "latitude",
+        "longitude",
+        "source",
+        "substation",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "BusRef": {
+      "properties": {
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "base_kv"
+      ],
+      "type": "object"
+    },
+    "BusRowColumns": {
+      "description": "BusRow rows as columns: one array per field, each `count` long.",
+      "properties": {
+        "area": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "base_kv": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "items": {
+            "enum": [
+              "PQ",
+              "PV",
+              "Ref",
+              "Isolated"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "load_parts": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoadParts"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The load split by how it varies with voltage, when any of it does."
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pd": {
+          "items": {
+            "description": "Load drawn at the solved voltage, all parts together.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qd": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "va": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "violation": {
+          "items": {
+            "description": "Distance outside [vmin, vmax] in p.u.; zero when within limits.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "vm": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "vmax": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "vmin": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "area",
+        "base_kv",
+        "count",
+        "id",
+        "kind",
+        "load_parts",
+        "name",
+        "pd",
+        "qd",
+        "va",
+        "violation",
+        "vm",
+        "vmax",
+        "vmin"
+      ],
+      "type": "object"
+    },
+    "CaseCounts": {
+      "properties": {
+        "base_mva": {
+          "format": "double",
+          "type": "number"
+        },
+        "branches": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dc_lines": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generators": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "base_mva",
+        "buses",
+        "generators",
+        "branches",
+        "dc_lines"
+      ],
+      "type": "object"
+    },
+    "CaseFormat": {
+      "enum": [
+        "matpower",
+        "raw"
+      ],
+      "type": "string"
+    },
+    "CaseId": {
+      "description": "Names one open case in commands and scripts. Ids are never reused within\na workspace, so a stale id is refused instead of reaching another case.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "CaseInfo": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "CaseNetwork": {
+      "properties": {
+        "base_mva": {
+          "format": "double",
+          "type": "number"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/NetworkBranch"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "items": {
+            "$ref": "#/$defs/NetworkBus"
+          },
+          "type": "array"
+        },
+        "dc_lines": {
+          "items": {
+            "$ref": "#/$defs/NetworkDcLine"
+          },
+          "type": "array"
+        },
+        "generators": {
+          "items": {
+            "$ref": "#/$defs/NetworkGenerator"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "base_mva",
+        "buses",
+        "generators",
+        "branches",
+        "dc_lines"
+      ],
+      "type": "object"
+    },
+    "CaseSummary": {
+      "properties": {
+        "coordinates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CoordinatesSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The attached bus coordinates file, if any."
+        },
+        "dc_grids": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DcGridsSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The attached DC grid file, if any."
+        },
+        "diffable": {
+          "description": "RAW files can be used as a comparison baseline.",
+          "type": "boolean"
+        },
+        "format": {
+          "$ref": "#/$defs/CaseFormat"
+        },
+        "id": {
+          "$ref": "#/$defs/CaseId",
+          "description": "The handle commands take to name this case."
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "power": {
+          "$ref": "#/$defs/ModuleStatusOfPowerInfo"
+        },
+        "record_edits": {
+          "description": "Cells edited in Records and not yet saved to a file.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "topology": {
+          "$ref": "#/$defs/ModuleStatusOfTopologyInfo"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "name",
+        "format",
+        "power",
+        "topology",
+        "diffable",
+        "record_edits",
+        "dc_grids",
+        "coordinates"
+      ],
+      "type": "object"
+    },
+    "CaseWire": {
+      "properties": {
+        "base_mva": {
+          "format": "double",
+          "type": "number"
+        },
+        "buses": {
+          "$ref": "#/$defs/BusColumns"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "type": "array"
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "equipment": {
+          "$ref": "#/$defs/EquipmentColumns"
+        },
+        "frequency_hz": {
+          "format": "double",
+          "type": "number"
+        },
+        "generators": {
+          "$ref": "#/$defs/InjectionColumns"
+        },
+        "loads": {
+          "$ref": "#/$defs/InjectionColumns"
+        },
+        "revision": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "sections": {
+          "description": "Section names, which the tables refer to by position.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "skipped_sections": {
+          "additionalProperties": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "titles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zero_impedance_threshold": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "revision",
+        "base_mva",
+        "frequency_hz",
+        "zero_impedance_threshold",
+        "titles",
+        "encoding",
+        "diagnostics",
+        "skipped_sections",
+        "sections",
+        "buses",
+        "equipment",
+        "loads",
+        "generators"
+      ],
+      "type": "object"
+    },
+    "ColumnKind": {
+      "enum": [
+        "integer",
+        "number",
+        "text"
+      ],
+      "type": "string"
+    },
+    "CommandInfo": {
+      "description": "One command, as `list_commands` describes it.",
+      "properties": {
+        "doc": {
+          "description": "What it does, from its doc comment.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "takes_case": {
+          "description": "Whether it takes a `case` argument.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "doc",
+        "takes_case"
+      ],
+      "type": "object"
+    },
+    "CommandList": {
+      "description": "The answer to `list_commands`.",
+      "properties": {
+        "api_version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/CommandInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "api_version",
+        "commands"
+      ],
+      "type": "object"
+    },
+    "ContingencyDetail": {
+      "description": "One outage in full: every overload and voltage problem, and the flow and\nvoltage changes worth drawing.",
+      "properties": {
+        "branches": {
+          "description": "Branches whose flow moved by at least half a MW, or that are over the\nlimit or tripped.",
+          "items": {
+            "$ref": "#/$defs/BranchChange"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "description": "AC only: buses whose voltage moved by at least 0.001 p.u., or that\nare outside their limits.",
+          "items": {
+            "$ref": "#/$defs/BusChange"
+          },
+          "type": "array"
+        },
+        "cut_off": {
+          "description": "Buses split off by the outage.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "overloads": {
+          "items": {
+            "$ref": "#/$defs/Overload"
+          },
+          "type": "array"
+        },
+        "row": {
+          "$ref": "#/$defs/ContingencyRow"
+        },
+        "voltage_problems": {
+          "items": {
+            "$ref": "#/$defs/VoltageProblem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "row",
+        "overloads",
+        "voltage_problems",
+        "branches",
+        "buses",
+        "cut_off"
+      ],
+      "type": "object"
+    },
+    "ContingencyRow": {
+      "description": "One outage's outcome, as a row of the ranked results.",
+      "properties": {
+        "checked": {
+          "description": "\"ac\" when solved in AC, \"linear\" when only screened.",
+          "enum": [
+            "ac",
+            "linear"
+          ],
+          "type": "string"
+        },
+        "converged": {
+          "description": "AC only: whether the solve converged, and in how many iterations.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cut_off_buses": {
+          "description": "Buses split off from the rest of the network, and what they carried.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "description": "The element taken out.",
+          "type": "string"
+        },
+        "iterations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "\"branch\" or \"generator\".",
+          "enum": [
+            "branch",
+            "generator"
+          ],
+          "type": "string"
+        },
+        "lost_generation_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "lost_load_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "note": {
+          "description": "AC only: why a solve failed, in a sentence.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overloads": {
+          "description": "Branches over the limit that are new or more than a point worse.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rank": {
+          "description": "Position in the ranked list, from 1.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "screened_pct": {
+          "description": "The `worst` branch's loading from the linear screen.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "severity": {
+          "description": "Sort key, higher is worse: the worst new or worse overload, or a bus\nvoltage problem scored on the same scale; infinite when the AC solve\nfailed.",
+          "format": "double",
+          "type": "number"
+        },
+        "voltage_violations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "worst": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Overload"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The most loaded branch that is over its limit and new or worse than\nbefore the outage; otherwise the most loaded branch."
+        },
+        "worst_voltage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VoltageProblem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "AC only: the worst bus outside its limits that is new or worse."
+        }
+      },
+      "required": [
+        "rank",
+        "element",
+        "kind",
+        "checked",
+        "converged",
+        "iterations",
+        "worst",
+        "overloads",
+        "screened_pct",
+        "note",
+        "worst_voltage",
+        "voltage_violations",
+        "cut_off_buses",
+        "lost_load_mw",
+        "lost_generation_mw",
+        "severity"
+      ],
+      "type": "object"
+    },
+    "ContingencySettings": {
+      "description": "What to run.",
+      "properties": {
+        "ac_count": {
+          "default": 50,
+          "description": "How many of the worst screened outages get an AC solve.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "branches": {
+          "default": true,
+          "type": "boolean"
+        },
+        "elements": {
+          "default": null,
+          "description": "Branch and generator ids to take out, one at a time. When absent,\nevery in-service branch and/or generator, as chosen below.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "generators": {
+          "default": true,
+          "type": "boolean"
+        },
+        "limit_pct": {
+          "default": 100.0,
+          "description": "Loading, as a percent of rate A, above which a branch is overloaded.",
+          "format": "double",
+          "type": "number"
+        },
+        "method": {
+          "$ref": "#/$defs/Method",
+          "default": "screen"
+        },
+        "solve": {
+          "$ref": "#/$defs/SolveSettings"
+        }
+      },
+      "required": [
+        "solve"
+      ],
+      "type": "object"
+    },
+    "ContingencySummary": {
+      "properties": {
+        "ac_checked": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ac_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "already_out": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "description": "Stopped early: outages after the stop keep their screened result.",
+          "type": "boolean"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "islanding": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_pct": {
+          "format": "double",
+          "type": "number"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Method"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_converged": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "screen_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "total": {
+          "description": "Outages run, and in-service checks skipped because the element was\nalready out.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_overloads": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_voltage_problems": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "worst": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContingencyRow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "method",
+        "limit_pct",
+        "total",
+        "already_out",
+        "ac_checked",
+        "with_overloads",
+        "with_voltage_problems",
+        "not_converged",
+        "islanding",
+        "screen_ms",
+        "ac_ms",
+        "elapsed_ms",
+        "cancelled",
+        "worst"
+      ],
+      "type": "object"
+    },
+    "CoordinatesSummary": {
+      "description": "What the app shows about the attached coordinates file.",
+      "properties": {
+        "estimated": {
+          "description": "Buses placed from their neighbours.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_file": {
+          "description": "Buses of the case placed by the file.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missing": {
+          "description": "Buses with no place at all (no placed bus in their island).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "problem_count": {
+          "description": "Lines skipped in all.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "problems": {
+          "description": "Lines skipped, with the reason; at most 20 are listed.",
+          "items": {
+            "$ref": "#/$defs/Problem"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "description": "Rows read from the file.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unknown_buses": {
+          "description": "Rows naming buses this case doesn't have.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "name",
+        "rows",
+        "from_file",
+        "estimated",
+        "missing",
+        "unknown_buses",
+        "problems",
+        "problem_count"
+      ],
+      "type": "object"
+    },
+    "DcBusRow": {
+      "properties": {
+        "kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "kv"
+      ],
+      "type": "object"
+    },
+    "DcConverterRow": {
+      "properties": {
+        "angle": {
+          "format": "double",
+          "type": "number"
+        },
+        "bus": {
+          "description": "AC bus number and name.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bus_name": {
+          "type": "string"
+        },
+        "control": {
+          "enum": [
+            "voltage",
+            "order",
+            "angle_limited",
+            "blocked"
+          ],
+          "type": "string"
+        },
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "dc_bus": {
+          "description": "DC bus number.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dc_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "p_mw": {
+          "description": "MW drawn from the AC bus (negative: delivered).",
+          "format": "double",
+          "type": "number"
+        },
+        "q_mvar": {
+          "description": "MVAr absorbed at the AC bus.",
+          "format": "double",
+          "type": "number"
+        },
+        "rectifier": {
+          "type": "boolean"
+        },
+        "tap": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bus",
+        "bus_name",
+        "dc_bus",
+        "control",
+        "rectifier",
+        "current_ka",
+        "dc_kv",
+        "angle",
+        "tap",
+        "p_mw",
+        "q_mvar",
+        "loss_mw"
+      ],
+      "type": "object"
+    },
+    "DcGridCounts": {
+      "properties": {
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "converters": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lines": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "poles": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "base_kv",
+        "poles",
+        "buses",
+        "lines",
+        "converters"
+      ],
+      "type": "object"
+    },
+    "DcGridsSummary": {
+      "description": "What the app shows about the attached DC grid file.",
+      "properties": {
+        "grids": {
+          "items": {
+            "$ref": "#/$defs/DcGridCounts"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "name",
+        "grids"
+      ],
+      "type": "object"
+    },
+    "DcLineRow": {
+      "description": "A solved DC line row, from its sending (rectifier) bus to its receiving\n(inverter) bus.",
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LccDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Converter operating point from the detailed LCC model."
+        },
+        "element": {
+          "description": "Shared id, such as `dcline:101:205:DC1`.",
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_name": {
+          "type": "string"
+        },
+        "index": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "description": "\"two_terminal\", \"vsc\" or \"multi_terminal\".",
+          "enum": [
+            "two_terminal",
+            "vsc",
+            "multi_terminal"
+          ],
+          "type": "string"
+        },
+        "loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "mtdc_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MtdcDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This row's converter from the detailed multi-terminal model."
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "pf": {
+          "description": "MW taken from the AC system at the sending end.",
+          "format": "double",
+          "type": "number"
+        },
+        "pt": {
+          "description": "MW delivered to the AC system at the receiving end.",
+          "format": "double",
+          "type": "number"
+        },
+        "q_violation": {
+          "description": "Largest MVAr outside either end's range; zero when within, offline,\nor solved with the detailed model (which has no Q range).",
+          "format": "double",
+          "type": "number"
+        },
+        "qf": {
+          "description": "MVAr injected into the AC system at each end (negative = absorbed).",
+          "format": "double",
+          "type": "number"
+        },
+        "qmaxf": {
+          "format": "double",
+          "type": "number"
+        },
+        "qmaxt": {
+          "format": "double",
+          "type": "number"
+        },
+        "qminf": {
+          "format": "double",
+          "type": "number"
+        },
+        "qmint": {
+          "format": "double",
+          "type": "number"
+        },
+        "qt": {
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to_name": {
+          "type": "string"
+        },
+        "vf": {
+          "format": "double",
+          "type": "number"
+        },
+        "vsc_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Converter operating point from the detailed VSC model."
+        },
+        "vt": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "element",
+        "kind",
+        "from",
+        "to",
+        "from_name",
+        "to_name",
+        "online",
+        "pf",
+        "pt",
+        "qf",
+        "qt",
+        "vf",
+        "vt",
+        "loss_mw",
+        "qminf",
+        "qmaxf",
+        "qmint",
+        "qmaxt",
+        "q_violation",
+        "detail",
+        "vsc_detail",
+        "mtdc_detail"
+      ],
+      "type": "object"
+    },
+    "DcLinkRow": {
+      "properties": {
+        "circuit": {
+          "type": "string"
+        },
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "circuit",
+        "current_ka",
+        "from_mw",
+        "to_mw",
+        "loss_mw"
+      ],
+      "type": "object"
+    },
+    "DcModelChoice": {
+      "description": "How two-terminal (LCC), VSC and multi-terminal DC lines are solved when\nthe case has their data.",
+      "oneOf": [
+        {
+          "const": "simplified",
+          "description": "MATPOWER's lossless generator pair.",
+          "type": "string"
+        },
+        {
+          "const": "detailed",
+          "description": "Converter equations with losses, firing angles and taps.",
+          "type": "string"
+        }
+      ]
+    },
+    "DcSystemReport": {
+      "description": "A multi-terminal DC system's DC network under the detailed model.",
+      "properties": {
+        "buses": {
+          "items": {
+            "$ref": "#/$defs/DcBusRow"
+          },
+          "type": "array"
+        },
+        "converter_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "converters": {
+          "items": {
+            "$ref": "#/$defs/DcConverterRow"
+          },
+          "type": "array"
+        },
+        "line_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/DcLinkRow"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reduced_voltage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "reduced_voltage",
+        "line_loss_mw",
+        "converter_loss_mw",
+        "converters",
+        "buses",
+        "links"
+      ],
+      "type": "object"
+    },
+    "DegreeColumns": {
+      "properties": {
+        "bus": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "degree": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "island": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bus",
+        "degree",
+        "island"
+      ],
+      "type": "object"
+    },
+    "Diagnostic": {
+      "properties": {
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "section",
+        "line",
+        "message"
+      ],
+      "type": "object"
+    },
+    "DiagnosticRow": {
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "raw_lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "section": {
+          "type": "string"
+        },
+        "side": {
+          "description": "\"baseline\" or \"comparison\".",
+          "enum": [
+            "baseline",
+            "comparison"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "side",
+        "file",
+        "section",
+        "line",
+        "message",
+        "raw_lines"
+      ],
+      "type": "object"
+    },
+    "DiffRecordDetail": {
+      "properties": {
+        "after_lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "before_lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/FieldRow"
+          },
+          "type": "array"
+        },
+        "key": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiffStatus"
+        }
+      },
+      "required": [
+        "section",
+        "key",
+        "status",
+        "fields",
+        "before_lines",
+        "after_lines"
+      ],
+      "type": "object"
+    },
+    "DiffRecordRow": {
+      "properties": {
+        "element": {
+          "description": "Shared element id (see `crate::elements`) for sections other modules show.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Position within the section, used to request details.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiffStatus"
+        }
+      },
+      "required": [
+        "index",
+        "key",
+        "name",
+        "status",
+        "element"
+      ],
+      "type": "object"
+    },
+    "DiffStatus": {
+      "enum": [
+        "added",
+        "removed",
+        "changed",
+        "unchanged"
+      ],
+      "type": "string"
+    },
+    "DiffSummary": {
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/CaseInfo"
+        },
+        "comparison": {
+          "$ref": "#/$defs/CaseInfo"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticRow"
+          },
+          "type": "array"
+        },
+        "differing": {
+          "description": "Records that are added, removed or changed, across all sections.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/SectionSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "baseline",
+        "comparison",
+        "complete",
+        "differing",
+        "sections",
+        "diagnostics"
+      ],
+      "type": "object"
+    },
+    "EdgeColumns": {
+      "properties": {
+        "equipment": {
+          "description": "By position in the equipment table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "source": {
+          "description": "By position in the node table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "target": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "winding": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "equipment",
+        "source",
+        "target",
+        "winding"
+      ],
+      "type": "object"
+    },
+    "Edit": {
+      "description": "One change to the case, by shared element id or bus number.",
+      "oneOf": [
+        {
+          "description": "Take a branch or generator out of service, or put it back. Every leg of\na three-winding transformer goes together.",
+          "properties": {
+            "element": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "status",
+              "type": "string"
+            },
+            "online": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "element",
+            "online"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A generator's active power output, in MW.",
+          "properties": {
+            "element": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "generation",
+              "type": "string"
+            },
+            "mw": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "element",
+            "mw"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A bus's total load, in MW and Mvar.",
+          "properties": {
+            "bus": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "load",
+              "type": "string"
+            },
+            "mvar": {
+              "format": "double",
+              "type": "number"
+            },
+            "mw": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "bus",
+            "mw",
+            "mvar"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ElementDetail": {
+      "properties": {
+        "buses": {
+          "description": "The terminals: the bus itself, or the buses a branch or DC line joins.",
+          "items": {
+            "$ref": "#/$defs/BusRef"
+          },
+          "type": "array"
+        },
+        "connected": {
+          "description": "Elements connected at a bus: its branches, generators and DC lines.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "data": {
+          "description": "Parameters from the file.",
+          "items": {
+            "$ref": "#/$defs/Group"
+          },
+          "type": "array"
+        },
+        "element": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "\"bus\", \"line\", \"transformer\", \"generator\", \"load\" or \"dcline\".",
+          "type": "string"
+        },
+        "limits": {
+          "description": "Ratings and limits from the file.",
+          "items": {
+            "$ref": "#/$defs/Field"
+          },
+          "type": "array"
+        },
+        "note": {
+          "description": "A caveat about how the values were read, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "online": {
+          "description": "In service in the file (before any study edits).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "element",
+        "kind",
+        "buses",
+        "online",
+        "data",
+        "limits",
+        "connected",
+        "note"
+      ],
+      "type": "object"
+    },
+    "Entry": {
+      "description": "One log line.",
+      "properties": {
+        "level": {
+          "description": "\"error\", \"warn\", \"info\" or \"debug\".",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "seq": {
+          "description": "Increases by one per line, so a reader can ask for what it hasn't seen.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "description": "The part of the program that wrote it, such as \"rs-power\".",
+          "type": "string"
+        },
+        "time": {
+          "description": "Milliseconds since the Unix epoch.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "time",
+        "level",
+        "source",
+        "message"
+      ],
+      "type": "object"
+    },
+    "EquipmentColumns": {
+      "properties": {
+        "buses": {
+          "items": {
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "circuit": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "description": "0 line, 1 transformer, 2 switch.",
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "open_terminals": {
+          "description": "Bit `i` set when terminal `i` is open: 0 for most equipment.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "circuit",
+        "buses",
+        "status",
+        "open_terminals",
+        "line",
+        "section"
+      ],
+      "type": "object"
+    },
+    "Error": {
+      "description": "An error from a command: what kind it is, and what to tell the person.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ErrorKind"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ErrorKind": {
+      "description": "What went wrong, in a form a client can match on.",
+      "oneOf": [
+        {
+          "const": "unknown_command",
+          "description": "No command has this name.",
+          "type": "string"
+        },
+        {
+          "const": "invalid_arguments",
+          "description": "The arguments are missing, misspelled or the wrong type, or a value\nisn't one the command takes.",
+          "type": "string"
+        },
+        {
+          "const": "no_case",
+          "description": "The command works on a case and none is open.",
+          "type": "string"
+        },
+        {
+          "const": "case_not_open",
+          "description": "The `case` argument names a case that isn't open (it was closed or\nreplaced).",
+          "type": "string"
+        },
+        {
+          "const": "not_ready",
+          "description": "Another step has to come first, such as solving the case before\nasking for its results.",
+          "type": "string"
+        },
+        {
+          "const": "not_found",
+          "description": "The element, record type, result or row asked for isn't there.",
+          "type": "string"
+        },
+        {
+          "const": "unsupported",
+          "description": "The command can't work on this case's format or revision.",
+          "type": "string"
+        },
+        {
+          "const": "case_changed",
+          "description": "The case changed while the work ran, so its results were set aside.\nRunning it again works.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "The work was stopped on request.",
+          "type": "string"
+        },
+        {
+          "const": "file",
+          "description": "A file couldn't be read or written.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The work itself failed: a file didn't parse, a solve couldn't start,\nan edit was refused. The message says why.",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Something inside Stannum went wrong. Please report it.",
+          "type": "string"
+        }
+      ]
+    },
+    "Field": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "unit": {
+          "description": "\"MW\", \"p.u.\", \"kV\", ... or empty.",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FieldValue"
+        }
+      },
+      "required": [
+        "label",
+        "value",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "FieldRow": {
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "`None` means the field is absent on that side.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiffStatus"
+        }
+      },
+      "required": [
+        "name",
+        "before",
+        "after",
+        "status"
+      ],
+      "type": "object"
+    },
+    "FieldValue": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "A number, or text for values that aren't numbers (a bus type, a missing limit)."
+    },
+    "Fingerprint": {
+      "description": "What a study records about its case, to tell later whether the file\nchanged.",
+      "properties": {
+        "modified_ms": {
+          "description": "Last modified, in milliseconds since 1970, when the system says.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sha256": {
+          "description": "Lowercase hex SHA-256 of the file's bytes.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "size",
+        "sha256",
+        "modified_ms"
+      ],
+      "type": "object"
+    },
+    "GeneratorRowColumns": {
+      "description": "GeneratorRow rows as columns: one array per field, each `count` long.",
+      "properties": {
+        "bus": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "bus_name": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "items": {
+            "description": "Shared id, such as `generator:101:1`.",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "index": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "machine_id": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "online": {
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "pg": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "pmax": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "q_violation": {
+          "items": {
+            "description": "MVAr outside [qmin, qmax]; zero when within limits or offline.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qg": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qmax": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "qmin": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "vg": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bus",
+        "bus_name",
+        "count",
+        "element",
+        "index",
+        "machine_id",
+        "online",
+        "pg",
+        "pmax",
+        "q_violation",
+        "qg",
+        "qmax",
+        "qmin",
+        "vg"
+      ],
+      "type": "object"
+    },
+    "GraphWire": {
+      "properties": {
+        "absorbed_equipment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "$ref": "#/$defs/EdgeColumns"
+        },
+        "merge_zero_impedance": {
+          "type": "boolean"
+        },
+        "nodes": {
+          "$ref": "#/$defs/NodeColumns"
+        },
+        "zero_impedance_groups": {
+          "items": {
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges",
+        "zero_impedance_groups",
+        "merge_zero_impedance",
+        "absorbed_equipment_ids"
+      ],
+      "type": "object"
+    },
+    "Group": {
+      "description": "A titled list of fields, such as one winding of a transformer.",
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/Field"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "Empty when the element only has one group.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "InjectionColumn": {
+      "properties": {
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bus_name": {
+          "type": "string"
+        },
+        "column": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "description": "\"p\" (active) or \"q\" (reactive).",
+          "enum": [
+            "p",
+            "q"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "bus",
+        "bus_name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "InjectionColumns": {
+      "properties": {
+        "bus": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "id": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "line": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "p_mw": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "q_mvar": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "section": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "bus",
+        "status",
+        "p_mw",
+        "q_mvar",
+        "line",
+        "section"
+      ],
+      "type": "object"
+    },
+    "IslandWire": {
+      "properties": {
+        "id": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "synthetic_nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "synthetic_nodes"
+      ],
+      "type": "object"
+    },
+    "LccDetail": {
+      "description": "Operating point of a two-terminal DC line under the detailed model.",
+      "properties": {
+        "alpha": {
+          "format": "double",
+          "type": "number"
+        },
+        "control": {
+          "description": "\"rectifier\", \"inverter\" (current margin), \"angle_limited\" or \"blocked\":\nwhich converter holds the DC current.",
+          "enum": [
+            "rectifier",
+            "inverter",
+            "angle_limited",
+            "blocked"
+          ],
+          "type": "string"
+        },
+        "converter_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "gamma": {
+          "format": "double",
+          "type": "number"
+        },
+        "inverter_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "inverter_tap": {
+          "format": "double",
+          "type": "number"
+        },
+        "line_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "rectifier_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "rectifier_tap": {
+          "format": "double",
+          "type": "number"
+        },
+        "reduced_voltage": {
+          "description": "Low DC voltage switched a power order to current control.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "control",
+        "reduced_voltage",
+        "current_ka",
+        "rectifier_kv",
+        "inverter_kv",
+        "alpha",
+        "gamma",
+        "rectifier_tap",
+        "inverter_tap",
+        "line_loss_mw",
+        "converter_loss_mw"
+      ],
+      "type": "object"
+    },
+    "LimitSummary": {
+      "properties": {
+        "branch_overloads": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reactive_violations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "voltage_violations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "worst_branch": {
+          "description": "(from, to, loading %) of the most heavily loaded rated branch.",
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "format": "double",
+              "type": "number"
+            }
+          ],
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "worst_reactive": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "format": "double",
+              "type": "number"
+            }
+          ],
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "worst_voltage": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "format": "double",
+              "type": "number"
+            }
+          ],
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "voltage_violations",
+        "worst_voltage",
+        "reactive_violations",
+        "worst_reactive",
+        "branch_overloads",
+        "worst_branch"
+      ],
+      "type": "object"
+    },
+    "LoadParts": {
+      "description": "A bus's load at the solved voltage by part, in MW and Mvar:\n`[constant power, constant current, constant impedance]`.",
+      "properties": {
+        "p": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "q": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "p",
+        "q"
+      ],
+      "type": "object"
+    },
+    "Method": {
+      "description": "How each outage is checked.",
+      "oneOf": [
+        {
+          "const": "screen",
+          "description": "Linear screen of every outage, then an AC solve of the worst ones.",
+          "type": "string"
+        },
+        {
+          "const": "ac",
+          "description": "An AC solve of every outage.",
+          "type": "string"
+        }
+      ]
+    },
+    "ModelChoice": {
+      "enum": [
+        "ac",
+        "dc"
+      ],
+      "type": "string"
+    },
+    "ModuleStatusOfPowerInfo": {
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "info": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PowerInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "available",
+        "error",
+        "info"
+      ],
+      "type": "object"
+    },
+    "ModuleStatusOfTopologyInfo": {
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "info": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TopologyInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "available",
+        "error",
+        "info"
+      ],
+      "type": "object"
+    },
+    "MtdcDetail": {
+      "description": "One converter of a multi-terminal DC system under the detailed model, as\nshown on the row that links it to the voltage-controlling converter.",
+      "properties": {
+        "angle": {
+          "description": "Firing (rectifier) or extinction (inverter) angle, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "at_from": {
+          "description": "Whether the converter is the row's sending end.",
+          "type": "boolean"
+        },
+        "control": {
+          "description": "\"voltage\", \"order\", \"angle_limited\" or \"blocked\".",
+          "enum": [
+            "voltage",
+            "order",
+            "angle_limited",
+            "blocked"
+          ],
+          "type": "string"
+        },
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "dc_kv": {
+          "description": "DC voltage across the converter, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "rectifier": {
+          "type": "boolean"
+        },
+        "reduced_voltage": {
+          "description": "Low DC voltage switched the power orders to current orders.",
+          "type": "boolean"
+        },
+        "system": {
+          "description": "The system's name.",
+          "type": "string"
+        },
+        "tap": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "system",
+        "control",
+        "reduced_voltage",
+        "at_from",
+        "rectifier",
+        "current_ka",
+        "dc_kv",
+        "angle",
+        "tap"
+      ],
+      "type": "object"
+    },
+    "NetworkBranch": {
+      "properties": {
+        "circuit": {
+          "type": "string"
+        },
+        "element": {
+          "description": "Shared id, such as `line:101:102:1`.",
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "index": {
+          "description": "Index in the case's branch table (matches the power flow report).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "rate_a": {
+          "format": "double",
+          "type": "number"
+        },
+        "shift": {
+          "format": "double",
+          "type": "number"
+        },
+        "tap": {
+          "description": "Off-nominal turns ratio (1.0 when unity) and phase shift in degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transformer": {
+          "type": "boolean"
+        },
+        "winding": {
+          "description": "1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "element",
+        "circuit",
+        "winding",
+        "from",
+        "to",
+        "online",
+        "transformer",
+        "rate_a",
+        "tap",
+        "shift"
+      ],
+      "type": "object"
+    },
+    "NetworkBus": {
+      "properties": {
+        "area": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "bs": {
+          "format": "double",
+          "type": "number"
+        },
+        "gs": {
+          "description": "Shunt MW / MVAr at 1 p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "PQ",
+            "PV",
+            "Ref",
+            "Isolated"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pd": {
+          "description": "Load at the bus in MW / MVAr (rs-power aggregates loads per bus).",
+          "format": "double",
+          "type": "number"
+        },
+        "qd": {
+          "format": "double",
+          "type": "number"
+        },
+        "star": {
+          "description": "The star point of a three-winding transformer, not a real bus.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "base_kv",
+        "area",
+        "kind",
+        "pd",
+        "qd",
+        "gs",
+        "bs",
+        "star"
+      ],
+      "type": "object"
+    },
+    "NetworkDcLine": {
+      "description": "A DC line, from its sending (rectifier) bus to its receiving (inverter)\nbus. A multi-terminal system gives one per scheduled converter, each\nrunning to the converter that holds the system's DC voltage.",
+      "properties": {
+        "element": {
+          "description": "Shared id, such as `dcline:101:205:DC1`.",
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "index": {
+          "description": "Row in the case's DC line table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "description": "\"two_terminal\", \"vsc\" or \"multi_terminal\".",
+          "enum": [
+            "two_terminal",
+            "vsc",
+            "multi_terminal"
+          ],
+          "type": "string"
+        },
+        "mw": {
+          "description": "Scheduled MW sent from the rectifier. The power flow holds it fixed.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "description": "The RAW name, or a number for MATPOWER cases.",
+          "type": "string"
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "element",
+        "name",
+        "kind",
+        "from",
+        "to",
+        "online",
+        "mw"
+      ],
+      "type": "object"
+    },
+    "NetworkGenerator": {
+      "properties": {
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "description": "Shared id, such as `generator:101:1`.",
+          "type": "string"
+        },
+        "index": {
+          "description": "Index in the case's generator table (matches the power flow report).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "pmax": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "element",
+        "bus",
+        "online",
+        "pmax"
+      ],
+      "type": "object"
+    },
+    "NodeColumns": {
+      "properties": {
+        "bus": {
+          "description": "The bus a bus node stands for, or null for a junction.",
+          "items": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "equipment": {
+          "description": "A junction's equipment, by position in the equipment table.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Bus nodes whose member buses are not just their own bus, as\n`[node, members]`. Junctions have no members.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "items": {
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bus",
+        "equipment",
+        "members"
+      ],
+      "type": "object"
+    },
+    "Overload": {
+      "description": "A branch over its limit after an outage.",
+      "properties": {
+        "base_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "base_pct": {
+          "format": "double",
+          "type": "number"
+        },
+        "element": {
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mw": {
+          "description": "Active flow at the from end, MW, after and before.",
+          "format": "double",
+          "type": "number"
+        },
+        "pct": {
+          "description": "MVA as a percent of rate A, after the outage and before it.",
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "element",
+        "from",
+        "to",
+        "pct",
+        "base_pct",
+        "mw",
+        "base_mw"
+      ],
+      "type": "object"
+    },
+    "Path": {
+      "properties": {
+        "buses": {
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "connection_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "equipment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "hops": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "buses",
+        "equipment_ids",
+        "node_ids",
+        "connection_ids",
+        "hops"
+      ],
+      "type": "object"
+    },
+    "PowerInfo": {
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/CaseCounts"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/Warning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "counts",
+        "warnings"
+      ],
+      "type": "object"
+    },
+    "Problem": {
+      "description": "A line of the file that was skipped, and why.",
+      "properties": {
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "message"
+      ],
+      "type": "object"
+    },
+    "Progress": {
+      "description": "Progress of the run in hand, for a progress bar.",
+      "properties": {
+        "done": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase": {
+          "description": "\"idle\", \"screening\" or \"ac\".",
+          "enum": [
+            "idle",
+            "screening",
+            "ac"
+          ],
+          "type": "string"
+        },
+        "total": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "phase",
+        "done",
+        "total"
+      ],
+      "type": "object"
+    },
+    "QuantityInfo": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title"
+      ],
+      "type": "object"
+    },
+    "RecordBook": {
+      "properties": {
+        "editable": {
+          "description": "Whether cells can be edited at all (RAW 33/35 and MATPOWER files).",
+          "type": "boolean"
+        },
+        "note": {
+          "description": "Shown above every table, such as why the model is shown instead.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "description": "RAW revision, when read from the file.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/SectionInfo"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/RecordSource"
+        }
+      },
+      "required": [
+        "source",
+        "revision",
+        "note",
+        "editable",
+        "sections"
+      ],
+      "type": "object"
+    },
+    "RecordColumn": {
+      "properties": {
+        "editable": {
+          "description": "Whether its cells can be edited (key fields and case details can't).",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/ColumnKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "editable"
+      ],
+      "type": "object"
+    },
+    "RecordEdit": {
+      "description": "One cell's new value, as typed.",
+      "properties": {
+        "column": {
+          "description": "Column position in the table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "row": {
+          "description": "Row position in the table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "section": {
+          "description": "Table id, such as \"BUS\" or \"gen\".",
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "row",
+        "column",
+        "value"
+      ],
+      "type": "object"
+    },
+    "RecordRow": {
+      "properties": {
+        "cells": {
+          "description": "One value per column: a number, text, or null when absent.",
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "element": {
+          "description": "Shared element id (see `crate::elements`), when the record is one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "description": "Line in the file where the record starts (0 when not from the file).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "element",
+        "cells"
+      ],
+      "type": "object"
+    },
+    "RecordSource": {
+      "description": "Where the tables come from.",
+      "oneOf": [
+        {
+          "const": "raw",
+          "description": "The RAW file's own records.",
+          "type": "string"
+        },
+        {
+          "const": "model",
+          "description": "The power flow model (MATPOWER columns).",
+          "type": "string"
+        }
+      ]
+    },
+    "RecordTable": {
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/RecordColumn"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable id, such as \"BUS\" for RAW or \"bus\" for the model.",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "note": {
+          "description": "Why some records are missing, or how to read the table.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/RecordRow"
+          },
+          "type": "array"
+        },
+        "skipped": {
+          "description": "Records in the file that couldn't be read into this table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "columns",
+        "rows",
+        "skipped",
+        "note"
+      ],
+      "type": "object"
+    },
+    "Response": {
+      "properties": {
+        "element": {
+          "description": "Shared element id of the bus or branch, for drawing on the diagram.",
+          "type": "string"
+        },
+        "index": {
+          "description": "Original row (state row or branch index), for stable \"input order\" sorting.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "label",
+        "element",
+        "value",
+        "offline"
+      ],
+      "type": "object"
+    },
+    "ResponseTable": {
+      "properties": {
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/Response"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "units": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "units",
+        "title",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "SectionInfo": {
+      "description": "One record type in the list, without its rows.",
+      "properties": {
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "skipped": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "count",
+        "skipped"
+      ],
+      "type": "object"
+    },
+    "SectionSummary": {
+      "properties": {
+        "counts": {
+          "$ref": "#/$defs/StatusCounts"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "counts"
+      ],
+      "type": "object"
+    },
+    "SensitivitySummary": {
+      "properties": {
+        "branches": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "column_explanation": {
+          "type": "string"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "injections": {
+          "items": {
+            "$ref": "#/$defs/InjectionColumn"
+          },
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelChoice"
+        },
+        "quantities": {
+          "items": {
+            "$ref": "#/$defs/QuantityInfo"
+          },
+          "type": "array"
+        },
+        "states": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "status",
+        "elapsed_ms",
+        "states",
+        "injections",
+        "branches",
+        "quantities",
+        "explanation",
+        "column_explanation"
+      ],
+      "type": "object"
+    },
+    "SolveReport": {
+      "properties": {
+        "branches": {
+          "$ref": "#/$defs/BranchRowColumns"
+        },
+        "buses": {
+          "$ref": "#/$defs/BusRowColumns",
+          "description": "Sent as columns (see [`wire`]); the frontend turns them back into rows."
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "dc_lines": {
+          "items": {
+            "$ref": "#/$defs/DcLineRow"
+          },
+          "type": "array"
+        },
+        "dc_systems": {
+          "description": "DC networks of the multi-terminal systems (detailed model).",
+          "items": {
+            "$ref": "#/$defs/DcSystemReport"
+          },
+          "type": "array"
+        },
+        "dc_tap_passes": {
+          "description": "Passes that stepped DC converter taps (detailed model).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "generators": {
+          "$ref": "#/$defs/GeneratorRowColumns"
+        },
+        "iterations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limits": {
+          "$ref": "#/$defs/LimitSummary"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelChoice"
+        },
+        "q_limit_passes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "residual_mva": {
+          "format": "double",
+          "type": "number"
+        },
+        "residual_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "shunts_switched": {
+          "description": "Switched shunts that ended away from their starting susceptance.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "taps_moved": {
+          "description": "Transformer taps that ended away from their starting ratio.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_generation_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "total_load_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "total_losses_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "voltage_control_passes": {
+          "description": "Passes that switched shunts or stepped transformer taps.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vsc_grids": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscGridsReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "VSC DC grids from an attached DC grid file, solved in sequence with\nthe AC network."
+        },
+        "vsc_limit_passes": {
+          "description": "Passes that reduced VSC output to converter MVA or current limits.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "converged",
+        "model",
+        "iterations",
+        "q_limit_passes",
+        "dc_tap_passes",
+        "vsc_limit_passes",
+        "voltage_control_passes",
+        "shunts_switched",
+        "taps_moved",
+        "residual_pu",
+        "residual_mva",
+        "elapsed_ms",
+        "total_generation_mw",
+        "total_load_mw",
+        "total_losses_mw",
+        "limits",
+        "buses",
+        "generators",
+        "branches",
+        "dc_lines",
+        "dc_systems",
+        "vsc_grids"
+      ],
+      "type": "object"
+    },
+    "SolveSettings": {
+      "properties": {
+        "adjust_dc_taps": {
+          "default": true,
+          "description": "Step DC converter taps (detailed model only).",
+          "type": "boolean"
+        },
+        "adjust_transformer_taps": {
+          "default": true,
+          "description": "Step transformer taps in voltage control (AC only).",
+          "type": "boolean"
+        },
+        "dc_model": {
+          "$ref": "#/$defs/DcModelChoice",
+          "default": "detailed"
+        },
+        "enforce_q_limits": {
+          "type": "boolean"
+        },
+        "max_iterations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelChoice"
+        },
+        "start": {
+          "$ref": "#/$defs/StartChoice"
+        },
+        "switch_shunts": {
+          "default": true,
+          "description": "Switch shunts in voltage control (AC only).",
+          "type": "boolean"
+        },
+        "tolerance_mva": {
+          "description": "Largest power mismatch allowed at any bus, in MVA. It converts to per\nunit on each case's own base at solve time, so the same setting means\nthe same MW and Mvar on every case.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "start",
+        "tolerance_mva",
+        "max_iterations",
+        "enforce_q_limits"
+      ],
+      "type": "object"
+    },
+    "SourceRecord": {
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "raw_lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "section": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "section",
+        "fields",
+        "raw_lines"
+      ],
+      "type": "object"
+    },
+    "StartChoice": {
+      "oneOf": [
+        {
+          "const": "case",
+          "description": "The voltages in the case.",
+          "type": "string"
+        },
+        {
+          "const": "flat",
+          "description": "1 p.u. at every bus.",
+          "type": "string"
+        },
+        {
+          "const": "last",
+          "description": "Where the last converged AC solve ended, with its controls where they\nended, also after study edits; the case voltages when there is none.",
+          "type": "string"
+        }
+      ]
+    },
+    "StatusCounts": {
+      "properties": {
+        "added": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "removed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unchanged": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "added",
+        "removed",
+        "changed",
+        "unchanged"
+      ],
+      "type": "object"
+    },
+    "TopologyInfo": {
+      "properties": {
+        "buses": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "derived": {
+          "description": "Built from the power flow model (MATPOWER, RAW other than revision 35).",
+          "type": "boolean"
+        },
+        "equipment": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "description": "RAW revision nodal read, or 0 when built from the power flow model.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "titles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "revision",
+        "derived",
+        "buses",
+        "equipment",
+        "titles"
+      ],
+      "type": "object"
+    },
+    "TopologyViewWire": {
+      "description": "The topology after a change of options: the case stays as it was.",
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/AnalysisWire"
+        },
+        "graph": {
+          "$ref": "#/$defs/GraphWire"
+        }
+      },
+      "required": [
+        "analysis",
+        "graph"
+      ],
+      "type": "object"
+    },
+    "TopologyWire": {
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/AnalysisWire"
+        },
+        "case": {
+          "$ref": "#/$defs/CaseWire"
+        },
+        "graph": {
+          "$ref": "#/$defs/GraphWire"
+        }
+      },
+      "required": [
+        "case",
+        "analysis",
+        "graph"
+      ],
+      "type": "object"
+    },
+    "VoltageProblem": {
+      "description": "A bus outside its voltage limits after an outage.",
+      "properties": {
+        "base_vm": {
+          "format": "double",
+          "type": "number"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outside": {
+          "description": "Distance outside the limits, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "vm": {
+          "format": "double",
+          "type": "number"
+        },
+        "vmax": {
+          "format": "double",
+          "type": "number"
+        },
+        "vmin": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bus",
+        "name",
+        "vm",
+        "base_vm",
+        "vmin",
+        "vmax",
+        "outside"
+      ],
+      "type": "object"
+    },
+    "VscDetail": {
+      "description": "Operating point of a VSC DC line under the detailed model.",
+      "properties": {
+        "current_ka": {
+          "description": "DC current from the sending to the receiving end, kA.",
+          "format": "double",
+          "type": "number"
+        },
+        "from_kv": {
+          "description": "DC voltage at the sending and receiving converters, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "from_limited": {
+          "description": "Whether each end's MVA or current limit reduced its output.",
+          "type": "boolean"
+        },
+        "from_loss_mw": {
+          "description": "Converter losses at each end, MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "line_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "order_scale": {
+          "description": "Fraction of the power order kept after MVA or current limits.",
+          "format": "double",
+          "type": "number"
+        },
+        "to_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "to_limited": {
+          "type": "boolean"
+        },
+        "to_loss_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "current_ka",
+        "from_kv",
+        "to_kv",
+        "from_loss_mw",
+        "to_loss_mw",
+        "line_loss_mw",
+        "order_scale",
+        "from_limited",
+        "to_limited"
+      ],
+      "type": "object"
+    },
+    "VscGridBusRow": {
+      "properties": {
+        "injection_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v_pu": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "v_pu",
+        "kv",
+        "injection_mw"
+      ],
+      "type": "object"
+    },
+    "VscGridConverterRow": {
+      "properties": {
+        "ac_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ac_bus_name": {
+          "type": "string"
+        },
+        "ac_control": {
+          "description": "\"reactive\", \"voltage\" or \"reactive_limit\".",
+          "enum": [
+            "reactive",
+            "voltage",
+            "reactive_limit"
+          ],
+          "type": "string"
+        },
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "current_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "dc_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dc_control": {
+          "description": "\"slack\", \"power\" or \"droop\".",
+          "enum": [
+            "slack",
+            "power",
+            "droop"
+          ],
+          "type": "string"
+        },
+        "in_service": {
+          "type": "boolean"
+        },
+        "loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outside_limits": {
+          "type": "boolean"
+        },
+        "p_limited": {
+          "type": "boolean"
+        },
+        "pc_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "pdc_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "ps_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "q_max_mvar": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "q_min_mvar": {
+          "description": "Reactive range at the operating point; None without limits.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "qc_mvar": {
+          "format": "double",
+          "type": "number"
+        },
+        "qs_mvar": {
+          "format": "double",
+          "type": "number"
+        },
+        "uc_deg": {
+          "format": "double",
+          "type": "number"
+        },
+        "uc_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "udc_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "udc_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "us_deg": {
+          "format": "double",
+          "type": "number"
+        },
+        "us_pu": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "ac_bus",
+        "ac_bus_name",
+        "dc_bus",
+        "in_service",
+        "dc_control",
+        "ac_control",
+        "ps_mw",
+        "qs_mvar",
+        "us_pu",
+        "us_deg",
+        "pc_mw",
+        "qc_mvar",
+        "uc_pu",
+        "uc_deg",
+        "current_pu",
+        "current_ka",
+        "loss_mw",
+        "pdc_mw",
+        "udc_pu",
+        "udc_kv",
+        "q_min_mvar",
+        "q_max_mvar",
+        "p_limited",
+        "outside_limits"
+      ],
+      "type": "object"
+    },
+    "VscGridLineRow": {
+      "properties": {
+        "current_ka": {
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "in_service": {
+          "type": "boolean"
+        },
+        "loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "name",
+        "in_service",
+        "current_ka",
+        "from_mw",
+        "to_mw",
+        "loss_mw"
+      ],
+      "type": "object"
+    },
+    "VscGridReport": {
+      "properties": {
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "buses": {
+          "items": {
+            "$ref": "#/$defs/VscGridBusRow"
+          },
+          "type": "array"
+        },
+        "converter_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "converters": {
+          "items": {
+            "$ref": "#/$defs/VscGridConverterRow"
+          },
+          "type": "array"
+        },
+        "line_loss_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/VscGridLineRow"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "poles": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "base_kv",
+        "poles",
+        "line_loss_mw",
+        "converter_loss_mw",
+        "converters",
+        "buses",
+        "lines"
+      ],
+      "type": "object"
+    },
+    "VscGridsReport": {
+      "description": "The sequential AC/DC solve, for the VSC grids tab.",
+      "properties": {
+        "ac_iterations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "file": {
+          "type": "string"
+        },
+        "grids": {
+          "items": {
+            "$ref": "#/$defs/VscGridReport"
+          },
+          "type": "array"
+        },
+        "iterations": {
+          "description": "AC/DC iterations, and AC Newton steps over all of them.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "last_change_mva": {
+          "description": "Largest converter change in the last iteration, MVA.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "file",
+        "converged",
+        "iterations",
+        "ac_iterations",
+        "last_change_mva",
+        "grids"
+      ],
+      "type": "object"
+    },
+    "Warning": {
+      "properties": {
+        "element": {
+          "description": "The branch or generator whose record the warning is about, as a\nshared element id, when the line is one of theirs.",
+          "type": "string"
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "api_version": 2,
+  "commands": {
+    "apply_record_edits": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/$defs/RecordEdit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "edits"
+        ],
+        "type": "object"
+      },
+      "doc": "Write cell edits into the case and reopen it in place.",
+      "result": {
+        "$ref": "#/$defs/CaseSummary"
+      },
+      "takes_case": true
+    },
+    "bus_coordinates": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Where every bus goes on the map, as columns in bus order, with the\nsource of each place (\"file\", \"estimated\" or \"none\").",
+      "result": {
+        "$ref": "#/$defs/BusCoordinates"
+      },
+      "takes_case": true
+    },
+    "calculate_sensitivities": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/SolveSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Calculate sensitivities at the solved operating point.",
+      "result": {
+        "$ref": "#/$defs/SensitivitySummary"
+      },
+      "takes_case": true
+    },
+    "cancel_contingencies": {
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the contingency run in progress.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
+    "cancel_solve": {
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the solve in progress; the case keeps its previous results.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
+    "case_records": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The case's record types and their counts.",
+      "result": {
+        "$ref": "#/$defs/RecordBook"
+      },
+      "takes_case": true
+    },
+    "case_summary": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The open case's summary, or null when none is open.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CaseSummary"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "takes_case": true
+    },
+    "clear_coordinates": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Detach the bus coordinates file.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": true
+    },
+    "clear_dc_grids": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Detach the DC grid file.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": true
+    },
+    "close_case": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Close the case.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": true
+    },
+    "command_schemas": {
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Every command's arguments and result, and the error, as JSON Schema\n(2020-12), for clients that check calls or generate types.",
+      "result": true,
+      "takes_case": false
+    },
+    "contingency_detail": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rank": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank"
+        ],
+        "type": "object"
+      },
+      "doc": "One outage's flow and voltage changes, by rank.",
+      "result": {
+        "$ref": "#/$defs/ContingencyDetail"
+      },
+      "takes_case": true
+    },
+    "contingency_progress": {
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the contingency run in progress has got.",
+      "result": {
+        "$ref": "#/$defs/Progress"
+      },
+      "takes_case": false
+    },
+    "contingency_rows": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offset": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offset",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "doc": "A page of the last run's ranked results.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/ContingencyRow"
+        },
+        "type": "array"
+      },
+      "takes_case": true
+    },
+    "contingency_summary": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The last contingency run's summary, or null.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ContingencySummary"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "takes_case": true
+    },
+    "diagram_network": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The case as a drawable network, for one-line diagrams.",
+      "result": {
+        "$ref": "#/$defs/CaseNetwork"
+      },
+      "takes_case": true
+    },
+    "diff_compare": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline": {
+            "type": "string"
+          },
+          "comparison": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseline",
+          "comparison"
+        ],
+        "type": "object"
+      },
+      "doc": "Compare two RAW files record by record.",
+      "result": {
+        "$ref": "#/$defs/DiffSummary"
+      },
+      "takes_case": false
+    },
+    "diff_compare_working": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Compare the case's file with the case as it is being worked on.",
+      "result": {
+        "$ref": "#/$defs/DiffSummary"
+      },
+      "takes_case": true
+    },
+    "diff_record_detail": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "index"
+        ],
+        "type": "object"
+      },
+      "doc": "One record of the last comparison, field by field.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DiffRecordDetail"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "takes_case": false
+    },
+    "diff_section_records": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "type": "object"
+      },
+      "doc": "The last comparison's records of one type.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/DiffRecordRow"
+        },
+        "type": "array"
+      },
+      "takes_case": false
+    },
+    "element_detail": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "element": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "doc": "One element's data and limits from the file.",
+      "result": {
+        "$ref": "#/$defs/ElementDetail"
+      },
+      "takes_case": true
+    },
+    "export_matpower": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "solved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "solved"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the case, solved or as filed, as a MATPOWER file.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": true
+    },
+    "file_fingerprint": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Size, hash and date of a file, so a study can tell whether its case changed.",
+      "result": {
+        "$ref": "#/$defs/Fingerprint"
+      },
+      "takes_case": false
+    },
+    "list_commands": {
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "The commands this version answers, and the API version.",
+      "result": {
+        "$ref": "#/$defs/CommandList"
+      },
+      "takes_case": false
+    },
+    "load_coordinates": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Attach a bus coordinates CSV (bus, latitude, longitude, optional\nsubstation) to the case, for the map.",
+      "result": {
+        "$ref": "#/$defs/CoordinatesSummary"
+      },
+      "takes_case": true
+    },
+    "load_dc_grids": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Attach a Stannum DC grid file to the case.",
+      "result": {
+        "$ref": "#/$defs/DcGridsSummary"
+      },
+      "takes_case": true
+    },
+    "log_entries": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "since": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since"
+        ],
+        "type": "object"
+      },
+      "doc": "Log lines numbered above `since`.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/Entry"
+        },
+        "type": "array"
+      },
+      "takes_case": false
+    },
+    "open_case": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Open a case file (PSS/E RAW or MATPOWER). It replaces the open case.",
+      "result": {
+        "$ref": "#/$defs/CaseSummary"
+      },
+      "takes_case": false
+    },
+    "record_table": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "type": "object"
+      },
+      "doc": "Every record of one type, with every field.",
+      "result": {
+        "$ref": "#/$defs/RecordTable"
+      },
+      "takes_case": true
+    },
+    "result_report": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "doc": "A result by name (\"base\", \"study\", \"contingency 3\", \"trip line:1:2:1\"),\nas a full solve report.",
+      "result": {
+        "$ref": "#/$defs/SolveReport"
+      },
+      "takes_case": true
+    },
+    "run_contingencies": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/ContingencySettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Run N-1 contingencies. `cancel_contingencies` stops the run and\n`contingency_progress` follows it.",
+      "result": {
+        "$ref": "#/$defs/ContingencySummary"
+      },
+      "takes_case": true
+    },
+    "save_case_as": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Save the case, with its edits, to a new file.",
+      "result": {
+        "$ref": "#/$defs/CaseSummary"
+      },
+      "takes_case": true
+    },
+    "sensitivity_responses": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "column": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "engineering": {
+            "type": "boolean"
+          },
+          "quantity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "quantity",
+          "engineering"
+        ],
+        "type": "object"
+      },
+      "doc": "One sensitivity column's responses at every bus.",
+      "result": {
+        "$ref": "#/$defs/ResponseTable"
+      },
+      "takes_case": true
+    },
+    "set_study_edits": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/$defs/Edit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "edits"
+        ],
+        "type": "object"
+      },
+      "doc": "Replace the study's edits; every later solve uses them.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": true
+    },
+    "solve_power_flow": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/SolveSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.",
+      "result": {
+        "$ref": "#/$defs/SolveReport"
+      },
+      "takes_case": true
+    },
+    "study_locate_case": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute": {
+            "type": "string"
+          },
+          "relative": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "study": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "study",
+          "absolute"
+        ],
+        "type": "object"
+      },
+      "doc": "Where a study's case is now (see `study_file::locate_case`).",
+      "result": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "takes_case": false
+    },
+    "study_relative_path": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "casePath": {
+            "type": "string"
+          },
+          "study": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "study",
+          "casePath"
+        ],
+        "type": "object"
+      },
+      "doc": "A case's path relative to a study file's folder, if there is one.",
+      "result": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "takes_case": false
+    },
+    "topology_set_merge": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "doc": "Merge buses joined by zero-impedance lines, or split them again. The\nanswer is the new analysis and graph in the same form as `topology_snapshot`.",
+      "result": {
+        "$ref": "#/$defs/TopologyViewWire"
+      },
+      "takes_case": true
+    },
+    "topology_shortest_path": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "to": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "doc": "The shortest path between two buses, or null.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Path"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "takes_case": true
+    },
+    "topology_snapshot": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Islands, bridges and articulation buses, with the case's graph, as\ncompact columns (see `topology_wire`). Source fields are left out:\n`topology_source` sends one element's.",
+      "result": {
+        "$ref": "#/$defs/TopologyWire"
+      },
+      "takes_case": true
+    },
+    "topology_source": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "element": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "doc": "The record an element was read from: its fields and RAW lines, or null.",
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/SourceRecord"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "takes_case": true
+    },
+    "trip_and_compare": {
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "element": {
+            "type": "string"
+          },
+          "limitPct": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "element",
+          "limitPct"
+        ],
+        "type": "object"
+      },
+      "doc": "Take one element out of the last AC solve and solve again.",
+      "result": {
+        "$ref": "#/$defs/ContingencyDetail"
+      },
+      "takes_case": true
+    }
+  },
+  "error": {
+    "$ref": "#/$defs/Error"
+  },
+  "title": "Stannum commands"
+}

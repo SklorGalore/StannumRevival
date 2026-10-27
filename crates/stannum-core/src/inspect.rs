@@ -3,18 +3,20 @@
 //! latest solve and study edits from the study, both of which the frontend
 //! already holds, so they are not repeated here.
 
+use crate::error::Error;
 use crate::power::{PowerCase, bus_names, kind_label};
 use serde::Serialize;
 
 /// A number, or text for values that aren't numbers (a bus type, a missing limit).
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(untagged)]
+#[schemars(rename = "FieldValue")]
 pub enum Value {
     Number(f64),
     Text(String),
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Field {
     pub label: String,
     pub value: Value,
@@ -23,21 +25,21 @@ pub struct Field {
 }
 
 /// A titled list of fields, such as one winding of a transformer.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Group {
     /// Empty when the element only has one group.
     pub title: String,
     pub fields: Vec<Field>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BusRef {
     pub number: u32,
     pub name: String,
     pub base_kv: f64,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ElementDetail {
     pub element: String,
     /// "bus", "line", "transformer", "generator", "load" or "dcline".
@@ -109,7 +111,7 @@ pub fn element(
     power: &PowerCase,
     topology: Option<&nodal::model::Case>,
     id: &str,
-) -> Result<ElementDetail, String> {
+) -> Result<ElementDetail, Error> {
     let kind = id.split(':').next().unwrap_or_default();
     let case = &power.case;
     let names = bus_names(case);
@@ -121,7 +123,7 @@ pub fn element(
             base_kv: i.map_or(0.0, |i| case.buses[i].base_kv),
         }
     };
-    let missing = || format!("{id} isn't in this case.");
+    let missing = || Error::not_found(format!("{id} isn't in this case."));
     let mut detail = ElementDetail {
         element: id.to_string(),
         kind: kind.to_string(),
@@ -429,7 +431,11 @@ pub fn element(
                     .to_string(),
             );
         }
-        _ => return Err(format!("{id} isn't an element id.")),
+        _ => {
+            return Err(Error::invalid_arguments(format!(
+                "{id} isn't an element id."
+            )));
+        }
     }
     Ok(detail)
 }
