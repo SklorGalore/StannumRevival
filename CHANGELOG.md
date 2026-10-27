@@ -8,6 +8,8 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-26
+
 The first packaged release. Everything below is new since Stannum was
 assembled from StannumSLD, rs-power, nodal and case-diff.
 
