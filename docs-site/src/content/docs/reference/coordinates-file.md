@@ -46,5 +46,27 @@ Fields can be quoted (`"North, Main"`). Blank lines and lines starting with
 - **Record edits** that add, remove or reconnect buses are matched against the
   file again.
 
-A bus's place, and whether it came from the file, shows in the element
-inspector's **Location** section.
+A bus's place, and where it came from, shows in the element inspector's
+**Location** section.
+
+## Places from the case itself
+
+PSS/E RAW revision 34 and 35 files can carry substation data: each
+substation has a latitude and longitude, and its node records name the buses
+inside it. When a case has it, the map draws without a coordinates file:
+
+- Each bus with a node in a substation that has a place goes there, drawn as
+  that substation (**Placed: from case substation**).
+- A substation at latitude 0 and longitude 0, PSS/E's "not set", has no place.
+  Its buses are estimated from their neighbours like any other.
+- A substation without a name is called "Substation N" by its number, and a
+  name two substations share gets the number added.
+- The rest of the substation data (switching devices and terminals, the
+  node-breaker detail) isn't used; the case's warnings say how many records
+  were skipped.
+
+Attaching a coordinates file as well puts the file first: a bus the file
+places goes where the file says, with the file's substation name, and the
+case's own places fill in the buses the file leaves out. Detaching the file
+goes back to the case's places.
+

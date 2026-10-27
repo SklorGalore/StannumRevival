@@ -95,3 +95,57 @@ fn a_bus_with_nothing_placed_in_its_island_has_no_place() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn a_raw_file_places_its_own_substations() {
+    let s = Session::new();
+    s.invoke(
+        "open_case",
+        json!({ "path": fixture("five_bus_substations.raw") }),
+    )
+    .unwrap();
+    // No file attached: the case's own substations place buses 1, 2 and 4;
+    // East is at 0, 0 (no place) and bus 5 is in no substation.
+    let summary = invoke(&s, "case_summary", json!({}))["coordinates"].clone();
+    assert_eq!(summary["path"], Value::Null);
+    assert_eq!(summary["name"], "five_bus_substations.raw");
+    assert_eq!(summary["from_case"], 3);
+    assert_eq!(summary["case_substations"], 2);
+    assert_eq!(summary["from_file"], 0);
+    assert_eq!(summary["estimated"], 2);
+    let c = invoke(&s, "bus_coordinates", json!({}));
+    assert_eq!(
+        c["source"],
+        json!(["case", "case", "estimated", "case", "estimated"])
+    );
+    assert_eq!(
+        c["substation"],
+        json!(["North", "Central", null, "Central", null])
+    );
+    assert_eq!(c["latitude"][1], 31.5493);
+    let bus2 = invoke(&s, "element_detail", json!({ "element": "bus:2" }));
+    assert!(bus2.to_string().contains("from case substation"));
+
+    // An attached file wins where it places a bus; the case fills the rest.
+    let summary = invoke(
+        &s,
+        "load_coordinates",
+        json!({ "path": fixture("five_bus.coordinates.csv") }),
+    );
+    assert_eq!(summary["from_file"], 3);
+    assert_eq!(summary["from_case"], 1);
+    assert_eq!(summary["estimated"], 1);
+    let c = invoke(&s, "bus_coordinates", json!({}));
+    assert_eq!(
+        c["source"],
+        json!(["file", "file", "file", "case", "estimated"])
+    );
+    assert_eq!(c["substation"][1], "Waco");
+    assert_eq!(c["substation"][3], "Central");
+
+    // Detaching the file goes back to the case's own places.
+    s.invoke("clear_coordinates", json!({})).unwrap();
+    let summary = invoke(&s, "case_summary", json!({}))["coordinates"].clone();
+    assert_eq!(summary["path"], Value::Null);
+    assert_eq!(summary["from_case"], 3);
+}

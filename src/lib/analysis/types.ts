@@ -53,14 +53,21 @@ export interface CoordinatesProblem {
   message: string;
 }
 
-/** What the app shows about the attached bus coordinates file. */
+/** Where the case's bus places come from: an attached coordinates file, the
+ *  case's own RAW substation data, or both (the file wins per bus). */
 export interface CoordinatesSummary {
-  path: string;
+  /** The attached coordinates file; null when only the case places buses. */
+  path: string | null;
+  /** The attached file's name, else the case's. */
   name: string;
   /** Rows read from the file. */
   rows: number;
   /** Buses of the case placed by the file. */
   from_file: number;
+  /** Buses placed by the case's own substation data (and not by the file). */
+  from_case: number;
+  /** Substations in the case's own data with a place and buses. */
+  case_substations: number;
   /** Buses placed from their neighbours. */
   estimated: number;
   /** Buses with no place (nothing placed in their island). */
@@ -77,7 +84,7 @@ export interface BusCoordinates {
   bus: number[];
   latitude: (number | null)[];
   longitude: (number | null)[];
-  source: ("file" | "estimated" | "none")[];
+  source: ("file" | "case" | "estimated" | "none")[];
   substation: (string | null)[];
   summary: CoordinatesSummary;
 }

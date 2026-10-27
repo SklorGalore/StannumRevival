@@ -27,6 +27,9 @@ pub struct PowerCase {
     pub voltage_controls: rs_power::VoltageControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
+    /// Substations with their places and buses, from RAW revision 34-35
+    /// substation data; empty otherwise.
+    pub substations: Vec<rs_power::RawSubstation>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -61,6 +64,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: Vec::new(),
             voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
+            substations: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -102,6 +106,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: import.vsc_lines,
             voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
+            substations: import.substations,
             case: import.case,
             warnings: import
                 .warnings

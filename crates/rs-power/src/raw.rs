@@ -5,7 +5,10 @@ use crate::{
     MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, ShuntMode, SwitchedShunt, TapControl,
     VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
 };
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 /// Options for RAW import. Defaults to MATPOWER-style conversion with warnings.
 #[derive(Clone, Debug, Default)]
@@ -80,6 +83,28 @@ pub struct RawImport {
     /// detailed DC model. Each converter names its `case.dcline` row. Only
     /// filled when [`RawOptions::all_dc_lines`] imports multi-terminal rows.
     pub mtdc: Vec<MtdcSystem>,
+    /// The substations of revision 34-35 substation data, with their
+    /// latitude and longitude and the buses their nodes sit at, in file
+    /// order. Empty for earlier revisions and files without that data.
+    pub substations: Vec<RawSubstation>,
+}
+
+/// A substation record of revision 34-35 RAW data.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RawSubstation {
+    /// Substation number (IS).
+    pub number: u32,
+    /// Substation name, trimmed; may be empty.
+    pub name: String,
+    /// Latitude and longitude in decimal degrees (LATI, LONG), when the
+    /// record gives a usable place. PSS/E writes 0, 0 for "not set", which
+    /// reads as no place.
+    pub place: Option<(f64, f64)>,
+    /// Buses of the case with a node in this substation, in node order,
+    /// each once.
+    pub buses: Vec<u32>,
+    /// One-based source line of the substation record.
+    pub line: usize,
 }
 
 /// Which RAW section a `case.dcline` row came from.
@@ -160,6 +185,8 @@ impl Context<'_> {
 struct Record {
     line: usize,
     fields: Vec<String>,
+    /// Indexes of the fields written in quotes.
+    quoted: Vec<usize>,
     comment: String,
 }
 impl Record {
@@ -221,6 +248,7 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
     let mut r = Record {
         line,
         fields: vec![],
+        quoted: vec![],
         comment: String::new(),
     };
     let mut chars = input.chars().peekable();
@@ -251,6 +279,7 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
         }
         let mut field = String::new();
         if c == '\'' || c == '"' {
+            r.quoted.push(r.fields.len());
             chars.next();
             loop {
                 let ch = chars
@@ -865,15 +894,35 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             )?;
         }
     }
-    // Sections past the revision's known list, such as the nested blocks of
-    // revision 34-35 substation data, are reported once in total.
+    // Sections past the revision's known list. In revisions 34-35 they hold
+    // the substation data: each substation's record and its nodes, then its
+    // switching devices and terminals, each block ended by a 0. Substations
+    // keep their place and the buses their nodes sit at; the rest of the
+    // node-breaker detail, and anything else, is reported once in total.
     let extra = sections.get(names.len()..).unwrap_or(&[]);
-    if let Some(r) = extra.iter().find_map(|rows| rows.first()) {
-        let count: usize = extra.iter().map(Vec::len).sum();
+    let (substations, read) = if rev >= 34 {
+        convert_substations(extra, &indices, &mut ctx)?
+    } else {
+        Default::default()
+    };
+    let skipped: Vec<&Record> = extra
+        .iter()
+        .flatten()
+        .filter(|r| !read.contains(&r.line))
+        .collect();
+    if let Some(r) = skipped.first() {
         ctx.warn(
             r.line,
             true,
-            format!("skipped {count} records of additional section data"),
+            if substations.is_empty() {
+                format!("skipped {} records of additional section data", skipped.len())
+            } else {
+                format!(
+                    "skipped {} records of substation node-breaker data (read {} substations' places and buses)",
+                    skipped.len(),
+                    substations.len()
+                )
+            },
         )?;
     }
     log::info!(
@@ -895,7 +944,84 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         vsc_lines,
         voltage_controls,
         mtdc,
+        substations,
     })
+}
+
+/// Substation records from the sections after the known ones. A substation
+/// record starts its section and is followed there by its node records; the
+/// switching device and terminal blocks that follow start with numbers, while
+/// a substation record's second field is its quoted name, which is how the
+/// next substation is told apart. Empty blocks, and the 0 that ends the
+/// data, give empty sections. Returns the substations and the lines read.
+fn convert_substations(
+    extra: &[Vec<Record>],
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context,
+) -> Result<(Vec<RawSubstation>, HashSet<usize>), Error> {
+    let mut substations: Vec<RawSubstation> = vec![];
+    let mut read = HashSet::new();
+    for rows in extra {
+        let Some(first) = rows.first() else { continue };
+        let named = first.quoted.contains(&1)
+            || first
+                .fields
+                .get(1)
+                .is_some_and(|f| f.trim().replace(['d', 'D'], "E").parse::<f64>().is_err());
+        if !named {
+            continue;
+        }
+        let number = match first.id(0) {
+            Ok(n) if n > 0 => n,
+            _ => {
+                ctx.warn(
+                    first.line,
+                    false,
+                    "skipped a substation record without a valid number",
+                )?;
+                continue;
+            }
+        };
+        let lat = first.optional(2, 0.0);
+        let lon = first.optional(3, 0.0);
+        let place = match (lat, lon) {
+            (Ok(lat), Ok(lon)) if lat == 0.0 && lon == 0.0 => None,
+            (Ok(lat), Ok(lon)) if lat.abs() <= 90.0 && lon.abs() <= 180.0 => Some((lat, lon)),
+            _ => {
+                ctx.warn(
+                    first.line,
+                    false,
+                    format!("substation {number} has no usable latitude and longitude"),
+                )?;
+                None
+            }
+        };
+        let mut buses = vec![];
+        read.extend(rows.iter().map(|r| r.line));
+        for node in &rows[1..] {
+            // Node records: NI, 'NAME', I, STATUS, VM, VA.
+            match node.id(2) {
+                Ok(bus) if indices.contains_key(&bus) => {
+                    if !buses.contains(&bus) {
+                        buses.push(bus);
+                    }
+                }
+                _ => ctx.warn(
+                    node.line,
+                    false,
+                    format!("substation {number} node names a bus the case doesn't have"),
+                )?,
+            }
+        }
+        substations.push(RawSubstation {
+            number,
+            name: first.fields[1].trim().to_string(),
+            place,
+            buses,
+            line: first.line,
+        });
+    }
+    Ok((substations, read))
 }
 
 /// The voltage control of a switched shunt record (revision 30 or later), if

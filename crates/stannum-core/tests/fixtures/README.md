@@ -19,3 +19,7 @@
   Texas locations for the map. It also has a row for a bus the case doesn't
   have (9) and a row that can't be read (bus 4), so buses 4 and 5 are
   estimated from their neighbours.
+- `five_bus_substations.raw` is `five_bus.raw` with RAW substation data: North
+  (bus 1) and Central (buses 2 and 4) with made-up Texas latitudes and
+  longitudes, and East (bus 3) at 0, 0, which means no place. Bus 5 is in no
+  substation. North also has one terminal record, which isn't read.

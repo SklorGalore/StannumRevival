@@ -437,10 +437,11 @@
           "type": "array"
         },
         "source": {
-          "description": "\"file\", \"estimated\" or \"none\".",
+          "description": "\"file\" (the coordinates file), \"case\" (the case's own substation\ndata), \"estimated\" or \"none\".",
           "items": {
             "enum": [
               "file",
+              "case",
               "estimated",
               "none"
             ]
@@ -448,7 +449,7 @@
           "type": "array"
         },
         "substation": {
-          "description": "The substation the file names, if any.",
+          "description": "The substation the file or the case names, if any.",
           "items": {
             "type": [
               "string",
@@ -742,7 +743,7 @@
               "type": "null"
             }
           ],
-          "description": "The attached bus coordinates file, if any."
+          "description": "Where the bus places for the map come from: the attached coordinates\nfile, the case's own substation data, or both. Null when neither\nplaces any bus."
         },
         "dc_grids": {
           "anyOf": [
@@ -1258,10 +1259,22 @@
       "type": "object"
     },
     "CoordinatesSummary": {
-      "description": "What the app shows about the attached coordinates file.",
+      "description": "What the app shows about where the case's bus places come from.",
       "properties": {
+        "case_substations": {
+          "description": "Substations in the case's own data with a place and buses.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "estimated": {
           "description": "Buses placed from their neighbours.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "from_case": {
+          "description": "Buses placed by the case's own substation data (and not by the file).",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -1279,10 +1292,15 @@
           "type": "integer"
         },
         "name": {
+          "description": "The attached file's name, else the case's.",
           "type": "string"
         },
         "path": {
-          "type": "string"
+          "description": "The attached coordinates file; null when the places come only from\nthe case's own substation data.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "problem_count": {
           "description": "Lines skipped in all.",
@@ -1315,6 +1333,8 @@
         "name",
         "rows",
         "from_file",
+        "from_case",
+        "case_substations",
         "estimated",
         "missing",
         "unknown_buses",
