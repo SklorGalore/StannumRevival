@@ -10,7 +10,7 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default, Clone)]
-pub struct SharedSession(Arc<Session>);
+pub struct SharedSession(pub Arc<Session>);
 
 /// Run one core command by name (see `stannum_core::commands::COMMANDS`).
 /// The result is already JSON, so it goes to the window as it is. A failure

@@ -3767,6 +3767,7 @@ name = "stannum"
 version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
+ "log",
  "serde",
  "serde_json",
  "stannum-core",
@@ -3791,6 +3792,7 @@ name = "stannum-core"
 version = "0.2.0"
 dependencies = [
  "encoding_rs",
+ "getrandom 0.4.3",
  "log",
  "nodal",
  "num-complex",

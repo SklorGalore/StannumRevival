@@ -1,6 +1,7 @@
 //! Stannum's analysis core, independent of the desktop shell.
 //!
 //! - [`dc_grids`]: Stannum DC grid files (meshed VSC grids beside a case).
+//! - [`attach`]: lets a script drive the running app over a local socket.
 //! - [`commands`]: every command the clients use, listed once.
 //! - [`contingency`]: N-1 contingency analysis (linear screen, then AC).
 //! - [`power`]: AC/DC power flow and sensitivities via rs-power.
@@ -20,6 +21,7 @@
 //! - [`topology_wire`]: the topology snapshot as compact columns for the app.
 //! - [`logbook`]: the application log shown in the log panel.
 
+pub mod attach;
 pub mod commands;
 pub mod contingency;
 pub mod dc_grids;

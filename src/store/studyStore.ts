@@ -54,6 +54,8 @@ interface StudyState {
   entries: StudyEntry[];
   /** Bumps on every change the backend accepted, so Power flow can re-solve. */
   revision: number;
+  /** The latest change came from an attached script, which solves when it wants to. */
+  fromScript: boolean;
   error: string | null;
   busy: boolean;
   /** Replace the edits; on a refusal nothing changes and `error` says why. */
@@ -101,6 +103,7 @@ export const useStudy = create<StudyState>((set, get) => ({
   setCompare: (compare) => set({ compare }),
   entries: [],
   revision: 0,
+  fromScript: false,
   error: null,
   busy: false,
   setEntries: async (entries) => {
@@ -109,7 +112,7 @@ export const useStudy = create<StudyState>((set, get) => ({
     try {
       await api.setStudyEdits(entries.map((e) => e.edit));
       if (version !== useWorkspace.getState().caseVersion) return false;
-      set((s) => ({ entries, revision: s.revision + 1, busy: false }));
+      set((s) => ({ entries, revision: s.revision + 1, fromScript: false, busy: false }));
       return true;
     } catch (e) {
       set({ busy: false, error: (e as Error).message });
@@ -138,5 +141,5 @@ useWorkspace.subscribe((s) => {
   lastVersion = s.caseVersion;
   // Edits made in Records keep the study: the backend applies it again.
   if (s.caseVersion === s.editedVersion) return;
-  useStudy.setState((st) => ({ entries: [], saved: [], compare: null, error: null, revision: st.revision + 1 }));
+  useStudy.setState((st) => ({ entries: [], saved: [], compare: null, error: null, revision: st.revision + 1, fromScript: false }));
 });

@@ -28,6 +28,10 @@ Every call goes through the same command registry the desktop app uses
 same answers. `case.call(name, **args)` runs any registry command, and
 `stannum.commands()` lists them.
 
+`stannum.attach()` drives the running desktop app instead: the case in its
+window, shown there as the script goes (`app.open`, `app.case`,
+`app.draw_around`, `app.show`, `app.run`). See the Python guide.
+
 - Each `Case` is independent: open several and use them from several
   threads. Long commands let the GIL go, and Ctrl+C stops them.
 - Failures raise typed errors (`stannum.NotFound`, `stannum.NotReady`,

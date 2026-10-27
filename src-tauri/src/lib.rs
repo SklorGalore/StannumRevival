@@ -1,4 +1,5 @@
 mod analysis;
+mod attach;
 mod splash;
 
 use base64::{engine::general_purpose, Engine as _};
@@ -87,6 +88,10 @@ pub fn run() {
         .manage(splash::Splash::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
+            // Scripts reach the window's own session (stannum.attach()).
+            let session = app.state::<analysis::SharedSession>().0.clone();
+            let attach = attach::start(app.handle(), session);
+            app.manage(std::sync::Mutex::new(attach));
             splash::start(app.handle());
             Ok(())
         })
@@ -112,7 +117,14 @@ pub fn run() {
             splash::app_ready,
             show_snap_layouts,
             analysis::stannum_command,
+            attach::attach_ui_reply,
+            attach::attach_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                attach::stop(app);
+            }
+        });
 }
