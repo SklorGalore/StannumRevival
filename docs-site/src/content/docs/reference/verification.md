@@ -60,6 +60,23 @@ checks their hashes.
 | Synthetic East–West US (RAW 34) | 80,000 buses | Revision 34 import |
 | Memphis 2026 (RAW 35) | 993 buses | Shunt control, remote regulation, nodal parsing |
 
+## Time and size budgets
+
+Every pull request builds a 12,000-bus [synthetic case](/manual/synthetic-cases/)
+and works through it with the commands the app sends: open, attach
+coordinates, solve, the diagram, the map, topology, Records and an N-1
+contingency run. Each command has a budget for how long it takes and how much
+it sends back, and the test fails when one goes over, so a change that makes
+large cases several times slower is caught before it merges. It also checks
+that the app keeps answering while a solve runs. The run's summary on GitHub
+shows the table.
+
+```powershell
+cargo test --release -p stannum-core --test budgets -- --ignored --nocapture
+```
+
+`STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion.
+
 ## Interface
 
 A browser smoke test drives the real interface in Chromium against the real
