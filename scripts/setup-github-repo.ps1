@@ -79,15 +79,15 @@ function Invoke-GhApi {
 # Runs one named step, honouring -WhatIf, and keeps going if it fails so a
 # single unsupported setting does not stop the rest.
 function Invoke-Step {
-    param([string]$Name, [scriptblock]$Action)
-    if (-not $PSCmdlet.ShouldProcess($Repo, $Name)) { return }
+    param([string]$StepName, [scriptblock]$StepAction)
+    if (-not $PSCmdlet.ShouldProcess($Repo, $StepName)) { return }
     try {
-        & $Action
-        Write-Host "  ok    $Name" -ForegroundColor Green
+        & $StepAction
+        Write-Host "  ok    $StepName" -ForegroundColor Green
     } catch {
-        Write-Host "  FAIL  $Name" -ForegroundColor Red
+        Write-Host "  FAIL  $StepName" -ForegroundColor Red
         Write-Host "        $($_.Exception.Message)" -ForegroundColor DarkGray
-        $script:failures += $Name
+        $script:failures += $StepName
     }
 }
 
@@ -206,13 +206,16 @@ $existing = @{}
 foreach ($rs in @(Invoke-GhApi "repos/$Repo/rulesets")) { $existing[$rs.name] = $rs.id }
 foreach ($file in Get-ChildItem $rulesetDir -Filter *.json | Sort-Object Name) {
     $body = Get-Content -Raw $file.FullName
-    $name = ($body | ConvertFrom-Json).name
-    if ($existing.ContainsKey($name)) {
-        Invoke-Step "Ruleset '$name' (update)" {
-            Invoke-GhApi "repos/$Repo/rulesets/$($existing[$name])" -Method PUT -Body $body | Out-Null
+    $rulesetName = ($body | ConvertFrom-Json).name
+    # Build the path out here. Step blocks run inside Invoke-Step, so a
+    # variable there that shares a name with its parameters gets theirs.
+    $rulesetPath = if ($existing.ContainsKey($rulesetName)) { "repos/$Repo/rulesets/$($existing[$rulesetName])" }
+    if ($rulesetPath) {
+        Invoke-Step "Ruleset '$rulesetName' (update)" {
+            Invoke-GhApi $rulesetPath -Method PUT -Body $body | Out-Null
         }
     } else {
-        Invoke-Step "Ruleset '$name' (create)" {
+        Invoke-Step "Ruleset '$rulesetName' (create)" {
             Invoke-GhApi "repos/$Repo/rulesets" -Method POST -Body $body | Out-Null
         }
     }
