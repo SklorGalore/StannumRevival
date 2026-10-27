@@ -6,6 +6,7 @@ import { CaseBar } from "./CaseBar";
 import { StudyNoticeBar } from "./StudyFileControls";
 import { RunFileBar } from "./RunFileBar";
 import { useRunFile } from "../store/runFileStore";
+import { startAttach } from "../store/attachStore";
 import { RUN_FILE_EXTENSION } from "../lib/analysis/api";
 import { useStudyFile } from "../store/studyFileStore";
 import { STUDY_EXTENSION } from "../lib/study/studyFile";
@@ -140,6 +141,8 @@ export function Shell() {
   const ratio = useWorkspace((s) => s.splitRatio);
   const body = useRef<HTMLDivElement>(null);
   useCaseDrop();
+  // Python scripts can drive the window (stannum.attach()).
+  useEffect(() => startAttach(), []);
   const shown = (id: ModuleId) => id === module || id === split;
   // Modules stay mounted so switching keeps their results and scroll state.
   // `module-hidden` forces descendants hidden too: React Flow sets

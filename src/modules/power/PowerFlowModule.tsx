@@ -1035,9 +1035,19 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
-    if (latest && power?.available) void solve();
+    // A script that changed the study solves when it wants to.
+    if (latest && power?.available && !useStudy.getState().fromScript) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyRevision]);
+  // A script's solve is the latest one, made with the study as it is now.
+  const adoptedSolves = useWorkspace((s) => s.adoptedSolves);
+  const lastAdopted = useRef(adoptedSolves);
+  useEffect(() => {
+    if (adoptedSolves === lastAdopted.current) return;
+    lastAdopted.current = adoptedSolves;
+    setSolvedRevision(useStudy.getState().revision);
+    setError(null);
+  }, [adoptedSolves]);
   const studyShowRequest = useStudy((s) => s.showRequest);
   const lastShowRequest = useRef(studyShowRequest);
   useEffect(() => {

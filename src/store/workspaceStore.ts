@@ -69,6 +69,10 @@ interface WorkspaceState {
   solveReport: SolveReport | null;
   /** A new solve: every view goes back to showing it. */
   setSolveReport: (r: SolveReport | null) => void;
+  /** A solve made outside the window (an attached script), shown as the latest. */
+  adoptSolve: (r: SolveReport) => void;
+  /** Bumps on every adopted solve, so Power flow knows its results are current. */
+  adoptedSolves: number;
   /**
    * The result every view shows instead of the latest solve, or null for the
    * latest solve. Read it through useShownReport().
@@ -178,6 +182,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   openError: null,
   solveReport: null,
   setSolveReport: (solveReport) => set({ solveReport, shown: null }),
+  adoptSolve: (solveReport) => set((s) => ({ solveReport, shown: null, adoptedSolves: s.adoptedSolves + 1 })),
+  adoptedSolves: 0,
   shown: null,
   showResult: async ({ name, label, element }) => {
     if (get().shown?.name === name) return;

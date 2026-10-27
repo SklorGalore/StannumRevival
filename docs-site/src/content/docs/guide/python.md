@@ -168,3 +168,45 @@ sentence the app would show.
 A solve or contingency run lets go of Python's lock while it works, so other
 threads keep running. **Ctrl+C** stops it, the case keeps its earlier
 results, and Python raises `KeyboardInterrupt` as usual.
+
+## Driving the running app
+
+`sn.attach()` connects to the Stannum app open on your computer instead of
+opening a workspace of its own. The script then works on the case in the
+window, and the window shows what it does as it goes: a case it opens,
+study edits it makes, results it solves. A **Script attached** chip in the
+case bar says a script is connected.
+
+```python
+import stannum as sn
+
+app = sn.attach()                     # the newest app running
+case = app.case                       # the case in the window, or None
+case = app.open("Texas2k.RAW")        # or open one in the window
+
+case.edits = [sn.outage("line:6137:6207:1")]
+report = case.solve()                 # the window shows the study solve
+
+app.draw_around("bus:6137")           # a one-line around it in the Diagram
+app.show("bus:6137")                  # select it in every module
+app.go("power")                       # switch module
+app.say("Outage studied")             # a line in the app's log
+app.commands()                        # the Ctrl+K commands, by id
+app.run("theme")                      # run one
+app.state                             # module, selection, case, result
+```
+
+A case from `attach()` has every method `sn.open()` gives; the difference
+is that it is the window's case. `with` blocks and `app.detach()` let go of
+the app without closing it or its case. If the person at the window opens
+another case, the script's old case raises `CaseNotOpen`. Ctrl+C stops the
+app's solve or contingency run, as it does in-process.
+
+**How it connects.** The app listens on a local port (127.0.0.1 only) and
+writes the port and a random token into a file only you can read:
+`%LOCALAPPDATA%\Stannum\attach` on Windows,
+`~/Library/Application Support/Stannum/attach` on macOS and
+`$XDG_RUNTIME_DIR/stannum/attach` (or `~/.local/state/stannum/attach`) on
+Linux. `STANNUM_ATTACH_DIR` moves it. `sn.attach(pid=...)` picks one app
+when several run. Start the app with `STANNUM_NO_ATTACH=1` to turn attaching
+off. The package must come from the same release as the app.

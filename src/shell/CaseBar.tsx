@@ -5,6 +5,7 @@ import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
 import { ResultChip } from "./ResultChip";
+import { ScriptChip } from "./ScriptChip";
 import { useWidth } from "../ui/useWidth";
 import { WindowControls, dragRegion } from "./WindowControls";
 import { StudyFileButton } from "./StudyFileControls";
@@ -70,6 +71,7 @@ export function CaseBar() {
       )}
       {summary && <ResultChip />}
       <SelectionChip />
+      <ScriptChip />
       {openError && (
         <span role="alert" className="text-[11px] text-red-700 truncate" title={openError}>
           {openError}

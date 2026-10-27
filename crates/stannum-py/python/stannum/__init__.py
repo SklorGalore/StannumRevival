@@ -19,6 +19,16 @@ always agree.
 
 Each :class:`Case` is independent: open as many as you like and use them
 from several threads. Ctrl+C stops a long solve or contingency run.
+
+:func:`attach` drives the running app instead: its case, study and results,
+shown in the window as the script goes.
+
+.. code-block:: python
+
+    app = sn.attach()
+    case = app.case               # the case on screen
+    case.solve()                  # the window shows the results
+    app.show("bus:5")             # select it in every module
 """
 
 from __future__ import annotations
@@ -29,7 +39,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Union
 
-from . import _native
+from . import _attach, _native
 from ._table import Answer, Table, _plain, tables_in
 from .errors import (
     CaseChanged,
@@ -55,9 +65,14 @@ API_VERSION: int = _native.API_VERSION
 
 PathLike = Union[str, "os.PathLike[str]"]
 
+#: What commands run on: a workspace of the package's own
+#: (``_native.Session``) or the running app's (``_attach.Remote``).
+_Link = Union[_native.Session, _attach.Remote]
+
 __all__ = [
     "API_VERSION",
     "Answer",
+    "App",
     "Case",
     "CaseChanged",
     "CaseNotOpen",
@@ -76,6 +91,7 @@ __all__ = [
     "UnknownCommand",
     "Unsupported",
     "__version__",
+    "attach",
     "bus_load",
     "commands",
     "diff",
@@ -111,7 +127,7 @@ def _encode(value: Any) -> Any:
     return value
 
 
-def _call(session: _native.Session, command: str, args: Mapping[str, Any]) -> Any:
+def _call(session: _Link, command: str, args: Mapping[str, Any]) -> Any:
     """Run one registry command and decode its answer (tables included)."""
     payload = {_camel(k): _encode(v) for k, v in args.items() if v is not None}
     try:
@@ -195,9 +211,25 @@ class Case:
     """
 
     def __init__(self, path: PathLike) -> None:
-        self._session = _native.Session()
+        self._session: _Link = _native.Session()
         self._summary: Answer = _call(self._session, "open_case", {"path": Path(path).resolve()})
         self._id: int = self._summary["id"]
+        self._app: App | None = None
+
+    @classmethod
+    def _in_app(cls, app: App, summary: Answer) -> Case:
+        """The case open in an attached app."""
+        case = cls.__new__(cls)
+        case._session = app._remote
+        case._summary = summary
+        case._id = summary["id"]
+        case._app = app
+        return case
+
+    @property
+    def app(self) -> App | None:
+        """The app this case is open in, when it came from :func:`attach`."""
+        return self._app
 
     # The basics
 
@@ -225,12 +257,14 @@ class Case:
         """Run any registry command on this case. Arguments are keyword
         arguments in snake_case; the case is filled in when the command
         takes one. See :func:`commands` for the list."""
-        if _takes_case(command):
+        takes_case = self._app._takes_case(command) if self._app else _takes_case(command)
+        if takes_case:
             args.setdefault("case", self._id)
         return _call(self._session, command, args)
 
     def close(self) -> None:
-        """Close the case. Calls after this raise :class:`CaseNotOpen`."""
+        """Close the case. Calls after this raise :class:`CaseNotOpen`. In
+        an attached app this closes the case in the window."""
         try:
             self.call("close_case")
         except (CaseNotOpen, NoCase):
@@ -240,10 +274,13 @@ class Case:
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self.close()
+        # A case in the app stays open for the person at the window.
+        if self._app is None:
+            self.close()
 
     def __repr__(self) -> str:
-        return f"<stannum.Case {self.name!r} ({self._summary.get('format')}), id {self._id}>"
+        where = " in the app" if self._app else ""
+        return f"<stannum.Case {self.name!r} ({self._summary.get('format')}), id {self._id}{where}>"
 
     # Power flow
 
@@ -416,7 +453,7 @@ class Diff:
     has the counts per record type; :meth:`records` and :meth:`detail`
     read the records themselves."""
 
-    def __init__(self, session: _native.Session, summary: Answer) -> None:
+    def __init__(self, session: _Link, summary: Answer) -> None:
         self._session = session
         self.summary = summary
 
@@ -444,6 +481,137 @@ def diff(baseline: PathLike | Case, comparison: PathLike | Case) -> Diff:
     b = comparison.path if isinstance(comparison, Case) else Path(comparison).resolve()
     session = _native.Session()
     return Diff(session, _call(session, "diff_compare", {"baseline": a, "comparison": b}))
+
+
+# --- the running app ------------------------------------------------------
+
+
+class App:
+    """The running Stannum app, from :func:`attach`.
+
+    Commands run on the app's own workspace, so the window shows what the
+    script does as it goes: a case it opens, edits it makes, results it
+    solves. The ``ui`` methods move the window itself.
+
+    Use it in a ``with`` block, or call :meth:`detach`, to let go of the
+    app; the app and its case stay open.
+    """
+
+    def __init__(self, remote: _attach.Remote) -> None:
+        self._remote = remote
+        self._commands: list[Answer] | None = None
+        info = remote.info
+        if info.get("api_version") != API_VERSION:
+            remote.close()
+            raise Unsupported(
+                f"The app runs command set {info.get('api_version')} and this package "
+                f"{API_VERSION}. Use the stannum package from the app's release ({info.get('version')})."
+            )
+
+    @property
+    def version(self) -> str:
+        """The app's version."""
+        return self._remote.info["version"]
+
+    @property
+    def pid(self) -> int:
+        """The app's process id."""
+        return self._remote.info["pid"]
+
+    # Cases
+
+    @property
+    def case(self) -> Case | None:
+        """The case open in the window, or None."""
+        summary = self.call("case_summary")
+        return Case._in_app(self, summary) if summary else None
+
+    def open(self, path: PathLike) -> Case:  # noqa: A003 - mirrors stannum.open
+        """Open a case file in the window, in place of the one there."""
+        summary = self.call("open_case", path=Path(path).resolve())
+        return Case._in_app(self, summary)
+
+    def call(self, command: str, **args: Any) -> Any:
+        """Run any registry command on the app's workspace, or a ``ui.*``
+        command in the window. Arguments are keyword arguments in
+        snake_case."""
+        return _call(self._remote, command, args)
+
+    def commands(self) -> list[Answer]:
+        """The Ctrl+K commands the window offers now: ``id`` and ``title``.
+        Run one with :meth:`run`."""
+        return self.call("ui.commands")
+
+    def _registry(self) -> list[Answer]:
+        if self._commands is None:
+            self._commands = self.call("list_commands")["commands"]
+        return self._commands
+
+    def _takes_case(self, command: str) -> bool:
+        return any(c["name"] == command and c["takes_case"] for c in self._registry())
+
+    # The window
+
+    @property
+    def state(self) -> Answer:
+        """What the window shows: ``module``, ``split``, ``selection``,
+        ``case``, ``solved``, ``shown`` (the result on screen) and ``theme``."""
+        return self.call("ui.state")
+
+    def run(self, command: str) -> Answer:
+        """Run a Ctrl+K command by id, such as ``"theme"`` or
+        ``"go-diagram"``; :meth:`commands` lists them."""
+        return self.call("ui.run", id=command)
+
+    def go(self, module: str) -> Answer:
+        """Switch the window to a module: ``"diagram"``, ``"power"``,
+        ``"records"`` or ``"diff"``."""
+        return self.call("ui.go", module=module)
+
+    def show(self, element: str) -> Answer:
+        """Select an element in every module, by shared id such as
+        ``"bus:5"`` or ``"line:4:5:1"``."""
+        return self.call("ui.show", element=element)
+
+    def clear_selection(self) -> Answer:
+        return self.call("ui.clear_selection")
+
+    def draw_around(self, element: str) -> Answer:
+        """Draw a one-line a few hops around an element, in the Diagram."""
+        return self.call("ui.draw_around", element=element)
+
+    def say(self, message: str, level: str = "info") -> None:
+        """Write a line in the app's log, from "script". ``level`` is
+        "info", "warn" or "error"."""
+        self.call("ui.say", message=message, level=level)
+
+    # Letting go
+
+    def detach(self) -> None:
+        """Let go of the app. The app and its case stay open."""
+        self._remote.close()
+
+    def __enter__(self) -> App:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.detach()
+
+    def __repr__(self) -> str:
+        return f"<stannum.App {self.version}, process {self.pid}>"
+
+
+def attach(pid: int | None = None, timeout: float = 5.0) -> App:
+    """Attach to the running Stannum app: the newest one, or the one with
+    process id ``pid``. Raises :class:`NotFound` when no app is running.
+
+    The app must come from the same release as this package."""
+    try:
+        remote = _attach.connect(pid=pid, timeout=timeout)
+    except _native.CommandError as e:
+        kind, message = e.args
+        raise from_kind(kind, message) from None
+    return App(remote)
 
 
 # --- everything else ------------------------------------------------------
