@@ -73,6 +73,7 @@ export default defineConfig({
             },
             { label: "Topology analysis", slug: "manual/topology" },
             { label: "Case diff", slug: "manual/case-diff" },
+            { label: "Synthetic test cases", slug: "manual/synthetic-cases" },
           ],
         },
         {
