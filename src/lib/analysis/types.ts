@@ -23,6 +23,8 @@ export interface RawWarning {
 }
 
 export interface CaseSummary {
+  /** The handle core commands take as `case` to name this case. */
+  id: number;
   path: string;
   name: string;
   format: "matpower" | "raw";
