@@ -9,15 +9,17 @@ draw by hand.
 
 ![A one-line generated around a bus, two hops deep, with solved flows](../../../assets/screens/diagram-local.png)
 
-## Two drawing styles
+## Three drawing styles
 
-The switch at the start of the toolbar draws the same neighbourhood in two
+The switch at the start of the toolbar draws the same neighbourhood in three
 styles:
 
 - **One-line**: symbols, routed wires, results and editing (everything below).
 - **Network**: the bus-branch graph of the case's topology. Buses are dots
   and branches are lines (transformers dashed), so it stays quick and readable
   for hundreds of buses. The bus it is drawn around has a teal halo.
+- **Map**: the case's buses at their latitude and longitude, over country and
+  state outlines (see [The map](#the-map)).
 
 ![The Network style, two hops around a bus, with a bus selected](../../../assets/screens/diagram-network.png)
 
@@ -39,6 +41,27 @@ In the Network style:
 
 "Draw around" from another module and selections from linked modules move
 both styles.
+
+## The map
+
+The Map style needs a [bus coordinates file](/StannumRevival/reference/coordinates-file/):
+attach one from the map's toolbar or the command palette (**Attach bus
+coordinates**). The case's buses are gathered into sites, one dot for each
+substation the file names (or each point, where it names none), coloured by
+the site's highest voltage. Branches are straight lines between sites, and DC
+lines are dashed. A site whose buses were all placed next to their neighbours,
+rather than by the file, is drawn hollow.
+
+![The Map style: the whole case over state outlines](../../../assets/screens/diagram-map.png)
+
+- The map opens on the whole case. Double-click a site, or **Highlight around
+  here** in its Map section, to highlight the buses within a few hops of it;
+  everything else is dimmed and the map zooms to fit. The bar at the bottom
+  changes the hop count, and **Whole case** clears the highlight.
+- Click a site or line to inspect it. A site's Map section lists its buses.
+- **Draw as one-line** switches to the one-line around the selected bus.
+- The outlines (Natural Earth, public domain) ship with the app, so the map
+  works offline. They follow the light and dark themes.
 
 ## Layers and tables
 

@@ -39,6 +39,7 @@ export default defineConfig(async () => ({
             { name: "xyflow", test: /node_modules[\\/](@xyflow|d3-[^\\/]+|classcat)[\\/]/ },
             { name: "cytoscape", test: /node_modules[\\/]cytoscape[\\/]/ },
             { name: "cytoscape-layouts", test: /node_modules[\\/](cytoscape-fcose|cose-base|layout-base)[\\/]/ },
+            { name: "maplibre", test: /node_modules[\\/](maplibre-gl|@maplibre)[\\/]/ },
           ],
         },
       },

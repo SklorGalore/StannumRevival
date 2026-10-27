@@ -45,8 +45,8 @@ function oneLineLinked(): boolean {
   return !!caseName && caseName === useWorkspace.getState().caseSummary?.name;
 }
 
-/** Show the Network style, drawn around the one-line's bus with its hop count. */
-export function showNetwork() {
+/** Show the Network (or Map) style, around the one-line's bus with its hop count. */
+export function showNetwork(target: "network" | "map" = "network") {
   const style = useDrawingStyle.getState();
   const picked = oneLineElement();
   if (picked) style.setElement(picked);
@@ -57,8 +57,9 @@ export function showNetwork() {
     if (drawn.nodeIds.length || drawn.edgeIds.length) style.setElement(null);
   }
   const around = useDiagramStore.getState().metadata.around;
-  if (around && oneLineLinked()) style.setFocus(around);
-  style.setStyle("network");
+  // Only coming from the one-line: Network and Map share the focus already.
+  if (around && oneLineLinked() && style.style === "oneline") style.setFocus(around);
+  style.setStyle(target);
 }
 
 /**

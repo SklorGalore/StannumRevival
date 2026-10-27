@@ -14,6 +14,10 @@ section into the next version's when a release is cut (see
   Contingencies or Trip and compare) switches the diagram's flow labels, the
   Power flow tables and the inspector to that outage's solution, and the
   case bar says which result is shown, with a menu to switch back.
+- A Map drawing style: attach a bus coordinates CSV and the case's
+  substations and branches are drawn at their latitude and longitude over
+  country and state outlines that ship with the app and follow the theme.
+  Buses the file leaves out are placed next to their neighbours.
 
 ### Changed
 
