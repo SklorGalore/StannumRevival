@@ -56,6 +56,12 @@ section into the next version's when a release is cut (see
 - Records tables and ranked contingency rows travel as columns, like the
   solve report, through one table type in the core: about 15% less to send
   for the largest Records table of a 12,000-bus case. Command API version 3.
+- Opening a case no longer builds its topology: the Network style, the
+  diagram's tables and layers build it the first time they need it. A
+  12,000-bus case opens in about half the time (0.26 s to 0.12 s).
+- A solve after a Records edit starts from the last converged solve, as
+  long as the edit kept the same buses: a 5 MW load change on case300
+  solves in 1 iteration instead of 4.
 
 ### Fixed
 

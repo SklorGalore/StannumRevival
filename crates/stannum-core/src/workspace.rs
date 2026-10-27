@@ -23,8 +23,8 @@ use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, Topol
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, schemars::JsonSchema)]
@@ -65,7 +65,9 @@ pub struct OpenCase {
     /// whether its results still describe this case.
     pub version: u64,
     pub power: Result<Arc<PowerCase>, String>,
-    pub topology: Result<TopologyState, String>,
+    /// Built the first time a command needs it (see [`Self::topology`]):
+    /// opening a large case doesn't wait for a graph nobody has asked for.
+    topology: OnceLock<Result<TopologyState, String>>,
     pub solved: Option<Arc<Solved>>,
     /// The last solve from before the study's edits changed, kept as a
     /// starting point for the next solve.
@@ -133,6 +135,8 @@ impl<T: Serialize> ModuleStatus<T> {
 #[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct PowerInfo {
     pub counts: power::CaseCounts,
+    /// The RAW revision the file was read as; null for MATPOWER.
+    pub revision: Option<u32>,
     pub warnings: Vec<power::Warning>,
 }
 
@@ -215,6 +219,11 @@ fn resumable(solve: &Option<Arc<Solved>>) -> Option<&Arc<Solved>> {
     solve.as_ref().filter(|s| {
         s.1.model == power::ModelChoice::Ac && s.0.status == rs_power::SolveStatus::Converged
     })
+}
+
+/// Whether two cases have the same buses in the same order.
+fn same_buses(a: &rs_power::Case, b: &rs_power::Case) -> bool {
+    a.buses.len() == b.buses.len() && a.buses.iter().zip(&b.buses).all(|(x, y)| x.id == y.id)
 }
 
 fn elapsed_ms(start: Instant) -> f64 {
@@ -307,40 +316,6 @@ impl OpenCase {
             }
             Err(e) => log::warn!("Power flow can't use {name}: {e}"),
         }
-        let start = Instant::now();
-        let from_nodal = match format {
-            CaseFormat::Matpower => {
-                Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
-            }
-            CaseFormat::Raw => nodal::parse_raw(bytes).map_err(|d| d.to_string()),
-        };
-        // nodal reads RAW revision 35 with every record; anything else that
-        // power flow can read gets a topology built from its model.
-        let topology = match (from_nodal, &power) {
-            (Ok(case), _) => Ok((case, false)),
-            (Err(_), Ok(p)) => Ok((crate::derived_topology::from_power(p), true)),
-            (Err(e), Err(_)) => Err(e),
-        }
-        .map(|(case, derived)| TopologyState {
-            topology: Topology::new(&case),
-            case,
-            derived,
-            merge_zero_impedance: false,
-        });
-        match &topology {
-            Ok(t) => log::info!(
-                "Built topology{}: {} buses, {} equipment ({:.0} ms)",
-                if t.derived {
-                    " from the power flow model"
-                } else {
-                    ""
-                },
-                t.case.buses.len(),
-                t.case.equipment.len(),
-                elapsed_ms(start)
-            ),
-            Err(e) => log::warn!("Topology can't use {name}: {e}"),
-        }
         let mut case = Self {
             id: CaseId(0),
             path: path.to_path_buf(),
@@ -348,7 +323,7 @@ impl OpenCase {
             format,
             version: next_version(),
             power: power.map(Arc::new),
-            topology,
+            topology: OnceLock::new(),
             solved: None,
             before_edits: None,
             sensitivity: None,
@@ -364,6 +339,11 @@ impl OpenCase {
             bytes: bytes.to_vec(),
             record_edits: 0,
         };
+        // Without a power flow model the topology is all the case has, so
+        // the summary needs to know at once whether it can be built.
+        if case.power.is_err() {
+            case.topology();
+        }
         case.places = case.resolve_places().map(|c| c.summary);
         if let Some(p) = &case.places {
             log::info!(
@@ -375,6 +355,52 @@ impl OpenCase {
             );
         }
         case
+    }
+
+    /// The case's topology, built the first time it's asked for. nodal reads
+    /// RAW revision 35 with every record; anything else that power flow can
+    /// read gets a topology built from its model.
+    pub fn topology(&self) -> &Result<TopologyState, String> {
+        self.topology.get_or_init(|| {
+            let start = Instant::now();
+            let from_nodal = match self.format {
+                CaseFormat::Matpower => {
+                    Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
+                }
+                CaseFormat::Raw => nodal::parse_raw(&self.bytes).map_err(|d| d.to_string()),
+            };
+            let topology = match (from_nodal, &self.power) {
+                (Ok(case), _) => Ok((case, false)),
+                (Err(_), Ok(p)) => Ok((crate::derived_topology::from_power(p), true)),
+                (Err(e), Err(_)) => Err(e),
+            }
+            .map(|(case, derived)| TopologyState {
+                topology: Topology::new(&case),
+                case,
+                derived,
+                merge_zero_impedance: false,
+            });
+            match &topology {
+                Ok(t) => log::info!(
+                    "Built topology{}: {} buses, {} equipment ({:.0} ms)",
+                    if t.derived {
+                        " from the power flow model"
+                    } else {
+                        ""
+                    },
+                    t.case.buses.len(),
+                    t.case.equipment.len(),
+                    elapsed_ms(start)
+                ),
+                Err(e) => log::warn!("Topology can't use {}: {e}", self.name),
+            }
+            topology
+        })
+    }
+
+    /// Whether the topology has been built yet.
+    pub fn topology_built(&self) -> bool {
+        self.topology.get().is_some()
     }
 
     /// Where every bus goes on the map, from the attached file and the
@@ -397,15 +423,25 @@ impl OpenCase {
             format: self.format,
             power: ModuleStatus::from(&self.power, |p| PowerInfo {
                 counts: power::counts(&p.case),
+                revision: p.revision,
                 warnings: p.warnings.clone(),
             }),
-            topology: ModuleStatus::from(&self.topology, |t| TopologyInfo {
-                revision: t.case.revision,
-                derived: t.derived,
-                buses: t.case.buses.len(),
-                equipment: t.case.equipment.len(),
-                titles: t.case.titles.clone(),
-            }),
+            topology: match self.topology.get() {
+                Some(t) => ModuleStatus::from(t, |t| TopologyInfo {
+                    revision: t.case.revision,
+                    derived: t.derived,
+                    buses: t.case.buses.len(),
+                    equipment: t.case.equipment.len(),
+                    titles: t.case.titles.clone(),
+                }),
+                // Not built yet, which only happens when the power flow
+                // model was read: then a topology can always be built.
+                None => ModuleStatus {
+                    available: true,
+                    error: None,
+                    info: None,
+                },
+            },
             diffable: self.format == CaseFormat::Raw,
             record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
@@ -861,10 +897,11 @@ impl OpenCase {
     /// One element's data and limits from the file, for the element inspector.
     pub fn element_detail(&self, element: &str) -> Result<crate::inspect::ElementDetail, Error> {
         let power = self.power.as_ref().map_err(|e| e.clone())?;
-        let topology = self
-            .topology
-            .as_ref()
-            .ok()
+        // RAW 35 records as nodal read them; other files would only get a
+        // topology derived from the same model, so don't build one for that.
+        let topology = (power.revision == Some(35))
+            .then(|| self.topology().as_ref().ok())
+            .flatten()
             .filter(|t| !t.derived)
             .map(|t| &t.case);
         let mut detail = crate::inspect::element(power, topology, element)?;
@@ -999,6 +1036,16 @@ impl OpenCase {
             }
             next.records = records.map(|r| Ok(Arc::new(r)));
         }
+        // The last converged AC solve stays the next solve's starting point
+        // while the buses are the same ones: an edit to a load or a branch
+        // then re-solves from where the case was, not from the file.
+        if let (Some(last), Ok(power)) = (
+            resumable(&self.solved).or_else(|| resumable(&self.before_edits)),
+            &next.power,
+        ) && same_buses(&last.0.case, &power.case)
+        {
+            next.before_edits = Some(last.clone());
+        }
         log::info!(
             "Applied {} to {} ({:.0} ms)",
             if count == 1 {
@@ -1064,7 +1111,7 @@ impl OpenCase {
     }
 
     fn topology_state(&self) -> Result<&TopologyState, Error> {
-        Ok(self.topology.as_ref().map_err(|e| e.clone())?)
+        Ok(self.topology().as_ref().map_err(|e| e.clone())?)
     }
 
     pub fn topology_snapshot(&self) -> Result<TopologySnapshot<'_>, Error> {
@@ -1114,7 +1161,13 @@ impl OpenCase {
     }
 
     pub fn set_merge_zero_impedance(&mut self, enabled: bool) -> Result<TopologyView, Error> {
-        let t = self.topology.as_mut().map_err(|e| e.clone())?;
+        self.topology();
+        let t = self
+            .topology
+            .get_mut()
+            .expect("just built")
+            .as_mut()
+            .map_err(|e| e.clone())?;
         let start = Instant::now();
         t.topology = Topology::with_options(
             &t.case,
@@ -1161,7 +1214,7 @@ impl Workspace {
         log::info!("Opening {}", path.display());
         let bytes = std::fs::read(path).map_err(|e| Error::file(path, e))?;
         let mut case = OpenCase::from_bytes(path, &bytes);
-        if case.power.is_err() && case.topology.is_err() && case.format == CaseFormat::Matpower {
+        if case.power.is_err() && case.topology().is_err() && case.format == CaseFormat::Matpower {
             return Err(case.power.err().unwrap_or_default().into());
         }
         self.last_id += 1;
@@ -1309,7 +1362,9 @@ impl SolveJob {
                 if settings.model == power::ModelChoice::Ac =>
             {
                 if !same_case {
-                    log::info!("Starting from the last solve, from before the study changed");
+                    log::info!(
+                        "Starting from the last solve, from before the case or study changed"
+                    );
                 }
                 Some(power::warm_start(&power.case, &last.0, &mut options))
             }

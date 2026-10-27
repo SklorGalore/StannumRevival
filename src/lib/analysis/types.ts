@@ -28,7 +28,10 @@ export interface CaseSummary {
   path: string;
   name: string;
   format: "matpower" | "raw";
-  power: ModuleStatus<{ counts: CaseCounts; warnings: RawWarning[] }>;
+  /** `revision`: the RAW revision the file was read as; null for MATPOWER. Missing from older backends. */
+  power: ModuleStatus<{ counts: CaseCounts; revision?: number | null; warnings: RawWarning[] }>;
+  /** `info` is null until the topology is first built (it's built when a
+   *  view asks for it, not on open). */
   topology: ModuleStatus<{
     /** RAW revision nodal read; 0 when built from the power flow model. */
     revision: number;

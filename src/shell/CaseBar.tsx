@@ -29,6 +29,7 @@ export function CaseBar() {
 
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
+  const revision = summary?.power.info?.revision ?? (topo && !topo.derived ? topo.revision : null);
 
   // In a narrow window the buttons drop their labels and the selection's
   // "Show in" links fold into a menu, rather than running into each other.
@@ -43,7 +44,7 @@ export function CaseBar() {
             {summary.name}
           </span>
           <span className="min-w-0 text-[11px] text-slate-500 truncate">
-            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${topo && !topo.derived ? ` v${topo.revision}` : ""}`}
+            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${revision ? ` v${revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(
                 counts.branches

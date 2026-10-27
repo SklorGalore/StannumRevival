@@ -21,7 +21,7 @@ fn check(path: PathBuf) -> (usize, usize) {
     let ws = open(path);
     let case = ws.case.as_ref().unwrap();
     let power = case.power.as_ref().unwrap();
-    let topo = case.topology.as_ref().unwrap();
+    let topo = case.topology().as_ref().unwrap();
 
     let equipment: HashSet<&str> = topo.case.equipment.iter().map(|e| e.id.as_str()).collect();
     let generators: HashSet<&str> = topo.case.generators.iter().map(|g| g.id.as_str()).collect();
@@ -100,7 +100,7 @@ fn matpower_parallel_branches_are_numbered() {
 fn diff_records_match_nodal_ids() {
     let path = sample("MemphisCase2026_Mar7.RAW");
     let mut ws = open(path.clone());
-    let topo = &ws.case.as_ref().unwrap().topology.as_ref().unwrap().case;
+    let topo = &ws.case.as_ref().unwrap().topology().as_ref().unwrap().case;
     let mut known: HashSet<String> = topo
         .buses
         .iter()

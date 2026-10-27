@@ -858,6 +858,8 @@ export type Path = {
 
 export type PowerInfo = {
   counts: CaseCounts;
+  /** The RAW revision the file was read as; null for MATPOWER. */
+  revision: number | null;
   warnings: Warning[];
 };
 
