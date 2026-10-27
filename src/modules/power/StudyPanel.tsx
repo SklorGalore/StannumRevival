@@ -1,7 +1,8 @@
 // The study tab: the edits every solve uses, each removable.
 import { useState } from "react";
-import { Bookmark, FlaskConical, RotateCcw, Trash2, X } from "lucide-react";
+import { Bookmark, FlaskConical, GitCompareArrows, RotateCcw, Trash2, X } from "lucide-react";
 import { useStudy, type SavedSolve } from "../../store/studyStore";
+import { useWorkspace } from "../../store/workspaceStore";
 import type { SolveReport } from "../../lib/analysis/types";
 import { count, fixed } from "../../lib/analysis/format";
 import { CompareSolves } from "./CompareSolves";
@@ -54,6 +55,8 @@ export function StudyPanel({ onShow, report, stale }: { onShow: (element: string
   const busy = useStudy((s) => s.busy);
   const remove = useStudy((s) => s.remove);
   const clear = useStudy((s) => s.clear);
+  const showInDiff = useStudy((s) => s.showInDiff);
+  const diffable = useWorkspace((s) => !!s.caseSummary?.diffable);
   return (
     <div className="p-4 flex flex-col gap-3 overflow-y-auto h-full [&>*]:shrink-0">
       {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -62,11 +65,18 @@ export function StudyPanel({ onShow, report, stale }: { onShow: (element: string
         title="Edits to this case"
         eyebrow="Study"
         actions={
-          entries.length > 1 && (
-            <Button variant="ghost" onClick={() => void clear()} disabled={busy}>
-              <Trash2 size={13} /> Clear all
-            </Button>
-          )
+          <>
+            {diffable && entries.length > 0 && (
+              <Button variant="ghost" onClick={showInDiff} title="See the records these edits change, against the file, in Case diff">
+                <GitCompareArrows size={13} /> Compare with file
+              </Button>
+            )}
+            {entries.length > 1 && (
+              <Button variant="ghost" onClick={() => void clear()} disabled={busy}>
+                <Trash2 size={13} /> Clear all
+              </Button>
+            )}
+          </>
         }
       >
         {entries.length === 0 ? (

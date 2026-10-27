@@ -264,6 +264,14 @@ pub async fn diff_compare(
     .await
 }
 
+/// Compare the open case's file with the case as it is being worked on.
+#[tauri::command]
+pub async fn diff_compare_working(
+    state: State<'_, SharedWorkspace>,
+) -> Result<DiffSummary, String> {
+    with(state, |ws| ws.compare_working()).await
+}
+
 #[tauri::command]
 pub async fn diff_section_records(
     state: State<'_, SharedWorkspace>,

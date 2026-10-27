@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, FileSearch, GitCompareArrows } from "lucide-react";
+import { ArrowLeftRight, FileSearch, FlaskConical, GitCompareArrows } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
+import { useStudy } from "../../store/studyStore";
 import { api, pickFile, RAW_FILTERS } from "../../lib/analysis/api";
 import type { DiffRecordDetail, DiffRecordRow, DiffStatus, DiffSummary } from "../../lib/analysis/types";
 import { count } from "../../lib/analysis/format";
@@ -68,6 +69,13 @@ export function CaseDiffModule({ active }: { active: boolean }) {
   // A selection from another module waiting for its section's records to load.
   const [pending, setPending] = useState<string | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
+  // When the results are the working case against its file: the study and
+  // case they were made from, to tell when they go stale.
+  const [working, setWorking] = useState<{ revision: number; caseVersion: number } | null>(null);
+  const studyRevision = useStudy((s) => s.revision);
+  const studyEdits = useStudy((s) => s.entries.length);
+  const diffRequest = useStudy((s) => s.diffRequest);
+  const caseVersion = useWorkspace((s) => s.caseVersion);
 
   useEffect(() => {
     setMissing(null);
@@ -115,11 +123,22 @@ export function CaseDiffModule({ active }: { active: boolean }) {
       setError("Choose both files before comparing.");
       return;
     }
+    await run(() => api.diffCompare(baseline, comparison), null);
+  }
+
+  /** The open case, with its Records and study edits, against its file. */
+  async function compareWorking() {
+    const made = { revision: useStudy.getState().revision, caseVersion: useWorkspace.getState().caseVersion };
+    await run(() => api.diffCompareWorking(), made);
+  }
+
+  async function run(diff: () => Promise<DiffSummary>, made: typeof working) {
     setBusy(true);
     setError(null);
     clearResults();
+    setWorking(made);
     try {
-      const s = await api.diffCompare(baseline, comparison);
+      const s = await diff();
       setSummary(s);
       const first = s.sections.find((x) => x.counts.added + x.counts.removed + x.counts.changed > 0) ?? s.sections[0];
       setSection(first?.name ?? null);
@@ -129,6 +148,13 @@ export function CaseDiffModule({ active }: { active: boolean }) {
       setBusy(false);
     }
   }
+
+  // "Compare with file" from the Study tab.
+  useEffect(() => {
+    if (diffRequest > 0) void compareWorking();
+  }, [diffRequest]);
+  const workingStale = !!working && (working.revision !== studyRevision || working.caseVersion !== caseVersion);
+  const recordEdits = openSummary?.record_edits ?? 0;
 
   useEffect(() => {
     setSelected(null);
@@ -208,10 +234,38 @@ export function CaseDiffModule({ active }: { active: boolean }) {
               Use the open case ({openSummary.name}) as the baseline
             </button>
           )}
+          {openSummary?.diffable && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 text-xs text-slate-600" data-testid="compare-working">
+              <FlaskConical size={14} className="text-teal-700 shrink-0" />
+              <span>
+                Or see what you've changed in <strong>{openSummary.name}</strong>:{" "}
+                {studyEdits || recordEdits
+                  ? [
+                      studyEdits ? `${studyEdits} study edit${studyEdits === 1 ? "" : "s"}` : null,
+                      recordEdits ? `${recordEdits} value${recordEdits === 1 ? "" : "s"} edited in Records` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" and ")
+                  : "no edits yet"}
+                , against the file on disk.
+              </span>
+              <Button onClick={() => void compareWorking()} disabled={busy}>
+                <GitCompareArrows size={14} /> Compare with its file
+              </Button>
+            </div>
+          )}
         </div>
       </Panel>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
+      {workingStale && summary && (
+        <Notice>
+          The study or the case has changed since this comparison.{" "}
+          <button className="text-teal-700 underline" onClick={() => void compareWorking()}>
+            Compare again
+          </button>
+        </Notice>
+      )}
       {missing && summary && (
         <Notice>
           {elementLabel(missing)} is not in this comparison.

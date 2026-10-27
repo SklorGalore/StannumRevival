@@ -48,6 +48,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   load_dc_grids: { label: "Reading DC grid file", done: "Attached DC grid file" },
   clear_dc_grids: { label: "Detaching DC grid file", done: "Detached DC grid file" },
   diff_compare: { label: "Comparing cases", done: "Compared cases" },
+  diff_compare_working: { label: "Comparing the working case with its file", done: "Compared the working case with its file" },
   save_diagram: { label: "Saving file", done: "Saved file" },
   diagram_network: { label: "Reading the case network", quiet: true },
   element_detail: { label: "Reading an element", quiet: true },
@@ -180,6 +181,7 @@ export const api = {
 
   diffCompare: (baseline: string, comparison: string) =>
     call<DiffSummary>("diff_compare", { baseline, comparison }),
+  diffCompareWorking: () => call<DiffSummary>("diff_compare_working"),
   diffSectionRecords: (section: string) =>
     call<DiffRecordRow[]>("diff_section_records", { section }),
   diffRecordDetail: (section: string, index: number) =>

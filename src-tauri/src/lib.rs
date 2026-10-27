@@ -136,6 +136,7 @@ pub fn run() {
             analysis::topology_set_merge,
             analysis::topology_shortest_path,
             analysis::diff_compare,
+            analysis::diff_compare_working,
             analysis::diff_section_records,
             analysis::diff_record_detail,
             analysis::run_contingencies,

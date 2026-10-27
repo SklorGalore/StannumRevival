@@ -61,6 +61,9 @@ interface StudyState {
   add: (entry: StudyEntry) => Promise<boolean>;
   remove: (index: number) => Promise<boolean>;
   clear: () => Promise<boolean>;
+  /** Asks Case diff to compare the working case with its file. */
+  diffRequest: number;
+  showInDiff: () => void;
   /** Asks Power flow to show the study tab. */
   showRequest: number;
   show: () => void;
@@ -116,6 +119,11 @@ export const useStudy = create<StudyState>((set, get) => ({
   add: (entry) => get().setEntries(withEdit(get().entries, entry)),
   remove: (index) => get().setEntries(get().entries.filter((_, i) => i !== index)),
   clear: () => get().setEntries([]),
+  diffRequest: 0,
+  showInDiff: () => {
+    set((s) => ({ diffRequest: s.diffRequest + 1 }));
+    useWorkspace.getState().setModule("diff");
+  },
   showRequest: 0,
   show: () => {
     set((s) => ({ showRequest: s.showRequest + 1 }));

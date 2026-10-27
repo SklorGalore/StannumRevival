@@ -89,6 +89,7 @@ fn dispatch(ws: &mut Workspace, command: &str, args: &Value) -> Result<Value, St
             &PathBuf::from(arg::<String>(args, "baseline")?),
             &PathBuf::from(arg::<String>(args, "comparison")?),
         )?),
+        "diff_compare_working" => to_json(ws.compare_working()?),
         "diff_section_records" => to_json(
             ws.comparison()?
                 .section_records(&arg::<String>(args, "section")?),

@@ -1268,6 +1268,31 @@ await recent.getByText("moved.stannum").waitFor();
 await recent.getByText("case9.m").first().waitFor();
 await shot("recent-files");
 
+// Case diff of the working case: a study outage on a RAW case shows as the
+// branch record's status changing from the file.
+await queue(STANNUM_RAW);
+await page.getByRole("button", { name: "Open case…" }).first().click();
+await page.getByRole("button", { name: "Solve", exact: true }).click();
+await page.getByText(/Converged|Iteration limit/).first().waitFor();
+await page.getByRole("tab", { name: /Branches/ }).click();
+await page.locator("table:visible tbody tr:not([data-spacer])").first().click();
+await inspector.getByRole("button", { name: "Take out" }).click();
+await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).click();
+await page.getByRole("button", { name: "Compare with file" }).click();
+await page.getByText("five_bus.raw (working)").waitFor();
+await page.getByText("1 differing records").waitFor();
+await page.getByRole("button", { name: /^BRANCH/ }).click();
+await page.locator("section:has-text('Records') table tbody tr").first().click();
+await page.getByLabel("Changed fields only").check();
+const statRow = page.locator("section:has-text('Fields') table tbody tr", { hasText: /^STAT/ });
+await statRow.waitFor();
+assert.deepEqual(
+  (await statRow.locator("td").allInnerTexts()).map((t) => t.trim()).slice(0, 3),
+  ["STAT", "1", "0"],
+  "the outage sets the branch's STAT from 1 to 0"
+);
+await shot("diff-working");
+
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();
 console.log("smoke test passed");
