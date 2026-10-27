@@ -331,7 +331,7 @@ function NetworkSection({ element, snapshot }: { element: string; snapshot: Topo
             Open at {e.buses.filter((_, i) => e.active_terminals[i] === false).map((b) => `bus ${b}`).join(", ")}.
           </p>
         )}
-        {e && <SourceFields source={e.source} />}
+        {e && <SourceFields element={e.id} source={e.source} />}
       </>
     );
   } else {
@@ -349,7 +349,7 @@ function NetworkSection({ element, snapshot }: { element: string; snapshot: Topo
           <div><dt className="text-slate-500">Connections</dt><dd className="font-medium">{degree?.degree ?? "—"}</dd></div>
         </dl>
         {cut && <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-amber-900">Cut bus: losing it splits its island.</p>}
-        {record && <SourceFields source={record.source} />}
+        {record && <SourceFields element={`bus:${record.number}`} source={record.source} />}
       </>
     );
   }

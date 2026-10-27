@@ -34,7 +34,10 @@ const BUDGETS: &[(&str, f64, f64)] = &[
     ("result_report base", 0.5, 4.0),
     ("diagram_network", 0.5, 6.5),
     ("bus_coordinates", 0.5, 0.75),
-    ("topology_snapshot", 2.0, 20.0),
+    // Sent as columns without source fields (see `topology_wire`): 2.3 MB
+    // and 0.06 s at 12k buses, from 14 MB and 0.46 s as one object per row.
+    ("topology_snapshot", 0.5, 3.5),
+    ("topology_source", 0.25, 0.1),
     ("case_records", 0.5, 0.1),
     ("record_table (largest)", 0.5, 4.5),
     ("run_contingencies", 90.0, 0.5),
@@ -187,6 +190,14 @@ fn a_large_case_stays_within_budget() {
         "topology_snapshot",
         json!({}),
     );
+    let source = run(
+        &s,
+        &mut out,
+        "topology_source",
+        "topology_source",
+        json!({ "element": "bus:1" }),
+    );
+    assert!(!source.is_null(), "bus 1 has a source record");
     let book = run(&s, &mut out, "case_records", "case_records", json!({}));
     let largest = book["sections"]
         .as_array()

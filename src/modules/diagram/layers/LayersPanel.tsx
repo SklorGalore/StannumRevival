@@ -198,7 +198,7 @@ function MergeSwitch({ snapshot }: { snapshot: TopologySnapshot }) {
     setBusy(true);
     setError(null);
     try {
-      const view = await api.topologySetMerge(enabled);
+      const view = await api.topologySetMerge(enabled, snapshot.case);
       shareTopology(version, { ...snapshot, analysis: view.analysis, graph: view.graph });
       // A path found on the other graph no longer matches it.
       useLayers.getState().setPath(null);

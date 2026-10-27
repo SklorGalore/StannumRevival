@@ -17,20 +17,20 @@ import type {
   DiffSummary,
   ElementDetail,
   FileFingerprint,
-  GraphData,
   RecordBook,
   RecordEdit,
   RecordTable,
-  Analysis,
   ResponseTable,
   SensitivitySummary,
   SolveReport,
   SolveSettings,
   StudyEdit,
+  SourceRecord,
+  TopoCase,
   TopoPath,
-  TopologySnapshot,
 } from "./types";
 import { decodeSolveReport, type WireSolveReport } from "./wire";
+import { decodeTopology, decodeView, type WireTopology, type WireTopologyView } from "./topologyWire";
 
 /** How each command reads in the log. Quiet ones only log when they fail. */
 const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean }> = {
@@ -63,6 +63,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
+  topology_source: { label: "Reading the record", quiet: true },
 };
 
 /** Commands the desktop shell answers itself; everything else is a core command. */
@@ -199,9 +200,11 @@ export const api = {
   studyLocateCase: (study: string, absolute: string, relative: string | null) =>
     call<string | null>("study_locate_case", { study, absolute, relative }),
 
-  topologySnapshot: () => call<TopologySnapshot>("topology_snapshot"),
-  topologySetMerge: (enabled: boolean) =>
-    call<{ analysis: Analysis; graph: GraphData }>("topology_set_merge", { enabled }),
+  topologySnapshot: () => call<WireTopology>("topology_snapshot").then(decodeTopology),
+  /** Merge or split zero-impedance branches; `c` is the snapshot's case. */
+  topologySetMerge: (enabled: boolean, c: TopoCase) =>
+    call<WireTopologyView>("topology_set_merge", { enabled }).then((w) => decodeView(w, c)),
+  topologySource: (element: string) => call<SourceRecord | null>("topology_source", { element }),
   shortestPath: (from: number, to: number) =>
     call<TopoPath | null>("topology_shortest_path", { from, to }),
 
