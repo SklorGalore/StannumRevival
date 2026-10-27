@@ -29,6 +29,14 @@ field, and bus names, against MATPOWER 8.1's importer. They cover all
 supported revision layouts, every transformer `CW`/`CZ` combination, partial
 winding statuses, DC control modes and three upstream RAW fixtures.
 
+Stannum reads a RAW file with three readers: one for power flow (revisions
+23 to 35), one for topology (35) and one for Records and Case diff (33 and
+35). A test reads every RAW fixture with each reader that supports its
+revision and checks they count the same buses, generators, branches,
+switching devices and loads. Known gaps are listed in the test with their
+reason: Records and Case diff can't yet read a RAW 35 file with substation
+data, or bus records that leave out trailing fields.
+
 ## Numerical checks
 
 - Analytic Jacobians against finite differences.
