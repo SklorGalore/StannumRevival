@@ -70,3 +70,6 @@ assembled from StannumSLD, rs-power, nodal and case-diff.
 - Records: every record type of the open case as a table, with cell editing.
 - Case diff: record-level comparison of two cases.
 - Documentation site with a user guide and technical manual.
+- Synthetic test cases of any size, built with the method of Birchfield et
+  al. (2017) and checked against its structural criteria
+  (`scripts/new-synthetic-case.ps1`).
