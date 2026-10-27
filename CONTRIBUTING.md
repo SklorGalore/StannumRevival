@@ -2,38 +2,41 @@
 
 ## Branches
 
-`main` is the only long-lived branch. It is protected and should always
-build, pass CI and be ready to release.
+Stannum uses git flow. `development` is where work comes together; `main`
+holds only released code. Both are protected and should always build and
+pass CI.
 
-| Branch | Purpose | Merges into |
-|---|---|---|
-| `main` | Released and releasable code | — |
-| any other name, e.g. `feature/topology-filters`, `fix/export-blank`, `claude/…` | One change each, short-lived | `main` by pull request |
-| `release/x.y` | Only when an old release needs a fix | made from the `vx.y.0` tag; fixes merge in by PR, then are also merged to `main` |
+| Branch | Purpose | Made from | Merges into |
+|---|---|---|---|
+| `main` | Released code; every merge is a release | — | `development` (back-merge after each release) |
+| `development` | The next release, as it is built | — | `release/vX.Y.Z` is cut from it |
+| any other name, e.g. `feature/topology-filters`, `fix/export-blank`, `claude/…` | One change each, short-lived | `development` | `development` by pull request |
+| `release/vX.Y.Z` | One release being stabilised: version bump and fixes only | `development` | `main` by pull request |
+| `hotfix/vX.Y.Z` | An urgent fix to the released code | `main` | `main` by pull request |
 
-Releases are tags on `main` named `vMAJOR.MINOR.PATCH` (for example `v0.3.0`).
-Only the maintainer can create release tags, and they can't be moved or
-deleted.
-
-This is a lighter form of git flow: there is no `develop` branch, because
-every change already passes CI in its own PR before it reaches `main`.
+Releases are tags on `main` named `vMAJOR.MINOR.PATCH` (for example `v0.3.0`),
+on the merge commit of a release or hotfix branch. Only the maintainer can
+create release tags, and they can't be moved or deleted.
+`scripts/release/start-release.ps1` and `finish-release.ps1` do the branch,
+tag and back-merge steps; see [docs/releasing.md](docs/releasing.md).
 
 ## Pull requests
 
-1. Branch from the latest `main`.
-2. Open a PR into `main`. Fill in the template, including screenshots for
+1. Branch from the latest `development`.
+2. Open a PR into `development`. Fill in the template, including screenshots for
    anything visible in the app.
 3. CI must pass: **Rust core and desktop shell** and **Frontend build and
    browser smoke test**. Review conversations must be resolved.
 4. Merge with **Create a merge commit** (the default) or **Squash and merge**.
-   Rebase merging is off.
+   Rebase merging is off. Release, hotfix and back-merge PRs (into `main`, or
+   from `main` into `development`) always use a merge commit.
    Use a merge commit for anything that pulls a subtree into `crates/`, so
    `git subtree` can still find the upstream history.
 5. The branch is deleted after merging.
 
-The branch does not need to be up to date with `main` before merging, so
-parallel PRs don't have to keep re-running CI. If two PRs conflict, GitHub
-shows it and the later one needs `main` merged in.
+The branch does not need to be up to date with `development` before merging,
+so parallel PRs don't have to keep re-running CI. If two PRs conflict, GitHub
+shows it and the later one needs `development` merged in.
 
 ## Documentation
 
@@ -67,8 +70,8 @@ pwsh scripts/setup-github-repo.ps1 -Audit    # print current settings
 
 It sets:
 
-- **Rulesets** from [`.github/rulesets/`](.github/rulesets): `main` and
-  `release/**` require a PR with passing CI and block force pushes and
+- **Rulesets** from [`.github/rulesets/`](.github/rulesets): `main`,
+  `development`, `release/**` and `hotfix/**` require a PR with passing CI and block force pushes and
   deletion; `v*` tags can be created only by an admin and never moved or
   deleted. Admins may bypass the branch rules only by merging a PR, never by
   pushing straight to the branch.
