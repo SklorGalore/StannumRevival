@@ -4,6 +4,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
 import { StudyNoticeBar } from "./StudyFileControls";
+import { RunFileBar } from "./RunFileBar";
+import { useRunFile } from "../store/runFileStore";
+import { RUN_FILE_EXTENSION } from "../lib/analysis/api";
 import { useStudyFile } from "../store/studyFileStore";
 import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
@@ -17,7 +20,7 @@ import { RecordsModule } from "../modules/records/RecordsModule";
 
 const CASE_EXTENSIONS = /\.(raw|m)$/i;
 
-/** Open a case or study dropped anywhere on the window (outside the diff file pickers). */
+/** Open a case or study, or run a run file, dropped anywhere on the window (outside the diff file pickers). */
 function useCaseDrop() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -31,6 +34,8 @@ function useCaseDrop() {
     webview
       .onDragDropEvent((event) => {
         if (event.payload.type !== "drop") return;
+        const run = event.payload.paths.find((p) => RUN_FILE_EXTENSION.test(p));
+        if (run) return void useRunFile.getState().run(run);
         const path = event.payload.paths.find((p) => CASE_EXTENSIONS.test(p) || STUDY_EXTENSION.test(p));
         if (path) void useStudyFile.getState().openFile(path);
       })
@@ -161,6 +166,7 @@ export function Shell() {
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
         <StudyNoticeBar />
+        <RunFileBar />
         <CommandPalette />
         <div ref={body} className="flex-1 min-h-0 relative">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}

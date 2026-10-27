@@ -1454,7 +1454,8 @@ export interface CoreCommands {
   };
   /**
    * Write commands as a run file, such as the ones Record kept. Paths in
-   * the run file's folder are written relative to it.
+   * the run file's folder are written relative to it, and settings at
+   * their defaults are left out.
    */
   save_run_file: {
     args: {
@@ -1491,6 +1492,13 @@ export interface CoreCommands {
       settings?: SolveSettings | null;
     };
     result: SolveReport;
+  };
+  /** The study's edits, as `set_study_edits` last set them. */
+  study_edits: {
+    args: {
+      case?: CaseId | null;
+    };
+    result: Edit[];
   };
   /** Where a study's case is now (see `study_file::locate_case`). */
   study_locate_case: {
@@ -1562,6 +1570,27 @@ export interface CoreCommands {
 export type CoreCommand = keyof CoreCommands;
 export type CoreArgs<C extends CoreCommand> = CoreCommands[C]["args"];
 export type CoreResult<C extends CoreCommand> = CoreCommands[C]["result"];
+
+/** Commands that change the case or write a file: the ones Record keeps. */
+export const ACTION_COMMANDS: readonly CoreCommand[] = [
+  "apply_record_edits",
+  "calculate_sensitivities",
+  "clear_coordinates",
+  "clear_dc_grids",
+  "close_case",
+  "diff_compare",
+  "diff_compare_working",
+  "export_matpower",
+  "load_coordinates",
+  "load_dc_grids",
+  "open_case",
+  "run_contingencies",
+  "save_case_as",
+  "set_study_edits",
+  "solve_power_flow",
+  "topology_set_merge",
+  "trip_and_compare",
+];
 
 /** What every core command rejects with. */
 export type CoreError = Error;

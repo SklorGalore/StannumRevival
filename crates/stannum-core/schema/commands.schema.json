@@ -5657,7 +5657,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it.",
+      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
       "result": {
         "type": "null"
       },
@@ -5767,6 +5767,33 @@
       "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.\nSettings left out take their defaults.",
       "result": {
         "$ref": "#/$defs/SolveReport"
+      },
+      "takes_case": true
+    },
+    "study_edits": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The study's edits, as `set_study_edits` last set them.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/Edit"
+        },
+        "type": "array"
       },
       "takes_case": true
     },

@@ -597,6 +597,10 @@ commands! {
     set_study_edits { case: Option<CaseId>, edits: Vec<Edit> } -> () =>
         |s, a| s.workspace()?.case_mut(a.case)?.set_edits(a.edits);
 
+    /// The study's edits, as `set_study_edits` last set them.
+    study_edits { case: Option<CaseId> } -> Vec<Edit> =>
+        |s, a| Ok(s.workspace()?.case(a.case)?.edits.clone());
+
     /// Calculate sensitivities at the solved operating point.
     calculate_sensitivities { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SensitivitySummary =>
         |s, a| s.sensitivities(a.case, a.settings.unwrap_or_default());
@@ -746,10 +750,13 @@ commands! {
     };
 
     /// Write commands as a run file, such as the ones Record kept. Paths in
-    /// the run file's folder are written relative to it.
+    /// the run file's folder are written relative to it, and settings at
+    /// their defaults are left out.
     save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
         let folder = crate::run_file::folder_of(&a.path);
-        let text = crate::run_file::format(&a.steps, Some(&folder), &format!(
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        let text = crate::run_file::format(&steps, Some(&folder), &format!(
             "Stannum run file, recorded in the app.\nRun it from Ctrl+K > Run a run file, or: stannum-cli run {}",
             a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
         ))?;

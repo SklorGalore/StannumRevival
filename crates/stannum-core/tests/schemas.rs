@@ -238,6 +238,7 @@ fn answers_fit_their_schemas() {
     );
     c.ok("solve_power_flow", json!({ "settings": solve }));
     c.ok("result_report", json!({ "name": "study" }));
+    assert_eq!(c.ok("study_edits", json!({})).as_array().unwrap().len(), 1);
     c.ok("set_study_edits", json!({ "edits": [] }));
     c.ok("solve_power_flow", json!({ "settings": solve }));
     c.ok("diff_compare_working", json!({}));

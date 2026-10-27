@@ -230,10 +230,12 @@ crates/nodal/             RAW v35 parser and topology (islands, bridges, paths)
 crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
   src/commands.rs         Every command the app, the dev bridge and scripts use, listed once
   src/workspace.rs        The shared open case; parses once per engine
+  src/run_file.rs         Run files (.stnrun): commands one per line, read and written
   src/power.rs            rs-power solve/sensitivity results shaped for the UI
   src/diff/               case-diff port: tokenizer, exact values, parser, comparison
   schemas/raw.schema.json RAW field layouts (shared with nodal and case-diff)
   tests/                  Integration tests and fixtures
+crates/stannum-cli/       stannum-cli: runs and checks run files without the app
 src-tauri/                Desktop shell; src/analysis.rs passes commands to the core's list
 src/
   shell/                  Module rail, case bar, drag-and-drop

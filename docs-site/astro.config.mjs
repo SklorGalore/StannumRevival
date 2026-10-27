@@ -46,6 +46,7 @@ export default defineConfig({
             { label: "Records", slug: "guide/records" },
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },
+            { label: "Run files", slug: "guide/run-files" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
           ],
         },
@@ -83,6 +84,7 @@ export default defineConfig({
             { label: "MATPOWER", slug: "reference/matpower" },
             { label: "Stannum DC grid file", slug: "reference/dc-grid-file" },
             { label: "Bus coordinates file", slug: "reference/coordinates-file" },
+            { label: "Run file format", slug: "reference/run-file" },
           ],
         },
         {

@@ -31,7 +31,7 @@ import type {
 } from "./types";
 import { decodeSolveReport } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, Step } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -67,6 +67,9 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
   topology_source: { label: "Reading the record", quiet: true },
+  run_file: { label: "Running run file", done: "Ran run file" },
+  save_run_file: { label: "Saving run file", done: "Saved run file" },
+  study_edits: { label: "Reading study edits", quiet: true },
 };
 
 /** Arguments for a core command, left out when it takes none. */
@@ -108,11 +111,24 @@ export function toStannumError(e: unknown): StannumError {
  * types come from its schemas (commands.gen.ts).
  */
 export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: ArgsFor<C>): Promise<CoreResult<C>> {
+  let result: CoreResult<C>;
   try {
-    return await invoke<CoreResult<C>>("stannum_command", { command, args: args ?? {} });
+    result = await invoke<CoreResult<C>>("stannum_command", { command, args: args ?? {} });
   } catch (e) {
     throw toStannumError(e);
   }
+  for (const watcher of watchers) watcher(command, (args ?? {}) as Record<string, unknown>);
+  return result;
+}
+
+/** Told about every core command that worked, with its arguments (Record uses it). */
+export type CoreCallWatcher = (command: CoreCommand, args: Record<string, unknown>) => void;
+const watchers = new Set<CoreCallWatcher>();
+
+/** Follow every core command that works; the answer stops following. */
+export function watchCoreCalls(watcher: CoreCallWatcher): () => void {
+  watchers.add(watcher);
+  return () => watchers.delete(watcher);
 }
 
 /** Every backend call goes through here and is recorded in the log. */
@@ -165,6 +181,8 @@ export const CASE_FILTERS = [
 export const DC_GRID_FILTERS = [{ name: "Stannum DC grids", extensions: ["json"] }];
 export const COORDINATE_FILTERS = [{ name: "Bus coordinates (CSV)", extensions: ["csv", "CSV", "txt"] }];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
+export const RUN_FILE_FILTERS = [{ name: "Stannum run file", extensions: ["stnrun"] }];
+export const RUN_FILE_EXTENSION = /\.stnrun$/i;
 
 export async function pickFile(
   filters: { name: string; extensions: string[] }[]
@@ -250,6 +268,13 @@ export const api = {
   topologySource: (element: string): Promise<SourceRecord | null> => call("topology_source", { element }),
   shortestPath: (from: number, to: number): Promise<TopoPath | null> =>
     call("topology_shortest_path", { from, to }),
+
+  /** Run a run file's lines in order; the report says how each went. */
+  runFile: (path: string): Promise<RunReport> => call("run_file", { path }),
+  /** Stops the run file in progress before its next line. */
+  cancelRunFile: () => invokeCore("cancel_run_file"),
+  saveRunFile: (path: string, steps: Step[]) => call("save_run_file", { path, steps }),
+  studyEdits: (): Promise<StudyEdit[]> => call("study_edits"),
 
   diffCompare: (baseline: string, comparison: string): Promise<DiffSummary> =>
     call("diff_compare", { baseline, comparison }),

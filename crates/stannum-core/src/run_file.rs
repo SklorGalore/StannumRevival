@@ -288,6 +288,48 @@ pub fn format(steps: &[Step], folder: Option<&Path>, heading: &str) -> Result<St
     Ok(out)
 }
 
+/// Leaves out settings that match the defaults, so a recorded
+/// `solve_power_flow` reads as just that unless something was changed.
+pub fn without_defaults(steps: &mut [Step]) {
+    let solve = serde_json::to_value(crate::power::SolveSettings::default()).unwrap_or_default();
+    let contingency = serde_json::to_value(crate::contingency::ContingencySettings::default())
+        .unwrap_or_default();
+    for step in steps {
+        let default = match step.command.as_str() {
+            "solve_power_flow" | "calculate_sensitivities" => &solve,
+            "run_contingencies" => &contingency,
+            _ => continue,
+        };
+        if let Some(settings) = step.args.get_mut("settings") {
+            strip(settings, default);
+            if settings.as_object().is_some_and(Map::is_empty) {
+                step.args.remove("settings");
+            }
+        }
+    }
+}
+
+/// Removes the fields of `value` that equal `default`'s (numbers by value).
+fn strip(value: &mut Value, default: &Value) {
+    let (Value::Object(fields), Value::Object(defaults)) = (value, default) else {
+        return;
+    };
+    fields.retain(|key, field| match defaults.get(key) {
+        None => true,
+        Some(d) => {
+            strip(field, d);
+            !(same_value(field, d) || field.as_object().is_some_and(Map::is_empty) && d.is_object())
+        }
+    });
+}
+
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        _ => a == b,
+    }
+}
+
 /// A path under `folder` as a relative path with forward slashes; any other
 /// path as it is.
 fn relative_to(path: &Path, folder: &Path) -> String {
@@ -680,6 +722,22 @@ mod tests {
         assert!(!back[1].args.contains_key("case"));
         assert_eq!(back[2].args, steps[2].args);
         assert_eq!(back[3].args, steps[3].args);
+    }
+
+    #[test]
+    fn default_settings_are_left_out() {
+        let mut steps = parse(
+            "solve_power_flow settings={\"model\": \"ac\", \"start\": \"last\", \"tolerance_mva\": 2, \"max_iterations\": 10}\n\
+             solve_power_flow settings={\"model\": \"dc\", \"tolerance_mva\": 2}\n\
+             run_contingencies settings={\"method\": \"ac\", \"limit_pct\": 100, \"solve\": {\"start\": \"last\", \"enforce_q_limits\": true}}\n",
+        )
+        .unwrap();
+        without_defaults(&mut steps);
+        assert!(steps[0].args.is_empty());
+        assert_eq!(steps[1].args["settings"], json!({ "model": "dc" }));
+        let kept = &steps[2].args["settings"];
+        assert_eq!(kept["solve"], json!({ "enforce_q_limits": true }));
+        assert!(kept.get("limit_pct").is_none());
     }
 
     #[test]
