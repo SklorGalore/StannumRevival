@@ -1,6 +1,6 @@
 ---
 title: Run file format
-description: The .stnrun text format: one Stannum command per line, with name=value arguments.
+description: "The .stnrun text format: one Stannum command per line, with name=value arguments."
 ---
 
 A run file is UTF-8 text with the extension `.stnrun`. Each line is one
