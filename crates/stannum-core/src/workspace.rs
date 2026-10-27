@@ -14,6 +14,7 @@ use crate::diff::{self, Comparison};
 use crate::power::{self, PowerCase, SolveSettings};
 use crate::record_edit::{self, RecordEdit};
 use crate::records::{RecordBook, RecordSource, RecordTable, Records};
+use crate::results::ResultName;
 use crate::study::{self, Edit};
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
 use rs_power::{PowerFlowResult, PowerFlowSensitivity};
@@ -70,6 +71,11 @@ pub struct OpenCase {
     pub dc_grids: Option<LoadedDcGrids>,
     /// The last contingency run, until the study's edits change.
     pub contingencies: Option<ContingencyResults>,
+    /// The report of the latest solve (named `base` or `study`, see
+    /// [`crate::results`]), until the study's edits change.
+    pub report: Option<power::SolveReport>,
+    /// The last "Trip and compare", kept so its whole solution can be shown.
+    pub trip: Option<(String, ContingencyResults)>,
     /// The file's records as tables, read the first time they're asked for.
     pub records: Option<Result<Records, String>>,
     /// The case's text as opened, or as edited in Records since.
@@ -319,6 +325,8 @@ impl OpenCase {
             edited: None,
             dc_grids: None,
             contingencies: None,
+            report: None,
+            trip: None,
             records: None,
             bytes: bytes.to_vec(),
             record_edits: 0,
@@ -376,6 +384,8 @@ impl OpenCase {
             self.before_edits = Some(solved);
         }
         self.sensitivity = None;
+        self.report = None;
+        self.trip = None;
         if self.contingencies.take().is_some() {
             log::info!("Contingency results cleared: they were for the case before this change");
         }
@@ -442,7 +452,7 @@ impl OpenCase {
     /// in AC with the same settings: "Trip and compare". The contingency
     /// run in hand, if any, is kept.
     pub fn trip_and_compare(
-        &self,
+        &mut self,
         element: &str,
         limit_pct: f64,
     ) -> Result<ContingencyDetail, String> {
@@ -477,7 +487,38 @@ impl OpenCase {
             detail.overloads.len(),
             if detail.overloads.len() == 1 { "" } else { "s" }
         );
+        self.trip = Some((element.to_string(), results));
         Ok(detail)
+    }
+
+    /// A result by name (see [`crate::results`]): the latest solve, one
+    /// outage of the last contingency run, or the last trip, as a full solve
+    /// report that every view can show.
+    pub fn result(&mut self, name: &str) -> Result<power::SolveReport, String> {
+        let study = !self.edits.is_empty();
+        match name.parse::<ResultName>()? {
+            ResultName::Base if study => {
+                Err("The latest solve includes the study's edits: it's named \"study\".".into())
+            }
+            ResultName::Study if !study => {
+                Err("There are no study edits: the latest solve is named \"base\".".into())
+            }
+            ResultName::Base | ResultName::Study => self
+                .report
+                .clone()
+                .ok_or_else(|| "Solve the case first.".into()),
+            ResultName::Contingency(rank) => self
+                .contingencies
+                .as_mut()
+                .ok_or("Run contingencies first.")?
+                .report(rank),
+            ResultName::Trip(element) => match self.trip.as_mut() {
+                Some((tripped, results)) if *tripped == element => results.report(1),
+                _ => Err(format!(
+                    "Trip and compare {element} first: only the last trip is kept."
+                )),
+            },
+        }
     }
 
     pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
@@ -606,6 +647,7 @@ impl OpenCase {
         }
         self.solved = Some((result, settings));
         self.before_edits = None;
+        self.report = Some(report.clone());
         log_report(&report, solved_ms);
         Ok(report)
     }

@@ -4,6 +4,7 @@ import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
+import { ResultChip } from "./ResultChip";
 import { useWidth } from "../ui/useWidth";
 import { WindowControls, dragRegion } from "./WindowControls";
 import { StudyFileButton } from "./StudyFileControls";
@@ -66,6 +67,7 @@ export function CaseBar() {
           <FlaskConical size={12} /> {edits} edit{edits === 1 ? "" : "s"}
         </button>
       )}
+      {summary && <ResultChip />}
       <SelectionChip />
       {openError && (
         <span role="alert" className="text-[11px] text-red-700 truncate" title={openError}>

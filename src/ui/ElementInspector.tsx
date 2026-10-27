@@ -4,7 +4,7 @@
 // diagram's drawing fields) slot in below.
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight, Play, X } from "lucide-react";
-import { useWorkspace, type ModuleId } from "../store/workspaceStore";
+import { useShownReport, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useStudy, editTarget } from "../store/studyStore";
 import { api } from "../lib/analysis/api";
 import type { DetailField, ElementDetail } from "../lib/analysis/types";
@@ -176,7 +176,8 @@ export interface ElementInspectorProps {
 }
 
 export function ElementInspector({ element, from, onPick, onClose, children, drawing }: ElementInspectorProps) {
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
+  const shown = useWorkspace((s) => (s.shown?.report ? s.shown : null));
   const focus = useWorkspace((s) => s.focus);
   const requestSolve = useWorkspace((s) => s.requestSolve);
   const canSolve = useWorkspace((s) => !!s.caseSummary?.power.available);
@@ -257,6 +258,11 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
       <TripOutcome element={element} onPick={pick} />
 
       <Section id="results" title="Results">
+        {shown && (
+          <p className="mb-1.5 text-[11px] text-amber-800" data-testid="inspector-shown-result">
+            {shown.label}: {elementLabel(shown.element)} out
+          </p>
+        )}
         {!report ? (
           <p className="text-slate-500">
             Not solved yet.{" "}

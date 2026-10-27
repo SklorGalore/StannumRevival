@@ -136,6 +136,8 @@ const tripped = page.locator("[data-testid=trip-outcome]:visible");
 await tripped.getByText("If it trips").waitFor();
 await tripped.getByText(/Solved in AC|did not converge/).waitFor();
 await shot("trip-and-compare");
+// Every view shows the tripped case now: the case bar's result chip names it.
+await page.locator('[data-testid=result-chip][data-result="trip line:4:5:1"]').filter({ hasText: "Tripped" }).waitFor();
 // Colour the drawing by the latest solve's branch loading, then by voltage.
 await page.getByRole("button", { name: "Layers", exact: true }).click();
 const resultLayer = page.getByTestId("layers-panel").locator('[data-layer="results"]');
@@ -147,6 +149,7 @@ await shot("diagram-colour-by-result");
 await resultLayer.getByRole("checkbox").uncheck();
 await tripped.getByRole("button", { name: "Clear" }).click();
 await tripped.waitFor({ state: "detached" });
+await page.locator('[data-testid=result-chip][data-result="base"]').filter({ hasText: "Base case" }).waitFor();
 await page.getByRole("button", { name: "Hide layers" }).click();
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await inspector.getByTestId("inspector-title").filter({ hasText: "Line 4–5 circuit 1" }).waitFor();

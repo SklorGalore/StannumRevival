@@ -345,7 +345,12 @@ commands! {
 
     /// Take one element out of the last AC solve and solve again.
     trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } =>
-        |s, a| s.workspace()?.case(a.case)?.trip_and_compare(&a.element, a.limit_pct);
+        |s, a| s.workspace()?.case_mut(a.case)?.trip_and_compare(&a.element, a.limit_pct);
+
+    /// A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
+    /// as a full solve report.
+    result_report { case: Option<CaseId>, name: String } =>
+        |s, a| s.workspace()?.case_mut(a.case)?.result(&a.name);
 
     /// Log lines numbered above `since`.
     log_entries { since: u64 } => |_, a| Ok(logbook::since(a.since));
@@ -442,7 +447,7 @@ mod tests {
         // arguments only need to parse.
         let value = |name: &str| match name {
             "settings" => json!({ "solve": SolveSettings::default() }),
-            "path" | "quantity" | "element" | "section" => json!("unused"),
+            "path" | "quantity" | "element" | "section" | "name" => json!("unused"),
             "edits" => json!([]),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),

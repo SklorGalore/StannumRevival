@@ -42,6 +42,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
   contingency_detail: { label: "Opening a contingency", quiet: true },
   trip_and_compare: { label: "Tripping and comparing", done: "Tripped and compared" },
+  result_report: { label: "Reading a result", quiet: true },
   set_study_edits: { label: "Applying study edits", done: "Applied study edits" },
   load_diagram: { label: "Reading file", quiet: true },
   file_fingerprint: { label: "Checking the case file", quiet: true },
@@ -170,6 +171,9 @@ export const api = {
     call<ContingencyRow[]>("contingency_rows", { offset, limit }),
   contingencyDetail: (rank: number) => call<ContingencyDetail>("contingency_detail", { rank }),
   tripAndCompare: (element: string, limitPct: number) => call<ContingencyDetail>("trip_and_compare", { element, limitPct }),
+  /** A named result ("base", "study", "contingency 3", "trip line:1-2-1") as a full solve report. */
+  resultReport: async (name: string): Promise<SolveReport> =>
+    decodeSolveReport(await call<WireSolveReport>("result_report", { name })),
 
   diagramNetwork: () => call<CaseNetwork>("diagram_network"),
   elementDetail: (element: string) => call<ElementDetail>("element_detail", { element }),

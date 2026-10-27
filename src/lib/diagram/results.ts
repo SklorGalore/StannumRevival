@@ -1,5 +1,5 @@
 // Power flow results for symbols linked to the open case.
-import { useWorkspace } from "../../store/workspaceStore";
+import { useShownReport, useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { BranchRow, BusRow, GeneratorRow, SolveReport } from "../analysis/types";
 
@@ -26,9 +26,12 @@ function index(report: SolveReport): Results {
   return r;
 }
 
-/** Results to draw, or null when hidden, unsolved, or for a different case. */
+/**
+ * Results to draw (the result every view shows), or null when hidden,
+ * unsolved, or for a different case.
+ */
 export function useResults(): Results | null {
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
   const openName = useWorkspace((s) => s.caseSummary?.name);
   const caseName = useDiagramStore((s) => s.metadata.caseName);
   const show = useDiagramStore((s) => s.showResults);

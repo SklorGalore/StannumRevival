@@ -3,6 +3,7 @@
 // is on screen. A new case or a study change clears it, as the core does.
 import { create } from "zustand";
 import { api } from "../lib/analysis/api";
+import { useWorkspace } from "./workspaceStore";
 import type {
   ContingencyDetail,
   ContingencyMethod,
@@ -56,6 +57,24 @@ interface ContingencyState {
   clear: () => void;
 }
 
+/**
+ * The outage drawn on the diagram is the result every view shows: the
+ * diagram's flow labels, the tables and the inspector follow it. Without one
+ * they go back to the latest solve.
+ */
+function followShown(s: ContingencyState) {
+  const ws = useWorkspace.getState();
+  const d = s.detail;
+  if (s.onDiagram && d) {
+    const element = d.row.element;
+    void ws.showResult(
+      s.open === null
+        ? { name: `trip ${element}`, label: "Tripped", element }
+        : { name: `contingency ${d.row.rank}`, label: `Outage #${d.row.rank}`, element }
+    );
+  } else if (ws.shown) ws.showLatest();
+}
+
 export const useContingencies = create<ContingencyState>((set, get) => ({
   choice: DEFAULT_CHOICE,
   setChoice: (c) => set((s) => ({ choice: { ...s.choice, ...c } })),
@@ -70,6 +89,7 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   async run(solve, elements) {
     const c = get().choice;
     set({ running: true, error: null, progress: null, open: null, detail: null });
+    followShown(get());
     // Follow the run's progress while it goes.
     const timer = setInterval(() => {
       api
@@ -113,15 +133,21 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   },
   async openRow(rank) {
     set({ open: rank, detail: rank === null ? null : get().detail?.row.rank === rank ? get().detail : null });
-    if (rank === null) return;
+    if (rank === null) return followShown(get());
     try {
       const detail = await api.contingencyDetail(rank);
-      if (get().open === rank) set({ detail });
+      if (get().open === rank) {
+        set({ detail });
+        followShown(get());
+      }
     } catch (e) {
       set({ error: (e as Error).message });
     }
   },
-  setOnDiagram: (onDiagram) => set({ onDiagram }),
+  setOnDiagram: (onDiagram) => {
+    set({ onDiagram });
+    followShown(get());
+  },
   tripping: null,
   async trip(element) {
     set({ tripping: element });
@@ -129,10 +155,14 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
       const detail = await api.tripAndCompare(element, get().choice.limitPct);
       // Shown on its own, not as a row of the last run.
       set({ detail, open: null, onDiagram: true });
+      followShown(get());
       return detail;
     } finally {
       set({ tripping: null });
     }
   },
-  clear: () => set({ summary: null, rows: [], open: null, detail: null, error: null, onDiagram: false, tripping: null }),
+  clear: () => {
+    set({ summary: null, rows: [], open: null, detail: null, error: null, onDiagram: false, tripping: null });
+    followShown(get());
+  },
 }));

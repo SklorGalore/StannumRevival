@@ -14,6 +14,28 @@ export interface SharedSelection {
   from: ModuleId | "search";
 }
 
+/**
+ * A result other than the latest solve, shown by every view in its place:
+ * one outage of the contingency run, or the last "Trip and compare". Named
+ * as stannum-core names it (see crates/stannum-core/src/results.rs).
+ */
+export interface ShownResult {
+  /** The core's name, such as "contingency 3" or "trip line:1-2-1". */
+  name: string;
+  /** How the case bar and the tables name it, such as "Outage #3". */
+  label: string;
+  /** The element the result takes out. */
+  element: string;
+  /** Null while it loads; views keep showing the latest solve until then. */
+  report: SolveReport | null;
+  error: string | null;
+}
+
+/** The core's name for the latest solve: with study edits or without. */
+export function latestResultName(studyEdits: number): "base" | "study" {
+  return studyEdits > 0 ? "study" : "base";
+}
+
 /** The module that goes beside another when split view opens without a choice. */
 export const SPLIT_PARTNER: Record<ModuleId, ModuleId> = { diagram: "power", power: "diagram", records: "diagram", diff: "diagram" };
 
@@ -45,7 +67,17 @@ interface WorkspaceState {
   openError: string | null;
   /** Latest power flow solve of the open case, shared by Power flow and Diagram. */
   solveReport: SolveReport | null;
+  /** A new solve: every view goes back to showing it. */
   setSolveReport: (r: SolveReport | null) => void;
+  /**
+   * The result every view shows instead of the latest solve, or null for the
+   * latest solve. Read it through useShownReport().
+   */
+  shown: ShownResult | null;
+  /** Show a named result in every view (fetched from the core once). */
+  showResult: (result: { name: string; label: string; element: string }) => Promise<void>;
+  /** Go back to showing the latest solve. */
+  showLatest: () => void;
   /** Opt-in: when off, each module keeps its own selection. */
   linked: boolean;
   setLinked: (on: boolean) => void;
@@ -142,7 +174,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   opening: false,
   openError: null,
   solveReport: null,
-  setSolveReport: (solveReport) => set({ solveReport }),
+  setSolveReport: (solveReport) => set({ solveReport, shown: null }),
+  shown: null,
+  showResult: async ({ name, label, element }) => {
+    if (get().shown?.name === name) return;
+    const version = get().caseVersion;
+    const solved = get().solveReport;
+    set({ shown: { name, label, element, report: null, error: null } });
+    // Drop the answer if the case, the solve or the choice moved on meanwhile.
+    const current = () => {
+      const s = get();
+      return s.caseVersion === version && s.solveReport === solved && s.shown?.name === name;
+    };
+    try {
+      const report = await api.resultReport(name);
+      if (current()) set((s) => ({ shown: s.shown && { ...s.shown, report } }));
+    } catch (e) {
+      if (current()) set((s) => ({ shown: s.shown && { ...s.shown, error: (e as Error).message } }));
+    }
+  },
+  showLatest: () => {
+    if (get().shown) set({ shown: null });
+  },
   linked: loadLinked(),
   setLinked: (linked) => {
     try {
@@ -188,6 +241,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editedVersion: s.caseVersion + 1,
       // Results describe the case before the edits.
       solveReport: null,
+      shown: null,
       drawRequest: null,
     }));
   },
@@ -219,6 +273,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         caseSummary: summary,
         caseVersion: s.caseVersion + 1,
         solveReport: null,
+        shown: null,
         selection: null,
         drawRequest: null,
         opening: false,
@@ -241,7 +296,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!caseChangeOk(get().caseSummary)) return false;
     await api.closeCase();
     useLog.getState().newCase();
-    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, selection: null, drawRequest: null }));
+    set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, shown: null, selection: null, drawRequest: null }));
     return true;
   },
 }));
+
+/**
+ * The solve report every view shows: the shown result once it has loaded,
+ * else the latest solve.
+ */
+export function shownReport(s: Pick<WorkspaceState, "shown" | "solveReport">): SolveReport | null {
+  return s.shown?.report ?? s.solveReport;
+}
+
+export function useShownReport(): SolveReport | null {
+  return useWorkspace(shownReport);
+}
