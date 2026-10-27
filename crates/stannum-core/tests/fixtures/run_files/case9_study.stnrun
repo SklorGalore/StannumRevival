@@ -1,0 +1,11 @@
+# Solve case9 as filed, then with generator 2 backed down to 120 MW,
+# and write the solved study case out as MATPOWER.
+open_case path=../case9.m
+solve_power_flow settings={"start": "flat"}
+
+set_study_edits edits=[
+  {"kind": "generation", "element": "generator:2:1", "mw": 120}
+]
+solve_power_flow
+run_contingencies settings={"method": "ac", "branches": true, "generators": false}
+export_matpower path=case9_study.m solved=true

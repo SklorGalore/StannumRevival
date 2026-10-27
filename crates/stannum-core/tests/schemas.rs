@@ -269,6 +269,23 @@ fn answers_fit_their_schemas() {
     );
     c.ok("cancel_solve", json!({}));
     c.ok("cancel_contingencies", json!({}));
+    c.ok("cancel_run_file", json!({}));
+
+    // A run file, recorded and run again.
+    let run = dir.join("study.stnrun");
+    c.ok(
+        "save_run_file",
+        json!({ "path": run, "steps": [
+            { "command": "open_case", "args": { "path": raw } },
+            { "command": "solve_power_flow", "args": { "settings": solve } },
+            { "command": "export_matpower", "args": { "path": dir.join("again.m"), "solved": true } },
+        ] }),
+    );
+    let report = c.ok("run_file", json!({ "path": run, "results": true }));
+    assert_eq!(report["failed"], 0);
+    assert_eq!(report["outcomes"].as_array().unwrap().len(), 3);
+    assert_eq!(report["outcomes"][1]["result"]["converged"], true);
+    assert!(dir.join("again.m").exists());
     c.ok("close_case", json!({}));
 
     // A MATPOWER case with a DC grid file, for the VSC grid report.

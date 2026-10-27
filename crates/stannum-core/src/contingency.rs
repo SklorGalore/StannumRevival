@@ -57,7 +57,22 @@ pub struct ContingencySettings {
     /// Loading, as a percent of rate A, above which a branch is overloaded.
     #[serde(default = "default_limit")]
     pub limit_pct: f64,
+    #[serde(default)]
     pub solve: SolveSettings,
+}
+
+impl Default for ContingencySettings {
+    fn default() -> Self {
+        Self {
+            elements: None,
+            branches: true,
+            generators: true,
+            method: Method::default(),
+            ac_count: default_ac_count(),
+            limit_pct: default_limit(),
+            solve: SolveSettings::default(),
+        }
+    }
 }
 
 /// A branch over its limit after an outage.
