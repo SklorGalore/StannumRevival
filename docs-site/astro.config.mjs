@@ -81,6 +81,7 @@ export default defineConfig({
             { label: "PSS/E RAW", slug: "reference/psse-raw" },
             { label: "MATPOWER", slug: "reference/matpower" },
             { label: "Stannum DC grid file", slug: "reference/dc-grid-file" },
+            { label: "Bus coordinates file", slug: "reference/coordinates-file" },
           ],
         },
         {

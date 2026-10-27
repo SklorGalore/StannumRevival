@@ -31,6 +31,8 @@ export interface StudyFile {
   };
   /** The attached DC grid file, if any. */
   dcGrids: { path: string; relative: string | null } | null;
+  /** The bus coordinates file for the map. Missing from studies saved before 0.4. */
+  coordinates?: { path: string; relative: string | null } | null;
   solveSettings: SolveSettings;
   edits: { edit: StudyEdit; was?: string }[];
   solves: { name: string; entries: { edit: StudyEdit; was?: string }[]; report: SolveReport }[];

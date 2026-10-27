@@ -34,14 +34,17 @@ const TONE_CHIP: Record<Tone, string> = {
 
 // File data per element, kept for the open case so picking back and forth
 // doesn't ask the core again.
-let cacheVersion = -1;
+let cacheVersion = "";
 const cache = new Map<string, ElementDetail | string>();
 
 function useElementDetail(element: string): { detail: ElementDetail | null; error: string | null } {
   const caseVersion = useWorkspace((s) => s.caseVersion);
   const canRead = useWorkspace((s) => !!s.caseSummary?.power.available);
-  if (cacheVersion !== caseVersion) {
-    cacheVersion = caseVersion;
+  // A bus's Location section comes from the attached coordinates file.
+  const coordinates = useWorkspace((s) => s.caseSummary?.coordinates?.path ?? "");
+  const key = `${caseVersion}:${coordinates}`;
+  if (cacheVersion !== key) {
+    cacheVersion = key;
     cache.clear();
   }
   const [, setTick] = useState(0);
@@ -56,7 +59,7 @@ function useElementDetail(element: string): { detail: ElementDetail | null; erro
     return () => {
       live = false;
     };
-  }, [element, caseVersion, canRead]);
+  }, [element, key, canRead]);
   const hit = cache.get(element);
   return { detail: typeof hit === "object" ? hit : null, error: typeof hit === "string" ? hit : null };
 }

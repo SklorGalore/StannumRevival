@@ -2,7 +2,7 @@
 // saved solves, solve and contingency settings, drawing and layout, kept
 // beside a reference to the case file. See lib/study/studyFile.ts.
 import { create } from "zustand";
-import { api, CASE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import { addRecent, fileName } from "../lib/study/recent";
 import {
   compareToFile,
@@ -105,6 +105,7 @@ async function collect(studyPath: string): Promise<StudyFile> {
     api.studyRelativePath(studyPath, summary.path),
   ]);
   const grids = summary.dc_grids;
+  const coordinates = summary.coordinates;
   return {
     format: STUDY_FORMAT,
     version: STUDY_VERSION,
@@ -112,6 +113,9 @@ async function collect(studyPath: string): Promise<StudyFile> {
     savedAt: new Date().toISOString(),
     case: { path: summary.path, relative, name: summary.name, format: summary.format, fingerprint },
     dcGrids: grids ? { path: grids.path, relative: await api.studyRelativePath(studyPath, grids.path) } : null,
+    coordinates: coordinates
+      ? { path: coordinates.path, relative: await api.studyRelativePath(studyPath, coordinates.path) }
+      : null,
     solveSettings: study.settings,
     edits: study.entries,
     solves: study.saved.map(({ name, entries, report }) => ({ name, entries, report })),
@@ -228,6 +232,21 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
         } else {
           warning = true;
           lines.push("The DC grid file wasn't attached.");
+        }
+      }
+      if (file.coordinates) {
+        const found = await locate(path, file.coordinates.path, file.coordinates.relative, "bus coordinates file", COORDINATE_FILTERS);
+        if (found) {
+          try {
+            const attached = await api.loadCoordinates(found.path);
+            useWorkspace.setState((s) => ({ caseSummary: s.caseSummary && { ...s.caseSummary, coordinates: attached } }));
+          } catch (e) {
+            warning = true;
+            lines.push(`The bus coordinates file couldn't be attached: ${(e as Error).message}`);
+          }
+        } else {
+          warning = true;
+          lines.push("The bus coordinates file wasn't attached.");
         }
       }
       const study = useStudy.getState();

@@ -43,6 +43,43 @@ export interface CaseSummary {
   record_edits?: number;
   /** The attached Stannum DC grid file, if any. Missing from older backends. */
   dc_grids?: DcGridsSummary | null;
+  /** The attached bus coordinates file, if any. Missing from older backends. */
+  coordinates?: CoordinatesSummary | null;
+}
+
+/** A line of a coordinates file that was skipped, and why. */
+export interface CoordinatesProblem {
+  line: number;
+  message: string;
+}
+
+/** What the app shows about the attached bus coordinates file. */
+export interface CoordinatesSummary {
+  path: string;
+  name: string;
+  /** Rows read from the file. */
+  rows: number;
+  /** Buses of the case placed by the file. */
+  from_file: number;
+  /** Buses placed from their neighbours. */
+  estimated: number;
+  /** Buses with no place (nothing placed in their island). */
+  missing: number;
+  /** Rows naming buses this case doesn't have. */
+  unknown_buses: number;
+  /** Lines skipped, at most 20 listed. */
+  problems: CoordinatesProblem[];
+  problem_count: number;
+}
+
+/** Where every bus goes on the map, as columns in the case's bus order. */
+export interface BusCoordinates {
+  bus: number[];
+  latitude: (number | null)[];
+  longitude: (number | null)[];
+  source: ("file" | "estimated" | "none")[];
+  substation: (string | null)[];
+  summary: CoordinatesSummary;
 }
 
 // ---- VSC DC grids ---------------------------------------------------------
