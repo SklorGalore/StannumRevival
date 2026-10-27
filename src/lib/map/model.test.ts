@@ -73,6 +73,13 @@ describe("buildMap", () => {
     ]);
   });
 
+  it("keeps branches inside a site, for layers that mark them", () => {
+    expect(map.inner).toEqual([
+      { element: "transformer:1:2:1", winding: 0, site: 0 },
+      { element: "transformer:3:4:1", winding: 0, site: 1 },
+    ]);
+  });
+
   it("counts unplaced buses and spans the placed ones", () => {
     expect(map.unplaced).toBe(1);
     expect(map.bounds).toEqual([-97, 30, -95.5, 31.5]);
