@@ -3,7 +3,7 @@ import { compareSolves } from "./compareSolves";
 import type { BranchRow, BusRow, SolveReport } from "./types";
 
 const bus = (id: number, vm: number, violation = 0): BusRow => ({
-  id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation,
+  id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation, load_parts: null,
 });
 const branch = (index: number, pf: number, loading: number | null, online = true): BranchRow => ({
   index, element: `line:${index}:${index + 1}:1`, circuit: "1", winding: 0, from: index, to: index + 1, online,

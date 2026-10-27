@@ -4,7 +4,7 @@ import type { BranchRow, BusRow, GeneratorRow, SolveReport } from "./analysis/ty
 
 const bus = (id: number, vm: number, extra: Partial<BusRow> = {}): BusRow => ({
   id, name: "", kind: "PQ", base_kv: 230, vm, va: -3, vmin: 0.95, vmax: 1.05, pd: 50, qd: 10, area: 1,
-  violation: vm > 1.05 ? vm - 1.05 : vm < 0.95 ? 0.95 - vm : 0, ...extra,
+  violation: vm > 1.05 ? vm - 1.05 : vm < 0.95 ? 0.95 - vm : 0, load_parts: null, ...extra,
 });
 const branch = (extra: Partial<BranchRow>): BranchRow => ({
   index: 0, element: "line:1:2:1", circuit: "1", winding: 0, from: 1, to: 2, online: true, is_transformer: false,

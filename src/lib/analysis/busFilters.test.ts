@@ -4,7 +4,7 @@ import type { FilterRule } from "../filters";
 import type { BusRow } from "./types";
 
 const bus = (id: number, area: number, base_kv: number, vm: number): BusRow => ({
-  id, name: `B${id}`, kind: "PQ", base_kv, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area, violation: 0,
+  id, name: `B${id}`, kind: "PQ", base_kv, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area, violation: 0, load_parts: null,
 });
 const buses = [bus(1, 1, 138, 1.0), bus(2, 1, 69, 0.97), bus(3, 2, 138, 1.04)];
 const rule = (field: string, operator: FilterRule["operator"], value: string, upper?: string): FilterRule => ({

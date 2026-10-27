@@ -124,7 +124,7 @@ describe("layers", () => {
 
   describe("results", () => {
     const bus = (id: number, vm: number): BusRow => ({
-      id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation: 0,
+      id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation: 0, load_parts: null,
     });
     const branch = (element: string, pf: number, loading_pct: number | null, online = true): BranchRow => ({
       index: 0, element, circuit: "1", winding: 0, from: 1, to: 2, online, is_transformer: false,
