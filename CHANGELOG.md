@@ -37,6 +37,12 @@ assembled from StannumSLD, rs-power, nodal and case-diff.
   cut buses, paths), a shared element inspector, three-winding transformer
   symbols, a snap grid, and PDF export.
 - Studies: outages, generator and load edits with saved solves to compare.
+- Study files (`.stannum`): save the study edits, saved solves, solve and
+  contingency settings, drawing and layout with a link to the case file;
+  opening one finds a moved case and says when the case has changed.
+- Recent cases and studies on the empty Power flow and Records screens.
+- Case diff of the working case: Records and study edits compared with the
+  file on disk.
 - Records: every record type of the open case as a table, with cell editing.
 - Case diff: record-level comparison of two cases.
 - Documentation site with a user guide and technical manual.
