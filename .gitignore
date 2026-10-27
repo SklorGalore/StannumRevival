@@ -22,3 +22,4 @@ docs-site/.astro/
 
 # npm is the package manager for this repo (package-lock.json)
 pnpm-lock.yaml
+.budget-case/
