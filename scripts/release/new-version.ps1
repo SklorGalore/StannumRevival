@@ -4,8 +4,9 @@ Sets a new app version everywhere it is written down, and starts its
 section in CHANGELOG.md.
 
 .DESCRIPTION
-Updates package.json, package-lock.json, src-tauri/tauri.conf.json,
-src-tauri/Cargo.toml and the app's entry in Cargo.lock. In CHANGELOG.md the
+Updates package.json, package-lock.json, src-tauri/tauri.conf.json, the
+Cargo.toml of the app, stannum-cli and the Python package (stannum-py), and
+their entries in Cargo.lock. In CHANGELOG.md the
 notes under "## Unreleased" become the new version's section, dated today,
 and an empty "## Unreleased" section is left above it.
 
@@ -43,8 +44,12 @@ Set-InFile (Join-Path $root 'package.json') $jsonVersion $jsonReplace
 # The lockfile carries the root version twice: at the top and under packages[""].
 Set-InFile (Join-Path $root 'package-lock.json') $jsonVersion $jsonReplace 2
 Set-InFile (Join-Path $root 'src-tauri/tauri.conf.json') $jsonVersion $jsonReplace
-Set-InFile (Join-Path $root 'src-tauri/Cargo.toml') '^(version\s*=\s*")[^"]+(")' $jsonReplace
-Set-InFile (Join-Path $root 'Cargo.lock') '^(name = "stannum"\r?\nversion = ")[^"]+(")' $jsonReplace
+foreach ($manifest in $CrateManifests) {
+    Set-InFile (Join-Path $root $manifest) '^(version\s*=\s*")[^"]+(")' $jsonReplace
+}
+foreach ($name in $CratePackages) {
+    Set-InFile (Join-Path $root 'Cargo.lock') ('^(name = "' + [regex]::Escape($name) + '"\r?\nversion = ")[^"]+(")') $jsonReplace
+}
 
 $changelog = Join-Path $root 'CHANGELOG.md'
 if ($null -ne (Get-ChangelogSection -Path $changelog -Heading $Version)) {
