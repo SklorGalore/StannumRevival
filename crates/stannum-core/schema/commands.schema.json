@@ -888,6 +888,10 @@
     "CommandInfo": {
       "description": "One command, as `list_commands` describes it.",
       "properties": {
+        "action": {
+          "description": "Whether it changes the case or writes a file, so Record writes it\ninto a run file.",
+          "type": "boolean"
+        },
         "doc": {
           "description": "What it does, from its doc comment.",
           "type": "string"
@@ -903,7 +907,8 @@
       "required": [
         "name",
         "doc",
-        "takes_case"
+        "takes_case",
+        "action"
       ],
       "type": "object"
     },
@@ -1152,12 +1157,20 @@
           "default": "screen"
         },
         "solve": {
-          "$ref": "#/$defs/SolveSettings"
+          "$ref": "#/$defs/SolveSettings",
+          "default": {
+            "adjust_dc_taps": true,
+            "adjust_transformer_taps": true,
+            "dc_model": "detailed",
+            "enforce_q_limits": false,
+            "max_iterations": 10,
+            "model": "ac",
+            "start": "last",
+            "switch_shunts": true,
+            "tolerance_mva": 2.0
+          }
         }
       },
-      "required": [
-        "solve"
-      ],
       "type": "object"
     },
     "ContingencySummary": {
@@ -3768,6 +3781,48 @@
       ],
       "type": "object"
     },
+    "RunReport": {
+      "description": "What running a run file did.",
+      "properties": {
+        "cancelled": {
+          "type": "boolean"
+        },
+        "failed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outcomes": {
+          "description": "Steps that ran, in order (the ones after a failure or a cancel don't).",
+          "items": {
+            "$ref": "#/$defs/StepOutcome"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        },
+        "seconds": {
+          "format": "double",
+          "type": "number"
+        },
+        "steps": {
+          "description": "Steps in the file.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "steps",
+        "outcomes",
+        "failed",
+        "cancelled",
+        "seconds"
+      ],
+      "type": "object"
+    },
     "SectionInfo": {
       "description": "One record type in the list, without its rows.",
       "properties": {
@@ -4006,6 +4061,7 @@
       "type": "object"
     },
     "SolveSettings": {
+      "description": "How to solve. Fields left out take their defaults: AC from the last\nsolution, to 2 MVA, without reactive limits, with every control on.",
       "properties": {
         "adjust_dc_taps": {
           "default": true,
@@ -4022,18 +4078,22 @@
           "default": "detailed"
         },
         "enforce_q_limits": {
+          "default": false,
           "type": "boolean"
         },
         "max_iterations": {
+          "default": 10,
           "format": "uint",
           "minimum": 0,
           "type": "integer"
         },
         "model": {
-          "$ref": "#/$defs/ModelChoice"
+          "$ref": "#/$defs/ModelChoice",
+          "default": "ac"
         },
         "start": {
-          "$ref": "#/$defs/StartChoice"
+          "$ref": "#/$defs/StartChoice",
+          "default": "last"
         },
         "switch_shunts": {
           "default": true,
@@ -4041,18 +4101,12 @@
           "type": "boolean"
         },
         "tolerance_mva": {
+          "default": 2.0,
           "description": "Largest power mismatch allowed at any bus, in MVA. It converts to per\nunit on each case's own base at solve time, so the same setting means\nthe same MW and Mvar on every case.",
           "format": "double",
           "type": "number"
         }
       },
-      "required": [
-        "model",
-        "start",
-        "tolerance_mva",
-        "max_iterations",
-        "enforce_q_limits"
-      ],
       "type": "object"
     },
     "SourceRecord": {
@@ -4133,6 +4187,69 @@
         "removed",
         "changed",
         "unchanged"
+      ],
+      "type": "object"
+    },
+    "Step": {
+      "description": "One command of a run file, with its arguments as JSON, named as the\ncommand takes them (camelCase).",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "command": {
+          "type": "string"
+        },
+        "line": {
+          "default": 0,
+          "description": "The line it starts on, from 1.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "StepOutcome": {
+      "description": "How a step went.",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it failed; absent when it worked."
+        },
+        "line": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "result": {
+          "description": "What it answered, when results were asked for."
+        },
+        "seconds": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "line",
+        "command",
+        "seconds",
+        "error",
+        "result"
       ],
       "type": "object"
     },
@@ -4655,6 +4772,7 @@
   "api_version": 2,
   "commands": {
     "apply_record_edits": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4687,6 +4805,7 @@
       "takes_case": true
     },
     "bus_coordinates": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4710,6 +4829,7 @@
       "takes_case": true
     },
     "calculate_sensitivities": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4724,12 +4844,16 @@
             ]
           },
           "settings": {
-            "$ref": "#/$defs/SolveSettings"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SolveSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "settings"
-        ],
         "type": "object"
       },
       "doc": "Calculate sensitivities at the solved operating point.",
@@ -4739,6 +4863,7 @@
       "takes_case": true
     },
     "cancel_contingencies": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "type": "object"
@@ -4749,7 +4874,20 @@
       },
       "takes_case": false
     },
+    "cancel_run_file": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the run file in progress before its next line, and the solve or\ncontingency run it is waiting on.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "cancel_solve": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "type": "object"
@@ -4761,6 +4899,7 @@
       "takes_case": false
     },
     "case_records": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4784,6 +4923,7 @@
       "takes_case": true
     },
     "case_summary": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4814,6 +4954,7 @@
       "takes_case": true
     },
     "clear_coordinates": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4837,6 +4978,7 @@
       "takes_case": true
     },
     "clear_dc_grids": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4860,6 +5002,7 @@
       "takes_case": true
     },
     "close_case": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4883,6 +5026,7 @@
       "takes_case": true
     },
     "command_schemas": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "type": "object"
@@ -4892,6 +5036,7 @@
       "takes_case": false
     },
     "contingency_detail": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4923,6 +5068,7 @@
       "takes_case": true
     },
     "contingency_progress": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "type": "object"
@@ -4934,6 +5080,7 @@
       "takes_case": false
     },
     "contingency_rows": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -4974,6 +5121,7 @@
       "takes_case": true
     },
     "contingency_summary": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5004,6 +5152,7 @@
       "takes_case": true
     },
     "diagram_network": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5027,6 +5176,7 @@
       "takes_case": true
     },
     "diff_compare": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5050,6 +5200,7 @@
       "takes_case": false
     },
     "diff_compare_working": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5073,6 +5224,7 @@
       "takes_case": true
     },
     "diff_record_detail": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5105,6 +5257,7 @@
       "takes_case": false
     },
     "diff_section_records": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5127,6 +5280,7 @@
       "takes_case": false
     },
     "element_detail": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5156,6 +5310,7 @@
       "takes_case": true
     },
     "export_matpower": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5189,6 +5344,7 @@
       "takes_case": true
     },
     "file_fingerprint": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5208,6 +5364,7 @@
       "takes_case": false
     },
     "list_commands": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "type": "object"
@@ -5219,6 +5376,7 @@
       "takes_case": false
     },
     "load_coordinates": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5248,6 +5406,7 @@
       "takes_case": true
     },
     "load_dc_grids": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5277,6 +5436,7 @@
       "takes_case": true
     },
     "log_entries": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5301,6 +5461,7 @@
       "takes_case": false
     },
     "open_case": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5320,6 +5481,7 @@
       "takes_case": false
     },
     "record_table": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5349,6 +5511,7 @@
       "takes_case": true
     },
     "result_report": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5378,6 +5541,7 @@
       "takes_case": true
     },
     "run_contingencies": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5392,21 +5556,58 @@
             ]
           },
           "settings": {
-            "$ref": "#/$defs/ContingencySettings"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ContingencySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "settings"
-        ],
         "type": "object"
       },
-      "doc": "Run N-1 contingencies. `cancel_contingencies` stops the run and\n`contingency_progress` follows it.",
+      "doc": "Run N-1 contingencies. `cancel_contingencies` stops the run and\n`contingency_progress` follows it. Settings left out take their\ndefaults: every branch and generator, screened, then the worst in AC.",
       "result": {
         "$ref": "#/$defs/ContingencySummary"
       },
       "takes_case": true
     },
+    "run_file": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "keepGoing": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "results": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Run a run file (`.stnrun`): commands one per line, in order (see\n`run_file`). Every line is checked first. The run stops at the first\ncommand that fails unless `keepGoing`; `results` keeps each answer.",
+      "result": {
+        "$ref": "#/$defs/RunReport"
+      },
+      "takes_case": false
+    },
     "save_case_as": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5435,7 +5636,35 @@
       },
       "takes_case": true
     },
+    "save_run_file": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "sensitivity_responses": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5475,6 +5704,7 @@
       "takes_case": true
     },
     "set_study_edits": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5507,6 +5737,7 @@
       "takes_case": true
     },
     "solve_power_flow": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5521,21 +5752,53 @@
             ]
           },
           "settings": {
-            "$ref": "#/$defs/SolveSettings"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SolveSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "settings"
-        ],
         "type": "object"
       },
-      "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.",
+      "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.\nSettings left out take their defaults.",
       "result": {
         "$ref": "#/$defs/SolveReport"
       },
       "takes_case": true
     },
+    "study_edits": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "The study's edits, as `set_study_edits` last set them.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/Edit"
+        },
+        "type": "array"
+      },
+      "takes_case": true
+    },
     "study_locate_case": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5568,6 +5831,7 @@
       "takes_case": false
     },
     "study_relative_path": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5594,6 +5858,7 @@
       "takes_case": false
     },
     "topology_set_merge": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5623,6 +5888,7 @@
       "takes_case": true
     },
     "topology_shortest_path": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5665,6 +5931,7 @@
       "takes_case": true
     },
     "topology_snapshot": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5688,6 +5955,7 @@
       "takes_case": true
     },
     "topology_source": {
+      "action": false,
       "args": {
         "additionalProperties": false,
         "properties": {
@@ -5724,6 +5992,7 @@
       "takes_case": true
     },
     "trip_and_compare": {
+      "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {

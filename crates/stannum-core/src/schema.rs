@@ -261,6 +261,18 @@ pub fn typescript(doc: &Value) -> String {
     out.push_str(
         "export type CoreResult<C extends CoreCommand> = CoreCommands[C][\"result\"];\n\n",
     );
+    if let Some(commands) = doc.get("commands").and_then(Value::as_object) {
+        out.push_str(
+            "/** Commands that change the case or write a file: the ones Record keeps. */\n",
+        );
+        out.push_str("export const ACTION_COMMANDS: readonly CoreCommand[] = [\n");
+        for (name, command) in commands {
+            if command.get("action").and_then(Value::as_bool) == Some(true) {
+                let _ = writeln!(out, "  \"{name}\",");
+            }
+        }
+        out.push_str("];\n\n");
+    }
     if let Some(error) = doc.get("error") {
         out.push_str("/** What every core command rejects with. */\n");
         let _ = writeln!(out, "export type CoreError = {};", ts_type(error, ""));

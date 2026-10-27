@@ -176,6 +176,11 @@ export type ColumnKind = "integer" | "number" | "text";
 
 /** One command, as `list_commands` describes it. */
 export type CommandInfo = {
+  /**
+   * Whether it changes the case or writes a file, so Record writes it
+   * into a run file.
+   */
+  action: boolean;
   /** What it does, from its doc comment. */
   doc: string;
   name: string;
@@ -264,7 +269,7 @@ export type ContingencySettings = {
   /** Loading, as a percent of rate A, above which a branch is overloaded. */
   limit_pct?: number;
   method?: Method;
-  solve: SolveSettings;
+  solve?: SolveSettings;
 };
 
 export type ContingencySummary = {
@@ -907,6 +912,18 @@ export type ResponseTable = {
   units: string;
 };
 
+/** What running a run file did. */
+export type RunReport = {
+  cancelled: boolean;
+  failed: number;
+  /** Steps that ran, in order (the ones after a failure or a cancel don't). */
+  outcomes: StepOutcome[];
+  path: string;
+  seconds: number;
+  /** Steps in the file. */
+  steps: number;
+};
+
 /** One record type in the list, without its rows. */
 export type SectionInfo = {
   count: number;
@@ -969,16 +986,20 @@ export type SolveReport = {
   vsc_limit_passes: number;
 };
 
+/**
+ * How to solve. Fields left out take their defaults: AC from the last
+ * solution, to 2 MVA, without reactive limits, with every control on.
+ */
 export type SolveSettings = {
   /** Step DC converter taps (detailed model only). */
   adjust_dc_taps?: boolean;
   /** Step transformer taps in voltage control (AC only). */
   adjust_transformer_taps?: boolean;
   dc_model?: DcModelChoice;
-  enforce_q_limits: boolean;
-  max_iterations: number;
-  model: ModelChoice;
-  start: StartChoice;
+  enforce_q_limits?: boolean;
+  max_iterations?: number;
+  model?: ModelChoice;
+  start?: StartChoice;
   /** Switch shunts in voltage control (AC only). */
   switch_shunts?: boolean;
   /**
@@ -986,7 +1007,7 @@ export type SolveSettings = {
    * unit on each case's own base at solve time, so the same setting means
    * the same MW and Mvar on every case.
    */
-  tolerance_mva: number;
+  tolerance_mva?: number;
 };
 
 export type SourceRecord = {
@@ -1003,6 +1024,28 @@ export type StatusCounts = {
   changed: number;
   removed: number;
   unchanged: number;
+};
+
+/**
+ * One command of a run file, with its arguments as JSON, named as the
+ * command takes them (camelCase).
+ */
+export type Step = {
+  args?: Record<string, unknown>;
+  command: string;
+  /** The line it starts on, from 1. */
+  line?: number;
+};
+
+/** How a step went. */
+export type StepOutcome = {
+  command: string;
+  /** Why it failed; absent when it worked. */
+  error: Error | null;
+  line: number;
+  /** What it answered, when results were asked for. */
+  result: unknown;
+  seconds: number;
 };
 
 export type TopologyInfo = {
@@ -1164,12 +1207,20 @@ export interface CoreCommands {
   calculate_sensitivities: {
     args: {
       case?: CaseId | null;
-      settings: SolveSettings;
+      settings?: SolveSettings | null;
     };
     result: SensitivitySummary;
   };
   /** Stop the contingency run in progress. */
   cancel_contingencies: {
+    args: Record<string, never>;
+    result: null;
+  };
+  /**
+   * Stop the run file in progress before its next line, and the solve or
+   * contingency run it is waiting on.
+   */
+  cancel_run_file: {
     args: Record<string, never>;
     result: null;
   };
@@ -1370,14 +1421,28 @@ export interface CoreCommands {
   };
   /**
    * Run N-1 contingencies. `cancel_contingencies` stops the run and
-   * `contingency_progress` follows it.
+   * `contingency_progress` follows it. Settings left out take their
+   * defaults: every branch and generator, screened, then the worst in AC.
    */
   run_contingencies: {
     args: {
       case?: CaseId | null;
-      settings: ContingencySettings;
+      settings?: ContingencySettings | null;
     };
     result: ContingencySummary;
+  };
+  /**
+   * Run a run file (`.stnrun`): commands one per line, in order (see
+   * `run_file`). Every line is checked first. The run stops at the first
+   * command that fails unless `keepGoing`; `results` keeps each answer.
+   */
+  run_file: {
+    args: {
+      keepGoing?: boolean | null;
+      path: string;
+      results?: boolean | null;
+    };
+    result: RunReport;
   };
   /** Save the case, with its edits, to a new file. */
   save_case_as: {
@@ -1386,6 +1451,18 @@ export interface CoreCommands {
       path: string;
     };
     result: CaseSummary;
+  };
+  /**
+   * Write commands as a run file, such as the ones Record kept. Paths in
+   * the run file's folder are written relative to it, and settings at
+   * their defaults are left out.
+   */
+  save_run_file: {
+    args: {
+      path: string;
+      steps: Step[];
+    };
+    result: null;
   };
   /** One sensitivity column's responses at every bus. */
   sensitivity_responses: {
@@ -1405,13 +1482,23 @@ export interface CoreCommands {
     };
     result: null;
   };
-  /** Solve the power flow with the study's edits. `cancel_solve` stops it. */
+  /**
+   * Solve the power flow with the study's edits. `cancel_solve` stops it.
+   * Settings left out take their defaults.
+   */
   solve_power_flow: {
     args: {
       case?: CaseId | null;
-      settings: SolveSettings;
+      settings?: SolveSettings | null;
     };
     result: SolveReport;
+  };
+  /** The study's edits, as `set_study_edits` last set them. */
+  study_edits: {
+    args: {
+      case?: CaseId | null;
+    };
+    result: Edit[];
   };
   /** Where a study's case is now (see `study_file::locate_case`). */
   study_locate_case: {
@@ -1483,6 +1570,27 @@ export interface CoreCommands {
 export type CoreCommand = keyof CoreCommands;
 export type CoreArgs<C extends CoreCommand> = CoreCommands[C]["args"];
 export type CoreResult<C extends CoreCommand> = CoreCommands[C]["result"];
+
+/** Commands that change the case or write a file: the ones Record keeps. */
+export const ACTION_COMMANDS: readonly CoreCommand[] = [
+  "apply_record_edits",
+  "calculate_sensitivities",
+  "clear_coordinates",
+  "clear_dc_grids",
+  "close_case",
+  "diff_compare",
+  "diff_compare_working",
+  "export_matpower",
+  "load_coordinates",
+  "load_dc_grids",
+  "open_case",
+  "run_contingencies",
+  "save_case_as",
+  "set_study_edits",
+  "solve_power_flow",
+  "topology_set_merge",
+  "trip_and_compare",
+];
 
 /** What every core command rejects with. */
 export type CoreError = Error;

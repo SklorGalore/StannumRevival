@@ -10,6 +10,14 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- Run files (`.stnrun`): Stannum commands written one per line, run in
+  order. **Ctrl+K → Record a run file** keeps what you do (opening, solving,
+  study edits, contingencies, exports) and saves it as one; **Run a run
+  file…**, or dropping one on the window, plays it back and shows the case
+  it leaves. Every line is checked before the first runs, and a failing
+  line stops the run and is named.
+- `stannum-cli`, which runs, checks and lists run files from a terminal
+  without the app (`stannum-cli run study.stnrun`).
 - One result shown in every view: showing an outage on the diagram (from
   Contingencies or Trip and compare) switches the diagram's flow labels, the
   Power flow tables and the inspector to that outage's solution, and the
@@ -26,6 +34,8 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- Solve, sensitivity and contingency settings may be left out of the core
+  commands, or given in part: what's missing takes its default.
 - Core commands report failures as a kind and a message (for example
   `cancelled`, `no_case` or `not_ready`), and every command's arguments and
   result have a JSON Schema. The frontend's types for core commands are

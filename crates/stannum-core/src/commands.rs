@@ -17,7 +17,7 @@ use crate::power::SolveSettings;
 use crate::record_edit::RecordEdit;
 use crate::study::Edit;
 use crate::workspace::{CaseId, Workspace};
-use crate::{logbook, study_file};
+use crate::{logbook, run_file, study_file};
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -26,6 +26,7 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 /// Version of the command set. It goes up when a command is removed or an
 /// argument or result changes in a way existing callers would notice.
@@ -46,6 +47,9 @@ pub struct CommandInfo {
     pub doc: &'static str,
     /// Whether it takes a `case` argument.
     pub takes_case: bool,
+    /// Whether it changes the case or writes a file, so Record writes it
+    /// into a run file.
+    pub action: bool,
 }
 
 /// A doc comment as plain text: lines trimmed, no trailing newline.
@@ -113,6 +117,17 @@ pub struct Session {
     solving: Mutex<Option<Arc<AtomicBool>>>,
     /// The contingency run in progress, if one is running.
     contingencies: Mutex<Option<RunHandle>>,
+    /// The flag that stops the run file in progress, if one is running.
+    running_file: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+/// How [`Session::run_steps`] runs a run file.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunOptions {
+    /// Run the remaining lines after one fails.
+    pub keep_going: bool,
+    /// Keep each command's answer in the report.
+    pub results: bool,
 }
 
 impl Session {
@@ -254,6 +269,123 @@ impl Session {
         self.workspace()?.case_mut(case)?.apply_record_edits(edits)
     }
 
+    /// Run a run file's steps in order, telling `each` how every step went
+    /// as it finishes. Stops at the first failure unless `keep_going`, and
+    /// before the next step once `cancel_run_file` is called.
+    pub fn run_steps(
+        &self,
+        path: &std::path::Path,
+        steps: &[run_file::Step],
+        options: RunOptions,
+        mut each: impl FnMut(&run_file::StepOutcome),
+    ) -> Result<run_file::RunReport, Error> {
+        let flag = Arc::new(AtomicBool::new(false));
+        {
+            let mut slot = self.running_file.lock().map_err(|_| {
+                Error::internal("Run files are unavailable after an earlier failure.")
+            })?;
+            if slot.is_some() {
+                return Err(Error::not_ready(
+                    "A run file is already running. Wait for it, or cancel it first.",
+                ));
+            }
+            *slot = Some(flag.clone());
+        }
+        let started = Instant::now();
+        let mut report = run_file::RunReport {
+            path: path.display().to_string(),
+            steps: steps.len(),
+            outcomes: Vec::new(),
+            failed: 0,
+            cancelled: false,
+            seconds: 0.0,
+        };
+        log::info!("Running {} ({} steps)", path.display(), steps.len());
+        for step in steps {
+            if flag.load(Ordering::Relaxed) {
+                report.cancelled = true;
+                break;
+            }
+            let at = Instant::now();
+            let answer = self.invoke(&step.command, Value::Object(step.args.clone()));
+            let outcome = run_file::StepOutcome {
+                line: step.line,
+                command: step.command.clone(),
+                seconds: at.elapsed().as_secs_f64(),
+                result: match (&answer, options.results) {
+                    (Ok(text), true) => serde_json::from_str(text).ok(),
+                    _ => None,
+                },
+                error: answer.err(),
+            };
+            match &outcome.error {
+                Some(e) if e.is(ErrorKind::Cancelled) => report.cancelled = true,
+                Some(e) => {
+                    report.failed += 1;
+                    log::warn!("Line {}: {}: {}", step.line, step.command, e.message);
+                }
+                None => log::debug!(
+                    "Line {}: {} ({:.2} s)",
+                    step.line,
+                    step.command,
+                    outcome.seconds
+                ),
+            }
+            let stop = outcome.error.is_some() && (!options.keep_going || report.cancelled);
+            each(&outcome);
+            report.outcomes.push(outcome);
+            if stop {
+                break;
+            }
+        }
+        if let Ok(mut slot) = self.running_file.lock() {
+            *slot = None;
+        }
+        report.seconds = started.elapsed().as_secs_f64();
+        let ran = report.outcomes.len();
+        if report.cancelled {
+            log::warn!(
+                "Cancelled {} after {ran} of {} steps",
+                path.display(),
+                report.steps
+            );
+        } else if report.failed > 0 {
+            log::warn!(
+                "{}: {} of {ran} steps failed ({} not run)",
+                path.display(),
+                report.failed,
+                report.steps - ran
+            );
+        } else {
+            log::info!(
+                "Ran {} ({ran} steps, {:.1} s)",
+                path.display(),
+                report.seconds
+            );
+        }
+        Ok(report)
+    }
+
+    fn run_file(
+        &self,
+        path: &std::path::Path,
+        options: RunOptions,
+    ) -> Result<run_file::RunReport, Error> {
+        let steps = run_file::read(path)?;
+        self.run_steps(path, &steps, options, |_| {})
+    }
+
+    /// Stops the run file in progress before its next step, and the solve
+    /// or contingency run it is waiting on.
+    fn cancel_run_file(&self) {
+        let running = self.running_file.lock().ok().and_then(|f| f.clone());
+        if let Some(flag) = running {
+            flag.store(true, Ordering::Relaxed);
+            self.cancel_solve();
+            self.cancel_contingencies();
+        }
+    }
+
     fn cancel_contingencies(&self) {
         if let Some(handle) = self.contingencies.lock().ok().and_then(|h| h.clone()) {
             handle.cancel();
@@ -321,12 +453,15 @@ macro_rules! commands {
                 name: stringify!($name),
                 doc: concat!($($doc, "\n",)*),
                 takes_case: false $(|| matches!(stringify!($field).as_bytes(), b"case"))*,
+                action: crate::run_file::is_action(stringify!($name)),
             },
         )*];
 
-        /// Each command's argument names, as declared (snake_case).
-        #[cfg(test)]
-        const ARG_NAMES: &[&[&str]] = &[$(&[$(stringify!($field)),*],)*];
+        /// Each command's arguments, as declared (snake_case), and whether
+        /// each is a file path. Same order as [`COMMANDS`].
+        const ARGS: &[&[(&str, bool)]] = &[$(&[$(
+            (stringify!($field), matches!(stringify!($ty).as_bytes(), b"PathBuf")),
+        )*],)*];
 
         fn dispatch(session: &Session, command: &str, raw: Value) -> Result<String, Error> {
             match command {
@@ -343,6 +478,12 @@ macro_rules! commands {
             }
         }
 
+        /// A command's arguments, as declared (snake_case), and whether each
+        /// is a file path; None if there is no such command.
+        pub fn command_args(command: &str) -> Option<&'static [(&'static str, bool)]> {
+            COMMANDS.iter().position(|c| c.name == command).map(|i| ARGS[i])
+        }
+
         /// Every command's arguments and result as JSON Schema, with the
         /// error every command can return. Named types are under `$defs`.
         pub fn schemas() -> Value {
@@ -356,6 +497,7 @@ macro_rules! commands {
                 commands.insert(stringify!($name).into(), json!({
                     "doc": clean_doc(concat!($($doc, "\n",)*)),
                     "takes_case": (false $(|| matches!(stringify!($field).as_bytes(), b"case"))*),
+                    "action": crate::run_file::is_action(stringify!($name)),
                     "args": arguments,
                     "result": outputs.subschema_for::<$ret>(),
                 }));
@@ -415,8 +557,9 @@ commands! {
     };
 
     /// Solve the power flow with the study's edits. `cancel_solve` stops it.
-    solve_power_flow { case: Option<CaseId>, settings: SolveSettings } -> crate::power::SolveReport =>
-        |s, a| s.solve(a.case, a.settings);
+    /// Settings left out take their defaults.
+    solve_power_flow { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SolveReport =>
+        |s, a| s.solve(a.case, a.settings.unwrap_or_default());
 
     /// Stop the solve in progress; the case keeps its previous results.
     cancel_solve {} -> () => |s, _| {
@@ -454,9 +597,13 @@ commands! {
     set_study_edits { case: Option<CaseId>, edits: Vec<Edit> } -> () =>
         |s, a| s.workspace()?.case_mut(a.case)?.set_edits(a.edits);
 
+    /// The study's edits, as `set_study_edits` last set them.
+    study_edits { case: Option<CaseId> } -> Vec<Edit> =>
+        |s, a| Ok(s.workspace()?.case(a.case)?.edits.clone());
+
     /// Calculate sensitivities at the solved operating point.
-    calculate_sensitivities { case: Option<CaseId>, settings: SolveSettings } -> crate::power::SensitivitySummary =>
-        |s, a| s.sensitivities(a.case, a.settings);
+    calculate_sensitivities { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SensitivitySummary =>
+        |s, a| s.sensitivities(a.case, a.settings.unwrap_or_default());
 
     /// One sensitivity column's responses at every bus.
     sensitivity_responses {
@@ -537,9 +684,10 @@ commands! {
         |s, a| Ok(s.workspace()?.comparison()?.record_detail(&a.section, a.index));
 
     /// Run N-1 contingencies. `cancel_contingencies` stops the run and
-    /// `contingency_progress` follows it.
-    run_contingencies { case: Option<CaseId>, settings: ContingencySettings } -> ContingencySummary =>
-        |s, a| s.run_contingencies(a.case, a.settings);
+    /// `contingency_progress` follows it. Settings left out take their
+    /// defaults: every branch and generator, screened, then the worst in AC.
+    run_contingencies { case: Option<CaseId>, settings: Option<ContingencySettings> } -> ContingencySummary =>
+        |s, a| s.run_contingencies(a.case, a.settings.unwrap_or_default());
 
     /// Stop the contingency run in progress.
     cancel_contingencies {} -> () => |s, _| {
@@ -584,6 +732,36 @@ commands! {
     /// Where a study's case is now (see `study_file::locate_case`).
     study_locate_case { study: PathBuf, absolute: String, relative: Option<String> } -> Option<String> =>
         |_, a| Ok(study_file::locate_case(&a.study, &a.absolute, a.relative.as_deref()));
+
+    /// Run a run file (`.stnrun`): commands one per line, in order (see
+    /// `run_file`). Every line is checked first. The run stops at the first
+    /// command that fails unless `keepGoing`; `results` keeps each answer.
+    run_file { path: PathBuf, keep_going: Option<bool>, results: Option<bool> } -> crate::run_file::RunReport =>
+        |s, a| s.run_file(&a.path, RunOptions {
+            keep_going: a.keep_going.unwrap_or(false),
+            results: a.results.unwrap_or(false),
+        });
+
+    /// Stop the run file in progress before its next line, and the solve or
+    /// contingency run it is waiting on.
+    cancel_run_file {} -> () => |s, _| {
+        s.cancel_run_file();
+        Ok(())
+    };
+
+    /// Write commands as a run file, such as the ones Record kept. Paths in
+    /// the run file's folder are written relative to it, and settings at
+    /// their defaults are left out.
+    save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
+        let folder = crate::run_file::folder_of(&a.path);
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        let text = crate::run_file::format(&steps, Some(&folder), &format!(
+            "Stannum run file, recorded in the app.\nRun it from Ctrl+K > Run a run file, or: stannum-cli run {}",
+            a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+        ))?;
+        std::fs::write(&a.path, text).map_err(|e| Error::file(&a.path, e))
+    };
 }
 
 #[cfg(test)]
@@ -673,9 +851,9 @@ mod tests {
             "limit_pct" => json!(100.0),
             _ => json!(1),
         };
-        for (c, names) in COMMANDS.iter().zip(ARG_NAMES).filter(|(c, _)| c.takes_case) {
+        for (c, names) in COMMANDS.iter().zip(ARGS).filter(|(c, _)| c.takes_case) {
             let mut args = serde_json::Map::new();
-            for name in *names {
+            for (name, _) in *names {
                 args.insert(camel(name), value(name));
             }
             if c.name != "run_contingencies" && args.contains_key("settings") {

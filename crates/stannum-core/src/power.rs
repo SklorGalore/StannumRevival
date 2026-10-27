@@ -159,7 +159,10 @@ fn yes() -> bool {
     true
 }
 
+/// How to solve. Fields left out take their defaults: AC from the last
+/// solution, to 2 MVA, without reactive limits, with every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(default)]
 pub struct SolveSettings {
     pub model: ModelChoice,
     pub start: StartChoice,

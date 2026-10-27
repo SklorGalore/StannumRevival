@@ -3,8 +3,10 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  Circle,
   Columns2,
   CornerDownLeft,
+  FileCode2,
   FlaskConical,
   FolderOpen,
   Save,
@@ -28,6 +30,7 @@ import {
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
 import { useStudyFile } from "../store/studyFileStore";
+import { useRunFile } from "../store/runFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
@@ -58,6 +61,7 @@ function useCommands(): Command[] {
   const split = useWorkspace((s) => s.split);
   const logOpen = useLog((s) => s.open);
   const studyPath = useStudyFile((s) => s.path);
+  const recording = useRunFile((s) => s.recording);
   return useMemo(() => {
     const w = useWorkspace.getState();
     const next = NEXT_PREFERENCE[preference];
@@ -139,6 +143,13 @@ function useCommands(): Command[] {
       if (selection) list.push({ id: "clear", title: "Clear selection", icon: <X size={14} />, keywords: "deselect escape", run: () => w.select(null, w.module) });
       list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
     }
+    const runFile = useRunFile.getState();
+    list.push(
+      recording
+        ? { id: "record-stop", title: "Stop recording and save run file…", icon: <Save size={14} />, keywords: "record macro script automation stnrun", run: () => void runFile.saveRecording() }
+        : { id: "record", title: "Record a run file", icon: <Circle size={14} />, keywords: "record macro script automation stnrun replay", run: runFile.startRecording }
+    );
+    list.push({ id: "run-file", title: "Run a run file…", icon: <FileCode2 size={14} />, keywords: "play replay macro script automation stnrun batch", run: () => void runFile.run() });
     list.push({
       id: "theme",
       title: next === "system" ? "Use the system theme" : `Switch to ${next} theme`,
@@ -154,7 +165,7 @@ function useCommands(): Command[] {
       run: () => useLog.getState().setOpen(!logOpen),
     });
     return list;
-  }, [summary, linked, selection, preference, module, split, logOpen, studyPath]);
+  }, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording]);
 }
 
 type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };

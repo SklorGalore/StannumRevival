@@ -1302,6 +1302,77 @@ assert.deepEqual(
 );
 await shot("diff-working");
 
+// Run files: Record keeps what you do as a run file, and Run plays one back.
+{
+  const palette = page.getByRole("dialog", { name: "Search and commands" });
+  const command = async (text, option) => {
+    await page.keyboard.press("Control+k");
+    await palette.getByRole("combobox").fill(text);
+    await palette.getByRole("option", { name: option }).click();
+  };
+  const runDir = mkdtempSync(`${tmpdir()}/stannum-run-`);
+  copyFileSync(STANNUM_MATPOWER, `${runDir}/case9.m`);
+  await queue(`${runDir}/case9.m`);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await command("record", /Record a run file/);
+  const bar = page.getByTestId("recording-bar");
+  await bar.getByText("1 step so far.").waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
+  await inspector.getByRole("button", { name: "Take out" }).click();
+  await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
+  // The edit, then the solve that follows it.
+  await bar.getByText("4 steps so far.").waitFor();
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await shot("run-file-recording");
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("combobox").fill("run file");
+  await palette.getByRole("option", { name: /Stop recording and save run file/ }).waitFor();
+  await shot("run-file-palette");
+  await page.keyboard.press("Escape");
+  const runFile = `${runDir}/case9_outage.stnrun`;
+  await queue(runFile);
+  await page.getByTestId("save-recording").click();
+  await bar.waitFor({ state: "detached" });
+  const recorded = readFileSync(runFile, "utf8");
+  assert.match(recorded, /^open_case path=case9\.m$/m, recorded);
+  assert.match(recorded, /^set_study_edits edits=\[\{"element": "line:4:5:1", "kind": "status", "online": false\}\]$/m, recorded);
+  // The app's solve settings are the defaults, so the solves read plainly.
+  assert.equal(recorded.match(/^solve_power_flow$/gm)?.length, 2, recorded);
+
+  // Played back on an empty window, it opens the case, takes the line out
+  // and solves, and the app shows all of it.
+  await page.getByRole("button", { name: "Close case" }).click();
+  await page.getByText("No case open.").waitFor();
+  await queue(runFile);
+  await command("run file", /Run a run file/);
+  await page.getByTestId("run-file-notice").getByText(/^Ran case9_outage\.stnrun: 4 steps in \d+ ms\.$/).waitFor();
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await shot("run-file-ran");
+
+  // A line that fails stops the run and says which; a misspelled command
+  // stops the file before anything runs.
+  writeFileSync(`${runDir}/broken.stnrun`, "open_case path=case9.m\nelement_detail element=bus:99\nsolve_power_flow\n");
+  await queue(`${runDir}/broken.stnrun`);
+  await command("run file", /Run a run file/);
+  const notice = page.getByTestId("run-file-notice");
+  await notice.getByText("broken.stnrun stopped: a line failed, 1 not run.").waitFor();
+  await notice.getByText("Line 2, element_detail: bus:99 isn't in this case.").waitFor();
+  await shot("run-file-failed");
+  writeFileSync(`${runDir}/typo.stnrun`, "open_case path=case9.m\nsolve_powerflow\n");
+  await queue(`${runDir}/typo.stnrun`);
+  await command("run file", /Run a run file/);
+  await notice.getByText("The run file didn't run.").waitFor();
+  await notice.getByText(/Line 2: Stannum has no command called solve_powerflow\./).waitFor();
+  await notice.getByRole("button", { name: "Dismiss" }).click();
+}
+
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();
 console.log("smoke test passed");
