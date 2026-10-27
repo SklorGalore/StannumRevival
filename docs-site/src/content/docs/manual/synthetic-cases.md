@@ -80,7 +80,8 @@ The steps follow the paper's flowchart (its Fig. 4).
    follow the paper's eqs. 2-5. Conductors, parallel circuits and
    transformers are sized from dc flows.
 6. **AC solve.** Generators hold their substation's high-side bus with
-   reactive limits enforced. If the case doesn't solve from a flat start,
+   reactive limits enforced, sharing its reactive power by the size of
+   their reactive range so they reach their limits together. If the case doesn't solve from a flat start,
    load is brought up in steps, adding capacitor banks where voltages sag
    below 0.97 pu before each next step. At full load, capacitors, reactors
    and upgrades bring voltages into 0.97-1.05 pu and branches under 85%
@@ -142,11 +143,9 @@ It solves in 11 Newton iterations with every load bus between 0.97 and
   600 GW, near the Eastern Interconnection's peak. Where a load step won't
   solve, shunts are added for the reactive power generators would need
   beyond their limits.
-- **80,000 buses is not yet as clean as 2,000.** Seed 1 builds in about
-  16 minutes and solves at full load, with every structural statistic in
-  range, but about 2% of buses sit outside 0.97-1.05 pu, some branches run
-  over their limit, and 2 substations are still cut. Re-solving that case
-  from its own solution doesn't converge either, which points at how the
-  reactive-limit passes switch generators; that is the next thing to fix.
+- **80,000 buses is nearly as clean as 2,000.** Seed 1 builds in about
+  half an hour and solves at full load, with every structural statistic in
+  range. 2 buses sit outside 0.97-1.05 pu, 8 branches run over their limit,
+  and 2 substations are still cut.
 - **Underground cables** and the paper's further complexities (transient
   stability data, costs) are not generated yet.

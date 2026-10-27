@@ -1731,8 +1731,16 @@ fn solve_core(
                 continue;
             }
             case.generators[g].qg = limit;
-            if remote.binary_search(&i).is_ok() {
+            if let Ok(k) = remote.binary_search(&i) {
                 released[i] = Some(upper);
+                // While the bus held a remote bus, its own voltage was free,
+                // and a solve asking a small unit for far more than it has
+                // can leave it anywhere (on the 80,000-bus synthetic case, a
+                // 10 Mvar unit asked for 150 Mvar sat at 0.15 pu, nearly in
+                // antiphase). Newton from there finds the collapsed root of
+                // the now fixed injection, so the bus restarts from the
+                // voltage of the bus it held.
+                v[i] = v[held[k]];
             }
         }
         for k in restored {

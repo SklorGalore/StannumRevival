@@ -292,7 +292,11 @@ impl Assembly<'_> {
                     pmin: 0.0,
                     extra: vec![],
                     regulated_bus: Some(hv),
-                    reactive_share: 100.0,
+                    // Units holding one bus share its Mvar by their reactive
+                    // range, so they reach their limits together. Equal
+                    // shares asked a 10 Mvar unit for as much as a 1,000 MW
+                    // one beside it.
+                    reactive_share: (qmax.round() - qmin.round()).max(1.0),
                 });
                 gen_names.push(plant.fuel.matpower().to_string());
                 if plant.mw > biggest.0 {

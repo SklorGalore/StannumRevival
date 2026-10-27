@@ -32,6 +32,15 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- Generators holding a remote bus no longer leave a solve on a collapsed
+  answer: a unit asked for far more reactive power than it has could end a
+  pass with its own terminal near 0 pu, and the solve then settled there
+  once the unit was held at its limit. A unit held at its limit now restarts
+  from the voltage of the bus it held.
+- Generated synthetic cases share each substation's reactive power between
+  its plants by their size, not equally. The 80,000-bus case now finishes
+  its voltage and loading cleanup: 2 buses outside 0.97-1.05 pu and 8
+  branches over their limit, down from 1,873 and 308.
 - A solve or contingency run that finishes after the case was edited is set
   aside with a message instead of being shown as the edited case's results.
 
