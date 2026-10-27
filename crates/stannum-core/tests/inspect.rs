@@ -78,3 +78,57 @@ fn raw_loads_and_transformers() {
         assert_eq!(number(&d.data[0].fields, "Load", "MW"), l.p_mw);
     }
 }
+
+#[test]
+fn shunts_facts_and_switched_shunts_have_their_own_ids() {
+    use serde_json::{Value, json};
+    let s = stannum_core::commands::Session::new();
+    let call = |command: &str, args: Value| -> Value {
+        serde_json::from_str(&s.invoke(command, args).unwrap()).unwrap()
+    };
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/five_bus_devices.raw");
+    call("open_case", json!({ "path": path }));
+    // The Records rows carry the ids.
+    for (section, id) in [
+        ("FIXED SHUNT", "shunt:4:1"),
+        ("SWITCHED SHUNT", "switched-shunt:5:1"),
+        ("FACTS DEVICE", "facts:STATCOM_3"),
+    ] {
+        let table = call("record_table", json!({ "section": section }));
+        assert_eq!(table["rows"]["element"][0], id, "{section}");
+    }
+    // The inspector reads them from their records.
+    let shunt = call("element_detail", json!({ "element": "switched-shunt:5:1" }));
+    assert_eq!(shunt["kind"], "switched-shunt");
+    assert_eq!(shunt["buses"][0]["number"], 5);
+    assert!(shunt["online"].as_bool().unwrap());
+    let facts = call("element_detail", json!({ "element": "facts:STATCOM_3" }));
+    assert_eq!(
+        facts["buses"].as_array().unwrap().len(),
+        1,
+        "J = 0 is no bus"
+    );
+    // A bus lists them once the records are read.
+    let bus = call("element_detail", json!({ "element": "bus:5" }));
+    assert!(
+        bus["connected"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("switched-shunt:5:1"))
+    );
+    // Every kind's id is listed with where it comes from.
+    let kinds = call("element_kinds", json!({}));
+    let shunt_kind = kinds
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["kind"] == "switched-shunt")
+        .unwrap();
+    assert_eq!(shunt_kind["raw_sections"], json!(["SWITCHED SHUNT"]));
+    assert_eq!(shunt_kind["inspector"], "record");
+    let missing = s
+        .invoke("element_detail", json!({ "element": "facts:NOPE" }))
+        .unwrap_err();
+    assert_eq!(missing.kind, stannum_core::ErrorKind::NotFound);
+}

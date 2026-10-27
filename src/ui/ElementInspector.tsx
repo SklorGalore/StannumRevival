@@ -9,21 +9,12 @@ import { useStudy, editTarget } from "../store/studyStore";
 import { api } from "../lib/analysis/api";
 import type { DetailField, ElementDetail } from "../lib/analysis/types";
 import { fixed } from "../lib/analysis/format";
-import { busElement, elementLabel, parseElement } from "../lib/elements";
+import { busElement, elementLabel, kindLabel, parseElement } from "../lib/elements";
 import { elementResults, type ResultRow, type Tone } from "../lib/inspect";
 import { DrawAroundButton } from "./DrawAround";
 import { StudyActions, describeEdit } from "./StudyActions";
 import { TripButton, TripOutcome } from "./TripCompare";
 
-const KIND_LABEL: Record<string, string> = {
-  bus: "Bus",
-  line: "Line",
-  transformer: "Transformer",
-  switch: "Switch",
-  generator: "Generator",
-  load: "Load",
-  dcline: "DC line",
-};
 
 const TONE_TEXT: Record<Tone, string> = { ok: "text-slate-800", warn: "text-amber-700", bad: "text-red-700" };
 const TONE_CHIP: Record<Tone, string> = {
@@ -199,7 +190,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
     <div className="flex flex-col text-xs" data-testid="element-inspector" data-element={element}>
       <header className="px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{KIND_LABEL[kind] ?? kind}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{kindLabel(kind)}</p>
           <span
             className={`rounded px-1.5 py-px text-[10px] font-semibold ${
               offline ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"

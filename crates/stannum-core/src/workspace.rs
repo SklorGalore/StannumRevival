@@ -897,6 +897,15 @@ impl OpenCase {
     /// One element's data and limits from the file, for the element inspector.
     pub fn element_detail(&self, element: &str) -> Result<crate::inspect::ElementDetail, Error> {
         let power = self.power.as_ref().map_err(|e| e.clone())?;
+        if let Some(kind) = crate::elements::kind_of(element)
+            && kind.inspector == crate::elements::Source::Record
+        {
+            return match self.records.as_ref() {
+                Some(Ok(records)) => crate::inspect::from_record(power, records, kind, element),
+                Some(Err(e)) => Err(e.clone().into()),
+                None => Err(Error::not_ready("Read the case's records first.")),
+            };
+        }
         // RAW 35 records as nodal read them; other files would only get a
         // topology derived from the same model, so don't build one for that.
         let topology = (power.revision == Some(35))
@@ -905,6 +914,15 @@ impl OpenCase {
             .filter(|t| !t.derived)
             .map(|t| &t.case);
         let mut detail = crate::inspect::element(power, topology, element)?;
+        // Shunts, FACTS devices and the like at a bus, once the records have
+        // been read (reading them just for this could take seconds).
+        if detail.kind == "bus"
+            && let (Some(Ok(records)), Some(bus)) = (self.records.as_ref(), detail.buses.first())
+        {
+            detail
+                .connected
+                .extend(crate::inspect::record_elements_at(records, bus.number));
+        }
         if let (Some(number), Some(coordinates)) = (
             element
                 .strip_prefix("bus:")

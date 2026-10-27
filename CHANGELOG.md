@@ -62,6 +62,11 @@ section into the next version's when a release is cut (see
 - A solve after a Records edit starts from the last converged solve, as
   long as the edit kept the same buses: a 5 MW load change on case300
   solves in 1 iteration instead of 4.
+- Fixed shunts, switched shunts, induction machines and FACTS devices have
+  their own ids (`shunt:101:1`, `switched-shunt:101:1`, `machine:101:1`,
+  `facts:SVC_1`): picking one in Records opens it in the inspector with its
+  fields as filed, and a bus lists them among its connections. One table in
+  the core lists every kind of id (`element_kinds`), and the app reads it.
 
 ### Fixed
 
