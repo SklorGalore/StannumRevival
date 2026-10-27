@@ -87,7 +87,11 @@ export const useLog = create<LogState>((set, get) => ({
 /** Fetch core lines the window hasn't seen. Safe to call at any time. */
 export async function catchUpLog(): Promise<void> {
   try {
-    const lines = await invoke<CoreEntry[]>("log_entries", { since: useLog.getState().coreSeq });
+    // A core command, sent the way api.ts's invokeCore does (importing it here would be circular).
+    const lines = await invoke<CoreEntry[]>("stannum_command", {
+      command: "log_entries",
+      args: { since: useLog.getState().coreSeq },
+    });
     useLog.getState().ingest(lines);
   } catch {
     // No core to ask (plain browser without the dev bridge).
