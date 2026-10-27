@@ -57,6 +57,16 @@ Long runs (solves and contingency runs) can be cancelled with `cancel_solve`
 and `cancel_contingencies`, and `contingency_progress` reports how far a run
 has got. These work while the run is going, from any client.
 
+Long work doesn't hold the workspace while it runs: a solve, sensitivities,
+"Trip and compare", contingency runs, the first read of a case's records and
+Records edits each take what they need from the open case (shared, not
+copied), run, and lock the workspace again only to keep their results. Other
+commands answer meanwhile. Every open case has a version that changes when
+the case itself changes (study edits, Records edits, opening another case).
+Results computed for an older version are set aside with a message instead
+of being stored on the changed case; Records reads and edits are redone on
+the case as it is now.
+
 ## The workspace
 
 When a case opens, the workspace reads it once for each engine that can use
