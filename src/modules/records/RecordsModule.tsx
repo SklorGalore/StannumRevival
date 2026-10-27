@@ -27,6 +27,9 @@ const LIST_MIN = 720;
 const INSPECTOR_MIN = 1060;
 
 /** A cell being edited, by table position. */
+/** Longer than any system's double-click time. */
+const DOUBLE_CLICK_MS = 1000;
+
 interface CellRef {
   row: number;
   column: number;
@@ -128,6 +131,7 @@ function columnsFor(table: RecordTable, raw: boolean, edit: EditState): Column<C
           <span
             className={`block -mx-2.5 px-2.5 leading-7 cursor-text ${pending !== undefined ? "bg-amber-100 text-amber-950 font-medium" : ""}`}
             data-pending={pending !== undefined ? "" : undefined}
+            data-cell={`${row}:${i}`}
             title={pending !== undefined ? `Was ${shownValue(r.cells[i]) || "empty"}` : "Double-click to edit"}
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -205,6 +209,10 @@ export function RecordsModule({ active }: { active: boolean }) {
   // Typed values not yet applied to the case, by section, row and column.
   const [pending, setPending] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<CellRef | null>(null);
+  // The editable cell under a double-click's first click (null when it hit
+  // none). Picking a record can open the inspector and narrow the columns
+  // between the two clicks, so the second may land on another cell.
+  const firstClick = useRef<{ cell: CellRef | null; at: number } | null>(null);
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const selected = linked || selection?.from === "search" ? (selection?.element ?? null) : picked;
@@ -279,6 +287,12 @@ export function RecordsModule({ active }: { active: boolean }) {
     pending,
     editing,
     start: (cell) => {
+      const first = firstClick.current;
+      firstClick.current = null;
+      if (first && performance.now() - first.at < DOUBLE_CLICK_MS) {
+        if (!first.cell) return;
+        cell = first.cell;
+      }
       setEditError(null);
       setEditing(cell);
     },
@@ -488,7 +502,16 @@ export function RecordsModule({ active }: { active: boolean }) {
             {table.note && <Notice>{table.note}</Notice>}
           </div>
         )}
-        <div className="flex-1 min-h-0" data-testid="records-table">
+        <div
+          className="flex-1 min-h-0"
+          data-testid="records-table"
+          onClickCapture={(e) => {
+            if (e.detail !== 1) return;
+            const at = (e.target as HTMLElement).closest<HTMLElement>("[data-cell]")?.dataset.cell;
+            const [row, column] = at ? at.split(":").map(Number) : [];
+            firstClick.current = { cell: at ? { row, column } : null, at: performance.now() };
+          }}
+        >
           <DataTable
             key={section}
             rows={shown}
