@@ -262,6 +262,27 @@ export type ContingencyRow = {
   worst_voltage: VoltageProblem | null;
 };
 
+/** ContingencyRow rows as columns: one array per field, each `count` long. */
+export type ContingencyRowColumns = {
+  checked: ("ac" | "linear")[];
+  converged: (boolean | null)[];
+  count: number;
+  cut_off_buses: number[];
+  element: string[];
+  iterations: (number | null)[];
+  kind: ("branch" | "generator")[];
+  lost_generation_mw: number[];
+  lost_load_mw: number[];
+  note: (string | null)[];
+  overloads: number[];
+  rank: number[];
+  screened_pct: (number | null)[];
+  severity: number[];
+  voltage_violations: number[];
+  worst: (Overload | null)[];
+  worst_voltage: (VoltageProblem | null)[];
+};
+
 /** What to run. */
 export type ContingencySettings = {
   /** How many of the worst screened outages get an AC solve. */
@@ -888,13 +909,12 @@ export type RecordEdit = {
   value: string;
 };
 
-export type RecordRow = {
-  /** One value per column: a number, text, or null when absent. */
-  cells: (string | number | null)[];
-  /** Shared element id (see `crate::elements`), when the record is one. */
-  element: string | null;
-  /** Line in the file where the record starts (0 when not from the file). */
-  line: number;
+/** RecordRow rows as columns: one array per field, each `count` long. */
+export type RecordRowColumns = {
+  cells: ((string | number | null)[])[];
+  count: number;
+  element: (string | null)[];
+  line: number[];
 };
 
 /** Where the tables come from. */
@@ -907,7 +927,8 @@ export type RecordTable = {
   label: string;
   /** Why some records are missing, or how to read the table. */
   note: string | null;
-  rows: RecordRow[];
+  /** Sent as columns, like every big table. */
+  rows: RecordRowColumns;
   /** Records in the file that couldn't be read into this table. */
   skipped: number;
 };
@@ -967,7 +988,7 @@ export type SensitivitySummary = {
 
 export type SolveReport = {
   branches: BranchRowColumns;
-  /** Sent as columns (see [`wire`]); the frontend turns them back into rows. */
+  /** Sent as columns (see [`Table`]); the frontend turns them back into rows. */
   buses: BusRowColumns;
   converged: boolean;
   dc_lines: DcLineRow[];
@@ -1308,7 +1329,7 @@ export interface CoreCommands {
       limit: number;
       offset: number;
     };
-    result: ContingencyRow[];
+    result: ContingencyRowColumns;
   };
   /** The last contingency run's summary, or null. */
   contingency_summary: {
@@ -1611,4 +1632,4 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
 /** What every core command rejects with. */
 export type CoreError = Error;
 
-export const CORE_API_VERSION = 2;
+export const CORE_API_VERSION = 3;

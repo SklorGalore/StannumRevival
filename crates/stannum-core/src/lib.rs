@@ -39,6 +39,7 @@ pub mod run_file;
 pub mod schema;
 pub mod study;
 pub mod study_file;
+pub mod table;
 pub mod topology_wire;
 pub mod working_case;
 pub mod workspace;

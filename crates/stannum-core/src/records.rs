@@ -59,7 +59,8 @@ pub struct RecordTable {
     pub id: String,
     pub label: String,
     pub columns: Vec<RecordColumn>,
-    pub rows: Vec<RecordRow>,
+    /// Sent as columns, like every big table.
+    pub rows: crate::table::Table<RecordRow>,
     /// Records in the file that couldn't be read into this table.
     pub skipped: usize,
     /// Why some records are missing, or how to read the table.
@@ -511,7 +512,7 @@ fn raw_table(case: &DiffCase, section: &str, parsed: &[Record]) -> RecordTable {
         id: section.to_string(),
         label: raw_label(section),
         columns,
-        rows,
+        rows: rows.into(),
         skipped,
         note,
         layouts,

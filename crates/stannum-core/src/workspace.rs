@@ -541,7 +541,7 @@ impl OpenCase {
         &self,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<ContingencyRow>, Error> {
+    ) -> Result<crate::table::Table<ContingencyRow>, Error> {
         Ok(self.contingency_results()?.page(offset, limit))
     }
 

@@ -1118,6 +1118,192 @@
       ],
       "type": "object"
     },
+    "ContingencyRowColumns": {
+      "description": "ContingencyRow rows as columns: one array per field, each `count` long.",
+      "properties": {
+        "checked": {
+          "items": {
+            "description": "\"ac\" when solved in AC, \"linear\" when only screened.",
+            "enum": [
+              "ac",
+              "linear"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "converged": {
+          "items": {
+            "description": "AC only: whether the solve converged, and in how many iterations.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cut_off_buses": {
+          "items": {
+            "description": "Buses split off from the rest of the network, and what they carried.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "element": {
+          "items": {
+            "description": "The element taken out.",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "iterations": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "kind": {
+          "items": {
+            "description": "\"branch\" or \"generator\".",
+            "enum": [
+              "branch",
+              "generator"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lost_generation_mw": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "lost_load_mw": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "note": {
+          "items": {
+            "description": "AC only: why a solve failed, in a sentence.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "overloads": {
+          "items": {
+            "description": "Branches over the limit that are new or more than a point worse.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rank": {
+          "items": {
+            "description": "Position in the ranked list, from 1.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "screened_pct": {
+          "items": {
+            "description": "The `worst` branch's loading from the linear screen.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "severity": {
+          "items": {
+            "description": "Sort key, higher is worse: the worst new or worse overload, or a bus\nvoltage problem scored on the same scale; infinite when the AC solve\nfailed.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "voltage_violations": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "worst": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Overload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The most loaded branch that is over its limit and new or worse than\nbefore the outage; otherwise the most loaded branch."
+          },
+          "type": "array"
+        },
+        "worst_voltage": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/VoltageProblem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AC only: the worst bus outside its limits that is new or worse."
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "checked",
+        "converged",
+        "count",
+        "cut_off_buses",
+        "element",
+        "iterations",
+        "kind",
+        "lost_generation_mw",
+        "lost_load_mw",
+        "note",
+        "overloads",
+        "rank",
+        "screened_pct",
+        "severity",
+        "voltage_violations",
+        "worst",
+        "worst_voltage"
+      ],
+      "type": "object"
+    },
     "ContingencySettings": {
       "description": "What to run.",
       "properties": {
@@ -3653,37 +3839,53 @@
       ],
       "type": "object"
     },
-    "RecordRow": {
+    "RecordRowColumns": {
+      "description": "RecordRow rows as columns: one array per field, each `count` long.",
       "properties": {
         "cells": {
-          "description": "One value per column: a number, text, or null when absent.",
           "items": {
+            "description": "One value per column: a number, text, or null when absent.",
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "items": {
+            "description": "Shared element id (see `crate::elements`), when the record is one.",
             "type": [
               "string",
-              "number",
               "null"
             ]
           },
           "type": "array"
         },
-        "element": {
-          "description": "Shared element id (see `crate::elements`), when the record is one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "line": {
-          "description": "Line in the file where the record starts (0 when not from the file).",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
+          "items": {
+            "description": "Line in the file where the record starts (0 when not from the file).",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
         }
       },
       "required": [
-        "line",
+        "cells",
+        "count",
         "element",
-        "cells"
+        "line"
       ],
       "type": "object"
     },
@@ -3725,10 +3927,8 @@
           ]
         },
         "rows": {
-          "items": {
-            "$ref": "#/$defs/RecordRow"
-          },
-          "type": "array"
+          "$ref": "#/$defs/RecordRowColumns",
+          "description": "Sent as columns, like every big table."
         },
         "skipped": {
           "description": "Records in the file that couldn't be read into this table.",
@@ -3947,7 +4147,7 @@
         },
         "buses": {
           "$ref": "#/$defs/BusRowColumns",
-          "description": "Sent as columns (see [`wire`]); the frontend turns them back into rows."
+          "description": "Sent as columns (see [`Table`]); the frontend turns them back into rows."
         },
         "converged": {
           "type": "boolean"
@@ -4789,7 +4989,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "api_version": 2,
+  "api_version": 3,
   "commands": {
     "apply_record_edits": {
       "action": true,
@@ -5133,10 +5333,7 @@
       },
       "doc": "A page of the last run's ranked results.",
       "result": {
-        "items": {
-          "$ref": "#/$defs/ContingencyRow"
-        },
-        "type": "array"
+        "$ref": "#/$defs/ContingencyRowColumns"
       },
       "takes_case": true
     },

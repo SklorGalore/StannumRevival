@@ -124,6 +124,7 @@ def test_contingencies_rank_every_outage(case9: sn.Case) -> None:
     detail = case9.contingency(1)
     assert detail.row["element"] == rows["element"][0]
     assert len(case9.contingency_rows(limit=3)) == 3
+    assert case9.contingency_rows(offset=1, limit=2)["rank"].tolist() == [2, 3]
 
 
 def test_records_and_record_edits(case9: sn.Case) -> None:
@@ -133,6 +134,8 @@ def test_records_and_record_edits(case9: sn.Case) -> None:
     assert isinstance(buses, sn.RecordTable)
     assert len(buses) == 9
     assert "PD" in buses.editable
+    assert len(buses.lines) == 9 and len(buses.elements) == 9
+    assert buses.elements[0] == f"bus:{int(buses['BUS_I'][0])}"
     row = int(np.flatnonzero(buses["BUS_I"] == 5)[0])
     case9.edit_records([{"section": "bus", "row": row, "column": "PD", "value": 125}])
     assert case9.records("bus")["PD"][row] == 125

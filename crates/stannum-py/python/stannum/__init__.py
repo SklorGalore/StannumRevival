@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from . import _native
-from ._table import Answer, Table, tables_in
+from ._table import Answer, Table, _plain, tables_in
 from .errors import (
     CaseChanged,
     CaseNotOpen,
@@ -165,14 +165,16 @@ class RecordTable(Table):
 
     def __init__(self, raw: Mapping[str, Any]) -> None:
         names = [c["name"] for c in raw["columns"]]
-        rows = raw["rows"]
-        super().__init__({n: [r["cells"][i] for r in rows] for i, n in enumerate(names)}, count=len(rows))
+        rows: Table = raw["rows"]  # columns: line, element, cells (one list per record)
+        count = len(rows)
+        cells = list(rows["cells"])
+        super().__init__({n: [r[i] for r in cells] for i, n in enumerate(names)}, count=count)
         self.id: str = raw["id"]
         self.label: str = raw["label"]
         self.kinds: dict[str, str] = {c["name"]: c["kind"] for c in raw["columns"]}
         self.editable: list[str] = [c["name"] for c in raw["columns"] if c["editable"]]
-        self.lines = Table({"line": [r["line"] for r in rows]}, count=len(rows))["line"]
-        self.elements: list[str | None] = [r.get("element") for r in rows]
+        self.lines = rows["line"]
+        self.elements: list[str | None] = [_plain(e) for e in rows["element"]]
         self.skipped: int = raw.get("skipped", 0)
         self.note: str | None = raw.get("note")
 
@@ -306,15 +308,19 @@ class Case:
 
     def contingency_rows(self, offset: int = 0, limit: int | None = None) -> Table:
         """The last run's ranked outages, as a table."""
-        rows: list[dict[str, Any]] = []
+        pages: list[Table] = []
+        got_rows = 0
         page = 2000
-        while limit is None or len(rows) < limit:
-            want = page if limit is None else min(page, limit - len(rows))
-            got = self.call("contingency_rows", offset=offset + len(rows), limit=want)
-            rows.extend(got)
+        while limit is None or got_rows < limit:
+            want = page if limit is None else min(page, limit - got_rows)
+            got: Table = self.call("contingency_rows", offset=offset + got_rows, limit=want)
+            pages.append(got)
+            got_rows += len(got)
             if len(got) < want:
                 break
-        return Table.from_rows(rows) if rows else Table({})
+        if len(pages) == 1:
+            return pages[0]
+        return Table({c: [_plain(v) for p in pages for v in p[c]] for c in pages[0].columns}, count=got_rows)
 
     def contingency(self, rank: int) -> Answer:
         """One outage's flow and voltage changes, by rank (from 1)."""
