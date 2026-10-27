@@ -16,6 +16,11 @@ section into the next version's when a release is cut (see
   file…**, or dropping one on the window, plays it back and shows the case
   it leaves. Every line is checked before the first runs, and a failing
   line stops the run and is named.
+- A Python package, `stannum`: open cases, solve, set study edits, run
+  contingencies, read and edit records, check topology and compare RAW files
+  from a script or notebook (`import stannum as sn; sn.open("case9.m").solve()`).
+  Results come as NumPy columns, failures as typed errors (`stannum.NotFound`,
+  …), and Ctrl+C stops a long run. See the Python page of the user guide.
 - `stannum-cli`, which runs, checks and lists run files from a terminal
   without the app (`stannum-cli run study.stnrun`).
 - One result shown in every view: showing an outage on the diagram (from

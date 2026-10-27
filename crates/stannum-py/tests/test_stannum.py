@@ -1,0 +1,219 @@
+"""The stannum package against the core's own test cases."""
+
+from __future__ import annotations
+
+import _thread
+import threading
+import time
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+import stannum as sn
+
+ROOT = Path(__file__).resolve().parents[3]
+FIXTURES = ROOT / "crates" / "stannum-core" / "tests" / "fixtures"
+CASE9 = FIXTURES / "case9.m"
+FIVE_BUS = FIXTURES / "five_bus.raw"
+FIVE_BUS_B = FIXTURES / "five_bus_modified.raw"
+CASE300 = ROOT / "crates" / "rs-power" / "tests" / "fixtures" / "case300.m"
+
+
+@pytest.fixture
+def case9() -> sn.Case:
+    with sn.open(CASE9) as case:
+        yield case
+
+
+def test_version_and_commands() -> None:
+    assert sn.API_VERSION >= 2
+    assert sn.__version__
+    names = {c["name"] for c in sn.commands()}
+    assert {"open_case", "solve_power_flow", "run_contingencies"} <= names
+    schemas = sn.schemas()
+    assert set(schemas["commands"]) == names
+
+
+def test_open_reports_the_case(case9: sn.Case) -> None:
+    assert case9.id >= 1
+    assert case9.name == "case9.m"
+    assert case9.path == CASE9.resolve()
+    assert case9.summary["format"] == "matpower"
+
+
+def test_solve_gives_numpy_columns(case9: sn.Case) -> None:
+    report = case9.solve(start="flat", tolerance_mva=0.01)
+    assert report.converged
+    assert report.status == report["status"]
+    buses = report.buses
+    assert isinstance(buses, sn.Table)
+    assert len(buses) == 9
+    assert buses["vm"].dtype == np.float64
+    assert buses["id"].dtype == np.int64
+    assert buses["kind"].tolist().count("Ref") == 1
+    # Bus 1 is the slack at 1.04 p.u. (MATPOWER case9).
+    assert buses[0]["vm"] == pytest.approx(1.04)
+    gen = report.generators
+    assert gen["pg"].sum() == pytest.approx(report.total_generation_mw, rel=1e-6)
+    assert report.branches["online"].dtype == bool
+    low = buses[buses["vm"] < 1.0]
+    assert isinstance(low, sn.Table) and 0 < len(low) < 9
+    assert len(buses.rows()) == 9
+
+
+def test_to_pandas(case9: sn.Case) -> None:
+    pd = pytest.importorskip("pandas")
+    frame = case9.solve().buses.to_pandas()
+    assert isinstance(frame, pd.DataFrame)
+    assert list(frame.columns)[:3] == ["id", "name", "kind"]
+
+
+def test_study_edits_change_the_solve(case9: sn.Case) -> None:
+    base = case9.solve()
+    case9.edits = [sn.outage("line:5:6:1"), sn.bus_load(5, 100.0, 40.0)]
+    assert case9.edits[0] == {"kind": "status", "element": "line:5:6:1", "online": False}
+    after = case9.solve()
+    assert after.converged
+    assert after.total_losses_mw > base.total_losses_mw
+    out = after.branches[after.branches["element"] == "line:5:6:1"]
+    assert not out["online"][0]
+    case9.edits = []
+    again = case9.solve(start="flat")
+    assert again.total_losses_mw == pytest.approx(base.total_losses_mw, rel=1e-2)
+
+
+def test_typed_errors(case9: sn.Case) -> None:
+    with pytest.raises(sn.NotFound) as e:
+        case9.element("bus:999")
+    assert e.value.kind == "not_found"
+    assert "bus:999" in str(e.value)
+    assert isinstance(e.value, LookupError)
+    with pytest.raises(sn.InvalidArguments):
+        case9.solve(start="sideways")
+    with pytest.raises(sn.UnknownCommand):
+        case9.call("no_such_command")
+    with pytest.raises(sn.FileError):
+        sn.open(FIXTURES / "missing.m")
+    with pytest.raises(sn.StannumError):
+        case9.edits = [sn.outage("line:77:78:1")]
+        case9.solve()
+
+
+def test_closed_case_says_so() -> None:
+    case = sn.open(CASE9)
+    case.close()
+    with pytest.raises(sn.CaseNotOpen):
+        case.solve()
+
+
+def test_cases_are_independent() -> None:
+    a = sn.open(CASE9)
+    b = sn.open(CASE9)
+    a.edits = [sn.outage("line:5:6:1")]
+    assert b.edits == []
+    assert a.solve().total_losses_mw != pytest.approx(b.solve().total_losses_mw)
+
+
+def test_contingencies_rank_every_outage(case9: sn.Case) -> None:
+    case9.solve()
+    run = case9.contingencies(method="ac", limit_pct=90)
+    rows = run.rows
+    assert len(rows) == run.total
+    assert rows["rank"].tolist() == list(range(1, run.total + 1))
+    detail = case9.contingency(1)
+    assert detail.row["element"] == rows["element"][0]
+    assert len(case9.contingency_rows(limit=3)) == 3
+
+
+def test_records_and_record_edits(case9: sn.Case) -> None:
+    book = case9.records()
+    assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]
+    buses = case9.records("bus")
+    assert isinstance(buses, sn.RecordTable)
+    assert len(buses) == 9
+    assert "PD" in buses.editable
+    row = int(np.flatnonzero(buses["BUS_I"] == 5)[0])
+    case9.edit_records([{"section": "bus", "row": row, "column": "PD", "value": 125}])
+    assert case9.records("bus")["PD"][row] == 125
+    with pytest.raises(sn.NotFound):
+        case9.edit_records([{"section": "bus", "row": 0, "column": "NOPE", "value": 1}])
+
+
+def test_raw_case_topology_and_diff() -> None:
+    with sn.open(FIVE_BUS) as case:
+        assert case.summary["format"] == "raw"
+        topo = case.topology()
+        assert "analysis" in topo
+        path = case.shortest_path(1, 3)
+        assert path is None or path["buses"][0] == 1
+        raw = case.records("BUS")
+        assert len(raw) == 5
+    d = sn.diff(FIVE_BUS, FIVE_BUS_B)
+    assert d.differing > 0
+    changed = next(s for s in d.summary.sections if s["counts"]["changed"])
+    records = d.records(changed["name"])
+    assert len(records) > 0
+
+
+def test_export_round_trip(case9: sn.Case, tmp_path: Path) -> None:
+    case9.solve()
+    out = tmp_path / "solved.m"
+    case9.export_matpower(out, solved=True)
+    with sn.open(out) as again:
+        assert again.solve(start="case").iterations <= 1
+
+
+def test_run_file(tmp_path: Path) -> None:
+    run = tmp_path / "study.stnrun"
+    run.write_text(
+        f"open_case path={CASE9.as_posix()}\n"
+        "solve_power_flow settings={\"start\": \"flat\"}\n"
+        f"export_matpower path={(tmp_path / 'out.m').as_posix()} solved=true\n"
+    )
+    report = sn.run_file(run)
+    assert report.failed == 0
+    assert report.steps == 3
+    assert (tmp_path / "out.m").exists()
+
+
+def test_log_is_kept(case9: sn.Case) -> None:
+    case9.solve()
+    log = sn.log()
+    assert len(log) > 0
+    assert log["seq"].dtype == np.int64
+
+
+def test_threads_run_side_by_side() -> None:
+    cases = [sn.open(CASE300) for _ in range(2)]
+    results: list[bool] = []
+
+    def work(case: sn.Case) -> None:
+        for _ in range(3):
+            results.append(case.solve(start="flat").converged)
+
+    threads = [threading.Thread(target=work, args=(c,)) for c in cases]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results == [True] * 6
+
+
+def test_ctrl_c_stops_a_long_run() -> None:
+    case = sn.open(CASE300)
+    case.solve()
+    # Interrupt as Ctrl+C would, while the AC check of every outage runs.
+    timer = threading.Timer(0.05, _thread.interrupt_main)
+    started = time.monotonic()
+    timer.start()
+    try:
+        case.contingencies(method="ac")
+    except KeyboardInterrupt:
+        pass
+    else:
+        timer.cancel()
+        pytest.skip("the run finished before the interrupt")
+    assert time.monotonic() - started < 10
+    # The case is still usable afterwards.
+    assert case.solve().converged

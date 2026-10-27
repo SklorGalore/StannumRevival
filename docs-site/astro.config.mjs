@@ -47,6 +47,7 @@ export default defineConfig({
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },
             { label: "Run files", slug: "guide/run-files" },
+            { label: "Python", slug: "guide/python" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
           ],
         },
