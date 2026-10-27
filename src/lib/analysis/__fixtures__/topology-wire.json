@@ -1,0 +1,4923 @@
+[
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 5,
+          "active_equipment": 5,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 1,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 2,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 3,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 4,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 5,
+              "degree": 1,
+              "island": 1
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "buses": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 3,
+              "name": "North_138",
+              "number": 1,
+              "source": {
+                "line": 7,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.04,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 1,
+              "name": "Central_138",
+              "number": 2,
+              "source": {
+                "line": 8,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 138.0,
+              "bus_type": 2,
+              "name": "East_138",
+              "number": 3,
+              "source": {
+                "line": 9,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.02,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Central_69",
+              "number": 4,
+              "source": {
+                "line": 10,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Spur_69",
+              "number": 5,
+              "source": {
+                "line": 11,
+                "section": "BUS"
+              },
+              "voltage_pu": 0.99,
+              "zone": 1
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                2
+              ],
+              "circuit": "1",
+              "id": "line:1:2:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 21,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:2:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 22,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:1:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 23,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                4,
+                5
+              ],
+              "circuit": "1",
+              "id": "line:4:5:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 24,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                4
+              ],
+              "circuit": "1",
+              "id": "transformer:2:4:1",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 27,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 1,
+              "id": "generator:1:1",
+              "p_mw": 0.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 18,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 3,
+              "id": "generator:3:1",
+              "p_mw": 80.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 19,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 2,
+              "id": "load:2:1",
+              "p_mw": 90.0,
+              "q_mvar": 30.0,
+              "source": {
+                "line": 13,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 4,
+              "id": "load:4:1",
+              "p_mw": 40.0,
+              "q_mvar": 12.0,
+              "source": {
+                "line": 14,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 5,
+              "id": "load:5:1",
+              "p_mw": 20.0,
+              "q_mvar": 6.0,
+              "source": {
+                "line": 15,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 35,
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": [
+            {
+              "equipment_id": "line:1:2:1",
+              "id": "connection:line:1:2:1",
+              "source": "bus:1",
+              "target": "bus:2",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:1:3:1",
+              "id": "connection:line:1:3:1",
+              "source": "bus:1",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:3:1",
+              "id": "connection:line:2:3:1",
+              "source": "bus:2",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "merge_zero_impedance": false,
+          "nodes": [
+            {
+              "base_kv": 138.0,
+              "bus": 1,
+              "equipment_id": null,
+              "id": "bus:1",
+              "label": "1 · North_138",
+              "member_buses": [
+                1
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 2,
+              "equipment_id": null,
+              "id": "bus:2",
+              "label": "2 · Central_138",
+              "member_buses": [
+                2
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 3,
+              "equipment_id": null,
+              "id": "bus:3",
+              "label": "3 · East_138",
+              "member_buses": [
+                3
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 4,
+              "equipment_id": null,
+              "id": "bus:4",
+              "label": "4 · Central_69",
+              "member_buses": [
+                4
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 5,
+              "equipment_id": null,
+              "id": "bus:5",
+              "label": "5 · Spur_69",
+              "member_buses": [
+                5
+              ]
+            }
+          ],
+          "zero_impedance_groups": []
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 5,
+          "active_equipment": 5,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            3,
+            4
+          ],
+          "degrees": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "degree": [
+              2,
+              3,
+              2,
+              2,
+              1
+            ],
+            "island": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              2,
+              1,
+              2
+            ],
+            "base_kv": [
+              138.0,
+              138.0,
+              138.0,
+              69.0,
+              69.0
+            ],
+            "bus_type": [
+              3,
+              1,
+              2,
+              1,
+              1
+            ],
+            "line": [
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "name": [
+              "North_138",
+              "Central_138",
+              "East_138",
+              "Central_69",
+              "Spur_69"
+            ],
+            "number": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "section": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.04,
+              1.0,
+              1.02,
+              1.0,
+              0.99
+            ],
+            "zone": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                2,
+                4
+              ]
+            ],
+            "circuit": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ],
+            "id": [
+              "line:1:2:1",
+              "line:2:3:1",
+              "line:1:3:1",
+              "line:4:5:1",
+              "transformer:2:4:1"
+            ],
+            "kind": [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "line": [
+              21,
+              22,
+              23,
+              24,
+              27
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "section": [
+              1,
+              1,
+              1,
+              1,
+              2
+            ],
+            "status": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              1,
+              3
+            ],
+            "id": [
+              "generator:1:1",
+              "generator:3:1"
+            ],
+            "line": [
+              18,
+              19
+            ],
+            "p_mw": [
+              0.0,
+              80.0
+            ],
+            "q_mvar": [
+              0.0,
+              0.0
+            ],
+            "section": [
+              4,
+              4
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              2,
+              4,
+              5
+            ],
+            "id": [
+              "load:2:1",
+              "load:4:1",
+              "load:5:1"
+            ],
+            "line": [
+              13,
+              14,
+              15
+            ],
+            "p_mw": [
+              90.0,
+              40.0,
+              20.0
+            ],
+            "q_mvar": [
+              30.0,
+              12.0,
+              6.0
+            ],
+            "section": [
+              3,
+              3,
+              3
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "revision": 35,
+          "sections": [
+            "BUS",
+            "BRANCH",
+            "TRANSFORMER",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": {
+            "equipment": [
+              0,
+              2,
+              1,
+              3,
+              4
+            ],
+            "source": [
+              0,
+              0,
+              1,
+              3,
+              1
+            ],
+            "target": [
+              1,
+              2,
+              2,
+              4,
+              3
+            ],
+            "winding": [
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "merge_zero_impedance": false,
+          "nodes": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "equipment": [
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "members": []
+          },
+          "zero_impedance_groups": []
+        }
+      }
+    },
+    "name": "five_bus"
+  },
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 5,
+          "active_equipment": 5,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 1,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 2,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 3,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 4,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 5,
+              "degree": 1,
+              "island": 1
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "buses": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 3,
+              "name": "North_138",
+              "number": 1,
+              "source": {
+                "line": 7,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.04,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 1,
+              "name": "Central_138",
+              "number": 2,
+              "source": {
+                "line": 8,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 138.0,
+              "bus_type": 2,
+              "name": "East_138",
+              "number": 3,
+              "source": {
+                "line": 9,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.02,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Central_69",
+              "number": 4,
+              "source": {
+                "line": 10,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Spur_69",
+              "number": 5,
+              "source": {
+                "line": 11,
+                "section": "BUS"
+              },
+              "voltage_pu": 0.99,
+              "zone": 1
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                2
+              ],
+              "circuit": "1",
+              "id": "line:1:2:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 21,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:2:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 22,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:1:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 23,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                4,
+                5
+              ],
+              "circuit": "1",
+              "id": "line:4:5:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 24,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                4
+              ],
+              "circuit": "1",
+              "id": "transformer:2:4:1",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 27,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 1,
+              "id": "generator:1:1",
+              "p_mw": 0.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 18,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 3,
+              "id": "generator:3:1",
+              "p_mw": 80.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 19,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 2,
+              "id": "load:2:1",
+              "p_mw": 90.0,
+              "q_mvar": 30.0,
+              "source": {
+                "line": 13,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 4,
+              "id": "load:4:1",
+              "p_mw": 40.0,
+              "q_mvar": 12.0,
+              "source": {
+                "line": 14,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 5,
+              "id": "load:5:1",
+              "p_mw": 20.0,
+              "q_mvar": 6.0,
+              "source": {
+                "line": 15,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 35,
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": [
+            {
+              "equipment_id": "line:1:2:1",
+              "id": "connection:line:1:2:1",
+              "source": "bus:1",
+              "target": "bus:2",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:1:3:1",
+              "id": "connection:line:1:3:1",
+              "source": "bus:1",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:3:1",
+              "id": "connection:line:2:3:1",
+              "source": "bus:2",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "merge_zero_impedance": false,
+          "nodes": [
+            {
+              "base_kv": 138.0,
+              "bus": 1,
+              "equipment_id": null,
+              "id": "bus:1",
+              "label": "1 · North_138",
+              "member_buses": [
+                1
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 2,
+              "equipment_id": null,
+              "id": "bus:2",
+              "label": "2 · Central_138",
+              "member_buses": [
+                2
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 3,
+              "equipment_id": null,
+              "id": "bus:3",
+              "label": "3 · East_138",
+              "member_buses": [
+                3
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 4,
+              "equipment_id": null,
+              "id": "bus:4",
+              "label": "4 · Central_69",
+              "member_buses": [
+                4
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 5,
+              "equipment_id": null,
+              "id": "bus:5",
+              "label": "5 · Spur_69",
+              "member_buses": [
+                5
+              ]
+            }
+          ],
+          "zero_impedance_groups": [
+            [
+              4,
+              5
+            ]
+          ]
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 5,
+          "active_equipment": 5,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            3,
+            4
+          ],
+          "degrees": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "degree": [
+              2,
+              3,
+              2,
+              2,
+              1
+            ],
+            "island": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              2,
+              1,
+              2
+            ],
+            "base_kv": [
+              138.0,
+              138.0,
+              138.0,
+              69.0,
+              69.0
+            ],
+            "bus_type": [
+              3,
+              1,
+              2,
+              1,
+              1
+            ],
+            "line": [
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "name": [
+              "North_138",
+              "Central_138",
+              "East_138",
+              "Central_69",
+              "Spur_69"
+            ],
+            "number": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "section": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.04,
+              1.0,
+              1.02,
+              1.0,
+              0.99
+            ],
+            "zone": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                2,
+                4
+              ]
+            ],
+            "circuit": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ],
+            "id": [
+              "line:1:2:1",
+              "line:2:3:1",
+              "line:1:3:1",
+              "line:4:5:1",
+              "transformer:2:4:1"
+            ],
+            "kind": [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "line": [
+              21,
+              22,
+              23,
+              24,
+              27
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "section": [
+              1,
+              1,
+              1,
+              1,
+              2
+            ],
+            "status": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              1,
+              3
+            ],
+            "id": [
+              "generator:1:1",
+              "generator:3:1"
+            ],
+            "line": [
+              18,
+              19
+            ],
+            "p_mw": [
+              0.0,
+              80.0
+            ],
+            "q_mvar": [
+              0.0,
+              0.0
+            ],
+            "section": [
+              4,
+              4
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              2,
+              4,
+              5
+            ],
+            "id": [
+              "load:2:1",
+              "load:4:1",
+              "load:5:1"
+            ],
+            "line": [
+              13,
+              14,
+              15
+            ],
+            "p_mw": [
+              90.0,
+              40.0,
+              20.0
+            ],
+            "q_mvar": [
+              30.0,
+              12.0,
+              6.0
+            ],
+            "section": [
+              3,
+              3,
+              3
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "revision": 35,
+          "sections": [
+            "BUS",
+            "BRANCH",
+            "TRANSFORMER",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": {
+            "equipment": [
+              0,
+              2,
+              1,
+              3,
+              4
+            ],
+            "source": [
+              0,
+              0,
+              1,
+              3,
+              1
+            ],
+            "target": [
+              1,
+              2,
+              2,
+              4,
+              3
+            ],
+            "winding": [
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "merge_zero_impedance": false,
+          "nodes": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "equipment": [
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "members": []
+          },
+          "zero_impedance_groups": [
+            [
+              4,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    "name": "five_bus zero-impedance"
+  },
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 1,
+          "active_buses": 4,
+          "active_equipment": 4,
+          "articulation_buses": [
+            2
+          ],
+          "bridges": [
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 1,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 2,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 3,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 4,
+              "degree": 1,
+              "island": 1
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "buses": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 3,
+              "name": "North_138",
+              "number": 1,
+              "source": {
+                "line": 7,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.04,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 1,
+              "name": "Central_138",
+              "number": 2,
+              "source": {
+                "line": 8,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 138.0,
+              "bus_type": 2,
+              "name": "East_138",
+              "number": 3,
+              "source": {
+                "line": 9,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.02,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Central_69",
+              "number": 4,
+              "source": {
+                "line": 10,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Spur_69",
+              "number": 5,
+              "source": {
+                "line": 11,
+                "section": "BUS"
+              },
+              "voltage_pu": 0.99,
+              "zone": 1
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                2
+              ],
+              "circuit": "1",
+              "id": "line:1:2:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 21,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:2:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 22,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:1:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 23,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                4,
+                5
+              ],
+              "circuit": "1",
+              "id": "line:4:5:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 24,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                4
+              ],
+              "circuit": "1",
+              "id": "transformer:2:4:1",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 27,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 1,
+              "id": "generator:1:1",
+              "p_mw": 0.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 18,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 3,
+              "id": "generator:3:1",
+              "p_mw": 80.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 19,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 2,
+              "id": "load:2:1",
+              "p_mw": 90.0,
+              "q_mvar": 30.0,
+              "source": {
+                "line": 13,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 4,
+              "id": "load:4:1",
+              "p_mw": 40.0,
+              "q_mvar": 12.0,
+              "source": {
+                "line": 14,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 5,
+              "id": "load:5:1",
+              "p_mw": 20.0,
+              "q_mvar": 6.0,
+              "source": {
+                "line": 15,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 35,
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [
+            "line:4:5:1"
+          ],
+          "edges": [
+            {
+              "equipment_id": "line:1:2:1",
+              "id": "connection:line:1:2:1",
+              "source": "bus:1",
+              "target": "bus:2",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:1:3:1",
+              "id": "connection:line:1:3:1",
+              "source": "bus:1",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:3:1",
+              "id": "connection:line:2:3:1",
+              "source": "bus:2",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            }
+          ],
+          "merge_zero_impedance": true,
+          "nodes": [
+            {
+              "base_kv": 138.0,
+              "bus": 1,
+              "equipment_id": null,
+              "id": "bus:1",
+              "label": "1 · North_138",
+              "member_buses": [
+                1
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 2,
+              "equipment_id": null,
+              "id": "bus:2",
+              "label": "2 · Central_138",
+              "member_buses": [
+                2
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 3,
+              "equipment_id": null,
+              "id": "bus:3",
+              "label": "3 · East_138",
+              "member_buses": [
+                3
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 4,
+              "equipment_id": null,
+              "id": "bus:4",
+              "label": "4 · Central_69",
+              "member_buses": [
+                4,
+                5
+              ]
+            }
+          ],
+          "zero_impedance_groups": [
+            [
+              4,
+              5
+            ]
+          ]
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 1,
+          "active_buses": 4,
+          "active_equipment": 4,
+          "articulation_buses": [
+            2
+          ],
+          "bridges": [
+            3
+          ],
+          "degrees": {
+            "bus": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "degree": [
+              2,
+              3,
+              2,
+              1
+            ],
+            "island": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 5,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              2,
+              1,
+              2
+            ],
+            "base_kv": [
+              138.0,
+              138.0,
+              138.0,
+              69.0,
+              69.0
+            ],
+            "bus_type": [
+              3,
+              1,
+              2,
+              1,
+              1
+            ],
+            "line": [
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "name": [
+              "North_138",
+              "Central_138",
+              "East_138",
+              "Central_69",
+              "Spur_69"
+            ],
+            "number": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "section": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.04,
+              1.0,
+              1.02,
+              1.0,
+              0.99
+            ],
+            "zone": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 32,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 43,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 40,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                2,
+                4
+              ]
+            ],
+            "circuit": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ],
+            "id": [
+              "line:1:2:1",
+              "line:2:3:1",
+              "line:1:3:1",
+              "line:4:5:1",
+              "transformer:2:4:1"
+            ],
+            "kind": [
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "line": [
+              21,
+              22,
+              23,
+              24,
+              27
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "section": [
+              1,
+              1,
+              1,
+              1,
+              2
+            ],
+            "status": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              1,
+              3
+            ],
+            "id": [
+              "generator:1:1",
+              "generator:3:1"
+            ],
+            "line": [
+              18,
+              19
+            ],
+            "p_mw": [
+              0.0,
+              80.0
+            ],
+            "q_mvar": [
+              0.0,
+              0.0
+            ],
+            "section": [
+              4,
+              4
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              2,
+              4,
+              5
+            ],
+            "id": [
+              "load:2:1",
+              "load:4:1",
+              "load:5:1"
+            ],
+            "line": [
+              13,
+              14,
+              15
+            ],
+            "p_mw": [
+              90.0,
+              40.0,
+              20.0
+            ],
+            "q_mvar": [
+              30.0,
+              12.0,
+              6.0
+            ],
+            "section": [
+              3,
+              3,
+              3
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "revision": 35,
+          "sections": [
+            "BUS",
+            "BRANCH",
+            "TRANSFORMER",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [
+            "line:4:5:1"
+          ],
+          "edges": {
+            "equipment": [
+              0,
+              2,
+              1,
+              4
+            ],
+            "source": [
+              0,
+              0,
+              1,
+              1
+            ],
+            "target": [
+              1,
+              2,
+              2,
+              3
+            ],
+            "winding": [
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "merge_zero_impedance": true,
+          "nodes": {
+            "bus": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "equipment": [
+              null,
+              null,
+              null,
+              null
+            ],
+            "members": [
+              [
+                3,
+                [
+                  4,
+                  5
+                ]
+              ]
+            ]
+          },
+          "zero_impedance_groups": [
+            [
+              4,
+              5
+            ]
+          ]
+        }
+      }
+    },
+    "name": "five_bus zero-impedance merged"
+  },
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 6,
+          "active_equipment": 6,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:6:T",
+              "id": "connection:transformer:2:4:6:T:w3",
+              "source": "bus:6",
+              "target": "junction:transformer:2:4:6:T",
+              "winding": 3
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 1,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 2,
+              "degree": 4,
+              "island": 1
+            },
+            {
+              "bus": 3,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 4,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 5,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 6,
+              "degree": 1,
+              "island": 1
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "buses": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "id": 1,
+              "synthetic_nodes": [
+                "junction:transformer:2:4:6:T"
+              ]
+            }
+          ],
+          "original_active_buses": 6,
+          "synthetic_articulations": [
+            "junction:transformer:2:4:6:T"
+          ],
+          "synthetic_junctions": 1
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 3,
+              "name": "North_138",
+              "number": 1,
+              "source": {
+                "line": 7,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.04,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 138.0,
+              "bus_type": 1,
+              "name": "Central_138",
+              "number": 2,
+              "source": {
+                "line": 8,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 138.0,
+              "bus_type": 2,
+              "name": "East_138",
+              "number": 3,
+              "source": {
+                "line": 9,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.02,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Central_69",
+              "number": 4,
+              "source": {
+                "line": 10,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            },
+            {
+              "area": 2,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "Spur_69",
+              "number": 5,
+              "source": {
+                "line": 11,
+                "section": "BUS"
+              },
+              "voltage_pu": 0.99,
+              "zone": 1
+            },
+            {
+              "area": 1,
+              "base_kv": 13.8,
+              "bus_type": 1,
+              "name": "Tertiary",
+              "number": 6,
+              "source": {
+                "line": 12,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": 1
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 38,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 49,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 46,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                2
+              ],
+              "circuit": "1",
+              "id": "line:1:2:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 22,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:2:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 23,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                3
+              ],
+              "circuit": "1",
+              "id": "line:1:3:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 24,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                4,
+                5
+              ],
+              "circuit": "1",
+              "id": "line:4:5:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 25,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                4
+              ],
+              "circuit": "1",
+              "id": "transformer:2:4:1",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 28,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true,
+                true
+              ],
+              "buses": [
+                2,
+                4,
+                6
+              ],
+              "circuit": "T",
+              "id": "transformer:2:4:6:T",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 32,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 1,
+              "id": "generator:1:1",
+              "p_mw": 0.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 19,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 3,
+              "id": "generator:3:1",
+              "p_mw": 80.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 20,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 2,
+              "id": "load:2:1",
+              "p_mw": 90.0,
+              "q_mvar": 30.0,
+              "source": {
+                "line": 14,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 4,
+              "id": "load:4:1",
+              "p_mw": 40.0,
+              "q_mvar": 12.0,
+              "source": {
+                "line": 15,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 5,
+              "id": "load:5:1",
+              "p_mw": 20.0,
+              "q_mvar": 6.0,
+              "source": {
+                "line": 16,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 35,
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": [
+            {
+              "equipment_id": "line:1:2:1",
+              "id": "connection:line:1:2:1",
+              "source": "bus:1",
+              "target": "bus:2",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:1:3:1",
+              "id": "connection:line:1:3:1",
+              "source": "bus:1",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:3:1",
+              "id": "connection:line:2:3:1",
+              "source": "bus:2",
+              "target": "bus:3",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:1",
+              "id": "connection:transformer:2:4:1",
+              "source": "bus:2",
+              "target": "bus:4",
+              "winding": null
+            },
+            {
+              "equipment_id": "transformer:2:4:6:T",
+              "id": "connection:transformer:2:4:6:T:w1",
+              "source": "bus:2",
+              "target": "junction:transformer:2:4:6:T",
+              "winding": 1
+            },
+            {
+              "equipment_id": "transformer:2:4:6:T",
+              "id": "connection:transformer:2:4:6:T:w2",
+              "source": "bus:4",
+              "target": "junction:transformer:2:4:6:T",
+              "winding": 2
+            },
+            {
+              "equipment_id": "transformer:2:4:6:T",
+              "id": "connection:transformer:2:4:6:T:w3",
+              "source": "bus:6",
+              "target": "junction:transformer:2:4:6:T",
+              "winding": 3
+            }
+          ],
+          "merge_zero_impedance": false,
+          "nodes": [
+            {
+              "base_kv": 138.0,
+              "bus": 1,
+              "equipment_id": null,
+              "id": "bus:1",
+              "label": "1 · North_138",
+              "member_buses": [
+                1
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 2,
+              "equipment_id": null,
+              "id": "bus:2",
+              "label": "2 · Central_138",
+              "member_buses": [
+                2
+              ]
+            },
+            {
+              "base_kv": 138.0,
+              "bus": 3,
+              "equipment_id": null,
+              "id": "bus:3",
+              "label": "3 · East_138",
+              "member_buses": [
+                3
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 4,
+              "equipment_id": null,
+              "id": "bus:4",
+              "label": "4 · Central_69",
+              "member_buses": [
+                4
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 5,
+              "equipment_id": null,
+              "id": "bus:5",
+              "label": "5 · Spur_69",
+              "member_buses": [
+                5
+              ]
+            },
+            {
+              "base_kv": 13.8,
+              "bus": 6,
+              "equipment_id": null,
+              "id": "bus:6",
+              "label": "6 · Tertiary",
+              "member_buses": [
+                6
+              ]
+            },
+            {
+              "base_kv": null,
+              "bus": null,
+              "equipment_id": "transformer:2:4:6:T",
+              "id": "junction:transformer:2:4:6:T",
+              "label": "Transformer T",
+              "member_buses": []
+            }
+          ],
+          "zero_impedance_groups": []
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 6,
+          "active_equipment": 6,
+          "articulation_buses": [
+            2,
+            4
+          ],
+          "bridges": [
+            3,
+            7
+          ],
+          "degrees": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "degree": [
+              2,
+              4,
+              2,
+              3,
+              1,
+              1
+            ],
+            "island": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": [
+                "junction:transformer:2:4:6:T"
+              ]
+            }
+          ],
+          "original_active_buses": 6,
+          "synthetic_articulations": [
+            "junction:transformer:2:4:6:T"
+          ],
+          "synthetic_junctions": 1
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              2,
+              1,
+              2,
+              1
+            ],
+            "base_kv": [
+              138.0,
+              138.0,
+              138.0,
+              69.0,
+              69.0,
+              13.8
+            ],
+            "bus_type": [
+              3,
+              1,
+              2,
+              1,
+              1,
+              1
+            ],
+            "line": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "name": [
+              "North_138",
+              "Central_138",
+              "East_138",
+              "Central_69",
+              "Spur_69",
+              "Tertiary"
+            ],
+            "number": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "section": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.04,
+              1.0,
+              1.02,
+              1.0,
+              0.99,
+              1.0
+            ],
+            "zone": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 38,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "AREA",
+              "severity": "info"
+            },
+            {
+              "line": 49,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "OWNER",
+              "severity": "info"
+            },
+            {
+              "line": 4,
+              "message": "2 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "SYSTEM-WIDE",
+              "severity": "info"
+            },
+            {
+              "line": 46,
+              "message": "1 nonempty record lines retained only in the original file; section not used for topology.",
+              "section": "ZONE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                2,
+                4,
+                6
+              ]
+            ],
+            "circuit": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "T"
+            ],
+            "id": [
+              "line:1:2:1",
+              "line:2:3:1",
+              "line:1:3:1",
+              "line:4:5:1",
+              "transformer:2:4:1",
+              "transformer:2:4:6:T"
+            ],
+            "kind": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              1
+            ],
+            "line": [
+              22,
+              23,
+              24,
+              25,
+              28,
+              32
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "section": [
+              1,
+              1,
+              1,
+              1,
+              2,
+              2
+            ],
+            "status": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              1,
+              3
+            ],
+            "id": [
+              "generator:1:1",
+              "generator:3:1"
+            ],
+            "line": [
+              19,
+              20
+            ],
+            "p_mw": [
+              0.0,
+              80.0
+            ],
+            "q_mvar": [
+              0.0,
+              0.0
+            ],
+            "section": [
+              4,
+              4
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              2,
+              4,
+              5
+            ],
+            "id": [
+              "load:2:1",
+              "load:4:1",
+              "load:5:1"
+            ],
+            "line": [
+              14,
+              15,
+              16
+            ],
+            "p_mw": [
+              90.0,
+              40.0,
+              20.0
+            ],
+            "q_mvar": [
+              30.0,
+              12.0,
+              6.0
+            ],
+            "section": [
+              3,
+              3,
+              3
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "revision": 35,
+          "sections": [
+            "BUS",
+            "BRANCH",
+            "TRANSFORMER",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {
+            "AREA": 2,
+            "OWNER": 1,
+            "SYSTEM-WIDE": 2,
+            "ZONE": 1
+          },
+          "titles": [
+            "Stannum five-bus test case: synthetic data for automated tests",
+            "Two areas, one transformer, one radial 69 kV spur"
+          ],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": {
+            "equipment": [
+              0,
+              2,
+              1,
+              3,
+              4,
+              5,
+              5,
+              5
+            ],
+            "source": [
+              0,
+              0,
+              1,
+              3,
+              1,
+              1,
+              3,
+              5
+            ],
+            "target": [
+              1,
+              2,
+              2,
+              4,
+              3,
+              6,
+              6,
+              6
+            ],
+            "winding": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              1,
+              2,
+              3
+            ]
+          },
+          "merge_zero_impedance": false,
+          "nodes": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              null
+            ],
+            "equipment": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              5
+            ],
+            "members": []
+          },
+          "zero_impedance_groups": []
+        }
+      }
+    },
+    "name": "five_bus three-winding"
+  },
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 3,
+          "active_equipment": 1,
+          "articulation_buses": [],
+          "bridges": [
+            {
+              "equipment_id": "transformer:10:20:T",
+              "id": "connection:transformer:10:20:T",
+              "source": "bus:10",
+              "target": "bus:20",
+              "winding": null
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 10,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 20,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 300,
+              "degree": 0,
+              "island": 2
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 1,
+          "islands": [
+            {
+              "buses": [
+                10,
+                20
+              ],
+              "id": 1,
+              "synthetic_nodes": []
+            },
+            {
+              "buses": [
+                300
+              ],
+              "id": 2,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 3,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 230.0,
+              "bus_type": 3,
+              "name": "A",
+              "number": 10,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 115.0,
+              "bus_type": 1,
+              "name": "B",
+              "number": 20,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 69.0,
+              "bus_type": 1,
+              "name": "C",
+              "number": 300,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 0,
+              "message": "Built from the power flow model: switching devices and original RAW records aren't available, and loads are summed per bus.",
+              "section": "CASE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                10,
+                20
+              ],
+              "circuit": "T",
+              "id": "transformer:10:20:T",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                false,
+                false,
+                false
+              ],
+              "buses": [
+                10,
+                20,
+                300
+              ],
+              "circuit": "T",
+              "id": "transformer:10:20:300:T",
+              "kind": "transformer",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "TRANSFORMER"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 10,
+              "id": "generator:10:1",
+              "p_mw": 10.0,
+              "q_mvar": 0.0,
+              "source": {
+                "line": 0,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 20,
+              "id": "load:20:1",
+              "p_mw": 5.0,
+              "q_mvar": 1.0,
+              "source": {
+                "line": 0,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 300,
+              "id": "load:300:1",
+              "p_mw": 5.0,
+              "q_mvar": 1.0,
+              "source": {
+                "line": 0,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 0,
+          "skipped_sections": {},
+          "titles": [],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": [
+            {
+              "equipment_id": "transformer:10:20:T",
+              "id": "connection:transformer:10:20:T",
+              "source": "bus:10",
+              "target": "bus:20",
+              "winding": null
+            }
+          ],
+          "merge_zero_impedance": false,
+          "nodes": [
+            {
+              "base_kv": 230.0,
+              "bus": 10,
+              "equipment_id": null,
+              "id": "bus:10",
+              "label": "10 · A",
+              "member_buses": [
+                10
+              ]
+            },
+            {
+              "base_kv": 115.0,
+              "bus": 20,
+              "equipment_id": null,
+              "id": "bus:20",
+              "label": "20 · B",
+              "member_buses": [
+                20
+              ]
+            },
+            {
+              "base_kv": 69.0,
+              "bus": 300,
+              "equipment_id": null,
+              "id": "bus:300",
+              "label": "300 · C",
+              "member_buses": [
+                300
+              ]
+            }
+          ],
+          "zero_impedance_groups": []
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 3,
+          "active_equipment": 1,
+          "articulation_buses": [],
+          "bridges": [
+            0
+          ],
+          "degrees": {
+            "bus": [
+              10,
+              20,
+              300
+            ],
+            "degree": [
+              1,
+              1,
+              0
+            ],
+            "island": [
+              1,
+              1,
+              2
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 1,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": []
+            },
+            {
+              "id": 2,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 3,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              1
+            ],
+            "base_kv": [
+              230.0,
+              115.0,
+              69.0
+            ],
+            "bus_type": [
+              3,
+              1,
+              1
+            ],
+            "line": [
+              0,
+              0,
+              0
+            ],
+            "name": [
+              "A",
+              "B",
+              "C"
+            ],
+            "number": [
+              10,
+              20,
+              300
+            ],
+            "section": [
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "zone": [
+              null,
+              null,
+              null
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 0,
+              "message": "Built from the power flow model: switching devices and original RAW records aren't available, and loads are summed per bus.",
+              "section": "CASE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                10,
+                20
+              ],
+              [
+                10,
+                20,
+                300
+              ]
+            ],
+            "circuit": [
+              "T",
+              "T"
+            ],
+            "id": [
+              "transformer:10:20:T",
+              "transformer:10:20:300:T"
+            ],
+            "kind": [
+              1,
+              1
+            ],
+            "line": [
+              0,
+              0
+            ],
+            "name": [
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              7
+            ],
+            "section": [
+              1,
+              1
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              10
+            ],
+            "id": [
+              "generator:10:1"
+            ],
+            "line": [
+              0
+            ],
+            "p_mw": [
+              10.0
+            ],
+            "q_mvar": [
+              0.0
+            ],
+            "section": [
+              3
+            ],
+            "status": [
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              20,
+              300
+            ],
+            "id": [
+              "load:20:1",
+              "load:300:1"
+            ],
+            "line": [
+              0,
+              0
+            ],
+            "p_mw": [
+              5.0,
+              5.0
+            ],
+            "q_mvar": [
+              1.0,
+              1.0
+            ],
+            "section": [
+              2,
+              2
+            ],
+            "status": [
+              1,
+              1
+            ]
+          },
+          "revision": 0,
+          "sections": [
+            "BUS",
+            "TRANSFORMER",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {},
+          "titles": [],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": {
+            "equipment": [
+              0
+            ],
+            "source": [
+              0
+            ],
+            "target": [
+              1
+            ],
+            "winding": [
+              null
+            ]
+          },
+          "merge_zero_impedance": false,
+          "nodes": {
+            "bus": [
+              10,
+              20,
+              300
+            ],
+            "equipment": [
+              null,
+              null,
+              null
+            ],
+            "members": []
+          },
+          "zero_impedance_groups": []
+        }
+      }
+    },
+    "name": "derived topology, open three-winding transformer"
+  },
+  {
+    "case": {
+      "expected": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 9,
+          "active_equipment": 9,
+          "articulation_buses": [
+            4,
+            6,
+            8
+          ],
+          "bridges": [
+            {
+              "equipment_id": "line:1:4:1",
+              "id": "connection:line:1:4:1",
+              "source": "bus:1",
+              "target": "bus:4",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:8:1",
+              "id": "connection:line:2:8:1",
+              "source": "bus:2",
+              "target": "bus:8",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:3:6:1",
+              "id": "connection:line:3:6:1",
+              "source": "bus:3",
+              "target": "bus:6",
+              "winding": null
+            }
+          ],
+          "degrees": [
+            {
+              "bus": 1,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 2,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 3,
+              "degree": 1,
+              "island": 1
+            },
+            {
+              "bus": 4,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 5,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 6,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 7,
+              "degree": 2,
+              "island": 1
+            },
+            {
+              "bus": 8,
+              "degree": 3,
+              "island": 1
+            },
+            {
+              "bus": 9,
+              "degree": 2,
+              "island": 1
+            }
+          ],
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "buses": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+              ],
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 9,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": [
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 3,
+              "name": "",
+              "number": 1,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 2,
+              "name": "",
+              "number": 2,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 2,
+              "name": "",
+              "number": 3,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 4,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 5,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 6,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 7,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 8,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            },
+            {
+              "area": 1,
+              "base_kv": 345.0,
+              "bus_type": 1,
+              "name": "",
+              "number": 9,
+              "source": {
+                "line": 0,
+                "section": "BUS"
+              },
+              "voltage_pu": 1.0,
+              "zone": null
+            }
+          ],
+          "diagnostics": [
+            {
+              "line": 0,
+              "message": "Built from the power flow model: switching devices and original RAW records aren't available, and loads are summed per bus.",
+              "section": "CASE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": [
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                1,
+                4
+              ],
+              "circuit": "1",
+              "id": "line:1:4:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                4,
+                5
+              ],
+              "circuit": "1",
+              "id": "line:4:5:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                5,
+                6
+              ],
+              "circuit": "1",
+              "id": "line:5:6:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                3,
+                6
+              ],
+              "circuit": "1",
+              "id": "line:3:6:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                6,
+                7
+              ],
+              "circuit": "1",
+              "id": "line:6:7:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                7,
+                8
+              ],
+              "circuit": "1",
+              "id": "line:7:8:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                8,
+                2
+              ],
+              "circuit": "1",
+              "id": "line:2:8:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                8,
+                9
+              ],
+              "circuit": "1",
+              "id": "line:8:9:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            },
+            {
+              "active_terminals": [
+                true,
+                true
+              ],
+              "buses": [
+                9,
+                4
+              ],
+              "circuit": "1",
+              "id": "line:4:9:1",
+              "kind": "line",
+              "name": "",
+              "source": {
+                "line": 0,
+                "section": "BRANCH"
+              },
+              "status": 1
+            }
+          ],
+          "frequency_hz": 60.0,
+          "generators": [
+            {
+              "bus": 1,
+              "id": "generator:1:1",
+              "p_mw": 72.3,
+              "q_mvar": 27.03,
+              "source": {
+                "line": 0,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 2,
+              "id": "generator:2:1",
+              "p_mw": 163.0,
+              "q_mvar": 6.54,
+              "source": {
+                "line": 0,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            },
+            {
+              "bus": 3,
+              "id": "generator:3:1",
+              "p_mw": 85.0,
+              "q_mvar": -10.95,
+              "source": {
+                "line": 0,
+                "section": "GENERATOR"
+              },
+              "status": 1
+            }
+          ],
+          "loads": [
+            {
+              "bus": 5,
+              "id": "load:5:1",
+              "p_mw": 90.0,
+              "q_mvar": 30.0,
+              "source": {
+                "line": 0,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 7,
+              "id": "load:7:1",
+              "p_mw": 100.0,
+              "q_mvar": 35.0,
+              "source": {
+                "line": 0,
+                "section": "LOAD"
+              },
+              "status": 1
+            },
+            {
+              "bus": 9,
+              "id": "load:9:1",
+              "p_mw": 125.0,
+              "q_mvar": 50.0,
+              "source": {
+                "line": 0,
+                "section": "LOAD"
+              },
+              "status": 1
+            }
+          ],
+          "revision": 0,
+          "skipped_sections": {},
+          "titles": [],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": [
+            {
+              "equipment_id": "line:1:4:1",
+              "id": "connection:line:1:4:1",
+              "source": "bus:1",
+              "target": "bus:4",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:2:8:1",
+              "id": "connection:line:2:8:1",
+              "source": "bus:2",
+              "target": "bus:8",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:3:6:1",
+              "id": "connection:line:3:6:1",
+              "source": "bus:3",
+              "target": "bus:6",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:4:5:1",
+              "id": "connection:line:4:5:1",
+              "source": "bus:4",
+              "target": "bus:5",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:4:9:1",
+              "id": "connection:line:4:9:1",
+              "source": "bus:4",
+              "target": "bus:9",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:5:6:1",
+              "id": "connection:line:5:6:1",
+              "source": "bus:5",
+              "target": "bus:6",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:6:7:1",
+              "id": "connection:line:6:7:1",
+              "source": "bus:6",
+              "target": "bus:7",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:7:8:1",
+              "id": "connection:line:7:8:1",
+              "source": "bus:7",
+              "target": "bus:8",
+              "winding": null
+            },
+            {
+              "equipment_id": "line:8:9:1",
+              "id": "connection:line:8:9:1",
+              "source": "bus:8",
+              "target": "bus:9",
+              "winding": null
+            }
+          ],
+          "merge_zero_impedance": false,
+          "nodes": [
+            {
+              "base_kv": 345.0,
+              "bus": 1,
+              "equipment_id": null,
+              "id": "bus:1",
+              "label": "1 · ",
+              "member_buses": [
+                1
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 2,
+              "equipment_id": null,
+              "id": "bus:2",
+              "label": "2 · ",
+              "member_buses": [
+                2
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 3,
+              "equipment_id": null,
+              "id": "bus:3",
+              "label": "3 · ",
+              "member_buses": [
+                3
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 4,
+              "equipment_id": null,
+              "id": "bus:4",
+              "label": "4 · ",
+              "member_buses": [
+                4
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 5,
+              "equipment_id": null,
+              "id": "bus:5",
+              "label": "5 · ",
+              "member_buses": [
+                5
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 6,
+              "equipment_id": null,
+              "id": "bus:6",
+              "label": "6 · ",
+              "member_buses": [
+                6
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 7,
+              "equipment_id": null,
+              "id": "bus:7",
+              "label": "7 · ",
+              "member_buses": [
+                7
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 8,
+              "equipment_id": null,
+              "id": "bus:8",
+              "label": "8 · ",
+              "member_buses": [
+                8
+              ]
+            },
+            {
+              "base_kv": 345.0,
+              "bus": 9,
+              "equipment_id": null,
+              "id": "bus:9",
+              "label": "9 · ",
+              "member_buses": [
+                9
+              ]
+            }
+          ],
+          "zero_impedance_groups": []
+        }
+      },
+      "wire": {
+        "analysis": {
+          "absorbed_equipment": 0,
+          "active_buses": 9,
+          "active_equipment": 9,
+          "articulation_buses": [
+            4,
+            6,
+            8
+          ],
+          "bridges": [
+            0,
+            1,
+            2
+          ],
+          "degrees": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "degree": [
+              1,
+              1,
+              1,
+              3,
+              2,
+              3,
+              2,
+              3,
+              2
+            ],
+            "island": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "excluded_buses": 0,
+          "excluded_equipment": 0,
+          "islands": [
+            {
+              "id": 1,
+              "synthetic_nodes": []
+            }
+          ],
+          "original_active_buses": 9,
+          "synthetic_articulations": [],
+          "synthetic_junctions": 0
+        },
+        "case": {
+          "base_mva": 100.0,
+          "buses": {
+            "area": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "base_kv": [
+              345.0,
+              345.0,
+              345.0,
+              345.0,
+              345.0,
+              345.0,
+              345.0,
+              345.0,
+              345.0
+            ],
+            "bus_type": [
+              3,
+              2,
+              2,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "line": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "number": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "section": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "voltage_pu": [
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "zone": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "diagnostics": [
+            {
+              "line": 0,
+              "message": "Built from the power flow model: switching devices and original RAW records aren't available, and loads are summed per bus.",
+              "section": "CASE",
+              "severity": "info"
+            }
+          ],
+          "encoding": "UTF-8",
+          "equipment": {
+            "buses": [
+              [
+                1,
+                4
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                3,
+                6
+              ],
+              [
+                6,
+                7
+              ],
+              [
+                7,
+                8
+              ],
+              [
+                8,
+                2
+              ],
+              [
+                8,
+                9
+              ],
+              [
+                9,
+                4
+              ]
+            ],
+            "circuit": [
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1",
+              "1"
+            ],
+            "id": [
+              "line:1:4:1",
+              "line:4:5:1",
+              "line:5:6:1",
+              "line:3:6:1",
+              "line:6:7:1",
+              "line:7:8:1",
+              "line:2:8:1",
+              "line:8:9:1",
+              "line:4:9:1"
+            ],
+            "kind": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "line": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "name": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "open_terminals": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "section": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "status": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "frequency_hz": 60.0,
+          "generators": {
+            "bus": [
+              1,
+              2,
+              3
+            ],
+            "id": [
+              "generator:1:1",
+              "generator:2:1",
+              "generator:3:1"
+            ],
+            "line": [
+              0,
+              0,
+              0
+            ],
+            "p_mw": [
+              72.3,
+              163.0,
+              85.0
+            ],
+            "q_mvar": [
+              27.03,
+              6.54,
+              -10.95
+            ],
+            "section": [
+              3,
+              3,
+              3
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "loads": {
+            "bus": [
+              5,
+              7,
+              9
+            ],
+            "id": [
+              "load:5:1",
+              "load:7:1",
+              "load:9:1"
+            ],
+            "line": [
+              0,
+              0,
+              0
+            ],
+            "p_mw": [
+              90.0,
+              100.0,
+              125.0
+            ],
+            "q_mvar": [
+              30.0,
+              35.0,
+              50.0
+            ],
+            "section": [
+              2,
+              2,
+              2
+            ],
+            "status": [
+              1,
+              1,
+              1
+            ]
+          },
+          "revision": 0,
+          "sections": [
+            "BUS",
+            "BRANCH",
+            "LOAD",
+            "GENERATOR"
+          ],
+          "skipped_sections": {},
+          "titles": [],
+          "zero_impedance_threshold": 0.0001
+        },
+        "graph": {
+          "absorbed_equipment_ids": [],
+          "edges": {
+            "equipment": [
+              0,
+              6,
+              3,
+              1,
+              8,
+              2,
+              4,
+              5,
+              7
+            ],
+            "source": [
+              0,
+              1,
+              2,
+              3,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "target": [
+              3,
+              7,
+              5,
+              4,
+              8,
+              5,
+              6,
+              7,
+              8
+            ],
+            "winding": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "merge_zero_impedance": false,
+          "nodes": {
+            "bus": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "equipment": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "members": []
+          },
+          "zero_impedance_groups": []
+        }
+      }
+    },
+    "name": "case9"
+  }
+]

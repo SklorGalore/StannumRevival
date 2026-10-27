@@ -90,7 +90,17 @@ A solve report goes to the interface as JSON. Its bus, generator and branch
 tables travel as one array per field rather than one object per row, with
 flows rounded to 0.1 kW and per-unit voltages to six decimals; the interface
 turns them back into rows (`src/lib/analysis/wire.ts`). On a 78,400-bus case
-this cuts the report from 62 MB to 22 MB. A solve can be cancelled: the shell
+this cuts the report from 62 MB to 22 MB.
+
+The topology snapshot travels the same way (`topology_wire` in stannum-core,
+`src/lib/analysis/topologyWire.ts`). Graph nodes and connections refer to
+buses and equipment by position, so their ids and labels are rebuilt rather
+than sent, and each record's RAW fields stay in the core until the inspector
+asks for one element's (`topology_source`). At 12,000 buses the snapshot is
+2.3 MB instead of 14 MB; the Texas 2,000-bus RAW case's is 0.9 MB instead of
+10 MB.
+
+A solve can be cancelled: the shell
 hands the core a flag, which the Newton loop checks before each step.
 
 ## Logging
