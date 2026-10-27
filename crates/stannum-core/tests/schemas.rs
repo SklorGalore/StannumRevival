@@ -138,6 +138,7 @@ fn answers_fit_their_schemas() {
     let solve = json!({ "model": "ac", "start": "flat", "tolerance_mva": 0.01, "max_iterations": 20, "enforce_q_limits": false });
 
     c.ok("list_commands", json!({}));
+    c.ok("element_kinds", json!({}));
     let served = c.ok("command_schemas", json!({}));
     assert_eq!(served, schemas());
     assert!(c.ok("case_summary", json!({})).is_null());

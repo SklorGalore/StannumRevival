@@ -2347,7 +2347,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "\"bus\", \"line\", \"transformer\", \"generator\", \"load\" or \"dcline\".",
+          "description": "The element's kind, as `element_kinds` lists them.",
           "type": "string"
         },
         "limits": {
@@ -2378,6 +2378,68 @@
         "limits",
         "connected",
         "note"
+      ],
+      "type": "object"
+    },
+    "ElementKind": {
+      "description": "One kind of element: how its id is written and where it comes from.",
+      "properties": {
+        "buses": {
+          "description": "How many bus numbers follow the kind: 0 when the id is a name, and\nfor a transformer 2, or 3 for a three-winding one.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "format": {
+          "description": "The id's parts after the kind, such as `<bus>:<bus>:<circuit>`.",
+          "type": "string"
+        },
+        "inspector": {
+          "$ref": "#/$defs/Source",
+          "description": "Where the element inspector reads it."
+        },
+        "kind": {
+          "description": "The id's first part, such as \"line\".",
+          "type": "string"
+        },
+        "label": {
+          "description": "What people call it, such as \"Line\".",
+          "type": "string"
+        },
+        "matpower_table": {
+          "description": "The MATPOWER table its rows are in; null when MATPOWER has none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outage": {
+          "description": "Whether a study edit or a contingency can take it out.",
+          "type": "boolean"
+        },
+        "raw_sections": {
+          "description": "The RAW sections its records are in; empty when no record is one.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "solved": {
+          "description": "Whether a solve report has a row for it.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "label",
+        "format",
+        "buses",
+        "raw_sections",
+        "matpower_table",
+        "inspector",
+        "solved",
+        "outage"
       ],
       "type": "object"
     },
@@ -4339,6 +4401,26 @@
       },
       "type": "object"
     },
+    "Source": {
+      "description": "Where the element inspector reads an element from.",
+      "oneOf": [
+        {
+          "const": "model",
+          "description": "The power flow model (every file power flow reads).",
+          "type": "string"
+        },
+        {
+          "const": "topology",
+          "description": "nodal's topology model (RAW revision 35).",
+          "type": "string"
+        },
+        {
+          "const": "record",
+          "description": "The file's own record, field by field (RAW revisions 33 and 35).",
+          "type": "string"
+        }
+      ]
+    },
     "SourceRecord": {
       "properties": {
         "fields": {
@@ -5536,6 +5618,21 @@
       },
       "takes_case": true
     },
+    "element_kinds": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Every kind of element id: its format, the RAW section and MATPOWER\ntable it comes from, and where the inspector reads it.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/ElementKind"
+        },
+        "type": "array"
+      },
+      "takes_case": false
+    },
     "export_matpower": {
       "action": true,
       "args": {
@@ -6254,6 +6351,152 @@
       "takes_case": true
     }
   },
+  "element_kinds": [
+    {
+      "buses": 1,
+      "format": "<bus>",
+      "inspector": "model",
+      "kind": "bus",
+      "label": "Bus",
+      "matpower_table": "bus",
+      "outage": false,
+      "raw_sections": [
+        "BUS"
+      ],
+      "solved": true
+    },
+    {
+      "buses": 2,
+      "format": "<bus>:<bus>:<circuit>",
+      "inspector": "model",
+      "kind": "line",
+      "label": "Line",
+      "matpower_table": "branch",
+      "outage": true,
+      "raw_sections": [
+        "BRANCH"
+      ],
+      "solved": true
+    },
+    {
+      "buses": 2,
+      "format": "<bus>:<bus>[:<bus>]:<circuit>",
+      "inspector": "model",
+      "kind": "transformer",
+      "label": "Transformer",
+      "matpower_table": "branch",
+      "outage": true,
+      "raw_sections": [
+        "TRANSFORMER"
+      ],
+      "solved": true
+    },
+    {
+      "buses": 2,
+      "format": "<bus>:<bus>:<circuit>",
+      "inspector": "topology",
+      "kind": "switch",
+      "label": "Switch",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "SYSTEM SWITCHING DEVICE"
+      ],
+      "solved": false
+    },
+    {
+      "buses": 1,
+      "format": "<bus>:<machine>",
+      "inspector": "model",
+      "kind": "generator",
+      "label": "Generator",
+      "matpower_table": "gen",
+      "outage": true,
+      "raw_sections": [
+        "GENERATOR"
+      ],
+      "solved": true
+    },
+    {
+      "buses": 1,
+      "format": "<bus>:<id>",
+      "inspector": "model",
+      "kind": "load",
+      "label": "Load",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "LOAD"
+      ],
+      "solved": false
+    },
+    {
+      "buses": 1,
+      "format": "<bus>:<id>",
+      "inspector": "record",
+      "kind": "shunt",
+      "label": "Fixed shunt",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "FIXED SHUNT"
+      ],
+      "solved": false
+    },
+    {
+      "buses": 1,
+      "format": "<bus>:<id>",
+      "inspector": "record",
+      "kind": "switched-shunt",
+      "label": "Switched shunt",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "SWITCHED SHUNT"
+      ],
+      "solved": false
+    },
+    {
+      "buses": 1,
+      "format": "<bus>:<id>",
+      "inspector": "record",
+      "kind": "machine",
+      "label": "Induction machine",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "INDUCTION MACHINE"
+      ],
+      "solved": false
+    },
+    {
+      "buses": 2,
+      "format": "<bus>:<bus>:<name>",
+      "inspector": "model",
+      "kind": "dcline",
+      "label": "DC line",
+      "matpower_table": "dcline",
+      "outage": false,
+      "raw_sections": [
+        "TWO-TERMINAL DC",
+        "VSC DC LINE"
+      ],
+      "solved": true
+    },
+    {
+      "buses": 0,
+      "format": "<name>",
+      "inspector": "record",
+      "kind": "facts",
+      "label": "FACTS device",
+      "matpower_table": null,
+      "outage": false,
+      "raw_sections": [
+        "FACTS DEVICE"
+      ],
+      "solved": false
+    }
+  ],
   "error": {
     "$ref": "#/$defs/Error"
   },

@@ -548,7 +548,7 @@ export type ElementDetail = {
   /** Parameters from the file. */
   data: Group[];
   element: string;
-  /** "bus", "line", "transformer", "generator", "load" or "dcline". */
+  /** The element's kind, as `element_kinds` lists them. */
   kind: string;
   /** Ratings and limits from the file. */
   limits: Field[];
@@ -556,6 +556,31 @@ export type ElementDetail = {
   note: string | null;
   /** In service in the file (before any study edits). */
   online: boolean;
+};
+
+/** One kind of element: how its id is written and where it comes from. */
+export type ElementKind = {
+  /**
+   * How many bus numbers follow the kind: 0 when the id is a name, and
+   * for a transformer 2, or 3 for a three-winding one.
+   */
+  buses: number;
+  /** The id's parts after the kind, such as `<bus>:<bus>:<circuit>`. */
+  format: string;
+  /** Where the element inspector reads it. */
+  inspector: Source;
+  /** The id's first part, such as "line". */
+  kind: string;
+  /** What people call it, such as "Line". */
+  label: string;
+  /** The MATPOWER table its rows are in; null when MATPOWER has none. */
+  matpower_table: string | null;
+  /** Whether a study edit or a contingency can take it out. */
+  outage: boolean;
+  /** The RAW sections its records are in; empty when no record is one. */
+  raw_sections: string[];
+  /** Whether a solve report has a row for it. */
+  solved: boolean;
 };
 
 /** One log line. */
@@ -1049,6 +1074,9 @@ export type SolveSettings = {
   tolerance_mva?: number;
 };
 
+/** Where the element inspector reads an element from. */
+export type Source = "model" | "topology" | "record";
+
 export type SourceRecord = {
   fields: Record<string, string>;
   line: number;
@@ -1385,6 +1413,14 @@ export interface CoreCommands {
     };
     result: ElementDetail;
   };
+  /**
+   * Every kind of element id: its format, the RAW section and MATPOWER
+   * table it comes from, and where the inspector reads it.
+   */
+  element_kinds: {
+    args: Record<string, never>;
+    result: ElementKind[];
+  };
   /** Write the case, solved or as filed, as a MATPOWER file. */
   export_matpower: {
     args: {
@@ -1633,5 +1669,153 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
 
 /** What every core command rejects with. */
 export type CoreError = Error;
+
+/** Every kind of element id (stannum_core::elements::KINDS). */
+export const ELEMENT_KINDS = [
+  {
+    "buses": 1,
+    "format": "<bus>",
+    "inspector": "model",
+    "kind": "bus",
+    "label": "Bus",
+    "matpower_table": "bus",
+    "outage": false,
+    "raw_sections": [
+      "BUS"
+    ],
+    "solved": true
+  },
+  {
+    "buses": 2,
+    "format": "<bus>:<bus>:<circuit>",
+    "inspector": "model",
+    "kind": "line",
+    "label": "Line",
+    "matpower_table": "branch",
+    "outage": true,
+    "raw_sections": [
+      "BRANCH"
+    ],
+    "solved": true
+  },
+  {
+    "buses": 2,
+    "format": "<bus>:<bus>[:<bus>]:<circuit>",
+    "inspector": "model",
+    "kind": "transformer",
+    "label": "Transformer",
+    "matpower_table": "branch",
+    "outage": true,
+    "raw_sections": [
+      "TRANSFORMER"
+    ],
+    "solved": true
+  },
+  {
+    "buses": 2,
+    "format": "<bus>:<bus>:<circuit>",
+    "inspector": "topology",
+    "kind": "switch",
+    "label": "Switch",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "SYSTEM SWITCHING DEVICE"
+    ],
+    "solved": false
+  },
+  {
+    "buses": 1,
+    "format": "<bus>:<machine>",
+    "inspector": "model",
+    "kind": "generator",
+    "label": "Generator",
+    "matpower_table": "gen",
+    "outage": true,
+    "raw_sections": [
+      "GENERATOR"
+    ],
+    "solved": true
+  },
+  {
+    "buses": 1,
+    "format": "<bus>:<id>",
+    "inspector": "model",
+    "kind": "load",
+    "label": "Load",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "LOAD"
+    ],
+    "solved": false
+  },
+  {
+    "buses": 1,
+    "format": "<bus>:<id>",
+    "inspector": "record",
+    "kind": "shunt",
+    "label": "Fixed shunt",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "FIXED SHUNT"
+    ],
+    "solved": false
+  },
+  {
+    "buses": 1,
+    "format": "<bus>:<id>",
+    "inspector": "record",
+    "kind": "switched-shunt",
+    "label": "Switched shunt",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "SWITCHED SHUNT"
+    ],
+    "solved": false
+  },
+  {
+    "buses": 1,
+    "format": "<bus>:<id>",
+    "inspector": "record",
+    "kind": "machine",
+    "label": "Induction machine",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "INDUCTION MACHINE"
+    ],
+    "solved": false
+  },
+  {
+    "buses": 2,
+    "format": "<bus>:<bus>:<name>",
+    "inspector": "model",
+    "kind": "dcline",
+    "label": "DC line",
+    "matpower_table": "dcline",
+    "outage": false,
+    "raw_sections": [
+      "TWO-TERMINAL DC",
+      "VSC DC LINE"
+    ],
+    "solved": true
+  },
+  {
+    "buses": 0,
+    "format": "<name>",
+    "inspector": "record",
+    "kind": "facts",
+    "label": "FACTS device",
+    "matpower_table": null,
+    "outage": false,
+    "raw_sections": [
+      "FACTS DEVICE"
+    ],
+    "solved": false
+  }
+] as const satisfies readonly ElementKind[];
 
 export const CORE_API_VERSION = 3;

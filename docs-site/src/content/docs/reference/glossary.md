@@ -61,7 +61,27 @@ A generator holding the voltage of a bus other than its terminal.
 ### Shared identity
 
 The one name an element has in every module, so selecting it in one module
-finds it in the others.
+finds it in the others. Bus numbers in a branch's name are sorted; the last
+part is the circuit, machine id or name. Scripts and run files use the same
+names (`element_kinds` lists them):
+
+| Element | Name | From |
+|---|---|---|
+| Bus | `bus:101` | power flow model |
+| Line | `line:101:102:1` | power flow model |
+| Transformer | `transformer:101:102:1`, `transformer:101:102:103:1` | power flow model |
+| Switch | `switch:101:102:1` | topology (RAW 35) |
+| Generator | `generator:101:1` | power flow model |
+| Load | `load:101:1` | power flow model |
+| Fixed shunt | `shunt:101:1` | its RAW record |
+| Switched shunt | `switched-shunt:101:1` | its RAW record |
+| Induction machine | `machine:101:1` | its RAW record |
+| DC line (two-terminal or VSC) | `dcline:101:205:DC1` | power flow model |
+| FACTS device | `facts:SVC_1` | its RAW record |
+
+Elements read from their RAW record show every field as filed in the
+inspector, and appear among a bus's connections once Records has read the
+case.
 
 ### Study
 

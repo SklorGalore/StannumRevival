@@ -192,38 +192,9 @@ fn field_names(record: &Record) -> Vec<String> {
         .collect()
 }
 
-fn whole(value: Option<&Value>) -> Option<u32> {
-    match value? {
-        Value::Number(n) => n.to_string().parse().ok(),
-        Value::Text(t) => t.trim().parse().ok(),
-    }
-}
-
-/// The element a RAW record is, or for equipment the inspector doesn't list
-/// on its own (shunts, induction machines), the bus it sits at.
+/// The element a RAW record is (see `crate::elements::KINDS`).
 fn raw_element(section: &str, record: &Record) -> Option<String> {
-    if let Some(e) = crate::diff::record_element(section, &record.key, Some(record)) {
-        return Some(e);
-    }
-    match section {
-        "FIXED SHUNT" | "SWITCHED SHUNT" | "INDUCTION MACHINE" => {
-            whole(record.field("I")).map(crate::elements::bus)
-        }
-        "VSC DC LINE" => {
-            let buses: Vec<u32> = record
-                .fields
-                .iter()
-                .filter(|(n, _)| n == "IBUS")
-                .filter_map(|(_, v)| whole(Some(v)))
-                .collect();
-            let name = record.field("NAME").and_then(Value::as_text)?.trim();
-            match buses.as_slice() {
-                [a, b, ..] => Some(crate::elements::dc_line(*a, *b, name)),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+    crate::diff::record_element(section, &record.key, Some(record))
 }
 
 /// "2,400 records".

@@ -277,6 +277,13 @@ pub fn typescript(doc: &Value) -> String {
         out.push_str("/** What every core command rejects with. */\n");
         let _ = writeln!(out, "export type CoreError = {};", ts_type(error, ""));
     }
+    if let Some(kinds) = doc.get("element_kinds") {
+        let _ = writeln!(
+            out,
+            "\n/** Every kind of element id (stannum_core::elements::KINDS). */\nexport const ELEMENT_KINDS = {} as const satisfies readonly ElementKind[];",
+            serde_json::to_string_pretty(kinds).unwrap_or_default()
+        );
+    }
     let _ = writeln!(
         out,
         "\nexport const CORE_API_VERSION = {};",

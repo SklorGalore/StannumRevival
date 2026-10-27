@@ -142,6 +142,24 @@ pub fn record_element(
             field("IPI")?,
             &id(0),
         )),
+        "VSC DC LINE" => {
+            // Both converters are IBUS lines of the one record.
+            let record = record?;
+            let buses: Vec<u32> = record
+                .fields
+                .iter()
+                .filter(|(n, _)| n == "IBUS")
+                .filter_map(|(_, v)| number(v))
+                .collect();
+            match buses.as_slice() {
+                [a, b, ..] => Some(crate::elements::dc_line(*a, *b, &id(0))),
+                _ => None,
+            }
+        }
+        "FIXED SHUNT" => Some(crate::elements::shunt(int(0)?, &id(1))),
+        "SWITCHED SHUNT" => Some(crate::elements::switched_shunt(int(0)?, &id(1))),
+        "INDUCTION MACHINE" => Some(crate::elements::machine(int(0)?, &id(1))),
+        "FACTS DEVICE" => Some(crate::elements::facts(&id(0))),
         _ => None,
     }
 }

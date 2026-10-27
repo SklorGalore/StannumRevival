@@ -518,6 +518,7 @@ macro_rules! commands {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "title": "Stannum commands",
                 "api_version": API_VERSION,
+                "element_kinds": crate::elements::KINDS,
                 "commands": commands,
                 "error": error,
                 "$defs": defs,
@@ -623,8 +624,21 @@ commands! {
         |s, a| s.workspace()?.case(a.case)?.diagram_network();
 
     /// One element's data and limits from the file.
-    element_detail { case: Option<CaseId>, element: String } -> crate::inspect::ElementDetail =>
-        |s, a| s.workspace()?.case(a.case)?.element_detail(&a.element);
+    element_detail { case: Option<CaseId>, element: String } -> crate::inspect::ElementDetail => |s, a| {
+        // Shunts, FACTS devices and the like are read from their records.
+        let from_record = crate::elements::kind_of(&a.element)
+            .is_some_and(|k| k.inspector == crate::elements::Source::Record);
+        if from_record {
+            s.read_records(a.case)?;
+            s.workspace()?.case_mut(a.case)?.records()?;
+        }
+        s.workspace()?.case(a.case)?.element_detail(&a.element)
+    };
+
+    /// Every kind of element id: its format, the RAW section and MATPOWER
+    /// table it comes from, and where the inspector reads it.
+    element_kinds {} -> Vec<crate::elements::ElementKind> =>
+        |_, _| Ok(crate::elements::KINDS.to_vec());
 
     /// The case's record types and their counts.
     case_records { case: Option<CaseId> } -> crate::records::RecordBook => |s, a| {
