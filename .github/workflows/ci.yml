@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, "release/**"]
+    branches: [main, development, "release/**", "hotfix/**"]
   workflow_dispatch:
 
 # The workflow only reads the repository. Jobs that need more ask for it.

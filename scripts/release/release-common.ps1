@@ -32,3 +32,25 @@ function Get-ChangelogSection([string] $Path, [string] $Heading) {
     if ($end -le $start) { return '' }
     ($lines[$start..($end - 1)] -join "`n")
 }
+
+# Git flow branch names. Releases are cut from development as release/vX.Y.Z;
+# urgent fixes to the released code are cut from main as hotfix/vX.Y.Z. Both
+# merge into main, where the merge commit is tagged vX.Y.Z.
+$script:SemVerPattern = '\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?'
+$script:DevelopBranch = 'development'
+$script:MainBranch = 'main'
+
+# The version a release or hotfix branch is for ("release/v0.3.0" -> "0.3.0"),
+# or $null for any other branch. Accepts "refs/heads/..." too.
+function Get-BranchVersion([string] $Branch) {
+    $name = $Branch -replace '^refs/heads/', ''
+    if ($name -match "^(release|hotfix)/v($script:SemVerPattern)$") { return $Matches[2] }
+    $null
+}
+
+# Run git, failing on a non-zero exit. Returns its output lines.
+function Invoke-Git {
+    $out = & git @args
+    if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed" }
+    $out
+}
