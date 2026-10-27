@@ -88,6 +88,14 @@ All notable changes to this project will be documented here. This project uses
 - RAW section parsing now follows the revision-defined section order and `0`
   terminators without interpreting human-readable `@!` section headers.
 
+### Fixed
+
+- A generator bus holding a remote bus that a reactive-limit pass fixes at
+  its limit restarts from the held bus's voltage. Its own voltage was free
+  while it regulated and could be left near 0 pu, nearly in antiphase,
+  after a solve that asked it for far more than its limit; Newton from
+  there found the collapsed root of the fixed injection.
+
 ## 0.1.0 - 2026-09-14
 
 Initial release.

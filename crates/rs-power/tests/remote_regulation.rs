@@ -206,3 +206,55 @@ fn memphis_sensitivities_follow_remote_regulation() {
             .all(|x| x.is_finite())
     );
 }
+
+/// One plant substation from the 80,000-bus synthetic case: a big unit at
+/// the reference bus holding its own terminal, and two small units holding
+/// the 500 kV bus by equal shares. Holding it takes far more than the small
+/// units have. On that case the first solve left the 10 Mvar unit's
+/// terminal at 0.15 pu, nearly in antiphase; bus 3 starts there.
+const FIGHTING_PLANT: &str = "function mpc = fighting_plant
+mpc.version = '2';
+mpc.baseMVA = 100;
+mpc.bus = [
+  1 3 0 0 0 0 1 1.03 0 22 1 1.1 0.9;
+  2 1 0 0 0 0 1 1.0347 -13.87 500 1 1.1 0.9;
+  3 2 0 0 0 0 1 0.15 167 13.8 1 1.1 0.9;
+  4 2 0 0 0 0 1 1.0058 -9.08 18 1 1.1 0.9;
+  5 1 9000 0 0 1500 1 1.0 -20 500 1 1.1 0.9;
+];
+mpc.gen = [
+  1 9600 0 1477 -738 1.03 2735 1 9999 0;
+  3 15 0 10 -5 1.03 18 1 16 0;
+  4 143 0 91 -46 1.03 169 1 152 0;
+];
+mpc.branch = [
+  1 2 0.0002 0.008 0 1500 0 0 1 0 1 -360 360;
+  1 2 0.0002 0.008 0 1500 0 0 1 0 1 -360 360;
+  1 2 0.0002 0.008 0 1500 0 0 1 0 1 -360 360;
+  3 2 0.003 0.12 0 100 0 0 1 0 1 -360 360;
+  4 2 0.0015 0.06 0 200 0 0 1 0 1 -360 360;
+  2 5 0.0001 0.0036 0.34 4000 0 0 0 0 1 -360 360;
+  2 5 0.0001 0.0036 0.34 4000 0 0 0 0 1 -360 360;
+  2 5 0.0001 0.0036 0.34 4000 0 0 0 0 1 -360 360;
+];
+";
+
+#[test]
+fn unit_held_at_its_limit_does_not_collapse_its_terminal() {
+    let mut case = parse_matpower(FIGHTING_PLANT).unwrap();
+    for g in &mut case.generators[1..] {
+        g.regulated_bus = Some(2);
+    }
+    let result = solve(&case, &limited()).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    // Both small units end at their limits. Before the unit held at its
+    // limit restarted from the bus it held, bus 3 settled at 0.02 pu.
+    assert_eq!(result.case.generators[1].qg, 10.0);
+    assert_eq!(result.case.generators[2].qg, 91.0);
+    assert_eq!(bus(&result.case, 3).kind, BusType::Pq);
+    assert!(
+        result.case.buses.iter().all(|b| b.vm > 0.95),
+        "{:?}",
+        result.case.buses.iter().map(|b| b.vm).collect::<Vec<_>>()
+    );
+}
