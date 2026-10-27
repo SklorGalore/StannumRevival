@@ -239,6 +239,22 @@ commands! {
         Ok(())
     };
 
+    /// Attach a bus coordinates CSV (bus, latitude, longitude, optional
+    /// substation) to the case, for the map.
+    load_coordinates { case: Option<CaseId>, path: PathBuf } =>
+        |s, a| s.workspace()?.case_mut(a.case)?.load_coordinates(&a.path);
+
+    /// Detach the bus coordinates file.
+    clear_coordinates { case: Option<CaseId> } => |s, a| {
+        s.workspace()?.case_mut(a.case)?.clear_coordinates();
+        Ok(())
+    };
+
+    /// Where every bus goes on the map, as columns in bus order, with the
+    /// source of each place ("file", "estimated" or "none").
+    bus_coordinates { case: Option<CaseId> } =>
+        |s, a| s.workspace()?.case(a.case)?.bus_coordinates();
+
     /// Replace the study's edits; every later solve uses them.
     set_study_edits { case: Option<CaseId>, edits: Vec<Edit> } =>
         |s, a| s.workspace()?.case_mut(a.case)?.set_edits(a.edits);

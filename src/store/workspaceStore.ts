@@ -1,6 +1,6 @@
 import { useLog } from "./logStore";
 import { create } from "zustand";
-import { api, CASE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
 import { addRecent } from "../lib/study/recent";
 
@@ -112,6 +112,9 @@ interface WorkspaceState {
    */
   openCase: (path?: string, opts?: { confirmed?: boolean }) => Promise<boolean>;
   closeCase: () => Promise<boolean>;
+  /** Attach a bus coordinates CSV for the map (asking for one when no path is given). */
+  attachCoordinates: (path?: string) => Promise<boolean>;
+  detachCoordinates: () => Promise<void>;
 }
 
 const LINKED_KEY = "stannum-linked-selection";
@@ -290,6 +293,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       set({ opening: false, openError: (e as Error).message });
       return false;
     }
+  },
+
+  attachCoordinates: async (path) => {
+    const chosen = path ?? (await pickFile(COORDINATE_FILTERS));
+    if (!chosen) return false;
+    try {
+      const coordinates = await api.loadCoordinates(chosen);
+      set((s) => ({ caseSummary: s.caseSummary && { ...s.caseSummary, coordinates } }));
+      return true;
+    } catch {
+      // The log already shows why.
+      return false;
+    }
+  },
+
+  detachCoordinates: async () => {
+    await api.clearCoordinates();
+    set((s) => ({ caseSummary: s.caseSummary && { ...s.caseSummary, coordinates: null } }));
   },
 
   closeCase: async () => {
