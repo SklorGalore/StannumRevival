@@ -3672,6 +3672,15 @@
         "counts": {
           "$ref": "#/$defs/CaseCounts"
         },
+        "revision": {
+          "description": "The RAW revision the file was read as; null for MATPOWER.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "warnings": {
           "items": {
             "$ref": "#/$defs/Warning"
@@ -3681,6 +3690,7 @@
       },
       "required": [
         "counts",
+        "revision",
         "warnings"
       ],
       "type": "object"

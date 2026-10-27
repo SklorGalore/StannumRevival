@@ -31,6 +31,8 @@ pub struct PowerCase {
     /// Substations with their places and buses, from RAW revision 34-35
     /// substation data; empty otherwise.
     pub substations: Vec<rs_power::RawSubstation>,
+    /// The RAW revision the file was read as; None for MATPOWER.
+    pub revision: Option<u32>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -66,6 +68,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
             substations: Vec::new(),
+            revision: None,
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -108,6 +111,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
             substations: import.substations,
+            revision: Some(import.revision),
             case: import.case,
             warnings: import
                 .warnings

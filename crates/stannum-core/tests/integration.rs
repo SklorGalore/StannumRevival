@@ -17,7 +17,12 @@ fn matpower_case_solves_and_reports_limits() {
     let summary = ws.open(&fixture("case9.m")).unwrap();
     assert_eq!(summary.format, CaseFormat::Matpower);
     assert!(summary.power.available);
-    // nodal can't read MATPOWER, so topology comes from the power flow model.
+    // nodal can't read MATPOWER, so topology comes from the power flow
+    // model. It's built the first time it's asked for.
+    assert!(summary.topology.available && summary.topology.info.is_none());
+    assert!(!ws.current().unwrap().topology_built());
+    ws.current().unwrap().topology_snapshot().unwrap();
+    let summary = ws.current().unwrap().summary();
     let topo = summary
         .topology
         .info
@@ -312,6 +317,9 @@ fn derived_topology_keeps_three_winding_transformers_whole() {
         .join("../rs-power/tests/fixtures/raw/transformers.raw");
     let mut ws = Workspace::default();
     let summary = ws.open(&path).unwrap();
+    assert_eq!(summary.power.info.as_ref().unwrap().revision, Some(33));
+    ws.current().unwrap().topology_snapshot().unwrap();
+    let summary = ws.current().unwrap().summary();
     let topo = summary
         .topology
         .info

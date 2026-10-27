@@ -71,7 +71,7 @@ fn raw_loads_and_transformers() {
         case.element_detail(&e.element).unwrap();
     }
     // nodal reads revision 35, so a RAW load is its own record.
-    let topo = case.topology.as_ref().unwrap();
+    let topo = case.topology().as_ref().unwrap();
     if let Some(l) = topo.case.loads.first() {
         let d = case.element_detail(&l.id).unwrap();
         assert!(d.note.is_none());

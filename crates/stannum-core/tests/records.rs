@@ -259,3 +259,39 @@ fn matpower_edits_change_the_model() {
             .is_err()
     );
 }
+
+#[test]
+fn a_record_edit_keeps_the_last_solve_as_the_starting_point() {
+    use stannum_core::power::{SolveSettings, StartChoice};
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rs-power/tests/fixtures/case300.m");
+    let mut ws = open(path);
+    let case = ws.current_mut().unwrap();
+    let flat = SolveSettings {
+        start: StartChoice::Flat,
+        tolerance_mva: 0.01,
+        ..SolveSettings::default()
+    };
+    let last = SolveSettings {
+        start: StartChoice::Last,
+        ..flat.clone()
+    };
+    assert!(case.solve(flat.clone()).unwrap().converged);
+    let buses = case.record_table("bus").unwrap();
+    let pd = col(&buses, "PD");
+    let row = 4;
+    let old: f64 = buses.rows[row].cells[pd].as_f64().unwrap();
+    case.apply_record_edits(&[edit("bus", row, pd, &format!("{}", old + 5.0))])
+        .unwrap();
+    // The edited case is read again, but its topology waits until asked for.
+    assert!(!case.topology_built());
+    let warm = case.solve(last).unwrap();
+    let cold = case.solve(flat).unwrap();
+    assert!(warm.converged && cold.converged);
+    assert!(
+        warm.iterations < cold.iterations,
+        "from the last solve: {} iterations, from flat: {}",
+        warm.iterations,
+        cold.iterations
+    );
+}
