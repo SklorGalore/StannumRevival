@@ -88,7 +88,7 @@ const log = page.getByRole("log", { name: "Log lines" });
 await page.keyboard.press("Control+Backquote");
 await log.getByText(/Solved power flow \(/).last().waitFor();
 await log.getByText(/Finished AC power flow: converged/).last().waitFor();
-await log.getByText(/Newton iteration 1: largest P mismatch .* MW at bus/).last().waitFor();
+await log.getByText(/(Fixed-slope|Fast decoupled|Newton) iteration 1: largest P mismatch .* MW at bus/).last().waitFor();
 await log.getByText(/Totals: generation/).last().waitFor();
 await log.getByText(/Sensitivities: \d+ injection columns/).last().waitFor();
 assert.equal(await log.getByText(/assembling active network/).count(), 0, "detail lines are hidden by default");
