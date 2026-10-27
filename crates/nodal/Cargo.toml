@@ -10,3 +10,8 @@ rustworkx-core = "0.18.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 encoding_rs = "0.8"
+schemars = { version = "1", optional = true }
+
+[features]
+# JSON schemas for the topology results (used by stannum-core).
+schemars = ["dep:schemars"]

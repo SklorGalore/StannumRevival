@@ -53,6 +53,23 @@ the open case, so a caller holding an old id gets an error rather than
 reaching a different case. `list_commands` returns every command with its
 description and the API version.
 
+Every command declares its result type too, and the core writes a JSON
+Schema of each command's arguments and result (`command_schemas`, checked in
+as `crates/stannum-core/schema/commands.schema.json`). The frontend's
+`src/lib/analysis/commands.gen.ts` is generated from it, so a call with a
+misspelled argument, or a hand-written type that no longer matches what the
+core sends, fails the TypeScript build. A test runs every command against
+real cases and checks each answer against its schema. After changing a
+command or a type it returns, run `pwsh scripts/update-schemas.ps1`.
+
+A command that fails returns an error with a **kind** and a message, such as
+`{"kind": "no_case", "message": "Open a case first."}`. The kinds are
+`unknown_command`, `invalid_arguments`, `no_case`, `case_not_open`,
+`not_ready` (another step comes first, such as solving), `not_found`,
+`unsupported` (not for this case's format), `case_changed` (run it again),
+`cancelled`, `file`, `failed` and `internal`. Clients act on the kind and show
+the message.
+
 Long runs (solves and contingency runs) can be cancelled with `cancel_solve`
 and `cancel_contingencies`, and `contingency_progress` reports how far a run
 has got. These work while the run is going, from any client.

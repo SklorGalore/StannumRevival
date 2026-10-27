@@ -2,6 +2,7 @@
 //! the app writes; the core fingerprints the case it was saved against and
 //! finds that case again when the study is opened somewhere else.
 
+use crate::error::Error;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::Read;
@@ -10,7 +11,7 @@ use std::time::UNIX_EPOCH;
 
 /// What a study records about its case, to tell later whether the file
 /// changed.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Fingerprint {
     pub size: u64,
     /// Lowercase hex SHA-256 of the file's bytes.
@@ -19,13 +20,13 @@ pub struct Fingerprint {
     pub modified_ms: Option<u64>,
 }
 
-pub fn fingerprint(path: &Path) -> Result<Fingerprint, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let meta = file.metadata().map_err(|e| e.to_string())?;
+pub fn fingerprint(path: &Path) -> Result<Fingerprint, Error> {
+    let mut file = std::fs::File::open(path).map_err(|e| Error::file(path, e))?;
+    let meta = file.metadata().map_err(|e| Error::file(path, e))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 16];
     loop {
-        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        let n = file.read(&mut buf).map_err(|e| Error::file(path, e))?;
         if n == 0 {
             break;
         }

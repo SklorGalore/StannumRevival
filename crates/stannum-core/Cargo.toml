@@ -7,11 +7,12 @@ publish = false
 
 [dependencies]
 rs-power = { path = "../rs-power" }
-nodal = { path = "../nodal" }
+nodal = { path = "../nodal", features = ["schemars"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 num-complex = "0.4"
 encoding_rs = "0.8"
 thiserror = "2"
+schemars = "1"
 log = "0.4"
 sha2 = "0.10"

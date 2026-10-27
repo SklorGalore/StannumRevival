@@ -87,7 +87,7 @@ fn a_bus_with_nothing_placed_in_its_island_has_no_place() {
     let err = s
         .invoke("load_coordinates", json!({ "path": path }))
         .unwrap_err();
-    assert!(err.contains("bus, latitude and longitude"), "{err}");
+    assert!(err.message.contains("bus, latitude and longitude"), "{err}");
     // A bad file leaves the attached one in place.
     assert_eq!(
         invoke(&s, "case_summary", json!({}))["coordinates"]["from_file"],

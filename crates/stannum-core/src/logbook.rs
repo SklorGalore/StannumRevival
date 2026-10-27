@@ -17,13 +17,14 @@ const CAPACITY: usize = 5000;
 const OURS: [&str; 3] = ["stannum_core", "rs_power", "nodal"];
 
 /// One log line.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Entry {
     /// Increases by one per line, so a reader can ask for what it hasn't seen.
     pub seq: u64,
     /// Milliseconds since the Unix epoch.
     pub time: u64,
     /// "error", "warn", "info" or "debug".
+    #[schemars(extend("enum" = ["error", "warn", "info", "debug"]))]
     pub level: &'static str,
     /// The part of the program that wrote it, such as "rs-power".
     pub source: String,

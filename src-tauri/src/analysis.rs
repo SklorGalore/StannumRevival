@@ -4,6 +4,7 @@
 
 use stannum_core::commands::Session;
 use stannum_core::logbook;
+use stannum_core::Error;
 use std::sync::Arc;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, State};
@@ -12,17 +13,18 @@ use tauri::{AppHandle, Emitter, State};
 pub struct SharedSession(Arc<Session>);
 
 /// Run one core command by name (see `stannum_core::commands::COMMANDS`).
-/// The result is already JSON, so it goes to the window as it is.
+/// The result is already JSON, so it goes to the window as it is. A failure
+/// reaches the window as `{kind, message}` (see `stannum_core::error`).
 #[tauri::command]
 pub async fn stannum_command(
     state: State<'_, SharedSession>,
     command: String,
     args: Option<serde_json::Value>,
-) -> Result<Response, String> {
+) -> Result<Response, Error> {
     let session = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || session.invoke(&command, args.unwrap_or_default()))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| Error::internal(e.to_string()))?
         .map(Response::new)
 }
 

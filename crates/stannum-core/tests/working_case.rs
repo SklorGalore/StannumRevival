@@ -113,5 +113,6 @@ fn matpower_cases_are_refused_plainly() {
     let mut ws = Workspace::default();
     ws.open(&fixture("case9.m")).unwrap();
     let err = ws.compare_working().unwrap_err();
-    assert!(err.contains("MATPOWER"), "{err}");
+    assert!(err.message.contains("MATPOWER"), "{err}");
+    assert_eq!(err.kind, stannum_core::ErrorKind::Unsupported);
 }

@@ -46,7 +46,7 @@ pub fn dc_line(from: u32, to: u32, name: &str) -> String {
 }
 
 /// What one rs-power branch row is, in shared terms.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct BranchElement {
     pub element: String,
     pub circuit: String,
@@ -55,7 +55,7 @@ pub struct BranchElement {
 }
 
 /// What one rs-power generator row is, in shared terms.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct GeneratorElement {
     pub element: String,
     pub machine_id: String,

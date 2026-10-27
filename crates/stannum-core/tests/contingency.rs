@@ -164,7 +164,8 @@ fn needs_an_ac_solve_first() {
         .unwrap()
         .run_contingencies(settings(Method::Screen))
         .unwrap_err();
-    assert!(error.contains("Solve"), "{error}");
+    assert!(error.message.contains("Solve"), "{error}");
+    assert_eq!(error.kind, stannum_core::ErrorKind::NotReady);
     ws.current_mut()
         .unwrap()
         .solve(SolveSettings {
@@ -244,7 +245,7 @@ fn trip_and_compare_matches_the_ac_run() {
     .unwrap();
     case.solve(SolveSettings::default()).unwrap();
     let err = case.trip_and_compare(&element, 100.0).unwrap_err();
-    assert!(err.contains("already out"), "{err}");
+    assert!(err.message.contains("already out"), "{err}");
 }
 
 /// Every named result is a full solve report: a contingency or a trip
@@ -255,10 +256,16 @@ fn named_results_match_a_study_solve() {
     let case = ws.current_mut().unwrap();
     let base = case.result("base").unwrap();
     assert!(base.converged);
-    assert!(case.result("study").unwrap_err().contains("\"base\""));
+    assert!(
+        case.result("study")
+            .unwrap_err()
+            .message
+            .contains("\"base\"")
+    );
     assert!(
         case.result("contingency 1")
             .unwrap_err()
+            .message
             .contains("Run contingencies")
     );
 
@@ -280,6 +287,7 @@ fn named_results_match_a_study_solve() {
     assert!(
         case.result("trip line:999-998-1")
             .unwrap_err()
+            .message
             .contains("only the last trip")
     );
 
@@ -293,10 +301,16 @@ fn named_results_match_a_study_solve() {
     assert!(
         case.result("study")
             .unwrap_err()
+            .message
             .contains("Solve the case first")
     );
     let study = case.solve(SolveSettings::default()).unwrap();
-    assert!(case.result("base").unwrap_err().contains("\"study\""));
+    assert!(
+        case.result("base")
+            .unwrap_err()
+            .message
+            .contains("\"study\"")
+    );
     assert_eq!(
         case.result("study").unwrap().branches.len(),
         study.branches.len()

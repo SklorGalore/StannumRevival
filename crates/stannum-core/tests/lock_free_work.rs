@@ -42,7 +42,8 @@ fn a_solve_that_finishes_after_an_edit_is_set_aside() {
     case.set_edits(vec![trip(&branch)]).unwrap();
     let done = job.run().unwrap();
     let e = case.finish_solve(done).unwrap_err();
-    assert!(e.contains("changed during the solve"), "{e}");
+    assert!(e.message.contains("changed during the solve"), "{e}");
+    assert_eq!(e.kind, stannum_core::ErrorKind::CaseChanged);
     assert!(case.solved.is_none(), "the old case's solve isn't kept");
 
     // Undisturbed, the same steps keep the solve.
@@ -75,7 +76,8 @@ fn contingencies_that_finish_after_an_edit_are_set_aside() {
     case.set_edits(vec![trip(&branch)]).unwrap();
     let results = job.run().unwrap();
     let e = case.keep_contingencies(version, results).unwrap_err();
-    assert!(e.contains("changed while contingencies ran"), "{e}");
+    assert!(e.message.contains("changed while contingencies ran"), "{e}");
+    assert_eq!(e.kind, stannum_core::ErrorKind::CaseChanged);
     assert!(case.contingencies.is_none());
 
     case.solve(SolveSettings::default()).unwrap();

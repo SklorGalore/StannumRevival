@@ -11,6 +11,7 @@ use crate::contingency::{
 };
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
+use crate::error::{Error, ErrorKind};
 use crate::geo::{BusCoordinates, CoordinatesSummary, LoadedCoordinates};
 use crate::power::{self, PowerCase, SolveSettings};
 use crate::record_edit::{self, RecordEdit};
@@ -25,7 +26,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
-#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CaseFormat {
     Matpower,
@@ -42,7 +43,7 @@ pub struct TopologyState {
 
 /// Names one open case in commands and scripts. Ids are never reused within
 /// a workspace, so a stale id is refused instead of reaching another case.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct CaseId(pub u64);
 
@@ -100,7 +101,8 @@ pub struct Workspace {
     last_id: u64,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
+#[schemars(rename = "ModuleStatusOf{T}")]
 pub struct ModuleStatus<T: Serialize> {
     pub available: bool,
     pub error: Option<String>,
@@ -124,13 +126,13 @@ impl<T: Serialize> ModuleStatus<T> {
     }
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct PowerInfo {
     pub counts: power::CaseCounts,
     pub warnings: Vec<power::Warning>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct TopologyInfo {
     /// RAW revision nodal read, or 0 when built from the power flow model.
     pub revision: i32,
@@ -141,7 +143,7 @@ pub struct TopologyInfo {
     pub titles: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct CaseSummary {
     /// The handle commands take to name this case.
     pub id: CaseId,
@@ -160,14 +162,15 @@ pub struct CaseSummary {
     pub coordinates: Option<CoordinatesSummary>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct TopologySnapshot<'a> {
+    /// The case as nodal reads it.
     pub case: &'a nodal::model::Case,
     pub analysis: Analysis,
     pub graph: GraphData,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub struct TopologyView {
     pub analysis: Analysis,
     pub graph: GraphData,
@@ -381,32 +384,32 @@ impl OpenCase {
     }
 
     /// The case power flow works on: the file with the study's edits applied.
-    fn power_case(&self) -> Result<&PowerCase, String> {
+    fn power_case(&self) -> Result<&PowerCase, Error> {
         let base = self.power.as_ref().map_err(|e| e.clone())?;
         Ok(self.edited.as_ref().unwrap_or(base))
     }
 
     /// [`Self::power_case`], shared, for work that runs without the lock.
-    fn power_case_shared(&self) -> Result<Arc<PowerCase>, String> {
+    fn power_case_shared(&self) -> Result<Arc<PowerCase>, Error> {
         match &self.edited {
             Some(edited) => Ok(edited.clone()),
-            None => self.power.clone(),
+            None => Ok(self.power.clone()?),
         }
     }
 
     /// Fail with [`CASE_CHANGED`] unless this is still the case `version`
     /// was taken from.
-    fn check_version(&self, version: u64) -> Result<(), String> {
+    fn check_version(&self, version: u64) -> Result<(), Error> {
         if version == self.version {
             Ok(())
         } else {
-            Err(CASE_CHANGED.into())
+            Err(Error::new(ErrorKind::CaseChanged, CASE_CHANGED))
         }
     }
 
     /// Replace the study's edits. Results from before the change are dropped,
     /// since they describe a different case. On a bad edit nothing changes.
-    pub fn set_edits(&mut self, edits: Vec<Edit>) -> Result<(), String> {
+    pub fn set_edits(&mut self, edits: Vec<Edit>) -> Result<(), Error> {
         let base = self.power.as_ref().map_err(|e| e.clone())?;
         let edited = if edits.is_empty() {
             None
@@ -439,12 +442,14 @@ impl OpenCase {
     /// converged AC solve. Run it with [`ContingencyJob::run`] (it doesn't
     /// need the workspace) and keep the results with
     /// [`Self::set_contingencies`].
-    pub fn contingency_job(&self, settings: ContingencySettings) -> Result<ContingencyJob, String> {
+    pub fn contingency_job(&self, settings: ContingencySettings) -> Result<ContingencyJob, Error> {
         let power = self.power_case()?;
         let base = &resumable(&self.solved)
-            .ok_or(
-                "Solve the case with the AC model first: contingencies start from that solution.",
-            )?
+            .ok_or_else(|| {
+                Error::not_ready(
+                    "Solve the case with the AC model first: contingencies start from that solution.",
+                )
+            })?
             .0;
         if self.dc_grids.is_some() {
             log::warn!("Contingencies leave out the attached VSC DC grids");
@@ -464,13 +469,13 @@ impl OpenCase {
         &mut self,
         version: u64,
         results: ContingencyResults,
-    ) -> Result<ContingencySummary, String> {
+    ) -> Result<ContingencySummary, Error> {
         if self.check_version(version).is_err() {
             log::warn!("The case changed while contingencies ran, so their results were set aside");
-            return Err(
-                "The case changed while contingencies ran, so their results were set aside. Run them again."
-                    .into(),
-            );
+            return Err(Error::new(
+                ErrorKind::CaseChanged,
+                "The case changed while contingencies ran, so their results were set aside. Run them again.",
+            ));
         }
         Ok(self.set_contingencies(results))
     }
@@ -487,15 +492,15 @@ impl OpenCase {
     pub fn run_contingencies(
         &mut self,
         settings: ContingencySettings,
-    ) -> Result<ContingencySummary, String> {
+    ) -> Result<ContingencySummary, Error> {
         let results = self.contingency_job(settings)?.run()?;
         Ok(self.set_contingencies(results))
     }
 
-    fn contingency_results(&self) -> Result<&ContingencyResults, String> {
+    fn contingency_results(&self) -> Result<&ContingencyResults, Error> {
         self.contingencies
             .as_ref()
-            .ok_or_else(|| "Run contingencies first.".into())
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))
     }
 
     pub fn contingency_summary(&self) -> Option<ContingencySummary> {
@@ -506,7 +511,7 @@ impl OpenCase {
         &self,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<ContingencyRow>, String> {
+    ) -> Result<Vec<ContingencyRow>, Error> {
         Ok(self.contingency_results()?.page(offset, limit))
     }
 
@@ -517,14 +522,14 @@ impl OpenCase {
         &mut self,
         element: &str,
         limit_pct: f64,
-    ) -> Result<ContingencyDetail, String> {
+    ) -> Result<ContingencyDetail, Error> {
         let done = self.trip_job(element, limit_pct)?.run()?;
         self.finish_trip(done)
     }
 
     /// Keep a finished trip so its whole solution can be shown, unless the
     /// case changed while it ran.
-    pub fn finish_trip(&mut self, done: TripDone) -> Result<ContingencyDetail, String> {
+    pub fn finish_trip(&mut self, done: TripDone) -> Result<ContingencyDetail, Error> {
         self.check_version(done.version)?;
         self.trip = Some((done.element, done.results));
         Ok(done.detail)
@@ -532,10 +537,13 @@ impl OpenCase {
 
     /// [`Self::trip_and_compare`]'s solve, to run with [`TripJob::run`]
     /// without the workspace.
-    pub fn trip_job(&self, element: &str, limit_pct: f64) -> Result<TripJob, String> {
+    pub fn trip_job(&self, element: &str, limit_pct: f64) -> Result<TripJob, Error> {
         let power = self.power_case()?;
-        let (base, solve) = &**resumable(&self.solved)
-            .ok_or("Solve the case with the AC model first: the trip starts from that solution.")?;
+        let (base, solve) = &**resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: the trip starts from that solution.",
+            )
+        })?;
         let settings = ContingencySettings {
             elements: Some(vec![element.to_string()]),
             branches: true,
@@ -562,41 +570,44 @@ impl OpenCase {
     /// A result by name (see [`crate::results`]): the latest solve, one
     /// outage of the last contingency run, or the last trip, as a full solve
     /// report that every view can show.
-    pub fn result(&mut self, name: &str) -> Result<power::SolveReport, String> {
+    pub fn result(&mut self, name: &str) -> Result<power::SolveReport, Error> {
         let study = !self.edits.is_empty();
-        match name.parse::<ResultName>()? {
-            ResultName::Base if study => {
-                Err("The latest solve includes the study's edits: it's named \"study\".".into())
-            }
-            ResultName::Study if !study => {
-                Err("There are no study edits: the latest solve is named \"base\".".into())
-            }
+        match name
+            .parse::<ResultName>()
+            .map_err(Error::invalid_arguments)?
+        {
+            ResultName::Base if study => Err(Error::not_found(
+                "The latest solve includes the study's edits: it's named \"study\".",
+            )),
+            ResultName::Study if !study => Err(Error::not_found(
+                "There are no study edits: the latest solve is named \"base\".",
+            )),
             ResultName::Base | ResultName::Study => self
                 .report
                 .clone()
-                .ok_or_else(|| "Solve the case first.".into()),
+                .ok_or_else(|| Error::not_ready("Solve the case first.")),
             ResultName::Contingency(rank) => self
                 .contingencies
                 .as_mut()
-                .ok_or("Run contingencies first.")?
+                .ok_or_else(|| Error::not_ready("Run contingencies first."))?
                 .report(rank),
             ResultName::Trip(element) => match self.trip.as_mut() {
                 Some((tripped, results)) if *tripped == element => results.report(1),
-                _ => Err(format!(
+                _ => Err(Error::not_ready(format!(
                     "Trip and compare {element} first: only the last trip is kept."
-                )),
+                ))),
             },
         }
     }
 
-    pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, String> {
+    pub fn contingency_detail(&mut self, rank: usize) -> Result<ContingencyDetail, Error> {
         self.contingencies
             .as_mut()
-            .ok_or("Run contingencies first.")?
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?
             .detail(rank)
     }
 
-    pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, String> {
+    pub fn solve(&mut self, settings: SolveSettings) -> Result<power::SolveReport, Error> {
         self.solve_cancellable(settings, None)
     }
 
@@ -606,7 +617,7 @@ impl OpenCase {
         &mut self,
         settings: SolveSettings,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<power::SolveReport, String> {
+    ) -> Result<power::SolveReport, Error> {
         let done = self.solve_job(settings, cancel)?.run()?;
         self.finish_solve(done)
     }
@@ -618,7 +629,7 @@ impl OpenCase {
         &self,
         settings: SolveSettings,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<SolveJob, String> {
+    ) -> Result<SolveJob, Error> {
         // The last converged AC solve: of this case, else from before the
         // study's edits changed.
         let last = resumable(&self.solved)
@@ -637,13 +648,13 @@ impl OpenCase {
 
     /// Keep a finished solve as the case's latest, unless the case changed
     /// while it ran.
-    pub fn finish_solve(&mut self, done: SolveDone) -> Result<power::SolveReport, String> {
+    pub fn finish_solve(&mut self, done: SolveDone) -> Result<power::SolveReport, Error> {
         if self.check_version(done.version).is_err() {
             log::warn!("The case changed during the solve, so its results were set aside");
-            return Err(
-                "The case changed during the solve, so its results were set aside. Solve again."
-                    .into(),
-            );
+            return Err(Error::new(
+                ErrorKind::CaseChanged,
+                "The case changed during the solve, so its results were set aside. Solve again.",
+            ));
         }
         self.solved = Some(Arc::new((done.result, done.settings)));
         self.before_edits = None;
@@ -653,7 +664,7 @@ impl OpenCase {
 
     /// Attach a DC grid file; the next AC solve includes its grids. The file
     /// is checked against the case first, and a bad file changes nothing.
-    pub fn load_dc_grids(&mut self, path: &Path) -> Result<DcGridsSummary, String> {
+    pub fn load_dc_grids(&mut self, path: &Path) -> Result<DcGridsSummary, Error> {
         let loaded = LoadedDcGrids::read(path)?;
         rs_power::check_dc_grids(&self.power_case()?.case, &loaded.grids)
             .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -671,7 +682,7 @@ impl OpenCase {
 
     /// Attach a bus coordinates CSV. Rows that can't be read are skipped and
     /// listed in the summary; a file with no usable header changes nothing.
-    pub fn load_coordinates(&mut self, path: &Path) -> Result<CoordinatesSummary, String> {
+    pub fn load_coordinates(&mut self, path: &Path) -> Result<CoordinatesSummary, Error> {
         let loaded = LoadedCoordinates::read(path)?;
         let summary = loaded
             .resolve(&self.power.as_ref().map_err(|e| e.clone())?.case)
@@ -717,11 +728,11 @@ impl OpenCase {
 
     /// Where every bus goes on the map, in the case's bus order. Fails when
     /// no coordinates file is attached.
-    pub fn bus_coordinates(&self) -> Result<BusCoordinates, String> {
+    pub fn bus_coordinates(&self) -> Result<BusCoordinates, Error> {
         let (loaded, _) = self
             .coordinates
             .as_ref()
-            .ok_or("Attach a bus coordinates file first.")?;
+            .ok_or_else(|| Error::not_ready("Attach a bus coordinates file first."))?;
         Ok(loaded.resolve(&self.power.as_ref().map_err(|e| e.clone())?.case))
     }
 
@@ -734,14 +745,14 @@ impl OpenCase {
     pub fn sensitivities(
         &mut self,
         settings: SolveSettings,
-    ) -> Result<power::SensitivitySummary, String> {
+    ) -> Result<power::SensitivitySummary, Error> {
         let done = self.sensitivity_job(settings)?.run()?;
         self.finish_sensitivities(done)
     }
 
     /// Sensitivities of the case with the study's edits, to run with
     /// [`SensitivityJob::run`] without the workspace.
-    pub fn sensitivity_job(&self, settings: SolveSettings) -> Result<SensitivityJob, String> {
+    pub fn sensitivity_job(&self, settings: SolveSettings) -> Result<SensitivityJob, Error> {
         Ok(SensitivityJob {
             version: self.version,
             power: self.power_case_shared()?,
@@ -753,7 +764,7 @@ impl OpenCase {
     pub fn finish_sensitivities(
         &mut self,
         done: SensitivitiesDone,
-    ) -> Result<power::SensitivitySummary, String> {
+    ) -> Result<power::SensitivitySummary, Error> {
         self.check_version(done.version)?;
         self.sensitivity = Some((done.sensitivity, done.model));
         Ok(done.summary)
@@ -764,22 +775,29 @@ impl OpenCase {
         column: usize,
         quantity: &str,
         engineering: bool,
-    ) -> Result<power::ResponseTable, String> {
+    ) -> Result<power::ResponseTable, Error> {
         let (s, _) = self
             .sensitivity
             .as_ref()
-            .ok_or("Calculate sensitivities first.")?;
-        let q = power::Quantity::parse(quantity).ok_or("Unknown quantity")?;
-        power::responses(s, &self.power_case()?.elements, column, q, engineering)
+            .ok_or_else(|| Error::not_ready("Calculate sensitivities first."))?;
+        let q = power::Quantity::parse(quantity)
+            .ok_or_else(|| Error::invalid_arguments(format!("Unknown quantity {quantity}.")))?;
+        Ok(power::responses(
+            s,
+            &self.power_case()?.elements,
+            column,
+            q,
+            engineering,
+        )?)
     }
 
     /// Write the input case, or the latest solved case, as MATPOWER.
-    pub fn export_matpower(&self, path: &Path, solved: bool) -> Result<(), String> {
+    pub fn export_matpower(&self, path: &Path, solved: bool) -> Result<(), Error> {
         let case = if solved {
             &self
                 .solved
                 .as_ref()
-                .ok_or("Solve the case before exporting results.")?
+                .ok_or_else(|| Error::not_ready("Solve the case before exporting results."))?
                 .0
                 .case
         } else {
@@ -795,12 +813,12 @@ impl OpenCase {
     }
 
     /// The case as buses, generators and branches for the one-line diagram.
-    pub fn diagram_network(&self) -> Result<crate::diagram::CaseNetwork, String> {
+    pub fn diagram_network(&self) -> Result<crate::diagram::CaseNetwork, Error> {
         Ok(crate::diagram::network(self.power_case()?))
     }
 
     /// One element's data and limits from the file, for the element inspector.
-    pub fn element_detail(&self, element: &str) -> Result<crate::inspect::ElementDetail, String> {
+    pub fn element_detail(&self, element: &str) -> Result<crate::inspect::ElementDetail, Error> {
         let power = self.power.as_ref().map_err(|e| e.clone())?;
         let topology = self
             .topology
@@ -825,14 +843,14 @@ impl OpenCase {
 
     /// The file's records as tables: RAW revisions 33 and 35 record by
     /// record, anything else as the power flow model.
-    pub fn records(&mut self) -> Result<&Records, String> {
+    pub fn records(&mut self) -> Result<&Records, Error> {
         if let Some(job) = self.records_job() {
             let read = job.run();
             self.keep_records(read)?;
         }
         match self.records.as_ref() {
             Some(Ok(r)) => Ok(r.as_ref()),
-            Some(Err(e)) => Err(e.clone()),
+            Some(Err(e)) => Err(e.clone().into()),
             None => unreachable!("records were just read"),
         }
     }
@@ -854,7 +872,7 @@ impl OpenCase {
 
     /// Keep records read by a [`RecordsJob`], unless the case changed while
     /// they were read. Records another read kept first stay.
-    pub fn keep_records(&mut self, read: RecordsRead) -> Result<(), String> {
+    pub fn keep_records(&mut self, read: RecordsRead) -> Result<(), Error> {
         self.check_version(read.version)?;
         if self.records.is_none() {
             self.records = Some(read.records.map(Arc::new));
@@ -862,18 +880,18 @@ impl OpenCase {
         Ok(())
     }
 
-    pub fn record_book(&mut self) -> Result<RecordBook, String> {
+    pub fn record_book(&mut self) -> Result<RecordBook, Error> {
         Ok(self.records()?.book())
     }
 
-    pub fn record_table(&mut self, section: &str) -> Result<RecordTable, String> {
+    pub fn record_table(&mut self, section: &str) -> Result<RecordTable, Error> {
         Ok(self.records()?.table(section)?.clone())
     }
 
     /// Write edits from Records into the case and open the edited case in
     /// its place, keeping the study's edits and any DC grid file. Nothing
     /// changes when an edit is invalid or the edited case can't be read.
-    pub fn apply_record_edits(&mut self, edits: &[RecordEdit]) -> Result<CaseSummary, String> {
+    pub fn apply_record_edits(&mut self, edits: &[RecordEdit]) -> Result<CaseSummary, Error> {
         if edits.is_empty() {
             return Ok(self.summary());
         }
@@ -884,13 +902,15 @@ impl OpenCase {
     /// Record edits to write and reread with [`RecordEditJob::run`] without
     /// the workspace, and keep with [`Self::finish_record_edits`]. Reads
     /// the records here if they haven't been read yet.
-    pub fn record_edit_job(&mut self, edits: &[RecordEdit]) -> Result<RecordEditJob, String> {
+    pub fn record_edit_job(&mut self, edits: &[RecordEdit]) -> Result<RecordEditJob, Error> {
         self.records()?;
         let Some(Ok(records)) = self.records.as_ref() else {
             unreachable!("records were just read")
         };
         if !records.editable {
-            return Err("This case's records can't be edited: Stannum writes RAW revisions 33 and 35, and MATPOWER.".into());
+            return Err(Error::unsupported(
+                "This case's records can't be edited: Stannum writes RAW revisions 33 and 35, and MATPOWER.",
+            ));
         }
         Ok(RecordEditJob {
             version: self.version,
@@ -906,7 +926,7 @@ impl OpenCase {
 
     /// Put the edited case in this one's place, unless the case changed
     /// while the edits were written.
-    pub fn finish_record_edits(&mut self, done: RecordEditsDone) -> Result<CaseSummary, String> {
+    pub fn finish_record_edits(&mut self, done: RecordEditsDone) -> Result<CaseSummary, Error> {
         self.check_version(done.version)?;
         let RecordEditsDone {
             mut next,
@@ -958,9 +978,11 @@ impl OpenCase {
     /// The case as it is being worked on, as RAW text: the file as opened,
     /// with Records edits and the study's edits written in. Only RAW
     /// revisions Records can edit (33 and 35) can carry study edits.
-    pub fn working_bytes(&mut self) -> Result<Vec<u8>, String> {
+    pub fn working_bytes(&mut self) -> Result<Vec<u8>, Error> {
         if self.format != CaseFormat::Raw {
-            return Err("Case diff reads PSS/E RAW files, and this case is MATPOWER.".into());
+            return Err(Error::unsupported(
+                "Case diff reads PSS/E RAW files, and this case is MATPOWER.",
+            ));
         }
         if self.edits.is_empty() {
             return Ok(self.bytes.clone());
@@ -970,7 +992,9 @@ impl OpenCase {
             unreachable!("records were just read")
         };
         if !records.editable {
-            return Err("Stannum can only write study edits into RAW revisions 33 and 35, so this case's study can't be compared with its file.".into());
+            return Err(Error::unsupported(
+                "Stannum can only write study edits into RAW revisions 33 and 35, so this case's study can't be compared with its file.",
+            ));
         }
         let base = self.power.as_ref().map_err(|e| e.clone())?;
         let edits = crate::working_case::study_record_edits(records, base, &self.edits)?;
@@ -989,8 +1013,8 @@ impl OpenCase {
     }
 
     /// Save the case, with its edits, to a new file, and carry on with that file.
-    pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, String> {
-        std::fs::write(path, &self.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, Error> {
+        std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;
         log::info!("Saved {} as {}", self.name, path.display());
         self.path = path.to_path_buf();
         self.name = path
@@ -1001,11 +1025,11 @@ impl OpenCase {
         Ok(self.summary())
     }
 
-    fn topology_state(&self) -> Result<&TopologyState, String> {
-        self.topology.as_ref().map_err(|e| e.clone())
+    fn topology_state(&self) -> Result<&TopologyState, Error> {
+        Ok(self.topology.as_ref().map_err(|e| e.clone())?)
     }
 
-    pub fn topology_snapshot(&self) -> Result<TopologySnapshot<'_>, String> {
+    pub fn topology_snapshot(&self) -> Result<TopologySnapshot<'_>, Error> {
         let t = self.topology_state()?;
         Ok(TopologySnapshot {
             case: &t.case,
@@ -1014,7 +1038,7 @@ impl OpenCase {
         })
     }
 
-    pub fn set_merge_zero_impedance(&mut self, enabled: bool) -> Result<TopologyView, String> {
+    pub fn set_merge_zero_impedance(&mut self, enabled: bool) -> Result<TopologyView, Error> {
         let t = self.topology.as_mut().map_err(|e| e.clone())?;
         let start = Instant::now();
         t.topology = Topology::with_options(
@@ -1035,22 +1059,22 @@ impl OpenCase {
         })
     }
 
-    pub fn shortest_path(&self, from: i32, to: i32) -> Result<Option<TopologyPath>, String> {
+    pub fn shortest_path(&self, from: i32, to: i32) -> Result<Option<TopologyPath>, Error> {
         let t = self.topology_state()?;
         t.topology
             .shortest_path(&t.case, from, to)
-            .map_err(|d| d.to_string())
+            .map_err(|d| Error::not_found(d.to_string()))
     }
 }
 
-fn not_open(id: Option<CaseId>) -> String {
+fn not_open(id: Option<CaseId>) -> Error {
     match id {
-        Some(id) => format!("Case {id} isn't open."),
-        None => "Open a case first.".into(),
+        Some(id) => Error::new(ErrorKind::CaseNotOpen, format!("Case {id} isn't open.")),
+        None => Error::new(ErrorKind::NoCase, "Open a case first."),
     }
 }
 
-fn check_id(case: &OpenCase, id: Option<CaseId>) -> Result<(), String> {
+fn check_id(case: &OpenCase, id: Option<CaseId>) -> Result<(), Error> {
     match id {
         Some(id) if id != case.id => Err(not_open(Some(id))),
         _ => Ok(()),
@@ -1058,12 +1082,12 @@ fn check_id(case: &OpenCase, id: Option<CaseId>) -> Result<(), String> {
 }
 
 impl Workspace {
-    pub fn open(&mut self, path: &Path) -> Result<CaseSummary, String> {
+    pub fn open(&mut self, path: &Path) -> Result<CaseSummary, Error> {
         log::info!("Opening {}", path.display());
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = std::fs::read(path).map_err(|e| Error::file(path, e))?;
         let mut case = OpenCase::from_bytes(path, &bytes);
         if case.power.is_err() && case.topology.is_err() && case.format == CaseFormat::Matpower {
-            return Err(case.power.err().unwrap_or_default());
+            return Err(case.power.err().unwrap_or_default().into());
         }
         self.last_id += 1;
         case.id = CaseId(self.last_id);
@@ -1076,22 +1100,22 @@ impl Workspace {
         self.case = None;
     }
 
-    pub fn current(&self) -> Result<&OpenCase, String> {
+    pub fn current(&self) -> Result<&OpenCase, Error> {
         self.case(None)
     }
 
-    pub fn current_mut(&mut self) -> Result<&mut OpenCase, String> {
+    pub fn current_mut(&mut self) -> Result<&mut OpenCase, Error> {
         self.case_mut(None)
     }
 
     /// The case `id` names, or the open case when `id` is None.
-    pub fn case(&self, id: Option<CaseId>) -> Result<&OpenCase, String> {
+    pub fn case(&self, id: Option<CaseId>) -> Result<&OpenCase, Error> {
         let case = self.case.as_ref().ok_or_else(|| not_open(id))?;
         check_id(case, id)?;
         Ok(case)
     }
 
-    pub fn case_mut(&mut self, id: Option<CaseId>) -> Result<&mut OpenCase, String> {
+    pub fn case_mut(&mut self, id: Option<CaseId>) -> Result<&mut OpenCase, Error> {
         let case = self.case.as_mut().ok_or_else(|| not_open(id))?;
         check_id(case, id)?;
         Ok(case)
@@ -1101,7 +1125,7 @@ impl Workspace {
         &mut self,
         baseline: &Path,
         comparison: &Path,
-    ) -> Result<diff::DiffSummary, String> {
+    ) -> Result<diff::DiffSummary, Error> {
         // Clear first so a failure never leaves stale results on screen.
         self.comparison = None;
         let start = Instant::now();
@@ -1130,12 +1154,11 @@ impl Workspace {
 
     /// Compare the file on disk (baseline) with the case as it is being
     /// worked on: Records edits and the study's edits.
-    pub fn compare_working(&mut self) -> Result<diff::DiffSummary, String> {
+    pub fn compare_working(&mut self) -> Result<diff::DiffSummary, Error> {
         self.comparison = None;
         let start = Instant::now();
         let case = self.current_mut()?;
-        let file =
-            std::fs::read(&case.path).map_err(|e| format!("{}: {e}", case.path.display()))?;
+        let file = std::fs::read(&case.path).map_err(|e| Error::file(&case.path, e))?;
         let working = case.working_bytes()?;
         let name = case.name.clone();
         let (record_edits, study_edits) = (case.record_edits, case.edits.len());
@@ -1153,10 +1176,10 @@ impl Workspace {
         Ok(summary)
     }
 
-    pub fn comparison(&self) -> Result<&Comparison, String> {
+    pub fn comparison(&self) -> Result<&Comparison, Error> {
         self.comparison
             .as_ref()
-            .ok_or_else(|| "Compare two files first.".into())
+            .ok_or_else(|| Error::not_ready("Compare two files first."))
     }
 }
 
@@ -1184,7 +1207,7 @@ pub struct SolveDone {
 }
 
 impl SolveJob {
-    pub fn run(self) -> Result<SolveDone, String> {
+    pub fn run(self) -> Result<SolveDone, Error> {
         let SolveJob {
             version,
             power,
@@ -1202,9 +1225,9 @@ impl SolveJob {
         let failed = |e: rs_power::Error| match e {
             rs_power::Error::Cancelled => {
                 log::info!("Solve cancelled; the previous results are kept");
-                SOLVE_CANCELLED.to_string()
+                Error::cancelled(SOLVE_CANCELLED)
             }
-            e => study::explain(e.to_string(), &edits),
+            e => Error::from(study::explain(e.to_string(), &edits)),
         };
         let warm = match (&last, settings.start) {
             (Some((last, same_case)), power::StartChoice::Last)
@@ -1317,7 +1340,7 @@ pub struct TripDone {
 }
 
 impl TripJob {
-    pub fn run(self) -> Result<TripDone, String> {
+    pub fn run(self) -> Result<TripDone, Error> {
         let mut results = self.job.run()?;
         let detail = results.detail(1)?;
         log::info!(
@@ -1351,7 +1374,7 @@ pub struct SensitivitiesDone {
 }
 
 impl SensitivityJob {
-    pub fn run(self) -> Result<SensitivitiesDone, String> {
+    pub fn run(self) -> Result<SensitivitiesDone, Error> {
         let power = self.power.as_ref();
         let start = Instant::now();
         let s = rs_power::calculate_sensitivities(&power.case, &self.settings.options_for(power))
@@ -1452,7 +1475,7 @@ pub struct RecordEditsDone {
 }
 
 impl RecordEditJob {
-    pub fn run(self) -> Result<RecordEditsDone, String> {
+    pub fn run(self) -> Result<RecordEditsDone, Error> {
         let start = Instant::now();
         let records = self.records.as_ref();
         let edits = &self.edits;
@@ -1481,7 +1504,7 @@ impl RecordEditJob {
         };
         let mut next = OpenCase::from_bytes(&self.path, &bytes);
         if let (Ok(_), Err(e)) = (&self.power, &next.power) {
-            return Err(format!("The edited case can't be solved: {e}"));
+            return Err(format!("The edited case can't be solved: {e}").into());
         }
         if !self.study_edits.is_empty()
             && let Err(e) = next.set_edits(self.study_edits.clone())

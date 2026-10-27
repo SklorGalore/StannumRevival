@@ -37,13 +37,14 @@ fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Warning {
     pub line: usize,
     pub message: String,
     /// The branch or generator whose record the warning is about, as a
     /// shared element id, when the line is one of theirs.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "String")]
     pub element: Option<String>,
 }
 
@@ -115,7 +116,9 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelChoice {
     #[default]
@@ -123,7 +126,9 @@ pub enum ModelChoice {
     Dc,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum StartChoice {
     /// The voltages in the case.
@@ -138,7 +143,9 @@ pub enum StartChoice {
 
 /// How two-terminal (LCC), VSC and multi-terminal DC lines are solved when
 /// the case has their data.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum DcModelChoice {
     /// MATPOWER's lossless generator pair.
@@ -152,7 +159,7 @@ fn yes() -> bool {
     true
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SolveSettings {
     pub model: ModelChoice,
     pub start: StartChoice,
@@ -322,7 +329,7 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
     warm
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct CaseCounts {
     pub base_mva: f64,
     pub buses: usize,
@@ -341,10 +348,11 @@ pub fn counts(case: &Case) -> CaseCounts {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct BusRow {
     pub id: u32,
     pub name: String,
+    #[schemars(extend("enum" = ["PQ", "PV", "Ref", "Isolated"]))]
     pub kind: &'static str,
     pub base_kv: f64,
     pub vm: f64,
@@ -363,7 +371,7 @@ pub struct BusRow {
 
 /// A bus's load at the solved voltage by part, in MW and Mvar:
 /// `[constant power, constant current, constant impedance]`.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct LoadParts {
     pub p: [f64; 3],
     pub q: [f64; 3],
@@ -380,7 +388,7 @@ impl LoadParts {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct GeneratorRow {
     pub index: usize,
     /// Shared id, such as `generator:101:1`.
@@ -399,7 +407,7 @@ pub struct GeneratorRow {
     pub q_violation: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct BranchRow {
     pub index: usize,
     /// Shared id, such as `line:101:102:1`.
@@ -423,12 +431,13 @@ pub struct BranchRow {
 
 /// A solved DC line row, from its sending (rectifier) bus to its receiving
 /// (inverter) bus.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcLineRow {
     pub index: usize,
     /// Shared id, such as `dcline:101:205:DC1`.
     pub element: String,
     /// "two_terminal", "vsc" or "multi_terminal".
+    #[schemars(extend("enum" = ["two_terminal", "vsc", "multi_terminal"]))]
     pub kind: &'static str,
     pub from: u32,
     pub to: u32,
@@ -462,11 +471,12 @@ pub struct DcLineRow {
 
 /// One converter of a multi-terminal DC system under the detailed model, as
 /// shown on the row that links it to the voltage-controlling converter.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct MtdcDetail {
     /// The system's name.
     pub system: String,
     /// "voltage", "order", "angle_limited" or "blocked".
+    #[schemars(extend("enum" = ["voltage", "order", "angle_limited", "blocked"]))]
     pub control: &'static str,
     /// Low DC voltage switched the power orders to current orders.
     pub reduced_voltage: bool,
@@ -491,7 +501,7 @@ fn mtdc_control(mode: rs_power::MtdcMode) -> &'static str {
 }
 
 /// A multi-terminal DC system's DC network under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcSystemReport {
     pub name: String,
     pub reduced_voltage: bool,
@@ -502,13 +512,14 @@ pub struct DcSystemReport {
     pub links: Vec<DcLinkRow>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcConverterRow {
     /// AC bus number and name.
     pub bus: u32,
     pub bus_name: String,
     /// DC bus number.
     pub dc_bus: u32,
+    #[schemars(extend("enum" = ["voltage", "order", "angle_limited", "blocked"]))]
     pub control: &'static str,
     pub rectifier: bool,
     pub current_ka: f64,
@@ -522,14 +533,14 @@ pub struct DcConverterRow {
     pub loss_mw: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcBusRow {
     pub number: u32,
     pub name: String,
     pub kv: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcLinkRow {
     pub from: u32,
     pub to: u32,
@@ -541,7 +552,7 @@ pub struct DcLinkRow {
 }
 
 /// Operating point of a VSC DC line under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscDetail {
     /// DC current from the sending to the receiving end, kA.
     pub current_ka: f64,
@@ -574,10 +585,11 @@ fn vsc_detail(s: &rs_power::VscSolution) -> VscDetail {
 }
 
 /// Operating point of a two-terminal DC line under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct LccDetail {
     /// "rectifier", "inverter" (current margin), "angle_limited" or "blocked":
     /// which converter holds the DC current.
+    #[schemars(extend("enum" = ["rectifier", "inverter", "angle_limited", "blocked"]))]
     pub control: &'static str,
     /// Low DC voltage switched a power order to current control.
     pub reduced_voltage: bool,
@@ -613,7 +625,7 @@ fn lcc_detail(s: &rs_power::LccSolution) -> LccDetail {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, schemars::JsonSchema)]
 pub struct LimitSummary {
     pub voltage_violations: usize,
     pub worst_voltage: Option<(u32, f64)>,
@@ -624,7 +636,7 @@ pub struct LimitSummary {
     pub worst_branch: Option<(u32, u32, f64)>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct SolveReport {
     pub status: &'static str,
     pub converged: bool,
@@ -650,10 +662,13 @@ pub struct SolveReport {
     pub limits: LimitSummary,
     /// Sent as columns (see [`wire`]); the frontend turns them back into rows.
     #[serde(serialize_with = "wire::bus_columns")]
+    #[schemars(with = "wire::Columns<BusRow>")]
     pub buses: Vec<BusRow>,
     #[serde(serialize_with = "wire::generator_columns")]
+    #[schemars(with = "wire::Columns<GeneratorRow>")]
     pub generators: Vec<GeneratorRow>,
     #[serde(serialize_with = "wire::branch_columns")]
+    #[schemars(with = "wire::Columns<BranchRow>")]
     pub branches: Vec<BranchRow>,
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
@@ -671,8 +686,48 @@ pub struct SolveReport {
 /// row objects.
 pub mod wire {
     use super::{BranchRow, BusRow, GeneratorRow};
+    use schemars::{JsonSchema, Schema, SchemaGenerator};
     use serde::Serialize;
     use serde::ser::{SerializeMap, Serializer};
+    use serde_json::{Map, Value, json};
+    use std::borrow::Cow;
+    use std::marker::PhantomData;
+
+    /// The schema of a row table sent as columns: `count`, then one array
+    /// per field of `R`, all the same length.
+    pub struct Columns<R>(PhantomData<R>);
+
+    impl<R: JsonSchema> JsonSchema for Columns<R> {
+        fn schema_name() -> Cow<'static, str> {
+            format!("{}Columns", R::schema_name()).into()
+        }
+
+        fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+            let row = R::json_schema(generator);
+            let mut properties = Map::new();
+            properties.insert(
+                "count".into(),
+                json!({ "type": "integer", "format": "uint", "minimum": 0 }),
+            );
+            if let Some(fields) = row.get("properties").and_then(Value::as_object) {
+                for (name, field) in fields {
+                    properties.insert(name.clone(), json!({ "type": "array", "items": field }));
+                }
+            }
+            let required: Vec<_> = properties.keys().cloned().collect();
+            json!({
+                "type": "object",
+                "description": format!(
+                    "{} rows as columns: one array per field, each `count` long.",
+                    R::schema_name()
+                ),
+                "properties": properties,
+                "required": required,
+            })
+            .try_into()
+            .expect("an object is a schema")
+        }
+    }
 
     /// One field of every row, serialized as an array without copying.
     struct Column<'a, T, V>(&'a [T], fn(&'a T) -> V);
@@ -1101,22 +1156,23 @@ pub fn report(
 // Sensitivities
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct InjectionColumn {
     pub column: usize,
     pub bus: u32,
     pub bus_name: String,
     /// "p" (active) or "q" (reactive).
+    #[schemars(extend("enum" = ["p", "q"]))]
     pub kind: &'static str,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct QuantityInfo {
     pub key: String,
     pub title: &'static str,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct SensitivitySummary {
     pub model: ModelChoice,
     pub status: &'static str,
@@ -1274,7 +1330,7 @@ pub fn sensitivity_summary(
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Response {
     /// Original row (state row or branch index), for stable "input order" sorting.
     pub index: usize,
@@ -1285,7 +1341,7 @@ pub struct Response {
     pub offline: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct ResponseTable {
     pub units: String,
     pub title: &'static str,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
-import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   DcLineKind,
   DcGridsSummary,
@@ -918,7 +918,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   );
   const setReport = useWorkspace((s) => s.setSolveReport);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<StannumError | null>(null);
   const [sensitivityVersion, setSensitivityVersion] = useState(0);
   const [sensitivity, setSensitivity] = useState<Awaited<ReturnType<typeof api.sensitivities>> | null>(null);
 
@@ -988,7 +988,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       const value = await work();
       if (version === useWorkspace.getState().caseVersion) done(value);
     } catch (e) {
-      if (version === useWorkspace.getState().caseVersion) setError((e as Error).message);
+      if (version === useWorkspace.getState().caseVersion) setError(toStannumError(e));
     } finally {
       setBusy(null);
     }
@@ -1167,7 +1167,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {error && (
           <div className="p-3 pb-0">
-            {error.startsWith("Solve cancelled") ? <Notice>{error}</Notice> : <ErrorBanner>{error}</ErrorBanner>}
+            {error.kind === "cancelled" ? <Notice>{error.message}</Notice> : <ErrorBanner>{error.message}</ErrorBanner>}
           </div>
         )}
         {stale && (

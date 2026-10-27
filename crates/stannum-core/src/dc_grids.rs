@@ -40,7 +40,7 @@ pub const FORMAT: &str = "stannum-dc-grids";
 /// The file version this build reads and writes.
 pub const VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DcGridFile {
     pub format: String,
@@ -50,7 +50,7 @@ pub struct DcGridFile {
     pub grids: Vec<GridData>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GridData {
     pub name: String,
@@ -73,7 +73,7 @@ fn yes() -> bool {
     true
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BusData {
     pub number: u32,
@@ -81,7 +81,7 @@ pub struct BusData {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LineData {
     pub from: u32,
@@ -94,7 +94,7 @@ pub struct LineData {
     pub in_service: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Impedance {
     #[serde(default)]
@@ -103,7 +103,7 @@ pub struct Impedance {
     pub x_pu: f64,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DcControlData {
     Power {
@@ -119,14 +119,14 @@ pub enum DcControlData {
     },
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AcControlData {
     Reactive { q_mvar: f64 },
     Voltage { v_pu: f64 },
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LossData {
     #[serde(default)]
@@ -139,7 +139,7 @@ pub struct LossData {
     pub c_inverter_ohm: f64,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LimitData {
     #[serde(default)]
@@ -150,7 +150,7 @@ pub struct LimitData {
     pub uc_min_pu: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConverterData {
     #[serde(default)]
@@ -272,14 +272,14 @@ pub struct LoadedDcGrids {
 }
 
 /// What the app shows about the attached DC grid file.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcGridsSummary {
     pub path: String,
     pub name: String,
     pub grids: Vec<DcGridCounts>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcGridCounts {
     pub name: String,
     pub base_kv: f64,
@@ -325,7 +325,7 @@ impl LoadedDcGrids {
 }
 
 /// The sequential AC/DC solve, for the VSC grids tab.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscGridsReport {
     pub file: String,
     pub converged: bool,
@@ -337,7 +337,7 @@ pub struct VscGridsReport {
     pub grids: Vec<VscGridReport>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscGridReport {
     pub name: String,
     pub base_kv: f64,
@@ -349,7 +349,7 @@ pub struct VscGridReport {
     pub lines: Vec<VscGridLineRow>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscGridConverterRow {
     pub name: String,
     pub ac_bus: u32,
@@ -357,8 +357,10 @@ pub struct VscGridConverterRow {
     pub dc_bus: u32,
     pub in_service: bool,
     /// "slack", "power" or "droop".
+    #[schemars(extend("enum" = ["slack", "power", "droop"]))]
     pub dc_control: &'static str,
     /// "reactive", "voltage" or "reactive_limit".
+    #[schemars(extend("enum" = ["reactive", "voltage", "reactive_limit"]))]
     pub ac_control: &'static str,
     pub ps_mw: f64,
     pub qs_mvar: f64,
@@ -381,7 +383,7 @@ pub struct VscGridConverterRow {
     pub outside_limits: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscGridBusRow {
     pub number: u32,
     pub name: String,
@@ -390,7 +392,7 @@ pub struct VscGridBusRow {
     pub injection_mw: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscGridLineRow {
     pub from: u32,
     pub to: u32,
