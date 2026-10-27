@@ -78,11 +78,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # As in CI: the .deb files are cached per runner image, so a slow
+      # Ubuntu mirror only costs time when the image changes.
+      - name: Read the runner image
+        if: runner.os == 'Linux'
+        id: image
+        run: echo "id=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Restore Tauri system packages
+        if: runner.os == 'Linux'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/tauri-apt
+          key: tauri-apt-release-${{ steps.image.outputs.id }}-${{ hashFiles('scripts/ci/install-tauri-deps.ps1') }}
+          restore-keys: |
+            tauri-apt-release-${{ steps.image.outputs.id }}-
+            tauri-apt-release-
       - name: Install Tauri system dependencies
         if: runner.os == 'Linux'
         shell: pwsh
-        timeout-minutes: 20
-        run: ./scripts/ci/install-tauri-deps.ps1 -CacheDir "$env:RUNNER_TEMP/tauri-apt" -ExtraPackages patchelf
+        timeout-minutes: 30
+        run: ./scripts/ci/install-tauri-deps.ps1 -CacheDir ~/.cache/tauri-apt -ExtraPackages patchelf
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
