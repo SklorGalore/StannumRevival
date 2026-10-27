@@ -1349,8 +1349,10 @@
             "adjust_dc_taps": true,
             "adjust_transformer_taps": true,
             "dc_model": "detailed",
+            "decoupled_iterations": 30,
             "enforce_q_limits": false,
             "max_iterations": 10,
+            "method": "auto",
             "model": "ac",
             "start": "last",
             "switch_shunts": true,
@@ -3237,6 +3239,36 @@
         }
       ]
     },
+    "MethodChoice": {
+      "description": "How each AC pass finds the voltages. Every method stops at the same\nmismatch tolerance, so they reach the same answer at different speeds.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "Decoupled iterations first, finishing with Newton when they slow\ndown; Newton alone on cases under 2,000 buses.",
+          "type": "string"
+        },
+        {
+          "const": "newton",
+          "description": "Full Newton–Raphson.",
+          "type": "string"
+        },
+        {
+          "const": "fixed_slope",
+          "description": "Fixed-slope decoupled Newton (FDNS).",
+          "type": "string"
+        },
+        {
+          "const": "fast_decoupled_xb",
+          "description": "Fast decoupled load flow, XB version.",
+          "type": "string"
+        },
+        {
+          "const": "fast_decoupled_bx",
+          "description": "Fast decoupled load flow, BX version.",
+          "type": "string"
+        }
+      ]
+    },
     "ModelChoice": {
       "enum": [
         "ac",
@@ -4243,6 +4275,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "decoupled_iterations": {
+          "description": "How many of `iterations` were decoupled iterations.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "elapsed_ms": {
           "format": "double",
           "type": "number"
@@ -4251,6 +4289,7 @@
           "$ref": "#/$defs/GeneratorRowColumns"
         },
         "iterations": {
+          "description": "Iterations in all passes, Newton and decoupled together.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -4258,8 +4297,18 @@
         "limits": {
           "$ref": "#/$defs/LimitSummary"
         },
+        "method": {
+          "$ref": "#/$defs/MethodChoice",
+          "description": "The AC method asked for."
+        },
         "model": {
           "$ref": "#/$defs/ModelChoice"
+        },
+        "newton_fallbacks": {
+          "description": "Passes in which the automatic method finished with Newton.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "q_limit_passes": {
           "format": "uint",
@@ -4274,6 +4323,10 @@
           "format": "double",
           "type": "number"
         },
+        "shunts_locked": {
+          "description": "Whether the solve locked the switched shunts, and the transformer\ntaps, where they were instead of moving them (AC only).",
+          "type": "boolean"
+        },
         "shunts_switched": {
           "description": "Switched shunts that ended away from their starting susceptance.",
           "format": "uint",
@@ -4282,6 +4335,9 @@
         },
         "status": {
           "type": "string"
+        },
+        "taps_locked": {
+          "type": "boolean"
         },
         "taps_moved": {
           "description": "Transformer taps that ended away from their starting ratio.",
@@ -4329,13 +4385,18 @@
         "status",
         "converged",
         "model",
+        "method",
         "iterations",
+        "decoupled_iterations",
+        "newton_fallbacks",
         "q_limit_passes",
         "dc_tap_passes",
         "vsc_limit_passes",
         "voltage_control_passes",
         "shunts_switched",
         "taps_moved",
+        "shunts_locked",
+        "taps_locked",
         "residual_pu",
         "residual_mva",
         "elapsed_ms",
@@ -4353,7 +4414,7 @@
       "type": "object"
     },
     "SolveSettings": {
-      "description": "How to solve. Fields left out take their defaults: AC from the last\nsolution, to 2 MVA, without reactive limits, with every control on.",
+      "description": "How to solve. Fields left out take their defaults: AC with the automatic\nmethod from the last solution, to 2 MVA, without reactive limits, with\nevery control on.",
       "properties": {
         "adjust_dc_taps": {
           "default": true,
@@ -4362,12 +4423,19 @@
         },
         "adjust_transformer_taps": {
           "default": true,
-          "description": "Step transformer taps in voltage control (AC only).",
+          "description": "Step transformer taps in voltage control (AC only). When false they\nare locked, like shunts.",
           "type": "boolean"
         },
         "dc_model": {
           "$ref": "#/$defs/DcModelChoice",
           "default": "detailed"
+        },
+        "decoupled_iterations": {
+          "default": 30,
+          "description": "Decoupled iterations per pass (fixed-slope and fast decoupled, and\nthe decoupled stage of the automatic method).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "enforce_q_limits": {
           "default": false,
@@ -4375,9 +4443,15 @@
         },
         "max_iterations": {
           "default": 10,
+          "description": "Newton iterations per pass.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "method": {
+          "$ref": "#/$defs/MethodChoice",
+          "default": "auto",
+          "description": "AC solution method."
         },
         "model": {
           "$ref": "#/$defs/ModelChoice",
@@ -4389,7 +4463,7 @@
         },
         "switch_shunts": {
           "default": true,
-          "description": "Switch shunts in voltage control (AC only).",
+          "description": "Switch shunts in voltage control (AC only). When false they are\nlocked: they stay where they are, which is where the last solve left\nthem when starting from it, and at their case values otherwise.",
           "type": "boolean"
         },
         "tolerance_mva": {

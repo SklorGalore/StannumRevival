@@ -49,6 +49,7 @@ import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -425,6 +426,7 @@ function SolvePanel({
   onExport: (solved: boolean) => void;
 }) {
   const ac = settings.model === "ac";
+  const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
@@ -454,6 +456,22 @@ function SolvePanel({
           ))}
         </div>
       </Field>
+      <Field label="AC method">
+        <select
+          className={inputClass}
+          value={settings.method}
+          disabled={!ac}
+          data-testid="ac-method"
+          onChange={(e) => setSettings({ ...settings, method: e.target.value as AcMethod })}
+          title={AC_METHODS.find((m) => m.value === (settings.method))?.about}
+        >
+          {AC_METHODS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Mismatch tolerance (MVA)">
         <input
           className={inputClass}
@@ -466,17 +484,35 @@ function SolvePanel({
           title={`${sig(tolerancePu(settings.tolerance_mva, baseMva))} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
-      <Field label="Newton iterations per pass">
-        <input
-          className={inputClass}
-          type="number"
-          min={0}
-          step={1}
-          value={settings.max_iterations}
-          disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
-        />
-      </Field>
+      {method !== "fixed_slope" && method !== "fast_decoupled_xb" && method !== "fast_decoupled_bx" && (
+        <Field label="Newton iterations per pass">
+          <input
+            className={inputClass}
+            type="number"
+            min={0}
+            step={1}
+            value={settings.max_iterations}
+            disabled={!ac}
+            onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
+          />
+        </Field>
+      )}
+      {method !== "newton" && (
+        <Field label="Decoupled iterations per pass">
+          <input
+            className={inputClass}
+            type="number"
+            min={0}
+            step={1}
+            value={settings.decoupled_iterations}
+            disabled={!ac}
+            data-testid="decoupled-iterations"
+            onChange={(e) =>
+              setSettings({ ...settings, decoupled_iterations: Math.max(0, Math.round(Number(e.target.value))) })
+            }
+          />
+        </Field>
+      )}
       <label
         className="flex items-center gap-2 text-xs text-slate-700"
         title="Without it, each solve starts where the last one ended (the case voltages for the first solve)."
@@ -498,23 +534,31 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
-      <label className="flex items-center gap-2 text-xs text-slate-700">
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Switched shunts", "susceptance")}
+      >
         <input
           type="checkbox"
           checked={settings.switch_shunts && ac}
           disabled={!ac}
+          data-testid="switch-shunts"
           onChange={(e) => setSettings({ ...settings, switch_shunts: e.target.checked })}
         />
-        Switch shunts
+        Move switched shunts
       </label>
-      <label className="flex items-center gap-2 text-xs text-slate-700">
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Transformer taps", "ratio")}
+      >
         <input
           type="checkbox"
           checked={settings.adjust_transformer_taps && ac}
           disabled={!ac}
+          data-testid="adjust-taps"
           onChange={(e) => setSettings({ ...settings, adjust_transformer_taps: e.target.checked })}
         />
-        Adjust transformer taps
+        Move transformer taps
       </label>
       <Field label="DC line model">
         <select
@@ -629,13 +673,14 @@ function Overview({
         <Metric
           label="Status"
           value={report.status}
-          detail={`${report.model.toUpperCase()} solve`}
+          detail={`${report.model.toUpperCase()} solve${report.model === "ac" ? `, ${methodLabel(report.method)}` : ""}`}
           tone={report.converged ? "good" : "bad"}
         />
         <Metric
           label="Iterations"
           value={report.iterations}
           detail={
+            (iterationSplit(report) ? `${iterationSplit(report)}; ` : "") +
             `${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}` +
             (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "") +
             (report.vsc_limit_passes ? `, ${report.vsc_limit_passes} VSC limit pass${report.vsc_limit_passes === 1 ? "" : "es"}` : "")
@@ -644,11 +689,7 @@ function Overview({
         <Metric
           label="Voltage controls"
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
-          detail={
-            report.voltage_control_passes
-              ? `Moved, over ${report.voltage_control_passes} switching pass${report.voltage_control_passes === 1 ? "" : "es"}`
-              : "Moved from their starting values"
-          }
+          detail={controlsDetail(report)}
         />
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />

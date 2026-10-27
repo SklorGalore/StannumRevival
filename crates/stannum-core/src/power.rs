@@ -165,32 +165,81 @@ pub enum DcModelChoice {
     Detailed,
 }
 
+/// How each AC pass finds the voltages. Every method stops at the same
+/// mismatch tolerance, so they reach the same answer at different speeds.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MethodChoice {
+    /// Decoupled iterations first, finishing with Newton when they slow
+    /// down; Newton alone on cases under 2,000 buses.
+    #[default]
+    Auto,
+    /// Full Newton–Raphson.
+    Newton,
+    /// Fixed-slope decoupled Newton (FDNS).
+    FixedSlope,
+    /// Fast decoupled load flow, XB version.
+    FastDecoupledXb,
+    /// Fast decoupled load flow, BX version.
+    FastDecoupledBx,
+}
+
+impl From<MethodChoice> for rs_power::AcMethod {
+    fn from(m: MethodChoice) -> Self {
+        match m {
+            MethodChoice::Auto => Self::Auto,
+            MethodChoice::Newton => Self::Newton,
+            MethodChoice::FixedSlope => Self::FixedSlope,
+            MethodChoice::FastDecoupledXb => Self::FastDecoupledXb,
+            MethodChoice::FastDecoupledBx => Self::FastDecoupledBx,
+        }
+    }
+}
+
 fn yes() -> bool {
     true
 }
 
-/// How to solve. Fields left out take their defaults: AC from the last
-/// solution, to 2 MVA, without reactive limits, with every control on.
+fn decoupled_iterations() -> usize {
+    PowerFlowOptions::default().decoupled_iterations
+}
+
+/// How to solve. Fields left out take their defaults: AC with the automatic
+/// method from the last solution, to 2 MVA, without reactive limits, with
+/// every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct SolveSettings {
     pub model: ModelChoice,
+    /// AC solution method.
+    #[serde(default)]
+    pub method: MethodChoice,
     pub start: StartChoice,
     /// Largest power mismatch allowed at any bus, in MVA. It converts to per
     /// unit on each case's own base at solve time, so the same setting means
     /// the same MW and Mvar on every case.
     pub tolerance_mva: f64,
+    /// Newton iterations per pass.
     pub max_iterations: usize,
+    /// Decoupled iterations per pass (fixed-slope and fast decoupled, and
+    /// the decoupled stage of the automatic method).
+    #[serde(default = "decoupled_iterations")]
+    pub decoupled_iterations: usize,
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
     /// Step DC converter taps (detailed model only).
     #[serde(default = "yes")]
     pub adjust_dc_taps: bool,
-    /// Switch shunts in voltage control (AC only).
+    /// Switch shunts in voltage control (AC only). When false they are
+    /// locked: they stay where they are, which is where the last solve left
+    /// them when starting from it, and at their case values otherwise.
     #[serde(default = "yes")]
     pub switch_shunts: bool,
-    /// Step transformer taps in voltage control (AC only).
+    /// Step transformer taps in voltage control (AC only). When false they
+    /// are locked, like shunts.
     #[serde(default = "yes")]
     pub adjust_transformer_taps: bool,
 }
@@ -205,9 +254,11 @@ impl Default for SolveSettings {
         let d = PowerFlowOptions::default();
         Self {
             model: ModelChoice::Ac,
+            method: MethodChoice::Auto,
             start: StartChoice::Last,
             tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
+            decoupled_iterations: d.decoupled_iterations,
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
@@ -235,13 +286,11 @@ impl SolveSettings {
             };
         }
         if self.model == ModelChoice::Ac {
-            let controls = &power.voltage_controls;
-            if self.switch_shunts {
-                options.voltage_controls.switched_shunts = controls.switched_shunts.clone();
-            }
-            if self.adjust_transformer_taps {
-                options.voltage_controls.taps = controls.taps.clone();
-            }
+            // Locked controls stay listed, so that a solve from the last
+            // solution starts them where it left them and holds them there.
+            options.voltage_controls = power.voltage_controls.clone();
+            options.lock_switched_shunts = !self.switch_shunts;
+            options.lock_taps = !self.adjust_transformer_taps;
         }
         options
     }
@@ -261,6 +310,8 @@ impl SolveSettings {
             },
             tolerance: tolerance_pu(self.tolerance_mva, base_mva),
             max_iterations: self.max_iterations,
+            method: self.method.into(),
+            decoupled_iterations: self.decoupled_iterations,
             // Q limits only apply to AC; the solver rejects them for DC.
             enforce_q_limits: self.enforce_q_limits && self.model == ModelChoice::Ac,
             ..PowerFlowOptions::default()
@@ -277,8 +328,8 @@ pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
 /// ended, with `options` changed to match.
 ///
 /// Bus voltages and generator reactive outputs come from `last`. Switched
-/// shunts, transformer taps and DC converter taps that `options` controls
-/// start at their final settings. Everything else, such as dispatch, loads
+/// shunts, transformer taps and DC converter taps that `options` lists
+/// start at their final settings, also when `options` locks them there. Everything else, such as dispatch, loads
 /// and statuses, stays as in `case`. Generators `last` held at a reactive
 /// limit start there, also after study edits: on SyntheticUSA an outage then
 /// solves in 6 iterations and lands within 0.02 MW of losses of a solve from
@@ -325,12 +376,7 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
             }
         }
     }
-    if let rs_power::DcModel::Detailed {
-        lines,
-        adjust_taps: true,
-        ..
-    } = &mut options.dc_model
-    {
+    if let rs_power::DcModel::Detailed { lines, .. } = &mut options.dc_model {
         for line in lines {
             if let Some(s) = last.lcc.iter().find(|s| s.row == line.row) {
                 line.rectifier.tap = s.rectifier_tap;
@@ -676,7 +722,14 @@ pub struct SolveReport {
     pub status: &'static str,
     pub converged: bool,
     pub model: ModelChoice,
+    /// The AC method asked for.
+    pub method: MethodChoice,
+    /// Iterations in all passes, Newton and decoupled together.
     pub iterations: usize,
+    /// How many of `iterations` were decoupled iterations.
+    pub decoupled_iterations: usize,
+    /// Passes in which the automatic method finished with Newton.
+    pub newton_fallbacks: usize,
     pub q_limit_passes: usize,
     /// Passes that stepped DC converter taps (detailed model).
     pub dc_tap_passes: usize,
@@ -688,6 +741,10 @@ pub struct SolveReport {
     pub shunts_switched: usize,
     /// Transformer taps that ended away from their starting ratio.
     pub taps_moved: usize,
+    /// Whether the solve locked the switched shunts, and the transformer
+    /// taps, where they were instead of moving them (AC only).
+    pub shunts_locked: bool,
+    pub taps_locked: bool,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -1006,6 +1063,7 @@ pub fn report(
     let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum::<f64>()
         + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>();
 
+    let ac = settings.model == ModelChoice::Ac;
     let (status, converged) = match result.status {
         SolveStatus::Converged => ("Converged", true),
         SolveStatus::IterationLimit => ("Iteration limit", false),
@@ -1015,7 +1073,10 @@ pub fn report(
         status,
         converged,
         model: settings.model,
+        method: settings.method,
         iterations: result.iterations,
+        decoupled_iterations: result.decoupled_iterations,
+        newton_fallbacks: result.newton_fallbacks,
         q_limit_passes: result.q_limit_passes,
         dc_tap_passes: result.dc_tap_passes,
         vsc_limit_passes: result.vsc_limit_passes,
@@ -1024,6 +1085,8 @@ pub fn report(
             s.initial
         }),
         taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio),
+        shunts_locked: ac && !settings.switch_shunts,
+        taps_locked: ac && !settings.adjust_transformer_taps,
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,

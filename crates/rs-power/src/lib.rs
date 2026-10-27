@@ -35,7 +35,7 @@ pub use sensitivity::{
     make_ptdf_transfers, make_ptdf_with_slack_matrix,
 };
 pub use solver::{
-    DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
+    AcMethod, DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
 };
 pub use vsc::{VscAcControl, VscConverter, VscDcControl, VscLine, VscSolution};
 pub use vsc_grid::{

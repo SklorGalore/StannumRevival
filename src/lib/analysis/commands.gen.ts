@@ -747,6 +747,12 @@ export type LoadParts = {
 /** How each outage is checked. */
 export type Method = "screen" | "ac";
 
+/**
+ * How each AC pass finds the voltages. Every method stops at the same
+ * mismatch tolerance, so they reach the same answer at different speeds.
+ */
+export type MethodChoice = "auto" | "newton" | "fixed_slope" | "fast_decoupled_xb" | "fast_decoupled_bx";
+
 export type ModelChoice = "ac" | "dc";
 
 export type ModuleStatusOfPowerInfo = {
@@ -1023,17 +1029,30 @@ export type SolveReport = {
   dc_systems: DcSystemReport[];
   /** Passes that stepped DC converter taps (detailed model). */
   dc_tap_passes: number;
+  /** How many of `iterations` were decoupled iterations. */
+  decoupled_iterations: number;
   elapsed_ms: number;
   generators: GeneratorRowColumns;
+  /** Iterations in all passes, Newton and decoupled together. */
   iterations: number;
   limits: LimitSummary;
+  /** The AC method asked for. */
+  method: MethodChoice;
   model: ModelChoice;
+  /** Passes in which the automatic method finished with Newton. */
+  newton_fallbacks: number;
   q_limit_passes: number;
   residual_mva: number;
   residual_pu: number;
+  /**
+   * Whether the solve locked the switched shunts, and the transformer
+   * taps, where they were instead of moving them (AC only).
+   */
+  shunts_locked: boolean;
   /** Switched shunts that ended away from their starting susceptance. */
   shunts_switched: number;
   status: string;
+  taps_locked: boolean;
   /** Transformer taps that ended away from their starting ratio. */
   taps_moved: number;
   total_generation_mw: number;
@@ -1051,20 +1070,36 @@ export type SolveReport = {
 };
 
 /**
- * How to solve. Fields left out take their defaults: AC from the last
- * solution, to 2 MVA, without reactive limits, with every control on.
+ * How to solve. Fields left out take their defaults: AC with the automatic
+ * method from the last solution, to 2 MVA, without reactive limits, with
+ * every control on.
  */
 export type SolveSettings = {
   /** Step DC converter taps (detailed model only). */
   adjust_dc_taps?: boolean;
-  /** Step transformer taps in voltage control (AC only). */
+  /**
+   * Step transformer taps in voltage control (AC only). When false they
+   * are locked, like shunts.
+   */
   adjust_transformer_taps?: boolean;
   dc_model?: DcModelChoice;
+  /**
+   * Decoupled iterations per pass (fixed-slope and fast decoupled, and
+   * the decoupled stage of the automatic method).
+   */
+  decoupled_iterations?: number;
   enforce_q_limits?: boolean;
+  /** Newton iterations per pass. */
   max_iterations?: number;
+  /** AC solution method. */
+  method?: MethodChoice;
   model?: ModelChoice;
   start?: StartChoice;
-  /** Switch shunts in voltage control (AC only). */
+  /**
+   * Switch shunts in voltage control (AC only). When false they are
+   * locked: they stay where they are, which is where the last solve left
+   * them when starting from it, and at their case values otherwise.
+   */
   switch_shunts?: boolean;
   /**
    * Largest power mismatch allowed at any bus, in MVA. It converts to per

@@ -6,7 +6,9 @@ description: The polar Newton–Raphson formulation, convergence, step limiting,
 The AC power flow solves the full nonlinear bus power balance with a sparse
 Newton–Raphson method in polar coordinates. It follows MATPOWER 8.1's legacy
 AC power/polar Newton solver, extended with the controls described in the
-following pages.
+following pages. This page describes full Newton; [AC solution
+methods](/StannumRevival/manual/ac-methods/) describes the decoupled methods
+and Auto, the default, which run the same passes.
 
 ## Equations
 
@@ -152,7 +154,7 @@ continues from the saved state.
 | Status | Meaning |
 | --- | --- |
 | **Converged** | All equations within tolerance and every control settled. |
-| **Iteration limit** | A pass used its Newton iterations. The final iterate and its residual are kept and shown. |
+| **Iteration limit** | A pass used its Newton (or decoupled) iterations. The final iterate and its residual are kept and shown. |
 | **Reactive limits infeasible** | An island has no generator left that can hold its voltage. |
 
 Invalid input (for example an island without a reference bus), unsupported

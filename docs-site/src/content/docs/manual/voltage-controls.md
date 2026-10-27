@@ -4,9 +4,22 @@ description: Discrete and continuous switched shunts (MODSW 1–2) and transform
 ---
 
 RAW files describe switched shunts and transformer tap changers that hold bus
-voltages within a band. Stannum applies them in AC solves when **Switch
-shunts** and **Adjust transformer taps** are on (both are on by default). The
+voltages within a band. Stannum applies them in AC solves when **Move switched
+shunts** and **Move transformer taps** are on (both are on by default). The
 case's starting susceptance and tap ratio are the starting point either way.
+
+## Locking them
+
+Turning either setting off **locks** those devices: no shunt switches, or no
+tap moves, during the solve. A locked device stays where it is. When the solve
+starts from the last solution (the default), that is where the last solve left
+it, so a solve with taps moving followed by one with taps locked keeps the
+moved taps. With **Flat start** ticked, or `start` set to `"case"` in a run
+file or script, it is the value in the case. **Adjust DC converter taps** locks
+the HVDC converter taps the same way.
+
+In run files and Python the settings are `switch_shunts`,
+`adjust_transformer_taps` and `adjust_dc_taps`; `false` locks.
 
 | Device | RAW data | Supported |
 | --- | --- | --- |
