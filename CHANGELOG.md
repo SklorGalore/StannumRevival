@@ -46,6 +46,9 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- The app's analysis types now come from the core's command schemas
+  (`commands.gen.ts`) rather than a hand-kept copy, so a field added in
+  Rust can't be missed in the app.
 - Solve, sensitivity and contingency settings may be left out of the core
   commands, or given in part: what's missing takes its default.
 - Core commands report failures as a kind and a message (for example

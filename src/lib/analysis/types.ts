@@ -1,5 +1,13 @@
-// Shapes returned by the Rust commands in src-tauri/src/analysis.rs.
-// Field names mirror the Rust structs (snake_case).
+// The shapes the app works with. Almost all are the core's own types,
+// generated from its command schemas into commands.gen.ts (run
+// `pwsh scripts/update-schemas.ps1` after changing a command), so they can't
+// drift from Rust. Written here by hand: tables the app turns from columns
+// back into rows (SolveReport, RecordTable), and the topology shapes
+// topologyWire.ts decodes from the compact snapshot.
+import type * as G from "./commands.gen";
+
+/** One row of a table the core sends as columns (see `wire.ts`). */
+export type Row<C> = { [K in Exclude<keyof C, "count">]: C[K] extends readonly (infer T)[] ? T : never };
 
 export interface ModuleStatus<T> {
   available: boolean;
@@ -7,459 +15,81 @@ export interface ModuleStatus<T> {
   info: T | null;
 }
 
-export interface CaseCounts {
-  base_mva: number;
-  buses: number;
-  generators: number;
-  branches: number;
-  dc_lines: number;
-}
+export type CaseCounts = G.CaseCounts;
 
-export interface RawWarning {
-  line: number;
-  message: string;
-  /** The branch or generator the warning's record describes, when known. */
-  element?: string;
-}
+export type RawWarning = G.Warning;
 
-export interface CaseSummary {
-  /** The handle core commands take as `case` to name this case. */
-  id: number;
-  path: string;
-  name: string;
-  format: "matpower" | "raw";
-  /** `revision`: the RAW revision the file was read as; null for MATPOWER. Missing from older backends. */
-  power: ModuleStatus<{ counts: CaseCounts; revision?: number | null; warnings: RawWarning[] }>;
-  /** `info` is null until the topology is first built (it's built when a
-   *  view asks for it, not on open). */
-  topology: ModuleStatus<{
-    /** RAW revision nodal read; 0 when built from the power flow model. */
-    revision: number;
-    /** Built from the power flow model (MATPOWER, RAW other than revision 35). */
-    derived?: boolean;
-    buses: number;
-    equipment: number;
-    titles: string[];
-  }>;
-  diffable: boolean;
-  /** Cells edited in Records and not yet saved to a file. Missing from older backends. */
-  record_edits?: number;
-  /** The attached Stannum DC grid file, if any. Missing from older backends. */
-  dc_grids?: DcGridsSummary | null;
-  /** The attached bus coordinates file, if any. Missing from older backends. */
-  coordinates?: CoordinatesSummary | null;
-}
+export type CaseSummary = G.CaseSummary;
 
-/** A line of a coordinates file that was skipped, and why. */
-export interface CoordinatesProblem {
-  line: number;
-  message: string;
-}
+export type CoordinatesProblem = G.Problem;
 
-/** Where the case's bus places come from: an attached coordinates file, the
- *  case's own RAW substation data, or both (the file wins per bus). */
-export interface CoordinatesSummary {
-  /** The attached coordinates file; null when only the case places buses. */
-  path: string | null;
-  /** The attached file's name, else the case's. */
-  name: string;
-  /** Rows read from the file. */
-  rows: number;
-  /** Buses of the case placed by the file. */
-  from_file: number;
-  /** Buses placed by the case's own substation data (and not by the file). */
-  from_case: number;
-  /** Substations in the case's own data with a place and buses. */
-  case_substations: number;
-  /** Buses placed from their neighbours. */
-  estimated: number;
-  /** Buses with no place (nothing placed in their island). */
-  missing: number;
-  /** Rows naming buses this case doesn't have. */
-  unknown_buses: number;
-  /** Lines skipped, at most 20 listed. */
-  problems: CoordinatesProblem[];
-  problem_count: number;
-}
+export type CoordinatesSummary = G.CoordinatesSummary;
 
-/** Where every bus goes on the map, as columns in the case's bus order. */
-export interface BusCoordinates {
-  bus: number[];
-  latitude: (number | null)[];
-  longitude: (number | null)[];
-  source: ("file" | "case" | "estimated" | "none")[];
-  substation: (string | null)[];
-  summary: CoordinatesSummary;
-}
+export type BusCoordinates = G.BusCoordinates;
 
 // ---- VSC DC grids ---------------------------------------------------------
 
-export interface DcGridsSummary {
-  path: string;
-  name: string;
-  grids: { name: string; base_kv: number; poles: number; buses: number; lines: number; converters: number }[];
-}
+export type DcGridsSummary = G.DcGridsSummary;
 
-export interface VscGridConverterRow {
-  name: string;
-  ac_bus: number;
-  ac_bus_name: string;
-  dc_bus: number;
-  in_service: boolean;
-  dc_control: "slack" | "power" | "droop";
-  ac_control: "reactive" | "voltage" | "reactive_limit";
-  /** Injected into the AC grid at the system bus. */
-  ps_mw: number;
-  qs_mvar: number;
-  us_pu: number;
-  us_deg: number;
-  /** Leaving the converter towards the AC side. */
-  pc_mw: number;
-  qc_mvar: number;
-  uc_pu: number;
-  uc_deg: number;
-  current_pu: number;
-  current_ka: number;
-  loss_mw: number;
-  /** Injected into the DC grid. */
-  pdc_mw: number;
-  udc_pu: number;
-  udc_kv: number;
-  q_min_mvar: number | null;
-  q_max_mvar: number | null;
-  p_limited: boolean;
-  outside_limits: boolean;
-}
+export type VscGridConverterRow = G.VscGridConverterRow;
 
-export interface VscGridBusRow {
-  number: number;
-  name: string;
-  v_pu: number;
-  kv: number;
-  injection_mw: number;
-}
+export type VscGridBusRow = G.VscGridBusRow;
 
-export interface VscGridLineRow {
-  from: number;
-  to: number;
-  name: string;
-  in_service: boolean;
-  current_ka: number;
-  from_mw: number;
-  to_mw: number;
-  loss_mw: number;
-}
+export type VscGridLineRow = G.VscGridLineRow;
 
-export interface VscGridReport {
-  name: string;
-  base_kv: number;
-  poles: number;
-  line_loss_mw: number;
-  converter_loss_mw: number;
-  converters: VscGridConverterRow[];
-  buses: VscGridBusRow[];
-  lines: VscGridLineRow[];
-}
+export type VscGridReport = G.VscGridReport;
 
-export interface VscGridsReport {
-  file: string;
-  converged: boolean;
-  iterations: number;
-  ac_iterations: number;
-  last_change_mva: number;
-  grids: VscGridReport[];
-}
+export type VscGridsReport = G.VscGridsReport;
 
 // ---- Power flow -----------------------------------------------------------
 
-export type ModelChoice = "ac" | "dc";
+export type ModelChoice = G.ModelChoice;
 
-export interface SolveSettings {
-  model: ModelChoice;
-  /** "last" starts from the last converged AC solve, with its controls where
-   * they ended, and falls back to the case voltages ("case") without one. */
-  start: "case" | "flat" | "last";
-  /** Largest mismatch allowed at any bus, in MVA on every case's base. */
-  tolerance_mva: number;
-  max_iterations: number;
-  enforce_q_limits: boolean;
-  /** Two-terminal DC lines: converter equations, or MATPOWER's lossless pair. */
-  dc_model: "detailed" | "simplified";
-  /** Step DC converter taps (detailed model only). */
-  adjust_dc_taps: boolean;
-  /** Switch shunts in voltage control (AC only). */
-  switch_shunts: boolean;
-  /** Step transformer taps in voltage control (AC only). */
-  adjust_transformer_taps: boolean;
-}
+/** Every setting given: the core fills in what a call leaves out, the app always sends all. */
+export type SolveSettings = Required<G.SolveSettings>;
 
-export interface BusRow {
-  id: number;
-  name: string;
-  kind: "PQ" | "PV" | "Ref" | "Isolated";
-  base_kv: number;
-  vm: number;
-  va: number;
-  vmin: number;
-  vmax: number;
-  /** Load drawn at the solved voltage, all parts together. */
-  pd: number;
-  qd: number;
-  /** The load split by how it varies with voltage, when any of it does. */
-  load_parts?: LoadParts | null;
-  area: number;
-  violation: number;
-}
+export type BusRow = Row<G.BusRowColumns>;
 
-/** A bus's load at the solved voltage by part, in MW and Mvar:
- * [constant power, constant current, constant impedance]. */
-export interface LoadParts {
-  p: [number, number, number];
-  q: [number, number, number];
-}
+export type LoadParts = G.LoadParts;
 
-export interface GeneratorRow {
-  index: number;
-  /** Shared element id, such as "generator:101:1". */
-  element: string;
-  machine_id: string;
-  bus: number;
-  bus_name: string;
-  online: boolean;
-  pg: number;
-  qg: number;
-  qmin: number;
-  qmax: number;
-  vg: number;
-  pmax: number;
-  q_violation: number;
-}
+export type GeneratorRow = Row<G.GeneratorRowColumns>;
 
-export interface BranchRow {
-  index: number;
-  /** Shared element id, such as "line:101:102:1". */
-  element: string;
-  circuit: string;
-  /** 1, 2 or 3 for a leg of a three-winding transformer; 0 otherwise. */
-  winding: number;
-  from: number;
-  to: number;
-  online: boolean;
-  is_transformer: boolean;
-  pf: number;
-  qf: number;
-  pt: number;
-  qt: number;
-  loss_mw: number;
-  rate_a: number;
-  loading_pct: number | null;
-}
+export type BranchRow = Row<G.BranchRowColumns>;
 
-/** A solved DC line, from its sending (rectifier) bus to its receiving (inverter) bus. */
-export interface DcLineRow {
-  index: number;
-  /** Shared element id, such as "dcline:101:205:DC1". */
-  element: string;
-  kind: DcLineKind;
-  from: number;
-  to: number;
-  from_name: string;
-  to_name: string;
-  online: boolean;
-  /** MW taken from the AC system at the sending end. */
-  pf: number;
-  /** MW delivered to the AC system at the receiving end. */
-  pt: number;
-  /** MVAr injected at each end; negative means absorbed. */
-  qf: number;
-  qt: number;
-  vf: number;
-  vt: number;
-  loss_mw: number;
-  qminf: number;
-  qmaxf: number;
-  qmint: number;
-  qmaxt: number;
-  q_violation: number;
-  /** Converter state from the detailed LCC model, when it was used. */
-  detail?: LccDetail | null;
-  /** Converter state from the detailed VSC model, when it was used. */
-  vsc_detail?: VscDetail | null;
-  /** This row's converter from the detailed multi-terminal model. */
-  mtdc_detail?: MtdcDetail | null;
-}
+export type DcLineRow = G.DcLineRow;
 
-export type MtdcControl = "voltage" | "order" | "angle_limited" | "blocked";
+export type MtdcControl = G.MtdcDetail["control"];
 
-/** One converter of a multi-terminal DC system, on the row linking it to the voltage converter. */
-export interface MtdcDetail {
-  system: string;
-  control: MtdcControl;
-  /** Low DC voltage switched the power orders to current orders. */
-  reduced_voltage: boolean;
-  /** Whether the converter is the row's sending end. */
-  at_from: boolean;
-  rectifier: boolean;
-  current_ka: number;
-  /** DC voltage across the converter, kV. */
-  dc_kv: number;
-  /** Firing (rectifier) or extinction (inverter) angle, degrees. */
-  angle: number;
-  tap: number;
-}
+export type MtdcDetail = G.MtdcDetail;
 
-/** The DC network of a multi-terminal system under the detailed model. */
-export interface DcSystemReport {
-  name: string;
-  reduced_voltage: boolean;
-  line_loss_mw: number;
-  converter_loss_mw: number;
-  converters: DcConverterRow[];
-  buses: DcBusRow[];
-  links: DcLinkRow[];
-}
+export type DcSystemReport = G.DcSystemReport;
 
-export interface DcConverterRow {
-  bus: number;
-  bus_name: string;
-  dc_bus: number;
-  control: MtdcControl;
-  rectifier: boolean;
-  current_ka: number;
-  dc_kv: number;
-  angle: number;
-  tap: number;
-  /** MW drawn from the AC bus; negative means delivered. */
-  p_mw: number;
-  /** MVAr absorbed at the AC bus. */
-  q_mvar: number;
-  loss_mw: number;
-}
+export type DcConverterRow = G.DcConverterRow;
 
-export interface DcBusRow {
-  number: number;
-  name: string;
-  kv: number;
-}
+export type DcBusRow = G.DcBusRow;
 
-export interface DcLinkRow {
-  from: number;
-  to: number;
-  circuit: string;
-  current_ka: number;
-  from_mw: number;
-  to_mw: number;
-  loss_mw: number;
-}
+export type DcLinkRow = G.DcLinkRow;
 
-/** Operating point of a VSC DC line under the detailed model. */
-export interface VscDetail {
-  /** DC current from the sending to the receiving end, kA. */
-  current_ka: number;
-  from_kv: number;
-  to_kv: number;
-  from_loss_mw: number;
-  to_loss_mw: number;
-  line_loss_mw: number;
-  /** Fraction of the power order kept after MVA or current limits. */
-  order_scale: number;
-  from_limited: boolean;
-  to_limited: boolean;
-}
+export type VscDetail = G.VscDetail;
 
-/** Operating point of a two-terminal DC line under the detailed model. */
-export interface LccDetail {
-  /** Which converter holds the DC current. */
-  control: "rectifier" | "inverter" | "angle_limited" | "blocked";
-  /** Low DC voltage switched a power order to current control. */
-  reduced_voltage: boolean;
-  current_ka: number;
-  rectifier_kv: number;
-  inverter_kv: number;
-  alpha: number;
-  gamma: number;
-  rectifier_tap: number;
-  inverter_tap: number;
-  line_loss_mw: number;
-  converter_loss_mw: number;
-}
+export type LccDetail = G.LccDetail;
 
-export interface LimitSummary {
-  voltage_violations: number;
-  worst_voltage: [number, number] | null;
-  reactive_violations: number;
-  worst_reactive: [number, number] | null;
-  branch_overloads: number;
-  worst_branch: [number, number, number] | null;
-}
+export type LimitSummary = G.LimitSummary;
 
-export interface SolveReport {
-  status: string;
-  converged: boolean;
-  model: ModelChoice;
-  iterations: number;
-  q_limit_passes: number;
-  /** Passes that stepped DC converter taps. */
-  dc_tap_passes?: number;
-  /** Passes that reduced VSC output to converter MVA or current limits. */
-  vsc_limit_passes?: number;
-  /** Passes that switched shunts or stepped transformer taps. */
-  voltage_control_passes?: number;
-  /** Switched shunts that ended away from their starting value. */
-  shunts_switched?: number;
-  /** Transformer taps that ended away from their starting ratio. */
-  taps_moved?: number;
-  residual_pu: number;
-  residual_mva: number;
-  elapsed_ms: number;
-  total_generation_mw: number;
-  total_load_mw: number;
-  total_losses_mw: number;
-  limits: LimitSummary;
+/** The solve report with its tables as rows (decoded in `wire.ts`). */
+export type SolveReport = Omit<G.SolveReport, "buses" | "generators" | "branches"> & {
   buses: BusRow[];
   generators: GeneratorRow[];
   branches: BranchRow[];
-  /** Missing from older backends. */
-  dc_lines?: DcLineRow[];
-  /** DC networks of the multi-terminal systems (detailed model). */
-  dc_systems?: DcSystemReport[];
-  /** VSC DC grids from an attached DC grid file. */
-  vsc_grids?: VscGridsReport | null;
-}
+};
 
-export interface InjectionColumn {
-  column: number;
-  bus: number;
-  bus_name: string;
-  kind: "p" | "q";
-}
+export type InjectionColumn = G.InjectionColumn;
 
-export interface SensitivitySummary {
-  model: ModelChoice;
-  status: string;
-  elapsed_ms: number;
-  states: number;
-  injections: InjectionColumn[];
-  branches: number;
-  quantities: { key: string; title: string }[];
-  explanation: string;
-  column_explanation: string;
-}
+export type SensitivitySummary = G.SensitivitySummary;
 
-export interface SensitivityResponse {
-  index: number;
-  label: string;
-  /** Shared element id of the bus or branch. */
-  element: string;
-  value: number;
-  offline: boolean;
-}
+export type SensitivityResponse = G.Response;
 
-export interface ResponseTable {
-  units: string;
-  title: string;
-  rows: SensitivityResponse[];
-}
+export type ResponseTable = G.ResponseTable;
 
 // ---- Topology (nodal) -----------------------------------------------------
 
@@ -474,11 +104,7 @@ export interface SourceRef {
   line: number;
   section: string;
 }
-/** A record's fields as read, which `topology_source` sends for one element. */
-export interface SourceRecord extends SourceRef {
-  fields: Record<string, string>;
-  raw_lines: string[];
-}
+export type SourceRecord = G.SourceRecord;
 export interface TopoBus {
   number: number;
   name: string;
@@ -582,304 +208,69 @@ export interface TopologySnapshot {
 
 // ---- Case diff ------------------------------------------------------------
 
-export type DiffStatus = "added" | "removed" | "changed" | "unchanged";
+export type DiffStatus = G.DiffStatus;
 
-export interface DiffSummary {
-  baseline: { name: string; revision: number };
-  comparison: { name: string; revision: number };
-  complete: boolean;
-  differing: number;
-  sections: {
-    name: string;
-    counts: Record<DiffStatus, number>;
-  }[];
-  diagnostics: {
-    side: "baseline" | "comparison";
-    file: string;
-    section: string;
-    line: number;
-    message: string;
-    raw_lines: string[];
-  }[];
-}
+export type DiffSummary = G.DiffSummary;
 
-export interface DiffRecordRow {
-  index: number;
-  key: string;
-  name: string;
-  status: DiffStatus;
-  /** Shared element id, for buses, branches, transformers, switches, loads and generators. */
-  element: string | null;
-}
+export type DiffRecordRow = G.DiffRecordRow;
 
-export interface DiffRecordDetail {
-  section: string;
-  key: string;
-  status: DiffStatus;
-  fields: {
-    name: string;
-    before: string | null;
-    after: string | null;
-    status: DiffStatus;
-  }[];
-  before_lines: string[] | null;
-  after_lines: string[] | null;
-}
+export type DiffRecordDetail = G.DiffRecordDetail;
 
 // ---- Diagram --------------------------------------------------------------
 
-export interface NetworkBus {
-  id: number;
-  name: string;
-  base_kv: number;
-  area: number;
-  kind: "PQ" | "PV" | "Ref" | "Isolated";
-  pd: number;
-  qd: number;
-  gs: number;
-  bs: number;
-  /** Internal star point of a three-winding transformer. */
-  star: boolean;
-}
-export interface NetworkGenerator {
-  index: number;
-  element: string;
-  bus: number;
-  online: boolean;
-  pmax: number;
-}
-export interface NetworkBranch {
-  index: number;
-  element: string;
-  circuit: string;
-  winding: number;
-  from: number;
-  to: number;
-  online: boolean;
-  transformer: boolean;
-  rate_a: number;
-  tap: number;
-  shift: number;
-}
-/** A two-terminal DC line, from its rectifier bus to its inverter bus. */
-export interface NetworkDcLine {
-  index: number;
-  element: string;
-  name: string;
-  from: number;
-  to: number;
-  online: boolean;
-  /** Scheduled MW sent from the rectifier; the power flow holds it fixed. */
-  mw: number;
-  /** Which kind of DC line. A multi-terminal system gives one per scheduled
-   *  converter, each to the converter holding the DC voltage. Older backends
-   *  leave it out, which means two-terminal. */
-  kind?: DcLineKind;
-}
-export type DcLineKind = "two_terminal" | "vsc" | "multi_terminal";
-export interface CaseNetwork {
-  base_mva: number;
-  buses: NetworkBus[];
-  generators: NetworkGenerator[];
-  branches: NetworkBranch[];
-  dc_lines: NetworkDcLine[];
-}
+export type NetworkBus = G.NetworkBus;
+export type NetworkGenerator = G.NetworkGenerator;
+export type NetworkBranch = G.NetworkBranch;
+export type NetworkDcLine = G.NetworkDcLine;
+export type DcLineKind = G.DcLineRow["kind"];
+export type CaseNetwork = G.CaseNetwork;
 
-/** One change a study makes to the open case (see stannum-core study.rs). */
-export type StudyEdit =
-  | { kind: "status"; element: string; online: boolean }
-  | { kind: "generation"; element: string; mw: number }
-  | { kind: "load"; bus: number; mw: number; mvar: number };
+export type StudyEdit = G.Edit;
 
 // ---- Element inspector ----------------------------------------------------
 
-/** One value from the file; text where it isn't a number (a type, "not rated"). */
-export interface DetailField {
-  label: string;
-  value: number | string;
-  unit: string;
-}
+export type DetailField = G.Field;
 
-/** One element as the file describes it (see stannum-core inspect.rs). */
-export interface ElementDetail {
-  element: string;
-  kind: string;
-  buses: { number: number; name: string; base_kv: number }[];
-  /** In service in the file, before study edits. */
-  online: boolean;
-  /** Parameters, one group per winding for a three-winding transformer. */
-  data: { title: string; fields: DetailField[] }[];
-  limits: DetailField[];
-  /** A bus's branches, generators and DC lines. */
-  connected: string[];
-  note: string | null;
-}
+export type ElementDetail = G.ElementDetail;
 
 // ---------------------------------------------------------------------------
 // Contingency analysis (stannum-core contingency.rs)
 // ---------------------------------------------------------------------------
 
-/** Linear screen then AC of the worst, or AC for every outage. */
-export type ContingencyMethod = "screen" | "ac";
+export type ContingencyMethod = G.Method;
 
-export interface ContingencySettings {
-  /** Element ids to take out one at a time; absent means every in-service branch and/or generator. */
-  elements?: string[] | null;
-  branches: boolean;
-  generators: boolean;
-  method: ContingencyMethod;
-  ac_count: number;
-  limit_pct: number;
-  solve: SolveSettings;
-}
+export type ContingencySettings = G.ContingencySettings;
 
-export interface ContingencyOverload {
-  element: string;
-  from: number;
-  to: number;
-  pct: number;
-  base_pct: number;
-  mw: number;
-  base_mw: number;
-}
+export type ContingencyOverload = G.Overload;
 
-export interface ContingencyVoltage {
-  bus: number;
-  name: string;
-  vm: number;
-  base_vm: number;
-  vmin: number;
-  vmax: number;
-  outside: number;
-}
+export type ContingencyVoltage = G.VoltageProblem;
 
-export interface ContingencyRow {
-  rank: number;
-  element: string;
-  kind: "branch" | "generator";
-  checked: "ac" | "linear";
-  converged: boolean | null;
-  iterations: number | null;
-  worst: ContingencyOverload | null;
-  overloads: number;
-  screened_pct: number | null;
-  note: string | null;
-  worst_voltage: ContingencyVoltage | null;
-  voltage_violations: number;
-  cut_off_buses: number;
-  lost_load_mw: number;
-  lost_generation_mw: number;
-  severity: number;
-}
+export type ContingencyRow = G.ContingencyRow;
 
-export interface ContingencySummary {
-  method: ContingencyMethod | null;
-  limit_pct: number;
-  total: number;
-  already_out: number;
-  ac_checked: number;
-  with_overloads: number;
-  with_voltage_problems: number;
-  not_converged: number;
-  islanding: number;
-  screen_ms: number;
-  ac_ms: number;
-  elapsed_ms: number;
-  cancelled: boolean;
-  worst: ContingencyRow | null;
-}
+export type ContingencySummary = G.ContingencySummary;
 
-export interface ContingencyBranchChange {
-  element: string;
-  from: number;
-  to: number;
-  mw: number;
-  base_mw: number;
-  pct: number | null;
-  base_pct: number | null;
-  tripped: boolean;
-}
+export type ContingencyBranchChange = G.BranchChange;
 
-export interface ContingencyBusChange {
-  bus: number;
-  vm: number;
-  base_vm: number;
-  vmin: number;
-  vmax: number;
-}
+export type ContingencyBusChange = G.BusChange;
 
-export interface ContingencyDetail {
-  row: ContingencyRow;
-  overloads: ContingencyOverload[];
-  voltage_problems: ContingencyVoltage[];
-  branches: ContingencyBranchChange[];
-  buses: ContingencyBusChange[];
-  cut_off: number[];
-}
+export type ContingencyDetail = G.ContingencyDetail;
 
-export interface ContingencyProgress {
-  phase: "idle" | "screening" | "ac";
-  done: number;
-  total: number;
-}
+export type ContingencyProgress = G.Progress;
 
-/** Where the Records module's tables come from: the RAW file's own records, or the power flow model. */
-export type RecordSource = "raw" | "model";
-export type RecordColumnKind = "integer" | "number" | "text";
+export type RecordSource = G.RecordSource;
+export type RecordColumnKind = G.ColumnKind;
 
-export interface RecordSectionInfo {
-  /** "BUS" for RAW, "bus" for the model. */
-  id: string;
-  label: string;
-  count: number;
-  /** Records in the file that couldn't be listed. */
-  skipped: number;
-}
+export type RecordSectionInfo = G.SectionInfo;
 
-export interface RecordBook {
-  source: RecordSource;
-  revision: number | null;
-  note: string | null;
-  /** Whether cells can be edited: RAW revisions 33 and 35, and MATPOWER. */
-  editable: boolean;
-  sections: RecordSectionInfo[];
-}
+export type RecordBook = G.RecordBook;
 
-export interface RecordColumn {
-  name: string;
-  kind: RecordColumnKind;
-  /** Key fields (bus numbers, ids) and case details stay as read. */
-  editable: boolean;
-}
+export type RecordColumn = G.RecordColumn;
 
-/** One cell's new value, as typed, by table position. */
-export interface RecordEdit {
-  section: string;
-  row: number;
-  column: number;
-  value: string;
-}
+export type RecordEdit = G.RecordEdit;
 
-export interface CaseRecord {
-  /** Line where the record starts in the file; 0 for model tables. */
-  line: number;
-  /** Shared element id, when the record is one (or sits at one bus). */
-  element: string | null;
-  cells: (number | string | null)[];
-}
+export type CaseRecord = Row<G.RecordRowColumns>;
 
-export interface RecordTable {
-  id: string;
-  label: string;
-  columns: RecordColumn[];
-  rows: CaseRecord[];
-  skipped: number;
-  note: string | null;
-}
+/** A record table with its rows decoded from columns. */
+export type RecordTable = Omit<G.RecordTable, "rows"> & { rows: CaseRecord[] };
 
-/** Size, hash and date of a file (stannum-core study_file::Fingerprint). */
-export interface FileFingerprint {
-  size: number;
-  sha256: string;
-  modified_ms: number | null;
-}
+export type FileFingerprint = G.Fingerprint;
