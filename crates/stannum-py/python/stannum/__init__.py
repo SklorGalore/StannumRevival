@@ -295,9 +295,9 @@ class Case:
         "flat" or "case"), ``tolerance_mva`` (2 by default),
         ``max_iterations`` (Newton, 10), ``decoupled_iterations`` (30),
         ``enforce_q_limits``, ``dc_model`` ("detailed" or "simplified"),
-        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``.
-        Setting one of the last three to False locks those controls where
-        they are instead of moving them.
+        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
+        ``adjust_phase_shifters``. Setting one of the last four to False
+        locks those controls where they are instead of moving them.
         """
         return self.call("solve_power_flow", settings=_settings(settings, options))
 

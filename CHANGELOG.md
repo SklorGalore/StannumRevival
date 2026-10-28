@@ -10,6 +10,14 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Phase shifters**: transformer windings in active power flow control in
+  RAW files (`COD` 3, and asymmetric `COD` 5) now move their angles in AC
+  solves to hold their MW band. The moves are solved together through the
+  network, so parallel shifters share the correction. **Move phase shifters**
+  in the solve settings (`adjust_phase_shifters` in run files and Python)
+  locks them when off. The overview counts the shifters that moved, and the
+  Branches table shows each transformer's tap and phase shift.
+
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton

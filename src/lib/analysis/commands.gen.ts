@@ -47,6 +47,8 @@ export type BranchRowColumns = {
   qf: number[];
   qt: number[];
   rate_a: number[];
+  shift_deg: number[];
+  tap: number[];
   to: number[];
   winding: number[];
 };
@@ -1032,6 +1034,8 @@ export type SolveReport = {
   /** How many of `iterations` were decoupled iterations. */
   decoupled_iterations: number;
   elapsed_ms: number;
+  /** Passes that moved phase shifters. */
+  flow_control_passes: number;
   generators: GeneratorRowColumns;
   /** Iterations in all passes, Newton and decoupled together. */
   iterations: number;
@@ -1041,6 +1045,12 @@ export type SolveReport = {
   model: ModelChoice;
   /** Passes in which the automatic method finished with Newton. */
   newton_fallbacks: number;
+  /** Phase shifters in active power flow control in the case. */
+  phase_shifters: number;
+  /** Whether the solve locked the phase shifters at their angles (AC only). */
+  phase_shifters_locked: boolean;
+  /** Phase shifters that ended away from their starting angle. */
+  phase_shifters_moved: number;
   q_limit_passes: number;
   residual_mva: number;
   residual_pu: number;
@@ -1077,6 +1087,11 @@ export type SolveReport = {
 export type SolveSettings = {
   /** Step DC converter taps (detailed model only). */
   adjust_dc_taps?: boolean;
+  /**
+   * Move phase shifters in active power flow control (AC only). When
+   * false they are locked, like taps.
+   */
+  adjust_phase_shifters?: boolean;
   /**
    * Step transformer taps in voltage control (AC only). When false they
    * are locked, like shunts.

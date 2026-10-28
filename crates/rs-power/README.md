@@ -207,6 +207,25 @@ still converges with both on and the largest bus voltage error against the
 saved solution drops from 0.076 to 0.047 p.u. On the Memphis case (61
 continuous shunts) the mean error drops from 0.0013 to 0.00006 p.u.
 
+### Phase shifters
+
+`RawImport::flow_controls` lists transformer windings in active power flow
+control (COD 3, and asymmetric COD 5 with connection angle CNXA). Pass them in
+`PowerFlowOptions::flow_controls` and each angle moves within RMI..RMA,
+between Newton solves, to bring the MW flowing into the winding at its own
+bus inside VMI..VMA:
+
+- Shifters move after reactive limits, shunts and taps have settled, aiming
+  20% inside the nearer edge of the band.
+- The moves of all shifters outside their bands are solved together from
+  their flows' sensitivities through the power-flow Jacobian, so parallel
+  shifters share the correction. At most 10 degrees per pass.
+- An asymmetric shifter's tap follows its angle as
+  `sin(CNXA) / sin(CNXA - angle)`, relative to the case's tap.
+- `lock_phase_shifters` keeps them at their angles; the result still lists
+  them. `PowerFlowResult::phase_shift_angles` and `flow_control_passes` give
+  the outcome.
+
 ### Detailed two-terminal DC model
 
 `RawImport::lcc_lines` keeps every field of each two-terminal DC record as an

@@ -72,7 +72,7 @@ may be left out: a missing field takes its default.
 | `decoupled_iterations` | `30` decoupled iterations per pass |
 | `enforce_q_limits` | `false` |
 | `dc_model` | `"detailed"` |
-| `adjust_dc_taps`, `switch_shunts`, `adjust_transformer_taps` | `true`; `false` locks them where they are |
+| `adjust_dc_taps`, `switch_shunts`, `adjust_transformer_taps`, `adjust_phase_shifters` | `true`; `false` locks them where they are |
 
 For example, `solve_power_flow settings={"method": "fast_decoupled_xb", "adjust_transformer_taps": false}`
 solves with the fast decoupled method and the transformer taps locked.

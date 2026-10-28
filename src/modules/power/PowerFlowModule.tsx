@@ -49,7 +49,7 @@ import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
-import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, flowControlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -201,6 +201,19 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
           </span>
         </LoadingBar>
       ),
+    align: "right",
+  },  {
+    key: "tap",
+    header: "Tap",
+    value: (r) => r.tap,
+    render: (r) => (r.is_transformer ? fixed(r.tap, 4) : ""),
+    align: "right",
+  },
+  {
+    key: "shift",
+    header: "Shift (°)",
+    value: (r) => r.shift_deg,
+    render: (r) => (r.shift_deg ? fixed(r.shift_deg, 2) : ""),
     align: "right",
   },
 ];
@@ -560,6 +573,19 @@ function SolvePanel({
         />
         Move transformer taps
       </label>
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Phase shifters", "angle")}
+      >
+        <input
+          type="checkbox"
+          checked={settings.adjust_phase_shifters !== false && ac}
+          disabled={!ac}
+          data-testid="adjust-phase-shifters"
+          onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
+        />
+        Move phase shifters
+      </label>
       <Field label="DC line model">
         <select
           className={inputClass}
@@ -691,6 +717,13 @@ function Overview({
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
           detail={controlsDetail(report)}
         />
+        {(report.phase_shifters ?? 0) > 0 && (
+          <Metric
+            label="Phase shifters"
+            value={`${report.phase_shifters_moved ?? 0} of ${report.phase_shifters} moved`}
+            detail={flowControlsDetail(report)}
+          />
+        )}
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />

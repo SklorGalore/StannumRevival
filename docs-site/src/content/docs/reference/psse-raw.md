@@ -38,7 +38,7 @@ including its approximations, with the extensions marked below.
 | Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in voltage control (MODSW 1, 2) are also kept for [voltage control](/StannumRevival/manual/voltage-controls/). *Extension.* |
 | Generators | One generator per record. `IREG` and `RMPCT` kept for [remote regulation](/StannumRevival/manual/remote-regulation/). *Extension.* |
 | Lines | π model; negative metered-end IDs normalized. Unknown endpoints kept with a warning. |
-| Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers). *Extension.* |
+| Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers), `COD` = 3 and 5 for [phase shifters](/StannumRevival/manual/phase-shifters/). *Extension.* |
 | Three-winding transformers | A star bus with MATPOWER's numbering, three branches, and winding statuses. |
 | Two-terminal DC | MATPOWER's lossless row with estimated reactive limits, plus every field for the [detailed LCC model](/StannumRevival/manual/hvdc/lcc/). LCC reactive limits stored as absorbed. *Extension.* |
 | VSC DC | Skipped by MATPOWER; Stannum adds a row and the [detailed VSC model](/StannumRevival/manual/hvdc/vsc/). *Extension.* |

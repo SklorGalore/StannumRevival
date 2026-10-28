@@ -285,6 +285,16 @@ fn log_report(report: &power::SolveReport, solved_ms: f64) {
             plural(report.taps_moved, "tap", "taps")
         );
     }
+    if report.phase_shifters_moved > 0 {
+        log::info!(
+            "Flow controls: {} ended away from their starting angles",
+            plural(
+                report.phase_shifters_moved,
+                "phase shifter",
+                "phase shifters"
+            )
+        );
+    }
 }
 
 impl OpenCase {
@@ -1440,6 +1450,7 @@ impl SolveJob {
             &power.dc_line_kinds,
             // Count moves from the file's settings, not from the last solve.
             &cold.voltage_controls,
+            &cold.flow_controls,
             &settings,
             elapsed_ms(start),
         );

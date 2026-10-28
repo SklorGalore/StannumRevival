@@ -62,6 +62,7 @@ export default defineConfig({
             { label: "Generator reactive limits", slug: "manual/reactive-limits" },
             { label: "Remote voltage regulation", slug: "manual/remote-regulation" },
             { label: "Switched shunts and taps", slug: "manual/voltage-controls" },
+            { label: "Phase shifters", slug: "manual/phase-shifters" },
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
             { label: "Contingency analysis", slug: "manual/contingencies" },
             {
