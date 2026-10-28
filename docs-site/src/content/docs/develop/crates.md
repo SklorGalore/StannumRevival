@@ -115,10 +115,13 @@ dev-dependency to build test cases. See
   Python 3.10+). It holds one `Session` class with `invoke(command, json)`.
   Each call runs on its own thread with the GIL released; Ctrl+C sends the
   cancel commands and raises `KeyboardInterrupt`.
-- `python/stannum/`: everything Pythonic. `Case` methods such as `solve`,
-  `contingencies` and `records` are thin wrappers over `invoke`; tables come
-  back as NumPy columns (`_table.py`); error kinds become typed exceptions
-  (`errors.py`); `_attach.py` connects to a running app.
+- `python/stannum/`: everything Pythonic. `__init__.py` re-exports the
+  public names and nothing else; `_api.py` holds `Case`, `App` and the
+  functions, whose methods such as `solve`, `contingencies` and `records`
+  are thin wrappers over `invoke`; tables come back as NumPy columns
+  (`_table.py`); error kinds become typed exceptions (`_errors.py`);
+  `_attach.py` connects to a running app. `tests/test_public_api.py` lists
+  the public API, which stays compatible across 1.x.
 
 Any command works from Python without new code, through `case.call(name,
 **args)`. Wrapper methods are for commands people use often. Tests in

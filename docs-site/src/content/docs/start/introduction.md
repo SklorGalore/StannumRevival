@@ -21,7 +21,8 @@ work on the same open case.
 | Module | What it does |
 | --- | --- |
 | [Diagram](/StannumRevival/guide/diagram/) | Generate one-lines from the case, with power flow results on them, or draw, edit and export your own. Draw the network graph, with [topology](/StannumRevival/guide/topology/) layers (islands, bridges, cut buses, shortest paths) and tables. |
-| [Power flow](/StannumRevival/guide/power-flow/) | AC and DC power flow, operating-limit checks, result tables, sensitivities and studies. |
+| [Power flow](/StannumRevival/guide/power-flow/) | AC and DC power flow with voltage, flow and area interchange controls, operating-limit checks, result tables, sensitivities, [contingencies](/StannumRevival/guide/contingencies/) and [studies](/StannumRevival/guide/studies/). Exports MATPOWER and PSS/E RAW. |
+| [Records](/StannumRevival/guide/records/) | Every record in the open case as a table, with every field, to sort, filter and edit. |
 | [Case diff](/StannumRevival/guide/case-diff/) | Exact record-by-record comparison of two RAW cases. |
 
 Selecting an element in one module selects it in the others, so a bus you
