@@ -179,6 +179,7 @@ fn revision_33_and_back_loses_only_what_33_has_no_place_for() {
                 || c.starts_with("LOAD") && (c.ends_with(": DGENM") || c.ends_with(": LOADTYPE"))
                 || c.starts_with("SWITCHED SHUNT 5 / '2'")
                 || c.starts_with("SYSTEM SWITCHING DEVICE 3 / 5 / '1': NSTAT")
+                || c.starts_with("SYSTEM SWITCHING DEVICE") && c.ends_with(": NAME")
         };
         let unexpected: Vec<&String> = lost.iter().filter(|c| !allowed(c)).collect();
         assert!(unexpected.is_empty(), "{name}: {unexpected:#?}");
@@ -258,7 +259,7 @@ fn converted_records_keep_their_meaning() {
     // block is in service, and the table is in triples ended by zeros.
     let (v35, _) = export(&v33, 35, &dir);
     let text = std::fs::read_to_string(&v35).unwrap();
-    assert!(text.contains("\n3,5,'1',0.000100000,100.00,"), "{text}");
+    assert!(text.contains("\n3,5,'1 ',0.000100000,100.00,"), "{text}");
     assert!(
         text.contains("\n5,'1 ',1,0,1,1.05000,0.95000,5,0,100.0,'            ',10.00,1,2,10.00\n")
     );

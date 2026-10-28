@@ -353,7 +353,7 @@ fn up(doc: &mut Doc, notes: &mut Notes) {
             let (i, j) = (b.number("I"), b.number("J"));
             let bare = ckt[1..].trim().to_string();
             let ckt = if !bare.is_empty() && !taken.contains(&key(i, j, &bare)) {
-                bare
+                format!("{bare:<2}")
             } else {
                 ckt
             };
