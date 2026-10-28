@@ -6,18 +6,20 @@ package that is built into Stannum, with each licence text once.
 .DESCRIPTION
 Rust: the normal (not dev or build) dependencies of the app (stannum),
 stannum-cli and the Python package (stannum-py), on the three release
-platforms, as `cargo metadata` resolves them. npm: the packages package-lock.json does
-not mark as dev-only, read from node_modules, so run `npm ci` first.
+platforms, as `cargo metadata` resolves them. npm: the packages
+package-lock.json does not mark as dev-only, read from node_modules, so run
+`npm ci` first.
 
 Licence files (LICENSE*, LICENCE*, COPYING*, NOTICE*, COPYRIGHT*) are read
 from each package's own folder. A package offered under "MIT OR ..." is
 used under MIT, so only its MIT text is kept. Identical texts (ignoring
-spacing) are written once, under the list of packages that carry them. Packages that ship no licence file
-are listed with the licence their metadata names.
+spacing) are written once, under the list of packages that carry them.
+Packages that ship no licence file are listed with the licence their
+metadata names.
 
 The installers, the wheels and the stannum-cli archives ship this file
 beside LICENSE and THIRD-PARTY-NOTICES.md. new-version.ps1 regenerates it
-for each release, and the release workflow regenerates it before building.
+for each release, and the release workflow fails if it is out of date.
 
 .PARAMETER Out
 File to write. Defaults to THIRD-PARTY-LICENSES.txt at the repository root.
