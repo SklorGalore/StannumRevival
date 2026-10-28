@@ -24,10 +24,11 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 <CardGrid>
   <Card title="Power flow" icon="rocket">
-    Sparse Newton–Raphson AC flow with reactive limits, remote voltage
-    regulation, switched shunts, tap changers and detailed HVDC: two-terminal
-    LCC, VSC and multi-terminal DC. Linear DC flow, sensitivities, PTDF and
-    LODF.
+    Newton and decoupled AC flow with reactive limits, remote voltage
+    regulation, switched shunts, tap changers, phase shifters, FACTS devices,
+    area interchange and detailed HVDC: two-terminal LCC, VSC, multi-terminal
+    DC and meshed VSC grids. Linear DC flow, sensitivities, PTDF and LODF,
+    and N-1 contingency analysis.
   </Card>
   <Card title="Diagram" icon="pencil">
     Generate one-lines from the case around any bus, with solved flows and
@@ -36,6 +37,10 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
   <Card title="Topology" icon="puzzle">
     Islands, bridges, cut buses and fewest-hop paths, drawn as layers on the
     network graph and the one-line, with tables to export.
+  </Card>
+  <Card title="Records" icon="list-format">
+    Every record of the case as a paged table, fast on 80,000-bus cases, to
+    sort, filter and edit. Edits carry into PSS/E RAW 33 and 35 exports.
   </Card>
   <Card title="Case diff" icon="document">
     Exact, record-by-record comparison of two RAW cases, with no floating-point

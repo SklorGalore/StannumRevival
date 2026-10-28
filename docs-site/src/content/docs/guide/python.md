@@ -145,6 +145,15 @@ case.call("diagram_network")         # the case as a drawable network
 `sn.schemas()` returns every command's arguments and result as JSON Schema,
 and `sn.API_VERSION` the version of the command list.
 
+## What's public
+
+Everything in `stannum.__all__`, and the documented methods and attributes
+of its classes, stays compatible across 1.x. Get cases, diffs and apps from
+`sn.open`, `sn.diff` and `sn.attach` rather than their constructors; names
+starting with `_`, such as `stannum._native`, can change in any release.
+[Versions and compatibility](/StannumRevival/reference/versioning/) has the
+full rules, and how anything is retired.
+
 ## Errors
 
 A failed command raises a `stannum.StannumError`. Its class says what went
@@ -210,4 +219,6 @@ writes the port and a random token into a file only you can read:
 `$XDG_RUNTIME_DIR/stannum/attach` (or `~/.local/state/stannum/attach`) on
 Linux. `STANNUM_ATTACH_DIR` moves it. `sn.attach(pid=...)` picks one app
 when several run. Start the app with `STANNUM_NO_ATTACH=1` to turn attaching
-off. The package must come from the same release as the app.
+off. From 1.0 on, any 1.x package attaches to any 1.x app (see
+[Versions and compatibility](/StannumRevival/reference/versioning/)); before
+1.0 they must come from the same release.

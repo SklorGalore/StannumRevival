@@ -1249,7 +1249,7 @@ await page.getByRole("button", { name: "Open another…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
 await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
-// The header can show before the rows arrive from the core.
+// Rows arrive a page at a time from the core, after the header.
 await recordRows.nth(8).waitFor();
 assert.equal(await recordRows.count(), 9, "nine buses in case9");
 await shot("records-matpower");

@@ -3,6 +3,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import starlightLinksValidator from "starlight-links-validator";
 
 // Published to GitHub Pages at https://sklorgalore.github.io/StannumRevival/.
 export default defineConfig({
@@ -22,6 +23,9 @@ export default defineConfig({
       editLink: { baseUrl: "https://github.com/SklorGalore/StannumRevival/edit/main/docs-site/" },
       customCss: ["katex/dist/katex.min.css", "./src/styles/stannum.css"],
       lastUpdated: true,
+      // Fails the build on a link to a page or heading that doesn't exist,
+      // including internal links written without the /StannumRevival base.
+      plugins: [starlightLinksValidator()],
       sidebar: [
         {
           label: "Start here",
@@ -108,6 +112,7 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
+            { label: "Versions and compatibility", slug: "reference/versioning" },
             { label: "Verification", slug: "reference/verification" },
             { label: "What isn't modelled", slug: "reference/limitations" },
             { label: "Glossary", slug: "reference/glossary" },
