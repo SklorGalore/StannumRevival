@@ -168,7 +168,7 @@ for (const path of cases) {
   await step("case diff", async () => {
     await rail("Records");
     await settle(1500);
-    if (await page.getByText("power flow model · read only").filter({ visible: true }).count()) {
+    if (await page.getByText(/power flow model ·/).filter({ visible: true }).count()) {
       console.log("     (Records shows the power flow model; Case diff needs RAW 33 or 35)");
       return;
     }
@@ -183,10 +183,9 @@ for (const path of cases) {
     await settle(3000);
     await rail("Case diff");
     await visible(/Compare with its file/).click();
-    const changed = page.getByText("Changed", { exact: true }).filter({ visible: true }).first();
-    await changed.waitFor({ timeout: T });
+    await page.getByText(/differing record|failed/).filter({ visible: true }).first().waitFor({ timeout: T });
     await settle(2000);
-    await changed.click();
+    await page.locator("tbody tr:visible", { hasText: /changed/i }).first().click();
     await settle(1500);
     await shot("case-diff");
   });
