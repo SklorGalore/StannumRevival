@@ -21,7 +21,8 @@ these that a case uses.
 
 ## Controls
 
-- Switched shunts in modes 3–6 (`MODSW`).
+- Switched shunts in mode 6 (`MODSW`), which watch FACTS devices: FACTS
+  devices are not modelled.
 - Transformer controls other than voltage (`COD` 2–5): reactive power, active
   power, DC line and asymmetric controls.
 - Impedance correction tables and magnetizing admittance.

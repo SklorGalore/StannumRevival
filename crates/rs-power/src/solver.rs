@@ -1672,7 +1672,7 @@ fn solve_core(
         let (shunts, taps) = controller.devices();
         if !remote.is_empty() || !terminals.is_empty() || shunts + taps > 0 {
             log::info!(
-                "Controls: {} generator buses regulating a remote bus, {} detailed DC lines or systems, {shunts} switched shunts and {taps} tap changers in voltage control",
+                "Controls: {} generator buses regulating a remote bus, {} detailed DC lines or systems, {shunts} switched shunts and {taps} tap changers in control",
                 remote.len(),
                 terminals.len()
             );
@@ -2230,9 +2230,9 @@ fn finish_ac(
 }
 
 pub(crate) struct DcLineGenerators {
-    row: usize,
-    from_generator: usize,
-    to_generator: usize,
+    pub(crate) row: usize,
+    pub(crate) from_generator: usize,
+    pub(crate) to_generator: usize,
 }
 
 fn dc_bus(value: f64) -> Option<u32> {
@@ -2601,6 +2601,8 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             &mut working,
             &opt.voltage_controls,
             [opt.lock_switched_shunts, opt.lock_taps],
+            original_generators,
+            &mappings,
         )?
     } else {
         Setup::none(&working)

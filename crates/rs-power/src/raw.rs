@@ -73,8 +73,9 @@ pub struct RawImport {
     /// its full RAW data, for the detailed DC model. Only filled when
     /// [`RawOptions::all_dc_lines`] imports VSC rows.
     pub vsc_lines: Vec<VscLine>,
-    /// Switched shunts in voltage control (MODSW 1 or 2, in service, with a
-    /// valid band and blocks) and transformer windings with voltage-control
+    /// Switched shunts in control (MODSW 1 to 5, in service, with a valid
+    /// band and blocks, and the device they watch found) and transformer
+    /// windings with voltage-control
     /// taps (COD 1), for [`crate::PowerFlowOptions::voltage_controls`].
     /// Revisions 30 and later; MATPOWER freezes both, as the import still
     /// does in `case`.
@@ -713,6 +714,9 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         }
     }
     let mut voltage_controls = VoltageControls::default();
+    // Switched shunts whose watched VSC converter or switched shunt is
+    // found once every record has been read.
+    let mut pending_shunts = Vec::new();
     for r in section("switched shunt") {
         let index = bus_index(r, 0)?;
         let control = if rev >= 30 {
@@ -721,13 +725,20 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             None
         };
         let b = &mut case.buses[index];
+        let modsw = r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)?;
         if let Some(shunt) = control {
-            voltage_controls.switched_shunts.push(shunt);
-        } else if r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)? != 0.0 {
+            pending_shunts.push(shunt);
+        } else if modsw == 6.0 {
             ctx.warn(
                 r.line,
                 true,
-                "switched shunt frozen at BINIT; its switching control is not supported",
+                "switched shunt frozen at BINIT; MODSW 6 watches a FACTS device, and FACTS devices are not modelled",
+            )?;
+        } else if modsw != 0.0 {
+            ctx.warn(
+                r.line,
+                true,
+                "switched shunt frozen at BINIT; its switching control is not supported, or its band, blocks or controlled bus are not valid",
             )?;
         }
         if rev >= 32 && !r.status(if rev >= 35 { 4 } else { 3 })? {
@@ -924,6 +935,13 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
+    voltage_controls.switched_shunts = resolve_switched_shunts(
+        pending_shunts,
+        &case,
+        &dc_line_names,
+        &dc_line_kinds,
+        &mut ctx,
+    )?;
     if options.lcc_absorbs_reactive
         && let Some(lines) = &mut case.dcline
     {
@@ -1200,31 +1218,54 @@ fn convert_substations(
     Ok((substations, read))
 }
 
-/// The voltage control of a switched shunt record (revision 30 or later), if
-/// it has one that the solver can apply.
+/// A switched shunt control read from its record, before the VSC
+/// converter or switched shunt it watches (MODSW 4 and 5) is found.
+struct PendingShunt {
+    shunt: SwitchedShunt,
+    /// The record's shunt ID (revision 35), "1" before.
+    id: String,
+    watches: Watches,
+}
+
+enum Watches {
+    /// Its own control needs nothing else (MODSW 1 to 3).
+    Nothing,
+    /// The converter at `bus` of the VSC DC line named `name` (MODSW 4).
+    Converter { name: String, bus: u32 },
+    /// A switched shunt at `bus`, the one with ID `id` when given (MODSW 5).
+    Shunt { bus: u32, id: Option<String> },
+}
+
+/// The control of a switched shunt record (revision 30 or later), if it has
+/// one that the solver can apply.
 fn switched_shunt(
     rev: u32,
     r: &Record,
     indices: &HashMap<u32, usize>,
     case: &Case,
-) -> Result<Option<SwitchedShunt>, Error> {
+) -> Result<Option<PendingShunt>, Error> {
     // Field positions: MODSW, STAT (none before 32), VSWHI, VSWLO, SWREM,
-    // BINIT, first N.
-    let [modsw, stat, vhi, vlo, rem, binit, first] = match rev {
-        35.. => [2, 4, 5, 6, 7, 11, 12],
-        32..=34 => [1, 3, 4, 5, 6, 9, 10],
-        _ => [1, usize::MAX, 2, 3, 4, 7, 8],
+    // RMIDNT, BINIT, first N.
+    let [modsw, stat, vhi, vlo, rem, rmidnt, binit, first] = match rev {
+        35.. => [2, 4, 5, 6, 7, 10, 11, 12],
+        32..=34 => [1, 3, 4, 5, 6, 8, 9, 10],
+        _ => [1, usize::MAX, 2, 3, 4, 6, 7, 8],
     };
-    let mode = match r.optional(modsw, 0.0)? {
-        1.0 => ShuntMode::Discrete,
-        2.0 => ShuntMode::Continuous,
-        _ => return Ok(None),
-    };
+    let modsw = r.optional(modsw, 0.0)?;
+    if !matches!(modsw, 1.0..=5.0) || modsw.fract() != 0.0 {
+        return Ok(None);
+    }
     if stat != usize::MAX && !r.status(stat)? {
         return Ok(None);
     }
     let (vmax, vmin) = (r.optional(vhi, 1.0)?, r.optional(vlo, 1.0)?);
-    if !(vmin > 0.0 && vmax >= vmin) {
+    let band_ok = if modsw <= 2.0 {
+        vmin > 0.0 && vmax >= vmin
+    } else {
+        // Fractions of the watched device's reactive range.
+        vmin >= 0.0 && vmax >= vmin && vmax <= 1.0
+    };
+    if !band_ok {
         return Ok(None);
     }
     // Revision 35 records carry S, N, B per block; earlier ones N, B.
@@ -1249,22 +1290,152 @@ fn switched_shunt(
     if blocks.is_empty() {
         return Ok(None);
     }
+    let own = r.id(0)?;
     let remote = r.optional(rem, 0.0)?.abs();
-    let regulated_bus = if remote == 0.0 || remote == r.num(0)? {
-        None
+    // The bus SWREM names, its own bus when 0; `None` when it is not in the case.
+    let named = if remote == 0.0 || remote == f64::from(own) {
+        Some(own)
     } else {
         indices.get(&(remote as u32)).map(|&i| case.buses[i].id)
     };
-    Ok(Some(SwitchedShunt {
-        bus: r.id(0)?,
-        mode,
-        regulated_bus,
-        vmax,
-        vmin,
-        initial: r.num(binit)?,
-        blocks,
-        line: r.line,
+    let name = r
+        .fields
+        .get(rmidnt)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut watches = Watches::Nothing;
+    let (mode, regulated_bus) = match modsw as u8 {
+        1 | 2 => {
+            let mode = if modsw == 1.0 {
+                ShuntMode::Discrete
+            } else {
+                ShuntMode::Continuous
+            };
+            (mode, named.filter(|&b| b != own))
+        }
+        3 => {
+            let Some(bus) = named else { return Ok(None) };
+            (ShuntMode::PlantReactive { bus }, None)
+        }
+        4 => {
+            let (Some(bus), Some(name)) = (named, name) else {
+                return Ok(None);
+            };
+            watches = Watches::Converter { name, bus };
+            // The row is filled in once the VSC lines are read.
+            (ShuntMode::ConverterReactive { row: 0, bus }, None)
+        }
+        _ => {
+            let Some(bus) = named else { return Ok(None) };
+            // Revision 35 allows several shunts at a bus; RMIDNT, when
+            // given, is taken as the ID of the one watched.
+            watches = Watches::Shunt {
+                bus,
+                id: name.filter(|_| rev >= 35),
+            };
+            (ShuntMode::ShuntSetting { shunt: 0 }, None)
+        }
+    };
+    Ok(Some(PendingShunt {
+        shunt: SwitchedShunt {
+            bus: own,
+            mode,
+            regulated_bus,
+            vmax,
+            vmin,
+            initial: r.num(binit)?,
+            blocks,
+            line: r.line,
+        },
+        id: if rev >= 35 {
+            identifier(r, 1)
+        } else {
+            "1".into()
+        },
+        watches,
     }))
+}
+
+/// Find the VSC converter or switched shunt each MODSW 4 or 5 shunt watches.
+/// Shunts whose device is missing stay frozen at BINIT, with a warning.
+fn resolve_switched_shunts(
+    pending: Vec<PendingShunt>,
+    case: &Case,
+    dc_line_names: &[String],
+    dc_line_kinds: &[DcLineKind],
+    ctx: &mut Context<'_>,
+) -> Result<Vec<SwitchedShunt>, Error> {
+    let mut kept = Vec::with_capacity(pending.len());
+    for mut p in pending {
+        if let Watches::Converter { name, bus } = &p.watches {
+            let row = (case.dcline.iter().flatten().enumerate()).position(|(r, line)| {
+                dc_line_kinds.get(r) == Some(&DcLineKind::VoltageSourceConverter)
+                    && dc_line_names.get(r).is_some_and(|n| n.trim() == name)
+                    && (line[0] == f64::from(*bus) || line[1] == f64::from(*bus))
+            });
+            let Some(row) = row else {
+                ctx.warn(
+                    p.shunt.line,
+                    true,
+                    format!(
+                        "switched shunt frozen at BINIT; it watches the converter at bus {bus} of VSC DC line {name}, which is not in the case (VSC lines are read only with all DC lines on)"
+                    ),
+                )?;
+                continue;
+            };
+            p.shunt.mode = ShuntMode::ConverterReactive { row, bus: *bus };
+        }
+        kept.push(p);
+    }
+    let found: Vec<Option<usize>> = (0..kept.len())
+        .map(|k| {
+            let Watches::Shunt { bus, id } = &kept[k].watches else {
+                return Some(k);
+            };
+            (0..kept.len()).find(|&j| {
+                j != k
+                    && kept[j].shunt.bus == *bus
+                    && id.as_ref().is_none_or(|id| kept[j].id == *id)
+            })
+        })
+        .collect();
+    // A shunt watching a shunt that drops out drops out too.
+    let mut alive: Vec<bool> = found.iter().map(Option::is_some).collect();
+    loop {
+        let mut changed = false;
+        for k in 0..kept.len() {
+            if alive[k] && found[k].is_some_and(|j| j != k && !alive[j]) {
+                alive[k] = false;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut shunts = Vec::with_capacity(kept.len());
+    // New positions, as frozen shunts drop out of the list.
+    let mut position = vec![usize::MAX; kept.len()];
+    for (k, p) in kept.iter().enumerate() {
+        if alive[k] {
+            position[k] = shunts.len();
+            shunts.push(p.shunt.clone());
+        } else if let Watches::Shunt { bus, .. } = &p.watches {
+            ctx.warn(
+                p.shunt.line,
+                true,
+                format!(
+                    "switched shunt frozen at BINIT; it watches a switched shunt at bus {bus} that is not in the case or not in control"
+                ),
+            )?;
+        }
+    }
+    for (k, p) in kept.iter().enumerate() {
+        if let (true, Watches::Shunt { .. }, Some(j)) = (alive[k], &p.watches, found[k]) {
+            shunts[position[k]].mode = ShuntMode::ShuntSetting { shunt: position[j] };
+        }
+    }
+    Ok(shunts)
 }
 
 /// The voltage-control tap of a transformer winding record (COD 1), if any.

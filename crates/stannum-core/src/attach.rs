@@ -489,6 +489,14 @@ mod tests {
 
         let (mut c, hello) = Client::connect(server.ticket(), &server.ticket().token);
         assert_eq!(hello["ok"]["api_version"], API_VERSION);
+        // The server counts the client just after sending the welcome, so
+        // give its thread a moment.
+        for _ in 0..50 {
+            if window.clients.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert_eq!(window.clients.load(Ordering::SeqCst), 1);
 
         let opened = c.call(1, "open_case", json!({ "path": case9() }));
