@@ -16,7 +16,8 @@ these that a case uses.
   and radial methods, three-phase models.
 - Enforcement of voltage, branch rating, angle-difference and generator P
   limits (they are checked in results only).
-- Area interchange control.
+- Inter-area transfer schedules (the RAW inter-area transfer data); area
+  interchange holds each area's total `PDES` only.
 
 ## Controls
 
@@ -41,4 +42,3 @@ these that a case uses.
 - RAWX (the JSON form of RAW), RAW export.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.
-- Diagram generation of switching devices.

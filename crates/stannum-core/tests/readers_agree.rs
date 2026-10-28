@@ -33,6 +33,7 @@ fn rs_power(text: &str) -> Option<Counts> {
         .branches
         .iter()
         .map(|b| b.element.as_str())
+        .filter(|e| !e.starts_with("switch:"))
         .collect();
     branches.sort_unstable();
     branches.dedup();
@@ -40,8 +41,9 @@ fn rs_power(text: &str) -> Option<Counts> {
         buses: Some(p.case.buses.len() - star),
         generators: Some(p.elements.generators.len()),
         branches: Some(branches.len()),
-        // Power flow has no switching devices and sums loads per bus.
-        switches: None,
+        // Switching devices solve as branches with `switch:` ids.
+        switches: Some(p.switching_devices.len()),
+        // Power flow sums loads per bus.
         loads: None,
     })
 }

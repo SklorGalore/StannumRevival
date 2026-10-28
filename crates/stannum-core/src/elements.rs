@@ -3,10 +3,10 @@
 //! The ids follow nodal's equipment ids, so topology results need no
 //! translation: `bus:101`, `line:101:102:1`, `transformer:101:102:1`,
 //! `transformer:101:102:103:1` (three-winding), `generator:101:1`,
-//! `load:101:1`. Bus numbers in branch ids are sorted, and the last part is
-//! the RAW circuit or machine id. [`KINDS`] lists every kind: its id format,
-//! the RAW section and MATPOWER table it comes from, and where the inspector
-//! reads it.
+//! `load:101:1`, `switch:101:102:1` (a RAW system switching device). Bus
+//! numbers in branch ids are sorted, and the last part is the RAW circuit or
+//! machine id. [`KINDS`] lists every kind: its id format, the RAW section and
+//! MATPOWER table it comes from, and where the inspector reads it.
 //!
 //! MATPOWER files have no circuit ids, so parallel branches between the same
 //! buses are numbered 1, 2, ... in file order, as are generators at a bus.
@@ -32,6 +32,7 @@ pub fn branch(kind: BranchKind, buses: &[u32], circuit: &str) -> String {
     let kind = match kind {
         BranchKind::Line => "line",
         BranchKind::Transformer => "transformer",
+        BranchKind::Switch => "switch",
     };
     format!("{kind}:{buses}:{circuit}")
 }
@@ -145,9 +146,9 @@ pub const KINDS: &[ElementKind] = &[
         buses: 2,
         raw_sections: &["SYSTEM SWITCHING DEVICE"],
         matpower_table: None,
-        inspector: Source::Topology,
-        solved: false,
-        outage: false,
+        inspector: Source::Model,
+        solved: true,
+        outage: true,
     },
     ElementKind {
         kind: "generator",

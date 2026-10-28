@@ -13,6 +13,18 @@ section into the next version's when a release is cut (see
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
+- **Area interchange** control in AC solves: each area's slack generation
+  moves until its net interchange is within `PTOL` of the RAW area data's
+  `PDES`, counting tie lines, or tie lines and loads that belong to another
+  area. Off by default; choose it under **Area interchange** in the solve
+  settings, or with `area_interchange` in run files and Python. A new
+  **Areas** tab lists every area's interchange, desired value and slack
+  movement, also with control off.
+- Generated one-lines draw RAW switching devices: breakers and disconnectors
+  with their name, open or closed state (flagged when not in their normal
+  position) and flow. Double-click one to open or close it in the study.
+  The inspector shows their type, state, normal state and flow, and its
+  study action reads **Open** / **Close** for them.
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton
@@ -91,6 +103,12 @@ section into the next version's when a release is cut (see
   the core lists every kind of id (`element_kinds`), and the app reads it.
 
 ### Fixed
+
+- Power flow reads RAW revision 34 and 35 system switching devices instead
+  of skipping them, so buses joined only by a breaker or disconnector are no
+  longer split apart. Each solves as a lossless branch of the device's
+  reactance, closed devices in service. Case diff compares their fields
+  too (it used to list them as an unsupported layout).
 
 - Records: double-clicking a cell of a record that wasn't picked yet edits
   that cell. The first click opens the inspector, which narrows the columns,
