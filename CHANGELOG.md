@@ -20,6 +20,10 @@ section into the next version's when a release is cut (see
   `# stannum-coordinates version 1`). Saved run files start with it. A file
   from a newer Stannum is refused with a message saying so, instead of being
   read wrongly; so is a diagram with a newer major `schemaVersion`.
+- **Versions and compatibility** page in the docs: what a version number
+  promises from 1.0 on for Stannum's files, the Python package,
+  `stannum-cli`, run-file commands and attach, and how anything is
+  deprecated before it's removed.
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
@@ -133,6 +137,12 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- The `stannum` Python package's public API is now exactly what
+  `stannum.__all__` lists. The `stannum.errors` module is private
+  (`stannum._errors`); import the errors from `stannum` itself, as in
+  `stannum.NotFound`. Helpers the package used inside, such as
+  `stannum.from_kind` and `stannum.tables_in`, are no longer reachable from
+  the top.
 - The app's analysis types now come from the core's command schemas
   (`commands.gen.ts`) rather than a hand-kept copy, so a field added in
   Rust can't be missed in the app.

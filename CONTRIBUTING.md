@@ -53,7 +53,11 @@ touch it and publishes it when they merge; it is not a required check.
 cd docs-site
 npm ci
 npm run dev     # preview at http://localhost:4321/StannumRevival/
+npm run build   # build, and check every internal link and heading anchor
 ```
+
+Write internal links with the site's base, such as
+`/StannumRevival/guide/diagram/`; the build fails on a link without it.
 
 Screenshots for the docs come from the browser smoke test
 (`STANNUM_SHOTS=dir`); copy the ones a page uses into
