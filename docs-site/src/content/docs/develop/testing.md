@@ -13,6 +13,7 @@ description: Where Stannum's tests live, how to run each kind, what CI runs on a
 | Large cases (ignored) | `crates/rs-power/tests/large_cases.rs` | `cargo test --release -p rs-power --test large_cases -- --ignored` after `pwsh scripts/fetch-test-cases.ps1` |
 | Time and size budgets (ignored) | `crates/stannum-core/tests/budgets.rs` | `cargo test --release -p stannum-core --test budgets -- --ignored --nocapture` |
 | Frontend unit tests | `src/**/*.test.ts` | `npm test` |
+| Files from earlier releases | `tests/compat/`, read by `crates/stannum-core/tests/compat.rs` and `src/lib/compat/compat.test.ts` | part of `cargo test -p stannum-core` and `npm test` |
 | Browser smoke test | `tests/browser/smoke.mjs` | see below |
 | Python package | `crates/stannum-py/tests/` | `pwsh scripts/ci/test-python.ps1` |
 
@@ -22,6 +23,14 @@ Test fixtures live in `crates/stannum-core/tests/fixtures/` and
 fixtures' README says where each case comes from).
 Cases too large or not licensed for the repository go in `tests/large/` by
 name and SHA-256 only.
+
+`tests/compat/` holds studies, diagrams, run files and coordinates files
+written by released versions of Stannum, one folder per release. They are
+never edited: a change that stops one opening breaks the 1.x promise to open
+every file a 1.x release wrote. When a release changes one of these formats,
+add a folder with files that release wrote (its README says how the current
+ones were made). The formats and their version rules are in the
+[file format reference](/StannumRevival/reference/study-file/).
 
 Some tests write files the app reads, and check them when they run
 normally:

@@ -10,6 +10,16 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- Reference pages for every Stannum file format: study files (`.stannum`),
+  diagrams (`.sld`), run files (`.stnrun`) and bus coordinates, each with
+  how its version number works. Studies, diagrams, run files and coordinates
+  saved by 0.3.0 and 0.4.1 are kept in `tests/compat`, and the tests open
+  them on every change.
+- Run files and bus coordinates files can say which version of their format
+  they follow with a first comment line (`# stannum-run-file version 1`,
+  `# stannum-coordinates version 1`). Saved run files start with it. A file
+  from a newer Stannum is refused with a message saying so, instead of being
+  read wrongly; so is a diagram with a newer major `schemaVersion`.
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
