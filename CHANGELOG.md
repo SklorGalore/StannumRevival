@@ -10,6 +10,10 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Versions and compatibility** page in the docs: what a version number
+  promises from 1.0 on for Stannum's files, the Python package,
+  `stannum-cli`, run-file commands and attach, and how anything is
+  deprecated before it's removed.
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
@@ -62,15 +66,6 @@ section into the next version's when a release is cut (see
   in the solve settings (`adjust_phase_shifters` in run files and Python)
   locks them when off. The overview counts the shifters that moved, and the
   Branches table shows each transformer's tap and phase shift.
-- AC solution methods: **Auto** (the new default), **Full Newton**,
-  **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
-  starts each pass with cheap decoupled iterations and finishes with Newton
-  when they slow down or fail, so it solves the 70,000–82,000-bus synthetic
-  cases about twice as fast as Newton (1.1 to 4 times), and still converges in
-  the stressed cases where the decoupled methods alone do not.
-  Every method stops at the same mismatch tolerance. Choose it under **AC
-  method** in the solve settings, or with `method` in run files and Python;
-  `decoupled_iterations` sets the decoupled iteration limit.
 - Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
   reactive output, a VSC converter's, or another switched shunt's setting
   within their band, as PSS/E does. Mode 6 keeps a FACTS device's shunt
@@ -83,6 +78,37 @@ section into the next version's when a release is cut (see
   error against its saved solution drops from 10.8° to 0.9°.
 - Continuous switched shunts wait for generators and FACTS devices to settle
   their reactive limits before they are fixed at the end of their range.
+
+### Changed
+
+- The `stannum` Python package's public API is now exactly what
+  `stannum.__all__` lists. The `stannum.errors` module is private
+  (`stannum._errors`); import the errors from `stannum` itself, as in
+  `stannum.NotFound`. Helpers the package used inside, such as
+  `stannum.from_kind` and `stannum.tables_in`, are no longer reachable from
+  the top.
+
+### Fixed
+
+- Power flow reads RAW revision 34 and 35 system switching devices instead
+  of skipping them, so buses joined only by a breaker or disconnector are no
+  longer split apart. Each solves as a lossless branch of the device's
+  reactance, closed devices in service. Case diff compares their fields
+  too (it used to list them as an unsupported layout).
+
+## 0.4.1 - 2026-10-28
+
+### Added
+
+- AC solution methods: **Auto** (the new default), **Full Newton**,
+  **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
+  starts each pass with cheap decoupled iterations and finishes with Newton
+  when they slow down or fail, so it solves the 70,000–82,000-bus synthetic
+  cases about twice as fast as Newton (1.1 to 4 times), and still converges in
+  the stressed cases where the decoupled methods alone do not.
+  Every method stops at the same mismatch tolerance. Choose it under **AC
+  method** in the solve settings, or with `method` in run files and Python;
+  `decoupled_iterations` sets the decoupled iteration limit.
 - **Move switched shunts** and **Move transformer taps** (and **Adjust DC
   converter taps**) now lock those devices when turned off: they stay where
   the last solve left them, instead of going back to their case values.
@@ -174,13 +200,6 @@ section into the next version's when a release is cut (see
   SyntheticUSA does before INDUCTION MACHINE. The missing sections are read
   as empty, as PSS/E does; Q partway through a section is still an error.
 - One-line labels clear the result halo and layer ring around a symbol.
-
-- Power flow reads RAW revision 34 and 35 system switching devices instead
-  of skipping them, so buses joined only by a breaker or disconnector are no
-  longer split apart. Each solves as a lossless branch of the device's
-  reactance, closed devices in service. Case diff compares their fields
-  too (it used to list them as an unsupported layout).
-
 - Records: double-clicking a cell of a record that wasn't picked yet edits
   that cell. The first click opens the inspector, which narrows the columns,
   and the edit used to land on the cell that slid under the pointer.
