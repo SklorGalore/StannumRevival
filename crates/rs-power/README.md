@@ -225,7 +225,11 @@ bus inside VMI..VMA:
   shifters share the correction. At most 10 degrees per pass.
 - An asymmetric shifter's tap follows its angle as
   `sin(CNXA) / sin(CNXA - angle)`, relative to the case's tap.
-- `lock_phase_shifters` keeps them at their angles; the result still lists
+- `FlowControls::reactive_taps` lists windings in reactive power flow
+  control (COD 2); they step in whole positions (NTP) within RMI..RMA to hold
+  the Mvar into the winding within VMI..VMA, in the same joint solve.
+  `lock_taps` locks them and `reactive_tap_ratios` gives their final ratios.
+- `lock_phase_shifters` keeps the shifters at their angles; the result still lists
   them. `PowerFlowResult::phase_shift_angles` and `flow_control_passes` give
   the outcome.
 

@@ -420,3 +420,47 @@ fn solve_settings_move_or_lock_phase_shifters() {
     assert_eq!(kept.phase_shifters_moved, 1);
     assert!((flow(&kept).1 - angle).abs() < 1e-12);
 }
+
+#[test]
+fn transformer_tap_setting_moves_or_locks_reactive_flow_taps() {
+    // five_bus with its 2-4 transformer in reactive flow control (COD 2),
+    // holding 21.0-21.6 Mvar into it at bus 2; ratio 1.0 gives 22.4.
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_reactive_tap.raw");
+    let mut ws = open(path);
+    let mut solve = |adjust_transformer_taps: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_transformer_taps,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let flow = |r: &stannum_core::power::SolveReport| {
+        let k = r
+            .branches
+            .iter()
+            .position(|b| b.from == 2 && b.to == 4)
+            .unwrap();
+        (r.branches[k].qf, r.branches[k].tap)
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!(locked.taps_moved, 0);
+    let (before, tap) = flow(&locked);
+    assert_eq!(tap, 1.0);
+    assert!(!(21.0..=21.6).contains(&before), "{before}");
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.taps_moved, 1);
+    assert!(moved.flow_control_passes > 0);
+    let (after, tap) = flow(&moved);
+    assert!((20.9..=21.7).contains(&after), "{after} at tap {tap}");
+    assert!(tap != 1.0);
+    let kept = solve(false, Last);
+    assert_eq!(kept.flow_control_passes, 0);
+    assert!((flow(&kept).1 - tap).abs() < 1e-12);
+}

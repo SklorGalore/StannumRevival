@@ -3,7 +3,7 @@
 use crate::{
     Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, Error, FlowControls, Generator,
     LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink, MtdcSystem,
-    PhaseShifter, ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl,
+    PhaseShifter, ReactiveTap, ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl,
     VscConverter, VscDcControl, VscLine,
 };
 use std::{
@@ -82,9 +82,10 @@ pub struct RawImport {
     /// does in `case`.
     pub voltage_controls: VoltageControls,
     /// Transformer windings with phase shifters in active power flow
-    /// control (COD 3, symmetric, and COD 5, asymmetric), for
+    /// control (COD 3, symmetric, and COD 5, asymmetric) and taps in
+    /// reactive power flow control (COD 2), for
     /// [`crate::PowerFlowOptions::flow_controls`]. Revisions 30 and later;
-    /// `case` keeps every angle as the file gives it.
+    /// `case` keeps every angle and ratio as the file gives it.
     pub flow_controls: FlowControls,
     /// Every multi-terminal DC system with its full RAW data, for the
     /// detailed DC model. Each converter names its `case.dcline` row. Only
@@ -889,7 +890,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
         &mut voltage_controls.taps,
-        &mut flow_controls.phase_shifters,
+        &mut flow_controls,
     )?;
     // After the transformers, so branch rows of files that have none keep
     // the numbers they had before switching devices were read.
@@ -1502,6 +1503,79 @@ fn tap_control(
     }))
 }
 
+/// Add a transformer winding record's flow control, if it has one: a
+/// reactive flow tap (COD 2) or a phase shifter (COD 3 or 5).
+fn flow_control(
+    rev: u32,
+    w: &Record,
+    controls: [usize; 3],
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+    flow: &mut FlowControls,
+) -> Result<(), Error> {
+    if let Some(t) = reactive_tap(rev, w, controls[0], branch, tap, ctx)? {
+        flow.reactive_taps.push(t);
+    }
+    if let Some(p) = phase_shifter(rev, w, controls, branch, tap, ctx)? {
+        flow.phase_shifters.push(p);
+    }
+    Ok(())
+}
+
+/// The reactive power flow tap of a transformer winding record (COD 2), if
+/// any. `cod` is the record's COD field and `tap` the winding's branch tap.
+fn reactive_tap(
+    rev: u32,
+    w: &Record,
+    cod: usize,
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+) -> Result<Option<ReactiveTap>, Error> {
+    if rev < 30 || w.optional(cod, 0.0)? != 2.0 {
+        return Ok(None);
+    }
+    // CONT, (NODE in revision 35), RMA, RMI, VMA, VMI, NTP.
+    let skip = usize::from(rev >= 35);
+    let [rma, rmi, vma, vmi, ntp] = [2, 3, 4, 5, 6].map(|k| cod + skip + k);
+    let (ratio_max, ratio_min) = (w.optional(rma, 1.1)?, w.optional(rmi, 0.9)?);
+    let (mvar_max, mvar_min) = (w.optional(vma, 0.0)?, w.optional(vmi, 0.0)?);
+    let positions = w.optional(ntp, 33.0)?;
+    let ratio = w.num(0)?;
+    if ratio <= 0.0
+        || tap <= 0.0
+        || ratio_max <= ratio_min
+        || positions < 2.0
+        || positions.fract() != 0.0
+    {
+        ctx.warn(
+            w.line,
+            true,
+            "reactive flow tap with an invalid ratio range or tap positions held at its ratio",
+        )?;
+        return Ok(None);
+    }
+    if mvar_max < mvar_min {
+        ctx.warn(
+            w.line,
+            false,
+            "reactive flow tap limits given high-to-low (VMA < VMI); using them as a band",
+        )?;
+    }
+    Ok(Some(ReactiveTap {
+        branch,
+        mvar_max,
+        mvar_min,
+        ratio,
+        ratio_max,
+        ratio_min,
+        positions: positions as u32,
+        tap_per_ratio: tap / ratio,
+        line: w.line,
+    }))
+}
+
 /// The phase shifter of a transformer winding record in active power flow
 /// control (COD 3 or 5), if any. `controls` holds the record's COD, TAB and
 /// CNXA fields; `tap` is the winding's branch tap.
@@ -1659,7 +1733,7 @@ fn convert_transformers(
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
     taps: &mut Vec<TapControl>,
-    shifters: &mut Vec<PhaseShifter>,
+    flow: &mut FlowControls,
 ) -> Result<(), Error> {
     let mut groups = [vec![], vec![]];
     let mut pos = 0;
@@ -1717,7 +1791,8 @@ fn convert_transformers(
                     // Voltage control (COD ±1) goes to `voltage_controls`
                     // and phase shifters (COD ±3, ±5) to `flow_controls`,
                     // which also read the connection angle (CNXA).
-                    let modelled = (i == controls[0] && [1.0, 3.0, 5.0].contains(&value.abs()))
+                    let modelled = (i == controls[0]
+                        && [1.0, 2.0, 3.0, 5.0].contains(&value.abs()))
                         || (i == controls[2] && w.optional(controls[0], 0.0)?.abs() == 5.0);
                     if value != 0.0 && !modelled {
                         ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
@@ -1773,11 +1848,7 @@ fn convert_transformers(
                 {
                     taps.push(control);
                 }
-                if let Some(shifter) =
-                    phase_shifter(rev, &ws[0], controls, case.branches.len(), tap, ctx)?
-                {
-                    shifters.push(shifter);
-                }
+                flow_control(rev, &ws[0], controls, case.branches.len(), tap, ctx, flow)?;
                 let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
                 case.branches.push(transformer_branch(
                     r,
@@ -1835,11 +1906,7 @@ fn convert_transformers(
                     {
                         taps.push(control);
                     }
-                    if let Some(shifter) =
-                        phase_shifter(rev, &ws[i], controls, case.branches.len(), tap, ctx)?
-                    {
-                        shifters.push(shifter);
-                    }
+                    flow_control(rev, &ws[i], controls, case.branches.len(), tap, ctx, flow)?;
                     let b = &case.buses[buses[i]];
                     case.branches.push(transformer_branch(
                         r, &ws[i], b.id, id, star_z[i], tap, online,

@@ -16,6 +16,11 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Reactive flow taps: `FlowControls::reactive_taps` (`ReactiveTap`) keeps
+  transformer windings in reactive power flow control (COD 2). They step in
+  whole positions with the phase shifters, from the same joint Jacobian
+  solve; `lock_taps` locks them, and `PowerFlowResult::reactive_tap_ratios`
+  gives their final ratios. COD 2 windings no longer warn on import.
 - Phase shifters: `RawImport::flow_controls` (`FlowControls`, `PhaseShifter`,
   `Asymmetric`) keeps transformer windings in active power flow control
   (COD 3 and 5). `PowerFlowOptions::flow_controls` moves their angles between

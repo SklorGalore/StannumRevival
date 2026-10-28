@@ -1,6 +1,7 @@
 //! Power-flow controls applied between Newton solves: phase shifters that
 //! hold the active power through a transformer winding within a band (PSS/E
-//! winding COD 3, symmetric, and COD 5, asymmetric).
+//! winding COD 3, symmetric, and COD 5, asymmetric), and tap changers that
+//! hold its reactive power within a band (COD 2).
 
 /// Flow controls to apply during an AC solve, usually from
 /// [`crate::RawImport::flow_controls`]. Empty by default.
@@ -9,12 +10,56 @@ pub struct FlowControls {
     /// Transformer windings whose phase shift angle holds their active
     /// power flow within a band.
     pub phase_shifters: Vec<PhaseShifter>,
+    /// Transformer windings whose tap ratio holds their reactive power flow
+    /// within a band.
+    pub reactive_taps: Vec<ReactiveTap>,
 }
 
 impl FlowControls {
     /// True when there is nothing to control.
     pub fn is_empty(&self) -> bool {
-        self.phase_shifters.is_empty()
+        self.phase_shifters.is_empty() && self.reactive_taps.is_empty()
+    }
+}
+
+/// A transformer winding whose tap steps to hold the reactive power flowing
+/// into it at its own bus (the branch's `from` end) within a band (PSS/E
+/// COD 2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReactiveTap {
+    /// Index of the winding's entry in `case.branches`.
+    pub branch: usize,
+    /// Upper limit of the flow band in Mvar (VMA).
+    pub mvar_max: f64,
+    /// Lower limit of the flow band in Mvar (VMI).
+    pub mvar_min: f64,
+    /// Starting winding ratio in the record's units (WINDV).
+    pub ratio: f64,
+    /// Highest winding ratio (RMA).
+    pub ratio_max: f64,
+    /// Lowest winding ratio (RMI).
+    pub ratio_min: f64,
+    /// Tap positions from `ratio_min` to `ratio_max` (NTP), at least 2.
+    pub positions: u32,
+    /// The branch's off-nominal tap per unit of winding ratio, so that
+    /// `branch.tap = tap_per_ratio * ratio`.
+    pub tap_per_ratio: f64,
+    /// One-based source line of the winding record, for messages.
+    pub line: usize,
+}
+
+impl ReactiveTap {
+    /// The band as (low, high) Mvar, whichever way round the record gives it.
+    pub fn band(&self) -> (f64, f64) {
+        (
+            self.mvar_min.min(self.mvar_max),
+            self.mvar_min.max(self.mvar_max),
+        )
+    }
+
+    /// Ratio change of one tap step.
+    pub fn step(&self) -> f64 {
+        (self.ratio_max - self.ratio_min) / f64::from(self.positions.max(2) - 1)
     }
 }
 
@@ -118,14 +163,30 @@ use crate::{BusType, Case, Error, network::Network};
 use faer::{Mat, prelude::Solve, sparse::SparseColMat};
 use num_complex::Complex64 as C;
 
-/// Check `controls` against `case` and list the phase shifters that move:
-/// none when `lock` says so, and none on an offline branch.
+/// The flow controls that move in a solve, with their listed indices.
+pub(crate) struct Moving<'a> {
+    pub shifters: Vec<(usize, &'a PhaseShifter)>,
+    pub taps: Vec<(usize, &'a ReactiveTap)>,
+}
+
+impl Moving<'_> {
+    pub fn none() -> Moving<'static> {
+        Moving {
+            shifters: Vec::new(),
+            taps: Vec::new(),
+        }
+    }
+}
+
+/// Check `controls` against `case` and list the controls that move: no
+/// phase shifter when `lock_shifters` says so, no tap when `lock_taps`
+/// does, and none on an offline branch.
 pub(crate) fn setup<'a>(
     case: &Case,
     controls: &'a FlowControls,
-    lock: bool,
-) -> Result<Vec<(usize, &'a PhaseShifter)>, Error> {
-    let mut moving = Vec::new();
+    [lock_shifters, lock_taps]: [bool; 2],
+) -> Result<Moving<'a>, Error> {
+    let mut moving = Moving::none();
     for (k, p) in controls.phase_shifters.iter().enumerate() {
         let valid = [p.mw_max, p.mw_min, p.angle_max, p.angle_min, p.angle]
             .iter()
@@ -143,97 +204,170 @@ pub(crate) fn setup<'a>(
             )));
         }
         let (lo, hi) = p.range();
-        if !lock && case.branches[p.branch].online && lo < hi {
-            moving.push((k, p));
+        if !lock_shifters && case.branches[p.branch].online && lo < hi {
+            moving.shifters.push((k, p));
+        }
+    }
+    for (k, t) in controls.reactive_taps.iter().enumerate() {
+        let valid = [t.mvar_max, t.mvar_min, t.ratio, t.tap_per_ratio]
+            .iter()
+            .all(|x| x.is_finite())
+            && t.ratio_max > t.ratio_min
+            && t.ratio > 0.0
+            && t.tap_per_ratio > 0.0;
+        if t.branch >= case.branches.len() || !valid {
+            return Err(Error::InvalidCase(format!(
+                "reactive flow tap on branch {} has an invalid branch, band or ratio range",
+                t.branch
+            )));
+        }
+        if !lock_taps && case.branches[t.branch].online {
+            moving.taps.push((k, t));
         }
     }
     Ok(moving)
 }
 
+/// What a control moves and what it holds.
+#[derive(Clone, Copy)]
+enum Device<'a> {
+    Shifter(&'a PhaseShifter),
+    Tap(&'a ReactiveTap),
+}
+
+impl Device<'_> {
+    fn branch(&self) -> usize {
+        match self {
+            Device::Shifter(p) => p.branch,
+            Device::Tap(t) => t.branch,
+        }
+    }
+
+    fn band(&self) -> (f64, f64) {
+        match self {
+            Device::Shifter(p) => p.band(),
+            Device::Tap(t) => t.band(),
+        }
+    }
+
+    /// Whether the device holds reactive rather than active power.
+    fn reactive(&self) -> bool {
+        matches!(self, Device::Tap(_))
+    }
+}
+
 #[derive(Clone)]
-struct ShifterState<'a> {
+struct State<'a> {
+    /// Index in the device's list in [`FlowControls`].
     index: usize,
-    shifter: &'a PhaseShifter,
-    angle: f64,
+    device: Device<'a>,
+    /// Phase shift angle in degrees, or winding ratio.
+    value: f64,
     last: i8,
     reversals: u8,
-    /// Held because the angle barely moves the flow, or a solve after its
-    /// move failed.
+    /// Held because it barely moves its flow, or a solve after its move
+    /// failed.
     held: bool,
 }
 
-/// Direction reversals after which a shifter is held, so that it cannot hunt.
+/// Direction reversals after which a device is held, so that it cannot hunt.
 const MAX_REVERSALS: u8 = 2;
 
-/// Fraction of a band inside its nearer edge that a shifter aims for.
+/// Fraction of a band inside its nearer edge that a device aims for.
 const TARGET_MARGIN: f64 = 0.2;
 
-/// Flow tolerance (MW) outside a band before a shifter moves.
+/// Flow tolerance (MW or Mvar) outside a band before a device moves.
 const BAND_TOLERANCE: f64 = 0.1;
 
 /// Largest angle change (degrees) in one pass.
 const MAX_STEP: f64 = 10.0;
 
-/// Smallest flow change (MW per degree) for a shifter to keep controlling.
+/// Most tap steps in one pass.
+const MAX_TAP_STEPS: f64 = 4.0;
+
+/// Smallest flow change for a device to keep controlling: MW per degree
+/// for a phase shifter, Mvar per tap step for a tap.
 const MIN_EFFECT: f64 = 0.01;
 
-/// Moves phase shifters between Newton solves.
+/// Moves phase shifters and reactive flow taps between Newton solves.
 #[derive(Clone)]
 pub(crate) struct FlowController<'a> {
-    shifters: Vec<ShifterState<'a>>,
-    count: usize,
+    devices: Vec<State<'a>>,
+    counts: [usize; 2],
 }
 
-/// A shifter's branch at the present voltages.
+/// A device's branch at the present voltages.
 struct Terminal {
     f: usize,
     t: usize,
-    /// Flow into the branch at its `from` end, per unit.
-    flow: f64,
+    /// Power into the branch at its `from` end, per unit.
+    s: C,
     /// `Vf · conj(yft · Vt)` and `Vt · conj(ytf · Vf)`.
     a: C,
     b: C,
-    /// `Vf · conj(yff · Vf)` and `Vt · conj(ytt · Vt)`.
-    own: [C; 2],
+    /// `Vf · conj(yff · Vf)`.
+    own: C,
+    /// Off-nominal tap magnitude of the branch.
+    tap: f64,
+}
+
+impl Terminal {
+    /// Change of the power into the branch at each end per unit of the
+    /// device's control, with every voltage held: per radian of angle,
+    /// or per unit of winding ratio.
+    fn ends(&self, device: &Device<'_>) -> [C; 2] {
+        match device {
+            // yft and ytf turn with the angle: d/dphi = -j a at the from
+            // end, j b at the to end.
+            Device::Shifter(_) => [C::new(0.0, -1.0) * self.a, C::new(0.0, 1.0) * self.b],
+            // yff goes as 1/t^2 and yft, ytf as 1/t.
+            Device::Tap(t) => {
+                let per_ratio = t.tap_per_ratio / self.tap;
+                [-(2.0 * self.own + self.a) * per_ratio, -self.b * per_ratio]
+            }
+        }
+    }
 }
 
 impl<'a> FlowController<'a> {
-    pub fn new(moving: &[(usize, &'a PhaseShifter)], controls: &FlowControls) -> Self {
+    pub fn new(moving: &Moving<'a>, controls: &FlowControls) -> Self {
+        let state = |index, device, value| State {
+            index,
+            device,
+            value,
+            last: 0,
+            reversals: 0,
+            held: false,
+        };
+        let devices = (moving.shifters.iter())
+            .map(|&(k, p)| state(k, Device::Shifter(p), p.angle))
+            .chain((moving.taps.iter()).map(|&(k, t)| state(k, Device::Tap(t), t.ratio)))
+            .collect();
         Self {
-            shifters: moving
-                .iter()
-                .map(|&(index, shifter)| ShifterState {
-                    index,
-                    shifter,
-                    angle: shifter.angle,
-                    last: 0,
-                    reversals: 0,
-                    held: false,
-                })
-                .collect(),
-            count: controls.phase_shifters.len(),
+            devices,
+            counts: [controls.phase_shifters.len(), controls.reactive_taps.len()],
         }
     }
 
     /// Whether there is anything to move.
     pub fn is_empty(&self) -> bool {
-        self.shifters.is_empty()
+        self.devices.is_empty()
     }
 
-    /// Phase shifters in flow control.
-    pub fn devices(&self) -> usize {
-        self.shifters.len()
+    /// Phase shifters and reactive flow taps in control.
+    pub fn devices(&self) -> (usize, usize) {
+        let taps = self.devices.iter().filter(|d| d.device.reactive()).count();
+        (self.devices.len() - taps, taps)
     }
 
     /// One control pass at voltages `v` with bus kinds `kinds`: move every
-    /// shifter whose flow is outside its band, updating the branches'
-    /// `shift` (and `tap`, for asymmetric shifters) in `case`. Returns the
-    /// number moved.
+    /// device whose flow is outside its band, updating the branches'
+    /// `shift` and `tap` in `case`. Returns the number moved.
     ///
-    /// The moves come from the flows' sensitivities to the angles through
+    /// The moves come from the flows' sensitivities to the controls through
     /// the whole network (the power-flow Jacobian), solved together, so
-    /// that shifters in parallel or in series share the correction instead
-    /// of fighting over it.
+    /// that devices in parallel or in series share the correction instead
+    /// of fighting over it. Taps then round their moves to whole steps.
     pub fn pass(
         &mut self,
         case: &mut Case,
@@ -242,8 +376,8 @@ impl<'a> FlowController<'a> {
         kinds: &[BusType],
     ) -> Result<usize, Error> {
         let mut edge_of = std::collections::HashMap::new();
-        for s in &self.shifters {
-            edge_of.insert(s.shifter.branch, None);
+        for d in &self.devices {
+            edge_of.insert(d.device.branch(), None);
         }
         for (k, e) in net.edges.iter().enumerate() {
             if let Some(slot) = edge_of.get_mut(&e.original) {
@@ -253,33 +387,34 @@ impl<'a> FlowController<'a> {
         let terminal = |branch: usize| {
             edge_of[&branch].map(|k: usize| {
                 let e = &net.edges[k];
-                let own = [
-                    v[e.f] * (e.yff * v[e.f]).conj(),
-                    v[e.t] * (e.ytt * v[e.t]).conj(),
-                ];
+                let own = v[e.f] * (e.yff * v[e.f]).conj();
                 let a = v[e.f] * (e.yft * v[e.t]).conj();
+                let tap = case.branches[branch].tap;
                 Terminal {
                     f: e.f,
                     t: e.t,
-                    flow: (own[0] + a).re,
+                    s: own + a,
                     a,
                     b: v[e.t] * (e.ytf * v[e.f]).conj(),
                     own,
+                    tap: if tap == 0.0 { 1.0 } else { tap },
                 }
             })
         };
-        // Shifters outside their bands, with their terminals and targets.
         let base = case.base_mva;
+        let measure = |d: &Device<'_>, s: C| if d.reactive() { s.im } else { s.re };
+        // Devices outside their bands, with their terminals, flows and
+        // targets.
         let mut out = Vec::new();
-        for (k, s) in self.shifters.iter().enumerate() {
-            if s.held || s.reversals >= MAX_REVERSALS {
+        for (k, d) in self.devices.iter().enumerate() {
+            if d.held || d.reversals >= MAX_REVERSALS {
                 continue;
             }
-            let Some(term) = terminal(s.shifter.branch) else {
+            let Some(term) = terminal(d.device.branch()) else {
                 continue;
             };
-            let flow = term.flow * base;
-            let (lo, hi) = s.shifter.band();
+            let flow = measure(&d.device, term.s) * base;
+            let (lo, hi) = d.device.band();
             if flow >= lo - BAND_TOLERANCE && flow <= hi + BAND_TOLERANCE {
                 continue;
             }
@@ -290,27 +425,40 @@ impl<'a> FlowController<'a> {
         if out.is_empty() {
             return Ok(0);
         }
-        let slopes = sensitivities(net, v, kinds, &out.iter().map(|o| &o.1).collect::<Vec<_>>())?;
-        // MW per degree.
-        let scale = base * std::f64::consts::PI / 180.0;
-        let m = out.len();
-        let mut matrix: Vec<Vec<f64>> = slopes
+        let parts: Vec<_> = out
             .iter()
-            .map(|row| row.iter().map(|x| x * scale).collect())
+            .map(|(k, term, _, _)| (self.devices[*k].device, term))
             .collect();
-        // A shifter that barely moves its own flow is held, and left out.
+        let slopes = sensitivities(net, v, kinds, &parts)?;
+        // Per degree for shifters, per unit of ratio for taps; MW or Mvar.
+        let m = out.len();
+        let unit = |d: &Device<'_>| match d {
+            Device::Shifter(_) => base * std::f64::consts::PI / 180.0,
+            Device::Tap(_) => base,
+        };
+        let mut matrix: Vec<Vec<f64>> = (0..m)
+            .map(|i| (0..m).map(|j| slopes[i][j] * unit(&parts[j].0)).collect())
+            .collect();
+        // A device that barely moves its own flow is held, and left out.
         let mut keep = vec![true; m];
         for i in 0..m {
-            if matrix[i][i].abs() < MIN_EFFECT {
+            let d = &mut self.devices[out[i].0];
+            let effect = match d.device {
+                Device::Shifter(_) => matrix[i][i],
+                Device::Tap(t) => matrix[i][i] * t.step(),
+            };
+            if effect.abs() < MIN_EFFECT {
                 keep[i] = false;
-                let s = &mut self.shifters[out[i].0];
-                s.held = true;
-                let branch = &case.branches[s.shifter.branch];
+                d.held = true;
+                let branch = &case.branches[d.device.branch()];
+                let (what, per) = match d.device {
+                    Device::Shifter(_) => ("phase shifter", "MW per degree"),
+                    Device::Tap(_) => ("reactive flow tap", "Mvar per step"),
+                };
                 log::info!(
-                    "  phase shifter {}-{} barely moves its flow ({:.3} MW per degree); holding it",
+                    "  {what} {}-{} barely moves its flow ({effect:.3} {per}); holding it",
                     branch.from,
                     branch.to,
-                    matrix[i][i]
                 );
             }
         }
@@ -325,13 +473,15 @@ impl<'a> FlowController<'a> {
             .map(|i| if keep[i] { out[i].3 - out[i].2 } else { 0.0 })
             .collect();
         let changes = dense_solve(matrix.clone(), rhs.clone()).unwrap_or_else(|| {
-            // Shifters that cannot be moved independently (in series on
+            // Devices that cannot be moved independently (in series on
             // one path, say): each takes its own share instead.
             (0..m).map(|i| rhs[i] / matrix[i][i] / m as f64).collect()
         });
-        // Scale the whole move down together when one would exceed the
+        // Scale every angle move down together when one would exceed the
         // per-pass limit, so the shifters keep their proportions.
-        let largest = changes.iter().fold(0.0_f64, |a, x| a.max(x.abs()));
+        let largest = (0..m)
+            .filter(|&i| !parts[i].0.reactive())
+            .fold(0.0_f64, |a, i| a.max(changes[i].abs()));
         let factor = if largest > MAX_STEP {
             MAX_STEP / largest
         } else {
@@ -342,72 +492,107 @@ impl<'a> FlowController<'a> {
             if !keep[i] {
                 continue;
             }
-            let s = &mut self.shifters[*k];
-            let (amin, amax) = s.shifter.range();
-            let next = (s.angle + changes[i] * factor).clamp(amin, amax);
-            if (next - s.angle).abs() < 1e-9 {
+            let d = &mut self.devices[*k];
+            let next = match d.device {
+                Device::Shifter(p) => {
+                    let (amin, amax) = p.range();
+                    (d.value + changes[i] * factor).clamp(amin, amax)
+                }
+                // Whole steps, at least one, as tap changers move.
+                Device::Tap(t) => {
+                    let step = t.step();
+                    let steps = (changes[i] / step)
+                        .round()
+                        .clamp(-MAX_TAP_STEPS, MAX_TAP_STEPS);
+                    let steps = if steps == 0.0 {
+                        changes[i].signum()
+                    } else {
+                        steps
+                    };
+                    (d.value + steps * step).clamp(t.ratio_min, t.ratio_max)
+                }
+            };
+            if (next - d.value).abs() < 1e-9 {
                 continue;
             }
-            let dir = if next > s.angle { 1 } else { -1 };
-            if s.last != 0 && s.last != dir {
-                s.reversals += 1;
+            let dir = if next > d.value { 1 } else { -1 };
+            if d.last != 0 && d.last != dir {
+                d.reversals += 1;
             }
-            s.last = dir;
-            let (lo, hi) = s.shifter.band();
-            let branch = &mut case.branches[s.shifter.branch];
-            let text = format!(
-                "  phase shifter {}-{}: angle {:.3} -> {next:.3} deg, flow {flow:.1} MW is outside {lo:.1}-{hi:.1}",
-                branch.from, branch.to, s.angle
-            );
+            d.last = dir;
+            let (lo, hi) = d.device.band();
+            let branch = &mut case.branches[d.device.branch()];
+            let text = match d.device {
+                Device::Shifter(_) => format!(
+                    "  phase shifter {}-{}: angle {:.3} -> {next:.3} deg, flow {flow:.1} MW is outside {lo:.1}-{hi:.1}",
+                    branch.from, branch.to, d.value
+                ),
+                Device::Tap(_) => format!(
+                    "  reactive flow tap {}-{}: ratio {:.4} -> {next:.4}, flow {flow:.1} Mvar is outside {lo:.1}-{hi:.1}",
+                    branch.from, branch.to, d.value
+                ),
+            };
             if moved < crate::solver::DETAIL_LINES {
                 log::info!("{text}");
             } else {
                 log::debug!("{text}");
             }
-            s.angle = next;
-            branch.shift = next;
-            branch.tap = s.shifter.tap_at(next, branch.tap);
+            d.value = next;
+            match d.device {
+                Device::Shifter(p) => {
+                    branch.shift = next;
+                    branch.tap = p.tap_at(next, branch.tap);
+                }
+                Device::Tap(t) => branch.tap = t.tap_per_ratio * next,
+            }
             moved += 1;
         }
         Ok(moved)
     }
 
     /// Go back to `earlier` after the solve that the last pass led to
-    /// failed, holding every shifter that pass moved. Returns the number held.
+    /// failed, holding every device that pass moved. Returns the number held.
     pub fn undo(&mut self, earlier: Self) -> usize {
-        let moved: Vec<bool> = (self.shifters.iter().zip(&earlier.shifters))
-            .map(|(now, then)| now.angle != then.angle)
+        let moved: Vec<bool> = (self.devices.iter().zip(&earlier.devices))
+            .map(|(now, then)| now.value != then.value)
             .collect();
         *self = earlier;
         let mut held = 0;
-        for (s, _) in self.shifters.iter_mut().zip(&moved).filter(|x| *x.1) {
-            s.held = true;
+        for (d, _) in self.devices.iter_mut().zip(&moved).filter(|x| *x.1) {
+            d.held = true;
             held += 1;
         }
         held
     }
 
-    /// Final angles for every listed phase shifter, with locked and offline
-    /// ones at their starting angle.
-    pub fn values(&self, controls: &FlowControls) -> Vec<f64> {
+    /// Final angles for every listed phase shifter and final ratios for
+    /// every listed reactive flow tap, with locked and offline ones at their
+    /// starting values.
+    pub fn values(&self, controls: &FlowControls) -> (Vec<f64>, Vec<f64>) {
         let mut angles: Vec<f64> = controls.phase_shifters.iter().map(|p| p.angle).collect();
-        angles.resize(self.count, f64::NAN);
-        for s in &self.shifters {
-            angles[s.index] = s.angle;
+        let mut ratios: Vec<f64> = controls.reactive_taps.iter().map(|t| t.ratio).collect();
+        angles.resize(self.counts[0], f64::NAN);
+        ratios.resize(self.counts[1], f64::NAN);
+        for d in &self.devices {
+            match d.device {
+                Device::Shifter(_) => angles[d.index] = d.value,
+                Device::Tap(_) => ratios[d.index] = d.value,
+            }
         }
-        angles
+        (angles, ratios)
     }
 }
 
-/// `slopes[i][j]`: change of shifter `i`'s flow (per unit) per radian of
-/// shifter `j`'s angle, with the rest of the network responding as the
-/// Newton equations say: generators hold their buses' voltages and the
-/// reference buses take up the change in losses.
+/// `slopes[i][j]`: change of device `i`'s flow (per unit; active power for
+/// a shifter, reactive for a tap) per unit of device `j`'s control (radian
+/// of angle, or unit of winding ratio), with the rest of the network
+/// responding as the Newton equations say: generators hold their buses'
+/// voltages and the reference buses take up the change in losses.
 fn sensitivities(
     net: &Network,
     v: &[C],
     kinds: &[BusType],
-    terms: &[&Terminal],
+    parts: &[(Device<'_>, &Terminal)],
 ) -> Result<Vec<Vec<f64>>, Error> {
     let (angles, pq) = crate::solver::variables(kinds);
     let n = angles.len() + pq.len();
@@ -419,12 +604,21 @@ fn sensitivities(
     for (k, &i) in pq.iter().enumerate() {
         magnitude_of[i] = Some(angles.len() + k);
     }
-    let m = terms.len();
+    let m = parts.len();
+    let part = |d: &Device<'_>, s: C| if d.reactive() { s.im } else { s.re };
+    let ends: Vec<[C; 2]> = parts.iter().map(|(d, t)| t.ends(d)).collect();
     let mut slopes = vec![vec![0.0; m]; m];
-    // Direct effect of each angle on its own branch's flow, with every
-    // voltage held: d(Vf conj(yft Vt))/dphi = -j a, so dP/dphi = Im(a).
-    for (i, t) in terms.iter().enumerate() {
-        slopes[i][i] = t.a.im;
+    // Direct effect of each control on its own branch's flow, with every
+    // voltage held (and on any other device on the same branch).
+    for i in 0..m {
+        for j in 0..m {
+            if parts[i].1.f == parts[j].1.f
+                && parts[i].1.t == parts[j].1.t
+                && parts[i].0.branch() == parts[j].0.branch()
+            {
+                slopes[i][j] = part(&parts[i].0, ends[j][0]);
+            }
+        }
     }
     if n == 0 {
         return Ok(slopes);
@@ -434,17 +628,14 @@ fn sensitivities(
         .map_err(|e| Error::Numerical(format!("sparse assembly: {e:?}")))?;
     let lu = a
         .sp_lu()
-        .map_err(|e| Error::Numerical(format!("singular Jacobian for phase shifters: {e:?}")))?;
+        .map_err(|e| Error::Numerical(format!("singular Jacobian for flow controls: {e:?}")))?;
     // Right-hand sides: the change in the power each terminal bus sends
-    // into the branch per radian, -j a at the from end and j b at the to
-    // end. The Newton step dx = -J^-1 dF moves the state to absorb it.
+    // into the branch per unit of control. The Newton step dx = -J^-1 dF
+    // moves the state to absorb it.
     let rhs = Mat::from_fn(n, m, |row, j| {
-        let t = terms[j];
+        let t = parts[j].1;
         let mut x = 0.0;
-        for (bus, ds) in [
-            (t.f, C::new(0.0, -1.0) * t.a),
-            (t.t, C::new(0.0, 1.0) * t.b),
-        ] {
+        for (bus, ds) in [(t.f, ends[j][0]), (t.t, ends[j][1])] {
             if angle_of[bus] == Some(row) {
                 x -= ds.re;
             }
@@ -455,29 +646,30 @@ fn sensitivities(
         x
     });
     let dx = lu.solve(rhs);
-    // Each flow's change with the state: P = Re(own_f + a) with
-    // d/dθf = Re(j a), d/dθt = Re(-j a), d/d|Vf| = Re(2 own_f + a)/|Vf|,
-    // d/d|Vt| = Re(a)/|Vt|.
-    for (i, t) in terms.iter().enumerate() {
+    // Each flow's change with the state: S = own_f + a with
+    // dS/dθf = j a, dS/dθt = -j a, dS/d|Vf| = (2 own_f + a)/|Vf|,
+    // dS/d|Vt| = a/|Vt|.
+    for (i, (d, t)) in parts.iter().enumerate() {
         let vf = v[t.f].norm();
         let vt = v[t.t].norm();
+        let j = C::new(0.0, 1.0);
         let grads = [
-            (angle_of[t.f], -t.a.im),
-            (angle_of[t.t], t.a.im),
-            (magnitude_of[t.f], (2.0 * t.own[0].re + t.a.re) / vf),
-            (magnitude_of[t.t], t.a.re / vt),
+            (angle_of[t.f], part(d, j * t.a)),
+            (angle_of[t.t], part(d, -j * t.a)),
+            (magnitude_of[t.f], part(d, (2.0 * t.own + t.a) / vf)),
+            (magnitude_of[t.t], part(d, t.a / vt)),
         ];
-        for j in 0..m {
+        for k in 0..m {
             for &(col, g) in &grads {
                 if let Some(col) = col {
-                    slopes[i][j] += g * dx[(col, j)];
+                    slopes[i][k] += g * dx[(col, k)];
                 }
             }
         }
     }
     if slopes.iter().flatten().any(|x| !x.is_finite()) {
         return Err(Error::Numerical(
-            "non-finite phase shifter sensitivities".into(),
+            "non-finite flow control sensitivities".into(),
         ));
     }
     Ok(slopes)

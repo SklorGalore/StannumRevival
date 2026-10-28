@@ -4533,7 +4533,7 @@
           "type": "boolean"
         },
         "taps_moved": {
-          "description": "Transformer taps that ended away from their starting ratio.",
+          "description": "Transformer taps that ended away from their starting ratio, in\nvoltage control (COD 1) or reactive flow control (COD 2).",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -4628,7 +4628,7 @@
         },
         "adjust_transformer_taps": {
           "default": true,
-          "description": "Step transformer taps in voltage control (AC only). When false they\nare locked, like shunts.",
+          "description": "Step transformer taps in voltage control (COD 1) and reactive flow\ncontrol (COD 2) (AC only). When false they are locked, like shunts.",
           "type": "boolean"
         },
         "area_interchange": {
