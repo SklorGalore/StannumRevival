@@ -194,7 +194,7 @@ fn raw_import_reads_switched_shunts_and_tap_controls() {
     )
     .unwrap();
     let controls = &imported.voltage_controls;
-    assert_eq!(controls.switched_shunts.len(), 5);
+    assert_eq!(controls.switched_shunts.len(), 6);
     let first = &controls.switched_shunts[0];
     assert_eq!(first.bus, 152);
     assert_eq!(first.mode, ShuntMode::Discrete);
@@ -216,7 +216,7 @@ fn raw_import_reads_switched_shunts_and_tap_controls() {
     };
     let result = solve(&imported.case, &opt).unwrap();
     assert_eq!(result.status, SolveStatus::Converged);
-    assert_eq!(result.switched_shunts.len(), 5);
+    assert_eq!(result.switched_shunts.len(), 6);
     assert_eq!(result.tap_ratios.len(), 5);
 }
 
@@ -393,4 +393,277 @@ fn locked_shunts_and_taps_stay_at_their_starting_values() {
     .unwrap();
     assert_eq!(taps_only.tap_ratios, [tap.ratio]);
     assert_ne!(taps_only.switched_shunts[0], shunt.initial);
+}
+
+#[test]
+fn psse_sample_shunt_watches_its_vsc_converter() {
+    // Bus 3005's shunt in the PSS/E sample case is MODSW 4: one 33.35 Mvar
+    // block keeps the VDCLINE1 converter at 3005 within 0.64-0.98 of its
+    // -110 to 100 Mvar range, 24.4 to 95.8 Mvar.
+    // The case runs that converter at a fixed power factor, where no shunt
+    // can move its output; put it in AC voltage control (MODE 1) at 1.02 pu.
+    let text = include_str!("fixtures/raw/t_psse_case3.raw").replace(
+        "  3005,2,2,   -209.00, 0.95000,",
+        "  3005,2,1,   -209.00, 1.02000,",
+    );
+    let imported = rs_power::parse_raw_with_options(
+        &text,
+        &RawOptions {
+            remote_regulation: true,
+            all_dc_lines: true,
+            lcc_absorbs_reactive: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let controls = &imported.voltage_controls;
+    let k = controls
+        .switched_shunts
+        .iter()
+        .position(|s| s.bus == 3005)
+        .unwrap();
+    let ShuntMode::ConverterReactive { row, bus } = controls.switched_shunts[k].mode else {
+        panic!("{:?}", controls.switched_shunts[k].mode);
+    };
+    assert_eq!(bus, 3005);
+    assert_eq!(imported.dc_line_names[row], "VDCLINE1");
+    let converter_q = |controls: &VoltageControls| {
+        let opt = PowerFlowOptions {
+            enforce_q_limits: true,
+            voltage_controls: controls.clone(),
+            dc_model: rs_power::DcModel::Detailed {
+                lines: imported.lcc_lines.clone(),
+                vsc_lines: imported.vsc_lines.clone(),
+                mtdc: imported.mtdc.clone(),
+                adjust_taps: true,
+            },
+            ..Default::default()
+        };
+        let result = solve(&imported.case, &opt).unwrap();
+        assert_eq!(result.status, SolveStatus::Converged);
+        let vsc = result.vsc.iter().find(|v| v.row == row).unwrap();
+        let q = if result.case.dcline.as_ref().unwrap()[row][0] == 3005.0 {
+            vsc.from_mvar
+        } else {
+            vsc.to_mvar
+        };
+        (q, result.switched_shunts[k])
+    };
+    // As given, the converter is inside its band and the block stays out.
+    let (q, b) = converter_q(controls);
+    assert!((24.4..=95.8).contains(&q), "{q}");
+    assert_eq!(b, 0.0);
+    // Narrow the band to 0.4-0.6 of the range, -26 to 16 Mvar: the block
+    // switches in and takes reactive output off the converter.
+    let mut narrow = controls.clone();
+    (
+        narrow.switched_shunts[k].vmin,
+        narrow.switched_shunts[k].vmax,
+    ) = (0.4, 0.6);
+    let (q2, b2) = converter_q(&narrow);
+    assert_eq!(b2, 33.35);
+    assert!((-26.0..=16.0).contains(&q2), "{q} -> {q2}");
+}
+
+fn gen_q(case: &Case, bus: u32) -> f64 {
+    case.generators
+        .iter()
+        .filter(|g| g.bus == bus)
+        .map(|g| g.qg)
+        .sum()
+}
+
+#[test]
+fn shunt_keeps_a_plant_inside_its_reactive_band() {
+    // Generator 2 of case 9 makes about 7 Mvar of its -300 to 300. A band of
+    // 0.44-0.46 of that range is -36 to -24 Mvar, so capacitors at bus 8
+    // switch in until the plant absorbs that much.
+    let mut s = shunt(
+        8,
+        ShuntMode::PlantReactive { bus: 2 },
+        (0.44, 0.46),
+        vec![(20, 10.0)],
+    );
+    let controls = VoltageControls {
+        switched_shunts: vec![s.clone()],
+        taps: vec![],
+    };
+    let result = solve(&case9(), &with(controls)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let q = gen_q(&result.case, 2);
+    assert!((-36.0..=-24.0).contains(&q), "{q}");
+    assert!(result.switched_shunts[0] > 0.0);
+    // Reactors bring it the other way, into 0.52-0.54 (12 to 24 Mvar).
+    s.blocks = vec![(20, -10.0)];
+    (s.vmin, s.vmax) = (0.52, 0.54);
+    let controls = VoltageControls {
+        switched_shunts: vec![s],
+        taps: vec![],
+    };
+    let result = solve(&case9(), &with(controls)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let q = gen_q(&result.case, 2);
+    assert!((12.0..=24.0).contains(&q), "{q}");
+    assert!(result.switched_shunts[0] < 0.0);
+}
+
+#[test]
+fn plant_watch_with_no_generator_holds_the_shunt() {
+    let controls = VoltageControls {
+        switched_shunts: vec![shunt(
+            8,
+            ShuntMode::PlantReactive { bus: 5 },
+            (0.4, 0.6),
+            vec![(8, 10.0)],
+        )],
+        taps: vec![],
+    };
+    let result = solve(&case9(), &with(controls)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    assert_eq!(result.switched_shunts[0], 0.0);
+}
+
+#[test]
+fn shunt_relieves_a_continuous_shunt_it_watches() {
+    // A continuous shunt at bus 9 holds 1.03 pu with part of its 0-200 Mvar.
+    let continuous = shunt(9, ShuntMode::Continuous, (1.02, 1.04), vec![(1, 200.0)]);
+    let alone = solve(
+        &case9(),
+        &with(VoltageControls {
+            switched_shunts: vec![continuous.clone()],
+            taps: vec![],
+        }),
+    )
+    .unwrap();
+    let used = alone.switched_shunts[0];
+    assert!(used > 30.0, "{used}");
+    // A MODSW 5 bank at bus 4 keeps it within 0-0.1 of its range (0 to 20
+    // Mvar) by switching 10 Mvar steps in nearby.
+    let controls = VoltageControls {
+        switched_shunts: vec![
+            continuous,
+            shunt(
+                4,
+                ShuntMode::ShuntSetting { shunt: 0 },
+                (0.0, 0.1),
+                vec![(20, 10.0)],
+            ),
+        ],
+        taps: vec![],
+    };
+    let result = solve(&case9(), &with(controls)).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let [watched, bank] = result.switched_shunts[..] else {
+        panic!()
+    };
+    assert!(watched <= 20.0 + 0.01, "{watched}");
+    assert!(bank > 0.0, "{bank}");
+    assert!((vm(&result.case, 9) - 1.03).abs() < 1e-6);
+}
+
+#[test]
+fn a_shunt_cannot_watch_itself() {
+    let controls = VoltageControls {
+        switched_shunts: vec![shunt(
+            4,
+            ShuntMode::ShuntSetting { shunt: 0 },
+            (0.0, 0.1),
+            vec![(2, 10.0)],
+        )],
+        taps: vec![],
+    };
+    assert!(solve(&case9(), &with(controls)).is_err());
+}
+
+#[test]
+fn raw_import_reads_reactive_switched_shunt_modes() {
+    // Rework the PSS/E sample case's shunts: 154 watches the plant at 301
+    // (MODSW 3), 152 the continuous shunt at 3021 (MODSW 5), and 93002 a
+    // FACTS device (MODSW 6), which stays frozen.
+    let text = include_str!("fixtures/raw/t_psse_case3.raw")
+        .replace(
+            "   154,1,1.04480,0.96500,     0,",
+            "   154,3,0.90000,0.75000,   301,",
+        )
+        .replace(
+            "   152,1,1.04500,0.95500,     0,",
+            "   152,5,0.50000,0.10000,  3021,",
+        )
+        .replace(
+            " 93002,1,0.99628,0.99628,     0,  100.00,'            ',",
+            " 93002,6,0.80000,0.20000,     0,  100.00,'FACTS 1     ',",
+        );
+    let imported = rs_power::parse_raw_with_options(
+        &text,
+        &RawOptions {
+            remote_regulation: true,
+            all_dc_lines: true,
+            lcc_absorbs_reactive: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shunts = &imported.voltage_controls.switched_shunts;
+    let at = |bus: u32| shunts.iter().position(|s| s.bus == bus);
+    assert_eq!(shunts.len(), 5);
+    let plant = &shunts[at(154).unwrap()];
+    assert_eq!(plant.mode, ShuntMode::PlantReactive { bus: 301 });
+    assert_eq!((plant.vmin, plant.vmax), (0.75, 0.9));
+    assert_eq!(
+        shunts[at(152).unwrap()].mode,
+        ShuntMode::ShuntSetting {
+            shunt: at(3021).unwrap()
+        }
+    );
+    assert_eq!(at(93002), None);
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("MODSW 6") && w.message.contains("FACTS"))
+    );
+    let opt = PowerFlowOptions {
+        enforce_q_limits: true,
+        voltage_controls: imported.voltage_controls.clone(),
+        ..Default::default()
+    };
+    let result = solve(&imported.case, &opt).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    // The plant at 301 is below its band, but bus 154's blocks barely move
+    // it, so the one block tried goes back in and the shunt holds.
+    assert_eq!(result.switched_shunts[at(154).unwrap()], 124.0);
+}
+
+#[test]
+fn raw_import_freezes_shunts_whose_watched_device_is_missing() {
+    // MODSW 5 at a bus with no other shunt in control, and MODSW 4 naming a
+    // VSC line that is not in the case.
+    let text = include_str!("fixtures/raw/t_psse_case3.raw")
+        .replace(
+            "   152,1,1.04500,0.95500,     0,",
+            "   152,5,0.50000,0.10000,   101,",
+        )
+        .replace(
+            "'VDCLINE1    ',    0.00, 1,  33.35",
+            "'NO SUCH     ',    0.00, 1,  33.35",
+        );
+    let imported = rs_power::parse_raw_with_options(
+        &text,
+        &RawOptions {
+            all_dc_lines: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shunts = &imported.voltage_controls.switched_shunts;
+    assert!(shunts.iter().all(|s| s.bus != 152 && s.bus != 3005));
+    let frozen = imported
+        .warnings
+        .iter()
+        .filter(|w| {
+            w.message
+                .starts_with("switched shunt frozen at BINIT; it watches")
+        })
+        .count();
+    assert_eq!(frozen, 2);
 }

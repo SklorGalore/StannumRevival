@@ -35,10 +35,11 @@ including its approximations, with the extensions marked below.
 | Buses | Sorted by number; names kept. Type 4 is isolated. |
 | Loads | Summed per bus. Constant-current (`IP`, `IQ`) and constant-admittance (`YP`, `YQ`) parts are kept, and the solve varies them with voltage. MATPOWER freezes them as constant power at the file's voltage. *Extension.* |
 | Fixed shunts | Summed into the bus shunt. |
-| Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in voltage control (MODSW 1, 2) are also kept for [voltage control](/StannumRevival/manual/voltage-controls/). *Extension.* |
+| Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in control (MODSW 1–5) are also kept for [voltage and reactive control](/StannumRevival/manual/voltage-controls/). *Extension.* |
+| Areas | `I`, `ISW`, `PDES`, `PTOL`, `ARNAME` kept for [area interchange control](/StannumRevival/manual/area-interchange/), with loads whose `AREA` differs from their bus's. *Extension.* |
 | Generators | One generator per record. `IREG` and `RMPCT` kept for [remote regulation](/StannumRevival/manual/remote-regulation/). *Extension.* |
 | Lines | π model; negative metered-end IDs normalized. Unknown endpoints kept with a warning. |
-| Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers). *Extension.* |
+| Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers), `COD` = 3 and 5 for [phase shifters](/StannumRevival/manual/phase-shifters/). *Extension.* |
 | System switching devices (revisions 34, 35) | A lossless branch of reactance `X` (PSS/E's 0.0001 p.u. when blank or zero), in service when `STAT` is 1, with `RATE1` as its rating. Ids are `switch:I:J:CKT`. Skipped by MATPOWER. Default N-1 runs leave them out; list one to run it. *Extension.* |
 | Three-winding transformers | A star bus with MATPOWER's numbering, three branches, and winding statuses. |
 | Two-terminal DC | MATPOWER's lossless row with estimated reactive limits, plus every field for the [detailed LCC model](/StannumRevival/manual/hvdc/lcc/). LCC reactive limits stored as absorbed. *Extension.* |
@@ -48,7 +49,7 @@ including its approximations, with the extensions marked below.
 ### Ignored with a warning
 
 Transformer magnetizing admittance, impedance correction tables, tap
-controls other than COD 1, switched shunt modes 3–6, wind control, FACTS
+controls other than COD 1, switched shunt mode 6, wind control, FACTS
 devices, GNE devices, induction machines and other unsupported equipment
 sections. Ownership, zone, interchange and grouping metadata are not kept.
 

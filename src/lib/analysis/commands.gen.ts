@@ -18,6 +18,25 @@ export type AnalysisWire = {
   synthetic_junctions: number;
 };
 
+/** One area's net interchange after a solve. */
+export type AreaRow = {
+  /** Whether the solve held this area's interchange. */
+  controlled: boolean;
+  /** Desired net export in MW, when the case's area data gives one. */
+  desired_mw: number | null;
+  /** Interchange minus desired, in MW, when there is a desired value. */
+  error_mw: number | null;
+  /** Net export in MW (negative is import). */
+  interchange_mw: number;
+  name: string;
+  number: number;
+  slack_bus: number | null;
+  slack_bus_name: string;
+  /** How far the solve moved the area slack generation, in MW. */
+  slack_change_mw: number;
+  tolerance_mw: number;
+};
+
 /** A branch's flow after one outage, for drawing the change on a diagram. */
 export type BranchChange = {
   base_mw: number;
@@ -47,6 +66,8 @@ export type BranchRowColumns = {
   qf: number[];
   qt: number[];
   rate_a: number[];
+  shift_deg: number[];
+  tap: number[];
   to: number[];
   winding: number[];
 };
@@ -700,6 +721,12 @@ export type InjectionColumns = {
   status: number[];
 };
 
+/**
+ * Area interchange control: what counts as an area's net export when its
+ * slack generation holds it at the desired value.
+ */
+export type InterchangeChoice = "off" | "tie_lines" | "tie_lines_and_loads";
+
 export type IslandWire = {
   id: number;
   synthetic_nodes: string[];
@@ -1050,6 +1077,13 @@ export type SensitivitySummary = {
 };
 
 export type SolveReport = {
+  /** The area interchange control the solve used (off for DC). */
+  area_interchange: InterchangeChoice;
+  /**
+   * Every area's net interchange (AC only): areas from the case's area
+   * data first, then the others found on buses.
+   */
+  areas: AreaRow[];
   branches: BranchRowColumns;
   /** Sent as columns (see [`Table`]); the frontend turns them back into rows. */
   buses: BusRowColumns;
@@ -1062,7 +1096,11 @@ export type SolveReport = {
   /** How many of `iterations` were decoupled iterations. */
   decoupled_iterations: number;
   elapsed_ms: number;
+  /** Passes that moved phase shifters. */
+  flow_control_passes: number;
   generators: GeneratorRowColumns;
+  /** Passes that moved area slack generation. */
+  interchange_passes: number;
   /** Iterations in all passes, Newton and decoupled together. */
   iterations: number;
   limits: LimitSummary;
@@ -1071,6 +1109,12 @@ export type SolveReport = {
   model: ModelChoice;
   /** Passes in which the automatic method finished with Newton. */
   newton_fallbacks: number;
+  /** Phase shifters in active power flow control in the case. */
+  phase_shifters: number;
+  /** Whether the solve locked the phase shifters at their angles (AC only). */
+  phase_shifters_locked: boolean;
+  /** Phase shifters that ended away from their starting angle. */
+  phase_shifters_moved: number;
   q_limit_passes: number;
   residual_mva: number;
   residual_pu: number;
@@ -1108,10 +1152,20 @@ export type SolveSettings = {
   /** Step DC converter taps (detailed model only). */
   adjust_dc_taps?: boolean;
   /**
+   * Move phase shifters in active power flow control (AC only). When
+   * false they are locked, like taps.
+   */
+  adjust_phase_shifters?: boolean;
+  /**
    * Step transformer taps in voltage control (AC only). When false they
    * are locked, like shunts.
    */
   adjust_transformer_taps?: boolean;
+  /**
+   * Hold each area's net interchange at its desired value with the
+   * area slack generation (AC only; RAW area data). Off by default.
+   */
+  area_interchange?: InterchangeChoice;
   dc_model?: DcModelChoice;
   /**
    * Decoupled iterations per pass (fixed-slope and fast decoupled, and

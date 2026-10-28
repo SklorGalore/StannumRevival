@@ -7,7 +7,7 @@ const bus = (id: number, vm: number, violation = 0): BusRow => ({
 });
 const branch = (index: number, pf: number, loading: number | null, online = true): BranchRow => ({
   index, element: `line:${index}:${index + 1}:1`, circuit: "1", winding: 0, from: index, to: index + 1, online,
-  is_transformer: false, pf, qf: 0, pt: -pf, qt: 0, loss_mw: 0, rate_a: 100, loading_pct: loading,
+  is_transformer: false, tap: 1, shift_deg: 0, pf, qf: 0, pt: -pf, qt: 0, loss_mw: 0, rate_a: 100, loading_pct: loading,
 });
 const report = (buses: BusRow[], branches: BranchRow[], losses: number): SolveReport =>
   ({

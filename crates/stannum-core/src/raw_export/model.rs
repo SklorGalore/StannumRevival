@@ -351,29 +351,47 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         ));
     }
 
-    // Switched shunts in voltage control.
+    // Switched shunts in voltage or reactive control, numbered per bus.
     let mut shunt_ids: HashMap<u32, usize> = HashMap::new();
-    for s in shunts {
-        let n = shunt_ids.entry(s.bus).or_default();
-        *n += 1;
+    let ids: Vec<String> = shunts
+        .iter()
+        .map(|s| {
+            let n = shunt_ids.entry(s.bus).or_default();
+            *n += 1;
+            name(&n.to_string(), 2)
+        })
+        .collect();
+    let mut frozen_converter_shunts = 0;
+    for (s, id) in shunts.iter().zip(&ids) {
+        // MODSW, the bus it watches (SWREG) and the device there (RMIDNT).
+        let (modsw, swreg, rmidnt) = match s.mode {
+            rs_power::ShuntMode::Discrete => (1, s.regulated_bus.unwrap_or(0), String::new()),
+            rs_power::ShuntMode::Continuous => (2, s.regulated_bus.unwrap_or(0), String::new()),
+            rs_power::ShuntMode::PlantReactive { bus } => (3, bus, String::new()),
+            // VSC DC lines are not written here, so there is no converter
+            // to watch: the shunt stays at its setting.
+            rs_power::ShuntMode::ConverterReactive { .. } => {
+                frozen_converter_shunts += 1;
+                (0, 0, String::new())
+            }
+            rs_power::ShuntMode::ShuntSetting { shunt } => (
+                5,
+                shunts.get(shunt).map_or(0, |o| o.bus),
+                ids.get(shunt).cloned().unwrap_or_default(),
+            ),
+        };
         let mut fields = vec![
             ("I", int(i64::from(s.bus))),
-            ("ID", text(&name(&n.to_string(), 2))),
-            (
-                "MODSW",
-                int(match s.mode {
-                    rs_power::ShuntMode::Discrete => 1,
-                    rs_power::ShuntMode::Continuous => 2,
-                }),
-            ),
+            ("ID", text(id)),
+            ("MODSW", int(modsw)),
             ("ADJM", int(0)),
             ("STAT", int(1)),
             ("VSWHI", num(s.vmax)),
             ("VSWLO", num(s.vmin)),
-            ("SWREG", int(i64::from(s.regulated_bus.unwrap_or(0)))),
+            ("SWREG", int(i64::from(swreg))),
             ("NREG", int(0)),
             ("RMPCT", num(100.0)),
-            ("RMIDNT", text("")),
+            ("RMIDNT", text(&rmidnt)),
             ("BINIT", num(s.initial)),
         ];
         let blocks: Vec<(String, String, String)> = (1..=8)
@@ -386,6 +404,11 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             rec_fields.push((bb.clone(), num(*b)));
         }
         push("SWITCHED SHUNT", Item::Rec(Rec::new(rec_fields)));
+    }
+    if frozen_converter_shunts > 0 {
+        notes.add(format!(
+            "{frozen_converter_shunts} switched shunts watching a VSC converter (MODSW 4) written as fixed (MODSW 0): VSC DC lines are not written"
+        ));
     }
 
     // Areas, zones and one owner.

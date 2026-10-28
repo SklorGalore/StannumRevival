@@ -10,6 +10,16 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
+  `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
+  `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
+- **Area interchange** control in AC solves: each area's slack generation
+  moves until its net interchange is within `PTOL` of the RAW area data's
+  `PDES`, counting tie lines, or tie lines and loads that belong to another
+  area. Off by default; choose it under **Area interchange** in the solve
+  settings, or with `area_interchange` in run files and Python. A new
+  **Areas** tab lists every area's interchange, desired value and slack
+  movement, also with control off.
 - **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
   and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
   run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
@@ -21,7 +31,13 @@ section into the next version's when a release is cut (see
   position) and flow. Double-click one to open or close it in the study.
   The inspector shows their type, state, normal state and flow, and its
   study action reads **Open** / **Close** for them.
-
+- **Phase shifters**: transformer windings in active power flow control in
+  RAW files (`COD` 3, and asymmetric `COD` 5) now move their angles in AC
+  solves to hold their MW band. The moves are solved together through the
+  network, so parallel shifters share the correction. **Move phase shifters**
+  in the solve settings (`adjust_phase_shifters` in run files and Python)
+  locks them when off. The overview counts the shifters that moved, and the
+  Branches table shows each transformer's tap and phase shift.
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton
@@ -31,6 +47,10 @@ section into the next version's when a release is cut (see
   Every method stops at the same mismatch tolerance. Choose it under **AC
   method** in the solve settings, or with `method` in run files and Python;
   `decoupled_iterations` sets the decoupled iteration limit.
+- Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
+  reactive output, a VSC converter's, or another switched shunt's setting
+  within their band, as PSS/E does. Mode 6 (FACTS) stays frozen at `BINIT`
+  with a warning, as FACTS devices are not modelled.
 - **Move switched shunts** and **Move transformer taps** (and **Adjust DC
   converter taps**) now lock those devices when turned off: they stay where
   the last solve left them, instead of going back to their case values.

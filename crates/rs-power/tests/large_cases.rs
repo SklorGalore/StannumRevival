@@ -197,9 +197,9 @@ fn synthetic_east_west_revision_34() {
     let extra = imported
         .warnings
         .iter()
-        .filter(|w| w.message.contains("additional section"))
+        .filter(|w| w.message.contains("substation node-breaker data"))
         .count();
-    assert_eq!(extra, 1, "substation data is reported once");
+    assert_eq!(extra, 1, "substation node-breaker data is reported once");
     for q in [false, true] {
         assert_eq!(
             solve(&imported.case, &options(q)).unwrap().status,
@@ -217,4 +217,99 @@ fn activsg70k_matpower() {
     let result = solve(&case, &options(false)).unwrap();
     assert_eq!(result.status, SolveStatus::Converged);
     assert!(result.residual < 1e-8);
+}
+
+#[test]
+#[ignore = "needs tests/large/SyntheticUSA.RAW"]
+fn synthetic_usa_phase_shifters() {
+    let imported = stannum_raw(&case_text("SyntheticUSA.RAW"));
+    let shifters = &imported.flow_controls.phase_shifters;
+    // Two windings in COD 3 (one two-winding, one three-winding); the three
+    // with COD -3 stay where they are.
+    assert_eq!(shifters.len(), 2);
+    let solve_with = |lock: bool| {
+        solve(
+            &imported.case,
+            &PowerFlowOptions {
+                enforce_q_limits: true,
+                dc_model: DcModel::Detailed {
+                    lines: imported.lcc_lines.clone(),
+                    vsc_lines: Vec::new(),
+                    mtdc: Vec::new(),
+                    adjust_taps: true,
+                },
+                voltage_controls: imported.voltage_controls.clone(),
+                flow_controls: imported.flow_controls.clone(),
+                lock_phase_shifters: lock,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+    for lock in [true, false] {
+        let result = solve_with(lock);
+        assert_eq!(result.status, SolveStatus::Converged);
+        for (p, &angle) in shifters.iter().zip(&result.phase_shift_angles) {
+            let flow = result.branch_flows[p.branch][0];
+            println!(
+                "lock {lock}: branch {} angle {:.3} -> {angle:.3}, flow {flow:.1} MW, band {:?}",
+                p.branch,
+                p.angle,
+                p.band()
+            );
+            let (lo, hi) = p.band();
+            assert!(flow > lo && flow < hi, "{flow}");
+        }
+        let (mean, angle) = voltage_error(&imported.case, &result.case);
+        println!(
+            "lock {lock}: mean |dVm| {mean:.5}, max |dVa| {angle:.3}, passes {}",
+            result.flow_control_passes
+        );
+        // Both already sit inside their bands in the saved solution.
+        assert_eq!(
+            result.phase_shift_angles,
+            [p_angle(shifters, 0), p_angle(shifters, 1)]
+        );
+        assert!(mean < 0.001, "{mean}");
+    }
+    // Bands the saved angles miss: both shifters move into them.
+    let mut moved = imported.flow_controls.clone();
+    moved.phase_shifters[0].mw_min = 2000.0;
+    moved.phase_shifters[0].mw_max = 2100.0;
+    moved.phase_shifters[1].mw_min = 750.0;
+    moved.phase_shifters[1].mw_max = 800.0;
+    let result = solve(
+        &imported.case,
+        &PowerFlowOptions {
+            enforce_q_limits: true,
+            dc_model: DcModel::Detailed {
+                lines: imported.lcc_lines.clone(),
+                vsc_lines: Vec::new(),
+                mtdc: Vec::new(),
+                adjust_taps: true,
+            },
+            voltage_controls: imported.voltage_controls.clone(),
+            flow_controls: moved.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    for (p, &angle) in moved.phase_shifters.iter().zip(&result.phase_shift_angles) {
+        let flow = result.branch_flows[p.branch][0];
+        println!(
+            "moved: branch {} angle {:.3} -> {angle:.3}, flow {flow:.1} MW, band {:?}, passes {}, iterations {}",
+            p.branch,
+            p.angle,
+            p.band(),
+            result.flow_control_passes,
+            result.iterations
+        );
+        let (lo, hi) = p.band();
+        assert!(flow > lo - 1.0 && flow < hi + 1.0, "{flow}");
+    }
+}
+
+fn p_angle(shifters: &[rs_power::PhaseShifter], k: usize) -> f64 {
+    shifters[k].angle
 }

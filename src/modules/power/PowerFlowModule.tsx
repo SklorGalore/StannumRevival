@@ -3,6 +3,8 @@ import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Za
 import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
 import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
+  AreaRow,
+  InterchangeChoice,
   DcLineKind,
   DcGridsSummary,
   DcLineRow,
@@ -49,7 +51,7 @@ import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
-import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, flowControlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -59,6 +61,7 @@ type Tab =
   | "branches"
   | "dc"
   | "dcnet"
+  | "areas"
   | "vsc"
   | "sensitivities"
   | "contingencies"
@@ -201,6 +204,19 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
           </span>
         </LoadingBar>
       ),
+    align: "right",
+  },  {
+    key: "tap",
+    header: "Tap",
+    value: (r) => r.tap,
+    render: (r) => (r.is_transformer ? fixed(r.tap, 4) : ""),
+    align: "right",
+  },
+  {
+    key: "shift",
+    header: "Shift (°)",
+    value: (r) => r.shift_deg,
+    render: (r) => (r.shift_deg ? fixed(r.shift_deg, 2) : ""),
     align: "right",
   },
 ];
@@ -369,6 +385,90 @@ const dcLinkColumns: Column<DcSystemReport["links"][number]>[] = [
   { key: "to_mw", header: "P to (MW)", value: (l) => l.to_mw, render: (l) => fixed(l.to_mw), align: "right" },
   { key: "loss", header: "Loss (MW)", value: (l) => l.loss_mw, render: (l) => fixed(l.loss_mw, 3), align: "right" },
 ];
+
+/** Area interchange choices, as the solve panel offers them. */
+const INTERCHANGE_CHOICES: { value: InterchangeChoice; label: string; about: string }[] = [
+  { value: "off", label: "Off", about: "Areas are not held; the Areas tab still shows each area's interchange." },
+  {
+    value: "tie_lines",
+    label: "Tie lines",
+    about: "Each area's slack generation moves until the flow on its tie lines meets the desired interchange (PSS/E area data PDES within PTOL).",
+  },
+  {
+    value: "tie_lines_and_loads",
+    label: "Tie lines and loads",
+    about: "As tie lines, also counting loads that belong to another area than their bus as exports to that area.",
+  },
+];
+
+const areaColumns: Column<AreaRow>[] = [
+  { key: "number", header: "Area", value: (a) => a.number, align: "right" },
+  { key: "name", header: "Name", value: (a) => a.name },
+  {
+    key: "interchange",
+    header: "Interchange (MW)",
+    title: "Net export: flow out on tie lines (metered at their from end; DC lines at the sending converter). Negative is import.",
+    value: (a) => a.interchange_mw,
+    render: (a) => fixed(a.interchange_mw),
+    align: "right",
+  },
+  { key: "desired", header: "Desired (MW)", value: (a) => a.desired_mw ?? null, render: (a) => (a.desired_mw == null ? "" : fixed(a.desired_mw)), align: "right" },
+  {
+    key: "error",
+    header: "Off by (MW)",
+    title: "Interchange minus desired; highlighted beyond the tolerance",
+    value: (a) => a.error_mw ?? null,
+    render: (a) =>
+      a.error_mw == null ? (
+        ""
+      ) : Math.abs(a.error_mw) > a.tolerance_mw ? (
+        <span className="text-amber-700 font-medium">{fixed(a.error_mw)}</span>
+      ) : (
+        fixed(a.error_mw)
+      ),
+    align: "right",
+  },
+  { key: "tolerance", header: "Tolerance (MW)", value: (a) => a.tolerance_mw, render: (a) => (a.desired_mw == null ? "" : fixed(a.tolerance_mw, 1)), align: "right" },
+  { key: "slack", header: "Slack bus", value: (a) => a.slack_bus ?? null, render: (a) => a.slack_bus ?? "", align: "right" },
+  { key: "slack_name", header: "Slack name", value: (a) => a.slack_bus_name },
+  {
+    key: "held",
+    header: "Held",
+    title: "Whether the solve held this area's interchange. Areas holding an island's reference bus balance the island instead.",
+    value: (a) => (a.controlled ? "Yes" : "No"),
+  },
+  {
+    key: "moved",
+    header: "Slack moved (MW)",
+    title: "How far the solve moved the area slack generation",
+    value: (a) => a.slack_change_mw,
+    render: (a) => (a.slack_change_mw ? fixed(a.slack_change_mw) : ""),
+    align: "right",
+  },
+];
+
+/** Each area's net interchange, and whether the solve held it. */
+function AreasTab({ report }: { report: SolveReport }) {
+  const mode = report.area_interchange;
+  const choice = INTERCHANGE_CHOICES.find((c) => c.value === mode);
+  const outside = report.areas.filter((a) => a.controlled && a.error_mw != null && Math.abs(a.error_mw) > a.tolerance_mw).length;
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="areas-tab">
+      <Panel
+        title="Area interchange"
+        eyebrow={
+          mode === "off"
+            ? "Control off: interchange by tie lines, as solved"
+            : `Control: ${choice?.label.toLowerCase()} · ${count(report.areas.filter((a) => a.controlled).length)} held · ${
+                report.interchange_passes
+              } pass${report.interchange_passes === 1 ? "" : "es"}${outside ? ` · ${outside} outside tolerance` : ""}`
+        }
+      >
+        <DataTable rows={report.areas} columns={areaColumns} rowKey={(a) => a.number} />
+      </Panel>
+    </div>
+  );
+}
 
 /** DC buses, links and converters of each multi-terminal system. */
 function DcNetworkTab({ systems }: { systems: DcSystemReport[] }) {
@@ -561,6 +661,35 @@ function SolvePanel({
         />
         Move transformer taps
       </label>
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Phase shifters", "angle")}
+      >
+        <input
+          type="checkbox"
+          checked={settings.adjust_phase_shifters !== false && ac}
+          disabled={!ac}
+          data-testid="adjust-phase-shifters"
+          onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
+        />
+        Move phase shifters
+      </label>
+      <Field label="Area interchange">
+        <select
+          className={inputClass}
+          value={settings.area_interchange}
+          disabled={!ac}
+          data-testid="area-interchange"
+          onChange={(e) => setSettings({ ...settings, area_interchange: e.target.value as InterchangeChoice })}
+          title={INTERCHANGE_CHOICES.find((c) => c.value === settings.area_interchange)?.about}
+        >
+          {INTERCHANGE_CHOICES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="DC line model">
         <select
           className={inputClass}
@@ -705,6 +834,13 @@ function Overview({
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
           detail={controlsDetail(report)}
         />
+        {(report.phase_shifters ?? 0) > 0 && (
+          <Metric
+            label="Phase shifters"
+            value={`${report.phase_shifters_moved ?? 0} of ${report.phase_shifters} moved`}
+            detail={flowControlsDetail(report)}
+          />
+        )}
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />
@@ -1155,6 +1291,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.dc_systems?.length
         ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
         : []),
+      ...((report?.areas?.length ?? 0) > 1
+        ? [{ id: "areas" as const, label: "Areas", count: report!.areas.length, disabled: false }]
+        : []),
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
@@ -1383,6 +1522,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                 />
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
+              {tab === "areas" && report && <AreasTab report={report} />}
               {tab === "vsc" && (
                 <VscGridsTab file={dcGrids} report={report} busy={!!busy} onLoad={attachDcGrids} onClear={detachDcGrids} />
               )}
