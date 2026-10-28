@@ -86,6 +86,77 @@
       ],
       "type": "object"
     },
+    "AreaRow": {
+      "description": "One area's net interchange after a solve.",
+      "properties": {
+        "controlled": {
+          "description": "Whether the solve held this area's interchange.",
+          "type": "boolean"
+        },
+        "desired_mw": {
+          "description": "Desired net export in MW, when the case's area data gives one.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error_mw": {
+          "description": "Interchange minus desired, in MW, when there is a desired value.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interchange_mw": {
+          "description": "Net export in MW (negative is import).",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slack_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "slack_bus_name": {
+          "type": "string"
+        },
+        "slack_change_mw": {
+          "description": "How far the solve moved the area slack generation, in MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "tolerance_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "interchange_mw",
+        "desired_mw",
+        "tolerance_mw",
+        "error_mw",
+        "slack_bus",
+        "slack_bus_name",
+        "controlled",
+        "slack_change_mw"
+      ],
+      "type": "object"
+    },
     "BranchChange": {
       "description": "A branch's flow after one outage, for drawing the change on a diagram.",
       "properties": {
@@ -1348,6 +1419,7 @@
           "default": {
             "adjust_dc_taps": true,
             "adjust_transformer_taps": true,
+            "area_interchange": "off",
             "dc_model": "detailed",
             "decoupled_iterations": 30,
             "enforce_q_limits": false,
@@ -3016,6 +3088,26 @@
       ],
       "type": "object"
     },
+    "InterchangeChoice": {
+      "description": "Area interchange control: what counts as an area's net export when its\nslack generation holds it at the desired value.",
+      "oneOf": [
+        {
+          "const": "off",
+          "description": "No control; the report still lists each area's interchange.",
+          "type": "string"
+        },
+        {
+          "const": "tie_lines",
+          "description": "Flows on tie lines between areas.",
+          "type": "string"
+        },
+        {
+          "const": "tie_lines_and_loads",
+          "description": "Tie lines plus loads that belong to another area than their bus.",
+          "type": "string"
+        }
+      ]
+    },
     "IslandWire": {
       "properties": {
         "id": {
@@ -3425,6 +3517,17 @@
           "format": "double",
           "type": "number"
         },
+        "switching": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkSwitch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when the branch is a RAW system switching device."
+        },
         "tap": {
           "description": "Off-nominal turns ratio (1.0 when unity) and phase shift in degrees.",
           "format": "double",
@@ -3614,6 +3717,34 @@
         "bus",
         "online",
         "pmax"
+      ],
+      "type": "object"
+    },
+    "NetworkSwitch": {
+      "description": "A system switching device drawn on a one-line.",
+      "properties": {
+        "kind": {
+          "description": "\"breaker\", \"disconnector\" or \"connector\" (PSS/E's generic type).",
+          "enum": [
+            "breaker",
+            "disconnector",
+            "connector"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "The device's name; may be empty.",
+          "type": "string"
+        },
+        "normally_open": {
+          "description": "Its normal status is open.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "normally_open"
       ],
       "type": "object"
     },
@@ -4246,6 +4377,17 @@
     },
     "SolveReport": {
       "properties": {
+        "area_interchange": {
+          "$ref": "#/$defs/InterchangeChoice",
+          "description": "The area interchange control the solve used (off for DC)."
+        },
+        "areas": {
+          "description": "Every area's net interchange (AC only): areas from the case's area\ndata first, then the others found on buses.",
+          "items": {
+            "$ref": "#/$defs/AreaRow"
+          },
+          "type": "array"
+        },
         "branches": {
           "$ref": "#/$defs/BranchRowColumns"
         },
@@ -4287,6 +4429,12 @@
         },
         "generators": {
           "$ref": "#/$defs/GeneratorRowColumns"
+        },
+        "interchange_passes": {
+          "description": "Passes that moved area slack generation.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "iterations": {
           "description": "Iterations in all passes, Newton and decoupled together.",
@@ -4409,7 +4557,10 @@
         "branches",
         "dc_lines",
         "dc_systems",
-        "vsc_grids"
+        "vsc_grids",
+        "areas",
+        "interchange_passes",
+        "area_interchange"
       ],
       "type": "object"
     },
@@ -4425,6 +4576,11 @@
           "default": true,
           "description": "Step transformer taps in voltage control (AC only). When false they\nare locked, like shunts.",
           "type": "boolean"
+        },
+        "area_interchange": {
+          "$ref": "#/$defs/InterchangeChoice",
+          "default": "off",
+          "description": "Hold each area's net interchange at its desired value with the\narea slack generation (AC only; RAW area data). Off by default."
         },
         "dc_model": {
           "$ref": "#/$defs/DcModelChoice",
@@ -6468,15 +6624,15 @@
     {
       "buses": 2,
       "format": "<bus>:<bus>:<circuit>",
-      "inspector": "topology",
+      "inspector": "model",
       "kind": "switch",
       "label": "Switch",
       "matpower_table": null,
-      "outage": false,
+      "outage": true,
       "raw_sections": [
         "SYSTEM SWITCHING DEVICE"
       ],
-      "solved": false
+      "solved": true
     },
     {
       "buses": 1,

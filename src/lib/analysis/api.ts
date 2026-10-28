@@ -174,6 +174,7 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   adjust_dc_taps: true,
   switch_shunts: true,
   adjust_transformer_taps: true,
+  area_interchange: "off",
 };
 
 export const CASE_FILTERS = [

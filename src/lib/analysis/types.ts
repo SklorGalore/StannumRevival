@@ -64,6 +64,10 @@ export type MtdcDetail = G.MtdcDetail;
 
 export type DcSystemReport = G.DcSystemReport;
 
+export type AreaRow = G.AreaRow;
+
+export type InterchangeChoice = G.InterchangeChoice;
+
 export type DcConverterRow = G.DcConverterRow;
 
 export type DcBusRow = G.DcBusRow;

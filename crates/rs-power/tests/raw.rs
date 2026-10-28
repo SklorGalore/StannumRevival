@@ -665,3 +665,55 @@ fn psse_case3_dc_lines_solve_with_q_limits_when_converters_absorb() {
         }
     }
 }
+
+#[test]
+fn switching_devices_solve_as_lossless_branches() {
+    use rs_power::{BranchKind, SwitchType};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../stannum-core/tests/fixtures/five_bus_switches.raw");
+    let text = std::fs::read_to_string(path).unwrap();
+    // A fourth device with every field after CKT left out takes PSS/E's
+    // defaults: X 0.0001, closed, generic.
+    let text = text.replace(
+        "0 / END OF SYSTEM SWITCHING DEVICE DATA",
+        "     1,     2,'G1'\n0 / END OF SYSTEM SWITCHING DEVICE DATA",
+    );
+    let imported = parse_raw_with_options(&text, &RawOptions::default()).unwrap();
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .all(|w| !w.message.contains("switching")),
+        "{:?}",
+        imported.warnings
+    );
+    let devices = &imported.switching_devices;
+    let kinds: Vec<_> = devices.iter().map(|d| d.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            SwitchType::Breaker,
+            SwitchType::Disconnector,
+            SwitchType::Breaker,
+            SwitchType::Generic
+        ]
+    );
+    assert_eq!(devices[0].name, "Central BT");
+    assert!(devices[2].normally_open && !devices[0].normally_open);
+    for d in devices {
+        let s = &imported.branch_sources[d.branch];
+        assert_eq!(s.kind, BranchKind::Switch);
+        let br = &imported.case.branches[d.branch];
+        assert_eq!((br.r, br.b, br.x), (0.0, 0.0, 0.0001));
+    }
+    assert_eq!(imported.branch_sources[devices[0].branch].circuit, "BT");
+    let online: Vec<_> = devices
+        .iter()
+        .map(|d| imported.case.branches[d.branch].online)
+        .collect();
+    assert_eq!(online, [true, true, false, true]);
+    // Devices come after the transformer, so other rows keep their place.
+    assert_eq!(imported.branch_sources[4].kind, BranchKind::Transformer);
+    let solved = rs_power::solve(&imported.case, &rs_power::PowerFlowOptions::default()).unwrap();
+    assert_eq!(solved.status, rs_power::SolveStatus::Converged);
+}

@@ -3,6 +3,7 @@ mod case;
 mod controls;
 mod dc;
 mod input;
+mod interchange;
 mod mtdc;
 mod network;
 mod outage;
@@ -17,6 +18,7 @@ pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use controls::{ShuntMode, SwitchedShunt, TapControl, VoltageControls};
 pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
 pub use input::{load_matpower, parse_matpower};
+pub use interchange::{Area, AreaInterchange, AreaLoad, AreaSolution, InterchangeMode};
 pub use mtdc::{
     MtdcBus, MtdcBusSolution, MtdcConverter, MtdcConverterSolution, MtdcLink, MtdcLinkSolution,
     MtdcMode, MtdcSolution, MtdcSystem,
@@ -25,7 +27,8 @@ pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
     BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawSubstation,
-    RawWarning, load_raw, load_raw_with_options, parse_raw, parse_raw_with_options,
+    RawWarning, SwitchType, SwitchingDevice, load_raw, load_raw_with_options, parse_raw,
+    parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,

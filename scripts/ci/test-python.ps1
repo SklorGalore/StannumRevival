@@ -76,11 +76,24 @@ if ($Manylinux) {
 if (Test-Path $Out) {
     Get-ChildItem $Out -Filter 'stannum-*.whl' | Remove-Item -Force
 }
+# The wheel carries the licence and third-party notices from the repository
+# root. maturin only takes licence files from beside pyproject.toml, so they
+# are copied there for the build (git ignores the copies).
+$licenceFiles = 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY-LICENSES.txt'
+foreach ($file in $licenceFiles) {
+    Copy-Item (Join-Path $root $file) (Join-Path $crate $file) -Force
+}
 & $py -m maturin build --release --locked --manifest-path (Join-Path $crate 'Cargo.toml') --out $Out @extra
 
 $wheel = Get-ChildItem $Out -Filter 'stannum-*.whl' | Select-Object -First 1
 if (-not $wheel) { throw "maturin wrote no wheel to $Out." }
 Write-Host "Built $($wheel.Name)"
+$listing = & $py -c "import sys, zipfile; print('\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))" $wheel.FullName
+foreach ($file in $licenceFiles) {
+    if (-not ($listing -match "\.dist-info/licenses/$([regex]::Escape($file))$")) {
+        throw "The wheel has no $file in its dist-info/licenses."
+    }
+}
 & $py -m pip install --quiet $wheel.FullName
 
 # Run from the crate folder so pytest reads its settings, but import the

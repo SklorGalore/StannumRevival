@@ -1070,7 +1070,7 @@
       ],
       "layouts": {
         "35": {
-          "evidence": "header_only",
+          "evidence": "manual_layout",
           "lines": [
             {
               "fields": [
