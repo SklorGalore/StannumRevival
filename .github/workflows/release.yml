@@ -3,17 +3,24 @@ name: Release
 # Builds installers for Windows, macOS (Apple silicon) and Linux, and for
 # each of them the stannum Python wheel and the stannum-cli binary.
 #
+# Releases follow git flow: release/vX.Y.Z is cut from development (hotfix/vX.Y.Z
+# from main), merged into main, and the merge commit is tagged vX.Y.Z.
+#
 # - Pushing a v* tag builds them and attaches them to a draft GitHub release
 #   whose notes are that version's section of CHANGELOG.md. Publish the draft
 #   by hand once the installers have been tried.
-# - Pull requests that change the release setup build the installers too, and
-#   keep them as workflow artifacts, so the setup is proven before a tag.
+# - Every push to a release/v* or hotfix/v* branch builds release-candidate
+#   installers as workflow artifacts, and checks that the branch's version,
+#   the version fields and the changelog agree.
+# - Pull requests that change the release setup build the installers too, so
+#   the setup is proven before a tag.
 # - Run it by hand (workflow_dispatch) for test installers from any branch.
 #
 # See docs/releasing.md for the whole procedure.
 on:
   push:
     tags: ["v*"]
+    branches: ["release/v*", "hotfix/v*"]
   pull_request:
     paths:
       - ".github/workflows/release.yml"
@@ -48,9 +55,12 @@ jobs:
         id: check
         shell: pwsh
         env:
-          # Only a tag push is held to "tag matches version".
+          # Only a tag push is held to "tag matches version", and only a
+          # release/hotfix branch (pushed, or the head of a PR) to "branch
+          # matches version".
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: ./scripts/release/check-release.ps1 -Tag "$env:TAG" -NotesFile release-notes.md
+          BRANCH: ${{ github.head_ref || (github.ref_type == 'branch' && github.ref_name) || '' }}
+        run: ./scripts/release/check-release.ps1 -Tag "$env:TAG" -Branch "$env:BRANCH" -NotesFile release-notes.md
       # The installers, wheels and CLI archives ship THIRD-PARTY-LICENSES.txt
       # as committed, so it must list the dependencies being built.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

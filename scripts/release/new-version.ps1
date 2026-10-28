@@ -11,8 +11,9 @@ notes under "## Unreleased" become the new version's section, dated today,
 and an empty "## Unreleased" section is left above it.
 THIRD-PARTY-LICENSES.txt is regenerated for the dependencies being released.
 
-Commit the result in a pull request. Once it is merged, tag the merge
-commit with v<version> and push the tag to start the release workflow.
+start-release.ps1 runs this on a new release/v<version> branch; run it by
+hand only to change the version of a branch that is already cut. See
+docs/releasing.md.
 
 .EXAMPLE
 pwsh scripts/release/new-version.ps1 -Version 0.3.0
