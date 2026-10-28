@@ -112,6 +112,7 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
+            { label: "Versions and compatibility", slug: "reference/versioning" },
             { label: "Verification", slug: "reference/verification" },
             { label: "What isn't modelled", slug: "reference/limitations" },
             { label: "Glossary", slug: "reference/glossary" },
