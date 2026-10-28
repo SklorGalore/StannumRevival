@@ -55,7 +55,12 @@ foreach ($dmg in $dmgs) {
         }
         Write-Host "$($app.Name) in $($dmg.Name): bundle signature OK"
     } finally {
-        hdiutil detach $mount -quiet | Out-Null
-        Remove-Item -Path $mount -Force -ErrorAction SilentlyContinue
+        # The disk image can still be busy right after codesign reads it, so
+        # force the detach. Remove the mount folder only once it is empty: a
+        # recursive delete of a still-mounted image would reach into it.
+        hdiutil detach $mount -force -quiet | Out-Null
+        if (-not (Get-ChildItem -LiteralPath $mount -Force -ErrorAction SilentlyContinue)) {
+            Remove-Item -LiteralPath $mount -Force -ErrorAction SilentlyContinue
+        }
     }
 }
