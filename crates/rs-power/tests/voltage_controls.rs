@@ -49,6 +49,7 @@ fn discrete_shunt_switches_blocks_until_the_bus_is_in_band() {
     let before = vm(&solve(&case, &PowerFlowOptions::default()).unwrap().case, 5);
     assert!(before < 1.03, "{before}");
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(5, ShuntMode::Discrete, (1.03, 1.04), vec![(8, 10.0)])],
         taps: vec![],
     };
@@ -67,6 +68,7 @@ fn discrete_shunt_switches_blocks_until_the_bus_is_in_band() {
 #[test]
 fn continuous_shunt_holds_the_middle_of_its_band() {
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(
             9,
             ShuntMode::Continuous,
@@ -90,6 +92,7 @@ fn continuous_shunt_holds_the_middle_of_its_band() {
 #[test]
 fn sensitivities_run_on_the_controlled_solution() {
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(
             9,
             ShuntMode::Continuous,
@@ -105,6 +108,7 @@ fn sensitivities_run_on_the_controlled_solution() {
 #[test]
 fn continuous_shunt_stops_at_its_largest_block() {
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(9, ShuntMode::Continuous, (1.0, 1.02), vec![(1, 5.0)])],
         taps: vec![],
     };
@@ -135,6 +139,7 @@ fn transformer_tap_moves_the_far_bus_into_band() {
         line: 0,
     };
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![],
         taps: vec![tap.clone()],
     };
@@ -165,6 +170,7 @@ fn tap_stops_at_its_ratio_limit() {
         line: 0,
     };
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![],
         taps: vec![tap],
     };
@@ -278,6 +284,7 @@ fn shunt_with_a_band_narrower_than_a_step_settles_nearest_the_band() {
             let mut start = case.clone();
             start.buses.iter_mut().find(|b| b.id == 5).unwrap().bs += initial;
             let controls = VoltageControls {
+                facts: vec![],
                 switched_shunts: vec![s],
                 taps: vec![],
             };
@@ -359,6 +366,7 @@ fn locked_shunts_and_taps_stay_at_their_starting_values() {
     started.branches[0].tap = tap.ratio;
     started.buses[4].bs += shunt.initial;
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt.clone()],
         taps: vec![tap.clone()],
     };
@@ -416,7 +424,12 @@ fn psse_sample_shunt_watches_its_vsc_converter() {
         },
     )
     .unwrap();
-    let controls = &imported.voltage_controls;
+    // The FACTS devices at bus 153 sit at their limits and leave the
+    // converter at its own limit at any setpoint near 1.02 pu, where no
+    // shunt moves it either; this test is about the converter's band.
+    let mut controls = imported.voltage_controls.clone();
+    controls.facts.clear();
+    let controls = &controls;
     let k = controls
         .switched_shunts
         .iter()
@@ -485,6 +498,7 @@ fn shunt_keeps_a_plant_inside_its_reactive_band() {
         vec![(20, 10.0)],
     );
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![s.clone()],
         taps: vec![],
     };
@@ -497,6 +511,7 @@ fn shunt_keeps_a_plant_inside_its_reactive_band() {
     s.blocks = vec![(20, -10.0)];
     (s.vmin, s.vmax) = (0.52, 0.54);
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![s],
         taps: vec![],
     };
@@ -510,6 +525,7 @@ fn shunt_keeps_a_plant_inside_its_reactive_band() {
 #[test]
 fn plant_watch_with_no_generator_holds_the_shunt() {
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(
             8,
             ShuntMode::PlantReactive { bus: 5 },
@@ -530,6 +546,7 @@ fn shunt_relieves_a_continuous_shunt_it_watches() {
     let alone = solve(
         &case9(),
         &with(VoltageControls {
+            facts: vec![],
             switched_shunts: vec![continuous.clone()],
             taps: vec![],
         }),
@@ -540,6 +557,7 @@ fn shunt_relieves_a_continuous_shunt_it_watches() {
     // A MODSW 5 bank at bus 4 keeps it within 0-0.1 of its range (0 to 20
     // Mvar) by switching 10 Mvar steps in nearby.
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![
             continuous,
             shunt(
@@ -564,6 +582,7 @@ fn shunt_relieves_a_continuous_shunt_it_watches() {
 #[test]
 fn a_shunt_cannot_watch_itself() {
     let controls = VoltageControls {
+        facts: vec![],
         switched_shunts: vec![shunt(
             4,
             ShuntMode::ShuntSetting { shunt: 0 },
@@ -620,7 +639,7 @@ fn raw_import_reads_reactive_switched_shunt_modes() {
         imported
             .warnings
             .iter()
-            .any(|w| w.message.contains("MODSW 6") && w.message.contains("FACTS"))
+            .any(|w| w.message.contains("watches FACTS device FACTS 1"))
     );
     let opt = PowerFlowOptions {
         enforce_q_limits: true,

@@ -70,6 +70,7 @@ and checks the result, not only that it renders.
 | **Rust core and desktop shell** | `cargo fmt --check`, `cargo clippy --all-targets -D warnings` (including `src-tauri`), `cargo test` for stannum-core, stannum-cli, stannum-synth, rs-power and nodal | Yes |
 | **Frontend build and browser smoke test** | `npm ci`, `npm run build`, `npm test`, then the smoke test | Yes |
 | **Large case budgets** | The budgets test on a 12,000-bus synthetic case; the timings go in the run summary | No |
+| **Large case budgets (80,000 buses)** (`budgets-large.yml`, weekly and on request) | The same test on an 80,000-bus synthetic case, the size of the large cases people open | No |
 | **Python package** (Linux, Windows, macOS) | Builds the abi3 wheel, installs it in a fresh venv, runs its tests, uploads the wheel | No |
 
 `.github/workflows/docs.yml` builds this site on pull requests that touch

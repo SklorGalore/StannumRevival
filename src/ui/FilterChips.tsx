@@ -27,7 +27,7 @@ function RuleEditor({
 }: {
   rule: FilterRule;
   fields: FieldDefinition[];
-  options: (field: string) => FieldValue[];
+  options: (field: string) => FieldValue[] | Promise<FieldValue[]>;
   onChange: (r: FilterRule) => void;
   onRemove: () => void;
   onDone: () => void;
@@ -43,7 +43,16 @@ function RuleEditor({
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
   }, [onDone]);
-  const values = def.type === "category" ? options(def.key).filter((v) => v !== null) : [];
+  const [values, setValues] = useState<FieldValue[]>([]);
+  useEffect(() => {
+    if (def.type !== "category") return setValues([]);
+    let live = true;
+    void Promise.resolve(options(def.key)).then((v) => live && setValues(v.filter((x) => x !== null)), () => live && setValues([]));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [def.key, def.type]);
   return (
     <div
       ref={ref}
@@ -151,8 +160,8 @@ export function FilterChips({
   note,
 }: {
   fields: FieldDefinition[];
-  /** Values to offer for a category field. */
-  options: (field: string) => FieldValue[];
+  /** Values to offer for a category field, or a promise of them (read from the core). */
+  options: (field: string) => FieldValue[] | Promise<FieldValue[]>;
   rules: FilterRule[];
   onRules: (rules: FilterRule[]) => void;
   /** What the filters leave, such as "40 of 300 buses". */

@@ -66,6 +66,8 @@ export type DcSystemReport = G.DcSystemReport;
 
 export type AreaRow = G.AreaRow;
 
+export type FactsRow = G.FactsRow;
+
 export type InterchangeChoice = G.InterchangeChoice;
 
 export type DcConverterRow = G.DcConverterRow;
@@ -278,3 +280,21 @@ export type CaseRecord = Row<G.RecordRowColumns>;
 export type RecordTable = Omit<G.RecordTable, "rows"> & { rows: CaseRecord[] };
 
 export type FileFingerprint = G.Fingerprint;
+
+// ---- Paged tables (paging.rs) ----------------------------------------------
+export type PageQuery = G.PageQuery;
+export type PageRule = G.Rule;
+export type FieldType = G.FieldType;
+
+/** A page of rows decoded from columns, with each row's position in the whole table. */
+export interface Page<T> {
+  total: number;
+  matched: number;
+  offset: number;
+  positions: number[];
+  rows: T[];
+  found: number | null;
+}
+
+/** A record type's columns and one page of its records. */
+export type RecordPage = Omit<G.RecordPage, "page"> & { page: Page<CaseRecord> };

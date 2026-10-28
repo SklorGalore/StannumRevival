@@ -43,7 +43,7 @@ export function sectionFor(book: RecordBook, element: string): string | null {
 }
 
 /** The records as plain objects keyed by column name, for CSV export. */
-export function csvRows(table: RecordTable, rows: CaseRecord[]): Record<string, unknown>[] {
+export function csvRows(table: Pick<RecordTable, "columns">, rows: CaseRecord[]): Record<string, unknown>[] {
   return rows.map((r) => {
     const out: Record<string, unknown> = {};
     table.columns.forEach((c, i) => (out[c.name] = r.cells[i]));

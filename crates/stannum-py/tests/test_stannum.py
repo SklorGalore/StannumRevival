@@ -167,6 +167,16 @@ def test_export_round_trip(case9: sn.Case, tmp_path: Path) -> None:
         assert again.solve(start="case").iterations <= 1
 
 
+def test_raw_export(tmp_path: Path) -> None:
+    with sn.open(FIVE_BUS) as case:
+        out = tmp_path / "five_bus_v33.raw"
+        done = case.export_raw(out, revision=33)
+        assert done["revision"] == 33
+        assert done["source"] == "records"
+    with sn.open(out) as again:
+        assert again.solve().converged
+
+
 def test_run_file(tmp_path: Path) -> None:
     run = tmp_path / "study.stnrun"
     run.write_text(

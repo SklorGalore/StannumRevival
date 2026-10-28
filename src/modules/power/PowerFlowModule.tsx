@@ -4,6 +4,7 @@ import { useShownReport, useWorkspace, type ShownResult } from "../../store/work
 import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   AreaRow,
+  FactsRow,
   InterchangeChoice,
   DcLineKind,
   DcGridsSummary,
@@ -50,6 +51,8 @@ import { useContingencies } from "../../store/contingencyStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
+import type { Page, PageQuery, PageRule } from "../../lib/analysis/types";
+import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
 import { tolerancePu } from "../../lib/analysis/tolerance";
 import { AC_METHODS, LOCKED_HINT, controlsDetail, flowControlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
@@ -62,6 +65,7 @@ type Tab =
   | "dc"
   | "dcnet"
   | "areas"
+  | "facts"
   | "vsc"
   | "sensitivities"
   | "contingencies"
@@ -118,6 +122,7 @@ const loadPartColumns: Column<BusRow>[] = (["p", "q"] as const).flatMap((side) =
     const value = (r: BusRow) => (r.load_parts ? r.load_parts[side][k] : k === 0 ? r[side === "p" ? "pd" : "qd"] : 0);
     return {
       key: `load_${side}_${short}`,
+      sortField: `load_parts.${side}.${k}`,
       header: `${side === "p" ? "Pd" : "Qd"} ${short} (${side === "p" ? "MW" : "MVAr"})`,
       title: `${side === "p" ? "Active" : "Reactive"} load drawn as ${LOAD_PART_NAMES[k]} at the solved voltage`,
       value,
@@ -173,25 +178,26 @@ const generatorColumns: Column<GeneratorRow>[] = [
 const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "from", header: "From", value: (r) => r.from, align: "right" },
-  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "" }] : []),
+  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "", sortField: null }] : []),
   { key: "to", header: "To", value: (r) => r.to, align: "right" },
-  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "" }] : []),
+  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "", sortField: null }] : []),
   {
     key: "circuit",
     header: "Circuit",
     value: (r) => r.circuit,
     render: (r) => (r.winding ? `${r.circuit} · W${r.winding}` : r.circuit),
   },
-  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line") },
+  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line"), sortField: "is_transformer" },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
   { key: "pf", header: "PF (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "qf", header: "QF (MVAr)", value: (r) => r.qf, render: (r) => fixed(r.qf), align: "right" },
   { key: "pt", header: "PT (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
   { key: "qt", header: "QT (MVAr)", value: (r) => r.qt, render: (r) => fixed(r.qt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   { key: "rate_a", header: "Rate A (MVA)", value: (r) => r.rate_a, render: (r) => (r.rate_a > 0 ? fixed(r.rate_a, 1) : "—"), align: "right" },
   {
     key: "loading",
+    sortField: "loading_pct",
     header: "Loading (%)",
     value: (r) => r.loading_pct,
     render: (r) =>
@@ -326,7 +332,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
   { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => dcTap(r, false), render: (r) => num(dcTap(r, false), 5), align: "right" },
   { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   {
     key: "qf",
     header: "QF (MVAr)",
@@ -470,6 +476,84 @@ function AreasTab({ report }: { report: SolveReport }) {
   );
 }
 
+const factsColumns: Column<FactsRow>[] = [
+  { key: "name", header: "Device", value: (f) => f.name },
+  { key: "bus", header: "Bus", value: (f) => f.bus, align: "right" },
+  { key: "bus_name", header: "Name", value: (f) => f.bus_name },
+  {
+    key: "kind",
+    header: "Kind",
+    title: "STATCOM: shunt element only. UPFC: a series element to a terminal-end bus as well.",
+    value: (f) => (f.terminal_bus == null ? "STATCOM" : `UPFC to ${f.terminal_bus}`),
+  },
+  { key: "held_bus", header: "Holds bus", value: (f) => f.regulated_bus, align: "right" },
+  { key: "vset", header: "VSET (pu)", value: (f) => f.vset, render: (f) => fixed(f.vset, 4), align: "right" },
+  {
+    key: "vm",
+    header: "V (pu)",
+    title: "Solved voltage at the held bus; highlighted when it misses VSET",
+    value: (f) => f.vm,
+    render: (f) =>
+      Math.abs(f.vm - f.vset) > 1e-4 ? <span className="text-amber-700 font-medium">{fixed(f.vm, 4)}</span> : fixed(f.vm, 4),
+    align: "right",
+  },
+  {
+    key: "shunt",
+    header: "Shunt (Mvar)",
+    title: "Reactive power the shunt element injects; negative absorbs",
+    value: (f) => f.shunt_mvar,
+    render: (f) => fixed(f.shunt_mvar),
+    align: "right",
+  },
+  {
+    key: "range",
+    header: "Range (Mvar)",
+    title: "SHMX at the voltage setpoint, either way",
+    value: (f) => f.shunt_max_mvar,
+    render: (f) => `±${fixed(f.shunt_max_mvar, 1)}`,
+    align: "right",
+  },
+  {
+    key: "state",
+    header: "Shunt state",
+    value: (f) => (f.held ? "Held at 0" : f.at_limit ? "At limit" : "Holding"),
+    render: (f) =>
+      f.held ? "Held at 0" : f.at_limit ? <span className="text-amber-700 font-medium">At limit</span> : "Holding",
+  },
+  {
+    key: "series_mw",
+    header: "Series (MW)",
+    title: "Active power the series element sends to the terminal-end bus",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mw),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mw)),
+    align: "right",
+  },
+  {
+    key: "series_mvar",
+    header: "Series (Mvar)",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mvar),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mvar)),
+    align: "right",
+  },
+];
+
+/** Each FACTS device's shunt and series output. */
+function FactsTab({ report }: { report: SolveReport }) {
+  const facts = report.facts ?? [];
+  const atLimit = facts.filter((f) => f.at_limit).length;
+  const held = facts.filter((f) => f.held).length;
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="facts-tab">
+      <Panel
+        title="FACTS devices"
+        eyebrow={`${count(facts.length)} in service · ${atLimit} at a limit${held ? ` · ${held} held` : ""}`}
+      >
+        <DataTable rows={facts} columns={factsColumns} rowKey={(f) => `${f.name}-${f.bus}`} />
+      </Panel>
+    </div>
+  );
+}
+
 /** DC buses, links and converters of each multi-terminal system. */
 function DcNetworkTab({ systems }: { systems: DcSystemReport[] }) {
   return (
@@ -528,6 +612,7 @@ function SolvePanel({
   const ac = settings.model === "ac";
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
+  const exportRaw = useStudyFile((s) => s.exportRaw);
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -729,6 +814,19 @@ function SolvePanel({
         <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
           <Download size={13} /> Solved case…
         </Button>
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export PSS/E RAW</p>
+        {([35, 33] as const).map((revision) => (
+          <Button
+            key={revision}
+            variant="ghost"
+            className="justify-start"
+            onClick={() => void exportRaw(revision)}
+            disabled={!!busy}
+            title="The case with its Records edits and study edits, every record included"
+          >
+            <Download size={13} /> Revision {revision}…
+          </Button>
+        ))}
       </div>
     </aside>
   );
@@ -919,6 +1017,10 @@ function Overview({
 
 function TableTab<T>({
   rows,
+  page,
+  sourceKey,
+  find = null,
+  filtering = false,
   columns,
   rowKey,
   placeholder,
@@ -932,7 +1034,16 @@ function TableTab<T>({
   initialProblemsOnly = false,
   inspector = false,
 }: {
-  rows: T[];
+  /** Every row, for small tables kept in the app (DC lines). */
+  rows?: T[];
+  /** Or a page of rows from the core, sorted and filtered there. */
+  page?: (query: PageQuery) => Promise<Page<T>>;
+  /** Changes whenever the rows behind `page` do (a new result, other filter chips). */
+  sourceKey?: string;
+  /** With `page`: the table's element for the selection (a load's bus), scrolled to. */
+  find?: string | null;
+  /** With `page`: the filter chips narrow the rows, so the selection is kept listed. */
+  filtering?: boolean;
   columns: Column<T>[];
   rowKey: (r: T) => number;
   placeholder: string;
@@ -945,31 +1056,55 @@ function TableTab<T>({
   /** The element picked here or, while linked, anywhere. */
   selected: string | null;
   onPick: (element: string) => void;
-  /** Rows outside their limits, with the column that measures how far, worst first. */
-  problem?: { test: (r: T) => boolean; sortKey: string; label: string };
+  /** Rows outside their limits (rules the core applies), with the column that measures how far, worst first. */
+  problem?: { rules: PageRule[]; sortKey: string; label: string };
   initialProblemsOnly?: boolean;
   /** The element inspector is open beside the table, so the actions live there. */
   inspector?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
-  const problemCount = useMemo(() => (problem ? rows.filter(problem.test).length : 0), [rows, problem]);
-  const shown = useMemo(
-    () => (problem && problemsOnly ? rows.filter(problem.test) : rows),
-    [rows, problem, problemsOnly]
-  );
   const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
-  const selectedRow = selected === null ? undefined : rows.find(isSelected);
+  // From the core: the picked row stays listed whatever the filters.
+  const source = useMemo<RowSource<T> | undefined>(() => {
+    if (!page) return undefined;
+    const rules = problem && problemsOnly ? problem.rules : [];
+    const keep = filtering ? find : null;
+    return {
+      key: `${sourceKey}\u0000${problemsOnly}\u0000${keep}`,
+      fetch: (r) => page({ offset: r.offset, limit: r.limit, sort: r.sort, search: r.search, find: r.find, keep, rules }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, problemsOnly, filtering ? find : null]);
+  const [problemCount, setProblemCount] = useState(0);
+  useEffect(() => {
+    if (!page || !problem) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules })
+      .then((p) => live && setProblemCount(p.matched))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
   // An element picked elsewhere stays visible: drop the problems filter that would hide it.
   useEffect(() => {
-    if (problem && problemsOnly && selectedRow && !problem.test(selectedRow)) setProblemsOnly(false);
+    if (!page || !problem || !problemsOnly || find === null) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules, find })
+      .then((p) => live && p.found === null && setProblemsOnly(false))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
+  const selectedRow = selected === null || !rows ? undefined : rows.find(isSelected);
+  const selectedElement = source ? find : selectedRow ? element(selectedRow) : null;
   async function exportCsv() {
-    const filtered = filterRows(shown, columns, search);
-    const csv = toCsv(
-      filtered.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)])))
-    );
+    const all = source ? await allRows(source, null, search.trim()) : filterRows(rows ?? [], columns, search);
+    const csv = toCsv(all.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)]))));
     await saveTextExport(exportName, csv, { name: "CSV", extensions: ["csv"] });
   }
   return (
@@ -988,13 +1123,13 @@ function TableTab<T>({
           </label>
         )}
         <div className="ml-auto flex items-center gap-2 min-w-0">
-          {selectedRow && selected && (
+          {selectedElement && selected && (
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
               {!inspector && (
                 <>
-                  <DrawAroundButton element={element(selectedRow)} from="power" />
-                  <StudyActions element={element(selectedRow)} />
+                  <DrawAroundButton element={selectedElement} from="power" />
+                  <StudyActions element={selectedElement} />
                 </>
               )}
             </span>
@@ -1006,7 +1141,9 @@ function TableTab<T>({
       </div>
       <div className="flex-1 min-h-0 bg-white">
         <DataTable
-          rows={shown}
+          rows={rows}
+          source={source}
+          find={find}
           columns={columns}
           rowKey={rowKey}
           search={search}
@@ -1020,17 +1157,23 @@ function TableTab<T>({
   );
 }
 
-const BUS_PROBLEM = { test: (r: BusRow) => r.violation > 0, sortKey: "violation", label: "Voltage violations" };
+const rule = (field: string, operator: PageRule["operator"], value = ""): PageRule => ({ field, operator, value, upper: null });
+const BUS_PROBLEM = { rules: [rule("violation", "gt", "0")], sortKey: "violation", label: "Voltage violations" };
 const GENERATOR_PROBLEM = {
-  test: (r: GeneratorRow) => r.online && r.q_violation > 0,
+  rules: [rule("online", "eq", "true"), rule("q_violation", "gt", "0")],
   sortKey: "q_violation",
   label: "Q limit violations",
 };
 const BRANCH_PROBLEM = {
-  test: (r: BranchRow) => r.online && (r.loading_pct ?? 0) > 100,
+  rules: [rule("online", "eq", "true"), rule("loading_pct", "gt", "100")],
   sortKey: "loading",
   label: "Overloads",
 };
+
+/** A filter chip's rule as the core reads it. */
+function pageRule(r: FilterRule): PageRule {
+  return { field: r.field, operator: r.operator, value: r.value, upper: r.upper ?? null };
+}
 
 /** The table that lists an element. */
 function tabFor(element: string): Tab | null {
@@ -1139,6 +1282,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       branches: report.branches.filter((b) => passing.has(b.from) || passing.has(b.to) || b.element === selected),
     };
   }, [report, passing, selected, selectedBus]);
+
+  // The Power flow tables read pages of the shown result from the core.
+  const resultName = shown?.report ? shown.name : "latest";
+  const busRules = useMemo(() => rules.map(pageRule), [rules]);
+  const pageKey = report ? `${objectKey(report)}\u0000${JSON.stringify(busRules)}` : "";
 
   // A new case invalidates every result.
   useEffect(() => {
@@ -1279,6 +1427,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         : []),
       ...((report?.areas?.length ?? 0) > 1
         ? [{ id: "areas" as const, label: "Areas", count: report!.areas.length, disabled: false }]
+        : []),
+      ...(report?.facts?.length
+        ? [{ id: "facts" as const, label: "FACTS", count: report.facts.length, disabled: false }]
         : []),
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
@@ -1449,7 +1600,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.buses ?? report.buses}
+                  page={(q) => api.resultBuses(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selectedBus === null ? null : busElement(selectedBus)}
                   columns={busCols}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
@@ -1467,7 +1621,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.generators ?? report.generators}
+                  page={(q) => api.resultGenerators(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "generators" ? selected : null}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
@@ -1484,7 +1641,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.branches ?? report.branches}
+                  page={(q) => api.resultBranches(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "branches" ? selected : null}
                   columns={branchCols}
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"
@@ -1509,6 +1669,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
               {tab === "areas" && report && <AreasTab report={report} />}
+              {tab === "facts" && report && <FactsTab report={report} />}
               {tab === "vsc" && (
                 <VscGridsTab file={dcGrids} report={report} busy={!!busy} onLoad={attachDcGrids} onClear={detachDcGrids} />
               )}

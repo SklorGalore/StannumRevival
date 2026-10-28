@@ -20,6 +20,22 @@ section into the next version's when a release is cut (see
   settings, or with `area_interchange` in run files and Python. A new
   **Areas** tab lists every area's interchange, desired value and slack
   movement, also with control off.
+- **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
+  and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
+  run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
+  record by record, keeping every record and converting between the two
+  revisions; MATPOWER and older RAW revisions are written from the power flow
+  model. Anything the file can't keep is listed after the export.
+- Large tables read a page at a time. Power flow's bus, generator and
+  branch tables, Records, and contingency results are now sorted, searched
+  and filtered in the core, and the window reads only the rows in view as
+  you scroll. On an 80,000-bus case a Records table no longer copies 19 MB
+  into the window, and every contingency result can be sorted and scrolled
+  without **Load all**. Under a filtered table the count reads "69 rows of
+  80,000". Scripts get the same pages with `result_buses`,
+  `result_generators`, `result_branches`, `record_page` and
+  `contingency_page` (plus `result_bus_values`, `record_fields` and
+  `record_values` for filter choices).
 - Generated one-lines draw RAW switching devices: breakers and disconnectors
   with their name, open or closed state (flagged when not in their normal
   position) and flow. Double-click one to open or close it in the study.
@@ -47,8 +63,16 @@ section into the next version's when a release is cut (see
   `decoupled_iterations` sets the decoupled iteration limit.
 - Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
   reactive output, a VSC converter's, or another switched shunt's setting
-  within their band, as PSS/E does. Mode 6 (FACTS) stays frozen at `BINIT`
-  with a warning, as FACTS devices are not modelled.
+  within their band, as PSS/E does. Mode 6 keeps a FACTS device's shunt
+  element within its band.
+- **FACTS devices** from RAW FACTS control device data: the shunt element
+  holds its bus (or `REMOT`) at `VSET` within `SHMX`, like a STATCOM, and a
+  series element in normal mode sends `PDES` and `QDES` to its terminal-end
+  bus, like a UPFC (also in DC solves). A new **FACTS** tab in Power flow
+  lists each device's output. On the PSS/E sample case the largest angle
+  error against its saved solution drops from 10.8° to 0.9°.
+- Continuous switched shunts wait for generators and FACTS devices to settle
+  their reactive limits before they are fixed at the end of their range.
 - **Move switched shunts** and **Move transformer taps** (and **Adjust DC
   converter taps**) now lock those devices when turned off: they stay where
   the last solve left them, instead of going back to their case values.

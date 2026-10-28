@@ -6,12 +6,14 @@ import { Download, Network, Play, ShieldAlert, Square, X } from "lucide-react";
 import { useContingencies } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
-import { saveTextExport } from "../../lib/analysis/api";
+import { api, saveTextExport } from "../../lib/analysis/api";
 import type { ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
 import { Button, EmptyState, ErrorBanner, Metric, Notice, SearchBox, inputClass } from "../../ui/primitives";
-import { DataTable, filterRows, type Column } from "../../ui/DataTable";
+import { DataTable, type Column } from "../../ui/DataTable";
+import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
+import type { PageRule } from "../../lib/analysis/types";
 import { LoadingBar } from "../../ui/CellBars";
 import { ElementLink } from "../../ui/DrawAround";
 import { StudyActions } from "../../ui/StudyActions";
@@ -20,6 +22,14 @@ import { StudyActions } from "../../ui/StudyActions";
 export function isProblem(r: ContingencyRow): boolean {
   return r.converged === false || r.overloads > 0 || r.voltage_violations > 0 || r.lost_load_mw > 0.05;
 }
+
+/** isProblem as rules the core applies: any one of them. */
+const PROBLEM_RULES: PageRule[] = [
+  { field: "converged", operator: "eq", value: "false", upper: null },
+  { field: "overloads", operator: "gt", value: "0", upper: null },
+  { field: "voltage_violations", operator: "gt", value: "0", upper: null },
+  { field: "lost_load_mw", operator: "gt", value: "0.05", upper: null },
+];
 
 function ms(v: number): string {
   return v >= 1000 ? `${fixed(v / 1000, 1)} s` : `${fixed(v, 0)} ms`;
@@ -63,6 +73,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
     },
     {
       key: "worst",
+      sortField: "worst.element",
       header: "Worst branch",
       title: "The most loaded branch that is over the limit and new or worse; otherwise the most loaded branch",
       value: (r) => (r.worst ? elementLabel(r.worst.element) : null),
@@ -70,6 +81,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
     },
     {
       key: "pct",
+      sortField: "worst.pct",
       header: "Loading",
       title: "MVA as a percent of rate A after the outage",
       value: (r) => r.worst?.pct ?? null,
@@ -87,6 +99,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
     },
     {
       key: "was",
+      sortField: "worst.base_pct",
       header: "Before",
       title: "The same branch's loading before the outage",
       value: (r) => r.worst?.base_pct ?? null,
@@ -103,6 +116,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
     },
     {
       key: "voltage",
+      sortField: "worst_voltage.outside",
       header: "Voltage",
       title: "AC only: the worst bus outside its limits that is new or worse",
       value: (r) => r.worst_voltage?.outside ?? null,
@@ -119,6 +133,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
     },
     {
       key: "cut",
+      sortField: "cut_off_buses",
       header: "Splits off",
       title: "Buses left without a path to the rest of the network, and the load on them",
       value: (r) => r.cut_off_buses,
@@ -304,8 +319,35 @@ export function ContingencyTab({
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(false);
   const cols = useMemo(() => columns(s.summary?.limit_pct ?? s.choice.limitPct), [s.summary, s.choice.limitPct]);
-  const shown = useMemo(() => (problemsOnly ? s.rows.filter(isProblem) : s.rows), [s.rows, problemsOnly]);
-  const openRow = s.open === null ? undefined : s.rows.find((r) => r.rank === s.open);
+  // The ranked rows are read from the core a page at a time.
+  const [clicked, setClicked] = useState<ContingencyRow | null>(null);
+  const runId = useMemo(() => ({}), [s.summary]);
+  const source = useMemo<RowSource<ContingencyRow>>(
+    () => ({
+      key: `${objectKey(runId)}\u0000${problemsOnly}`,
+      fetch: (r) => api.contingencyPage({ ...r, any: problemsOnly ? PROBLEM_RULES : [] }),
+    }),
+    [runId, problemsOnly]
+  );
+  const [problemCount, setProblemCount] = useState<number | null>(null);
+  useEffect(() => {
+    setProblemCount(null);
+    if (!s.summary) return;
+    let live = true;
+    api
+      .contingencyPage({ limit: 0, any: PROBLEM_RULES })
+      .then((p) => live && setProblemCount(p.matched))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [s.summary]);
+  const openRow =
+    s.open === null
+      ? undefined
+      : clicked?.rank === s.open
+        ? clicked
+        : (s.rows.find((r) => r.rank === s.open) ?? (s.detail?.row.rank === s.open ? s.detail.row : undefined));
   // Open the worst outage once a run finishes.
   useEffect(() => {
     if (s.summary && s.open === null && s.rows.length) void s.openRow(s.rows[0].rank);
@@ -315,7 +357,7 @@ export function ContingencyTab({
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
   async function exportCsv() {
-    const rows = filterRows(shown, cols, search);
+    const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
       rows.map((r) => ({
         rank: r.rank,
@@ -488,25 +530,23 @@ export function ContingencyTab({
                 <SearchBox value={search} onChange={setSearch} placeholder="Search outages…" />
                 <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-slate-700">
                   <input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)} />
-                  Problems only ({count(s.rows.filter(isProblem).length)})
+                  Problems only{problemCount === null ? "" : ` (${count(problemCount)})`}
                 </label>
-                {s.rows.length < summary.total && (
-                  <button type="button" className="text-xs text-teal-700 underline" onClick={() => void s.loadMore()}>
-                    Load all {count(summary.total)}
-                  </button>
-                )}
                 <Button variant="ghost" className="ml-auto whitespace-nowrap" onClick={exportCsv}>
                   <Download size={13} /> Export CSV
                 </Button>
               </div>
               <div className="flex-1 min-h-0 bg-white">
                 <DataTable
-                  rows={shown}
+                  source={source}
                   columns={cols}
                   rowKey={(r) => r.rank}
                   search={search}
                   selectedKey={s.open}
-                  onRowClick={(r) => void s.openRow(r.rank)}
+                  onRowClick={(r) => {
+                    setClicked(r);
+                    void s.openRow(r.rank);
+                  }}
                   rowClassName={(r) => (r.converged === false || r.overloads > 0 ? "bg-red-50/60" : r.voltage_violations > 0 ? "bg-amber-50/60" : "")}
                 />
               </div>

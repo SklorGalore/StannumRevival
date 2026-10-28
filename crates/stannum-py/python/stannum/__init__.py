@@ -429,6 +429,12 @@ class Case:
         """Write the case as a MATPOWER file, solved or as filed."""
         self.call("export_matpower", path=Path(path).resolve(), solved=solved)
 
+    def export_raw(self, path: PathLike, revision: int = 35) -> Answer:
+        """Write the case, with its record and study edits, as a complete
+        PSS/E RAW file of revision 33 or 35. ``notes`` in the answer lists
+        anything the file couldn't keep."""
+        return self.call("export_raw", path=Path(path).resolve(), revision=revision)
+
     def save_as(self, path: PathLike) -> Answer:
         """Save the case, with its record edits, to a new file."""
         self._summary = self.call("save_case_as", path=Path(path).resolve())

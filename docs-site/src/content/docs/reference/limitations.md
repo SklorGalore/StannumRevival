@@ -21,8 +21,6 @@ these that a case uses.
 
 ## Controls
 
-- Switched shunts in mode 6 (`MODSW`), which watch FACTS devices: FACTS
-  devices are not modelled.
 - Transformer controls other than voltage (`COD` 2–5): reactive power, active
   power, DC line and asymmetric controls.
 - Impedance correction tables and magnetizing admittance.
@@ -39,7 +37,10 @@ these that a case uses.
 
 ## Data
 
-- FACTS, GNE devices, induction machines.
-- RAWX (the JSON form of RAW), RAW export.
+- FACTS devices in modes 3 to 8 (constant series impedance or voltage,
+  IPFC); the series element's voltage and current limits and reactance.
+- GNE devices, induction machines.
+- RAWX (the JSON form of RAW). RAW export writes revisions 33 and 35 only;
+  DC lines are left out of RAW files written from a MATPOWER case.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.

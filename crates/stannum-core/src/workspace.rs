@@ -88,7 +88,7 @@ pub struct OpenCase {
     pub contingencies: Option<ContingencyResults>,
     /// The report of the latest solve (named `base` or `study`, see
     /// [`crate::results`]), until the study's edits change.
-    pub report: Option<power::SolveReport>,
+    pub report: Option<Arc<power::SolveReport>>,
     /// The last "Trip and compare", kept so its whole solution can be shown.
     pub trip: Option<(String, ContingencyResults)>,
     /// The file's records as tables, read the first time they're asked for.
@@ -647,6 +647,18 @@ impl OpenCase {
     /// outage of the last contingency run, or the last trip, as a full solve
     /// report that every view can show.
     pub fn result(&mut self, name: &str) -> Result<power::SolveReport, Error> {
+        self.shared_result(name).map(|r| (*r).clone())
+    }
+
+    /// [`Self::result`] without copying it, for paging through its tables.
+    /// "latest" names the latest solve, whichever of base and study it is.
+    pub fn shared_result(&mut self, name: &str) -> Result<Arc<power::SolveReport>, Error> {
+        if name.trim() == "latest" {
+            return self
+                .report
+                .clone()
+                .ok_or_else(|| Error::not_ready("Solve the case first."));
+        }
         let study = !self.edits.is_empty();
         match name
             .parse::<ResultName>()
@@ -666,9 +678,9 @@ impl OpenCase {
                 .contingencies
                 .as_mut()
                 .ok_or_else(|| Error::not_ready("Run contingencies first."))?
-                .report(rank),
+                .shared_report(rank),
             ResultName::Trip(element) => match self.trip.as_mut() {
-                Some((tripped, results)) if *tripped == element => results.report(1),
+                Some((tripped, results)) if *tripped == element => results.shared_report(1),
                 _ => Err(Error::not_ready(format!(
                     "Trip and compare {element} first: only the last trip is kept."
                 ))),
@@ -734,8 +746,9 @@ impl OpenCase {
         }
         self.solved = Some(Arc::new((done.result, done.settings)));
         self.before_edits = None;
-        self.report = Some(done.report.clone());
-        Ok(done.report)
+        let report = Arc::new(done.report);
+        self.report = Some(report.clone());
+        Ok(Arc::unwrap_or_clone(report))
     }
 
     /// Attach a DC grid file; the next AC solve includes its grids. The file
@@ -899,6 +912,62 @@ impl OpenCase {
         Ok(())
     }
 
+    /// Write the case, with its Records edits and the study's edits, as a
+    /// complete PSS/E RAW file of revision 33 or 35.
+    ///
+    /// RAW 33 and 35 cases are written record by record from the file;
+    /// anything else from the power flow model (see [`crate::raw_export`]).
+    pub fn export_raw(
+        &mut self,
+        path: &Path,
+        revision: u32,
+    ) -> Result<crate::raw_export::RawExport, Error> {
+        if !matches!(revision, 33 | 35) {
+            return Err(Error::invalid_arguments(format!(
+                "Stannum writes RAW revisions 33 and 35, not {revision}."
+            )));
+        }
+        let start = Instant::now();
+        let from_records = if self.format == CaseFormat::Raw {
+            match self.working_bytes() {
+                Ok(bytes) => crate::raw_export::from_raw(&self.name, &bytes, revision),
+                Err(e) => Err(e.to_string()),
+            }
+        } else {
+            Err(String::new())
+        };
+        let (bytes, export) = match from_records {
+            Ok(done) => done,
+            Err(reason) => {
+                let power = self.power_case_shared()?;
+                let why = match (self.format, power.revision) {
+                    (CaseFormat::Matpower, _) => {
+                        "Written from the MATPOWER case's power flow model.".to_string()
+                    }
+                    (_, Some(rev)) if !matches!(rev, 33 | 35) => format!(
+                        "Written from the power flow model: Stannum reads RAW revision {rev} for power flow only, not record by record."
+                    ),
+                    _ => format!(
+                        "Written from the power flow model: the file's records couldn't be read one by one ({reason})."
+                    ),
+                };
+                crate::raw_export::from_model(&self.name, &power, revision, why)?
+            }
+        };
+        std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
+        log::info!(
+            "Exported {} as RAW {revision} to {} ({} records, {:.0} ms)",
+            self.name,
+            path.display(),
+            export.records,
+            elapsed_ms(start)
+        );
+        for note in &export.notes {
+            log::info!("RAW export: {note}");
+        }
+        Ok(export)
+    }
+
     /// The case as buses, generators and branches for the one-line diagram.
     pub fn diagram_network(&self) -> Result<crate::diagram::CaseNetwork, Error> {
         Ok(crate::diagram::network(self.power_case()?))
@@ -987,6 +1056,16 @@ impl OpenCase {
 
     pub fn record_book(&mut self) -> Result<RecordBook, Error> {
         Ok(self.records()?.book())
+    }
+
+    /// The records, shared, so a page can be cut without the workspace.
+    pub fn shared_records(&mut self) -> Result<Arc<Records>, Error> {
+        self.records()?;
+        match self.records.as_ref() {
+            Some(Ok(r)) => Ok(r.clone()),
+            Some(Err(e)) => Err(e.clone().into()),
+            None => unreachable!("records were just read"),
+        }
     }
 
     pub fn record_table(&mut self, section: &str) -> Result<RecordTable, Error> {

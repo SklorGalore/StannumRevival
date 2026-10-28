@@ -338,10 +338,12 @@ impl SolveSettings {
                 adjust_taps: self.adjust_dc_taps,
             };
         }
+        // FACTS series elements move active power in DC solves too; the
+        // solver ignores the other controls there.
+        options.voltage_controls = power.voltage_controls.clone();
         if self.model == ModelChoice::Ac {
             // Locked controls stay listed, so that a solve from the last
             // solution starts them where it left them and holds them there.
-            options.voltage_controls = power.voltage_controls.clone();
             options.lock_switched_shunts = !self.switch_shunts;
             options.lock_taps = !self.adjust_transformer_taps;
             options.flow_controls = power.flow_controls.clone();
@@ -387,8 +389,9 @@ pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
 /// A copy of `case` that starts where `last`, an earlier converged AC solve,
 /// ended, with `options` changed to match.
 ///
-/// Bus voltages and generator reactive outputs come from `last`. Switched
-/// shunts, transformer taps, phase shifters and DC converter taps that `options` lists
+/// Bus voltages and generator and FACTS shunt reactive outputs come from
+/// `last`. Switched shunts, transformer taps, phase shifters and DC
+/// converter taps that `options` lists
 /// start at their final settings, also when `options` locks them there. Everything else, such as dispatch, loads
 /// and statuses, stays as in `case`. Generators `last` held at a reactive
 /// limit start there, also after study edits: on SyntheticUSA an outage then
@@ -425,6 +428,13 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
             if let (Some(&i), true) = (index.get(&shunt.bus), value.is_finite()) {
                 warm.buses[i].bs += value - shunt.initial;
                 shunt.initial = value;
+            }
+        }
+    }
+    if controls.facts.len() == last.facts.len() {
+        for (device, solution) in controls.facts.iter_mut().zip(&last.facts) {
+            if solution.shunt_mvar.is_finite() {
+                device.initial_mvar = solution.shunt_mvar;
             }
         }
     }
@@ -869,6 +879,43 @@ pub struct SolveReport {
     pub interchange_passes: usize,
     /// The area interchange control the solve used (off for DC).
     pub area_interchange: InterchangeChoice,
+    /// FACTS devices in service, in file order (RAW only).
+    pub facts: Vec<FactsRow>,
+}
+
+/// One FACTS device after a solve.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct FactsRow {
+    pub name: String,
+    /// Sending-end bus, where the shunt element connects.
+    pub bus: u32,
+    pub bus_name: String,
+    /// Terminal-end bus of the series element; none for a STATCOM.
+    pub terminal_bus: Option<u32>,
+    /// Bus whose voltage the shunt element holds.
+    pub regulated_bus: u32,
+    /// Voltage setpoint in per unit.
+    #[serde(serialize_with = "table::pu")]
+    pub vset: f64,
+    /// Solved voltage at the regulated bus, in per unit.
+    #[serde(serialize_with = "table::pu")]
+    pub vm: f64,
+    /// Reactive power the shunt element injects, in Mvar.
+    #[serde(serialize_with = "table::mw")]
+    pub shunt_mvar: f64,
+    /// Largest shunt output at the setpoint (SHMX × VSET), in Mvar.
+    #[serde(serialize_with = "table::mw")]
+    pub shunt_max_mvar: f64,
+    /// The shunt element ended at an end of its range.
+    pub at_limit: bool,
+    /// The shunt element was held at zero (a generator holds its bus, or
+    /// the solve was DC).
+    pub held: bool,
+    /// Power the series element sends to the terminal-end bus.
+    #[serde(serialize_with = "table::mw")]
+    pub series_mw: f64,
+    #[serde(serialize_with = "table::mw")]
+    pub series_mvar: f64,
 }
 
 /// One area's net interchange after a solve.
@@ -1264,6 +1311,29 @@ pub fn report(
         } else {
             InterchangeChoice::Off
         },
+        facts: controls
+            .facts
+            .iter()
+            .zip(&result.facts)
+            .map(|(d, s)| {
+                let regulated_bus = d.regulated_bus.unwrap_or(d.bus);
+                FactsRow {
+                    name: d.name.clone(),
+                    bus: d.bus,
+                    bus_name: name_of(d.bus),
+                    terminal_bus: d.terminal_bus,
+                    regulated_bus,
+                    vset: d.vset,
+                    vm: index.get(&regulated_bus).map_or(0.0, |&i| case.buses[i].vm),
+                    shunt_mvar: s.shunt_mvar,
+                    shunt_max_mvar: d.shunt_range().1,
+                    at_limit: s.at_limit,
+                    held: s.held,
+                    series_mw: s.series_mw,
+                    series_mvar: s.series_mvar,
+                }
+            })
+            .collect(),
     }
 }
 
