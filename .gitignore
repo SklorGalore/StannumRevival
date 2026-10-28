@@ -36,3 +36,10 @@ __pycache__/
 # beside pyproject.toml for the wheel
 crates/stannum-py/LICENSE
 crates/stannum-py/THIRD-PARTY-*
+
+# cargo-fuzz (fuzz/README.md): build output, grown corpora, crash inputs
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/seeds/
+/fuzz/artifacts/
+/fuzz/coverage/

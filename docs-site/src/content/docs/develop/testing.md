@@ -12,6 +12,8 @@ description: Where Stannum's tests live, how to run each kind, what CI runs on a
 | MATPOWER reference checks | `crates/rs-power/tests/reference.rs`, `raw_reference.rs` | part of `cargo test -p rs-power` |
 | Large cases (ignored) | `crates/rs-power/tests/large_cases.rs` | `cargo test --release -p rs-power --test large_cases -- --ignored` after `pwsh scripts/fetch-test-cases.ps1` |
 | Time and size budgets (ignored) | `crates/stannum-core/tests/budgets.rs` | `cargo test --release -p stannum-core --test budgets -- --ignored --nocapture` |
+| Bad files (field sweeps ignored) | `crates/stannum-core/tests/bad_files.rs` | `cargo test -p stannum-core --test bad_files`; sweeps with `--release ... -- --ignored` |
+| Fuzzing the file readers | `fuzz/` (cargo-fuzz, nightly) | `pwsh scripts/fuzz.ps1`; see `fuzz/README.md` |
 | Frontend unit tests | `src/**/*.test.ts` | `npm test` |
 | Browser smoke test | `tests/browser/smoke.mjs` | see below |
 | Python package | `crates/stannum-py/tests/` | `pwsh scripts/ci/test-python.ps1` |
@@ -71,6 +73,7 @@ and checks the result, not only that it renders.
 | **Frontend build and browser smoke test** | `npm ci`, `npm run build`, `npm test`, then the smoke test | Yes |
 | **Large case budgets** | The budgets test on a 12,000-bus synthetic case; the timings go in the run summary | No |
 | **Large case budgets (80,000 buses)** (`budgets-large.yml`, weekly and on request) | The same test on an 80,000-bus synthetic case, the size of the large cases people open | No |
+| **Fuzz file readers** (`fuzz.yml`, weekly, on request, and briefly on PRs that change `fuzz/`) | Ten minutes of cargo-fuzz on each of the RAW, MATPOWER, run file and coordinates CSV readers; crashing inputs are uploaded | No |
 | **Python package** (Linux, Windows, macOS) | Builds the abi3 wheel, installs it in a fresh venv, runs its tests, uploads the wheel | No |
 
 `.github/workflows/docs.yml` builds this site on pull requests that touch
