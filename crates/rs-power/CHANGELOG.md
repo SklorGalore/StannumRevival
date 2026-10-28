@@ -16,6 +16,14 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Area interchange control: `PowerFlowOptions::interchange`
+  (`AreaInterchange` with `InterchangeMode::TieLines` or `TieLinesAndLoads`)
+  moves each area's slack generation until its net interchange meets
+  `Area::desired_mw` within `tolerance_mw`. `PowerFlowResult::areas` reports
+  every area's interchange (`AreaSolution`), also with control off, and
+  `interchange_passes` counts the passes. RAW import reads area data into
+  `RawImport::areas` and loads assigned to another area into
+  `RawImport::area_loads`.
 - `PowerFlowOptions::method` (`AcMethod`): fixed-slope decoupled Newton,
   fast decoupled XB and BX, and `Auto` alongside full Newton (the default),
   with `decoupled_iterations` as their iteration limit and

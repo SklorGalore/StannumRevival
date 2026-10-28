@@ -73,6 +73,7 @@ may be left out: a missing field takes its default.
 | `enforce_q_limits` | `false` |
 | `dc_model` | `"detailed"` |
 | `adjust_dc_taps`, `switch_shunts`, `adjust_transformer_taps` | `true`; `false` locks them where they are |
+| `area_interchange` | `"off"` (or `"tie_lines"`, `"tie_lines_and_loads"`); see [Area interchange control](/StannumRevival/manual/area-interchange/) |
 
 For example, `solve_power_flow settings={"method": "fast_decoupled_xb", "adjust_transformer_taps": false}`
 solves with the fast decoupled method and the transformer taps locked.

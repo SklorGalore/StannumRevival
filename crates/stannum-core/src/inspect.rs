@@ -412,24 +412,44 @@ pub fn element(
             ];
         }
         "switch" => {
-            // Switching devices only exist in nodal's model of the file.
-            let e = topology
-                .and_then(|t| t.equipment.iter().find(|e| e.id == id))
+            // Switching devices solve as lossless branches of the model.
+            let row = power
+                .elements
+                .branches
+                .iter()
+                .position(|e| e.element == id)
                 .ok_or_else(missing)?;
-            detail.buses = e.buses.iter().map(|&b| bus_ref(b as u32)).collect();
-            detail.online = e.status == 1;
-            let mut fields = vec![text("Circuit", e.circuit.trim())];
-            if !e.name.trim().is_empty() {
-                fields.push(text("Name", e.name.trim()));
+            let br = &case.branches[row];
+            let device = power.switching_devices.iter().find(|d| d.branch == row);
+            detail.buses = vec![bus_ref(br.from), bus_ref(br.to)];
+            detail.online = br.online;
+            let mut fields = vec![
+                text(
+                    "Type",
+                    match device.map(|d| d.kind) {
+                        Some(rs_power::SwitchType::Breaker) => "Circuit breaker",
+                        Some(rs_power::SwitchType::Disconnector) => "Disconnect switch",
+                        _ => "Generic connector",
+                    },
+                ),
+                text("Circuit", power.elements.branches[row].circuit.trim()),
+            ];
+            if let Some(d) = device.filter(|d| !d.name.is_empty()) {
+                fields.push(text("Name", d.name.as_str()));
             }
+            fields.push(text("Status", if br.online { "Closed" } else { "Open" }));
+            if let Some(d) = device {
+                fields.push(text(
+                    "Normal status",
+                    if d.normally_open { "Open" } else { "Closed" },
+                ));
+            }
+            fields.push(num("Reactance", br.x, "p.u."));
             detail.data = vec![Group {
                 title: String::new(),
                 fields,
             }];
-            detail.note = Some(
-                "Switching devices come from the topology model; power flow doesn't report them."
-                    .to_string(),
-            );
+            detail.limits = vec![rating("Rate 1", br.rate_a)];
         }
         _ => {
             return Err(Error::invalid_arguments(format!(

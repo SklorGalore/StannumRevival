@@ -3,6 +3,7 @@ use crate::{
     BusType, Case, Error, Generator, VoltageControls,
     controls::{self, Controller, Setup},
     dc::{self, LccLine, LccSolution, TapTargets, Taps},
+    interchange::{self, AreaInterchange, AreaSolution, Interchange, InterchangeMode},
     mtdc::{self, MtdcMode, MtdcSolution, MtdcSystem},
     network::Network,
     vsc::{self, DcState, VscAcControl, VscLine, VscSolution},
@@ -123,6 +124,10 @@ pub struct PowerFlowOptions {
     /// Keep every tap control in `voltage_controls` at its starting ratio
     /// instead of moving it; the result still lists them. Defaults to false.
     pub lock_taps: bool,
+    /// Area interchange control (AC only): areas whose slack generation
+    /// moves until their net export meets the desired value. Off by
+    /// default; the result reports every area's interchange either way.
+    pub interchange: AreaInterchange,
     /// Set this flag from another thread to stop the solve: it returns
     /// [`Error::Cancelled`] before its next Newton step. None by default.
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -175,6 +180,7 @@ impl Default for PowerFlowOptions {
             voltage_controls: VoltageControls::default(),
             lock_switched_shunts: false,
             lock_taps: false,
+            interchange: AreaInterchange::default(),
             cancel: None,
         }
     }
@@ -247,6 +253,12 @@ pub struct PowerFlowResult {
     /// Operating points of the detailed multi-terminal DC systems, in the
     /// order given by [`DcModel::Detailed`]. Empty for the simplified model.
     pub mtdc: Vec<MtdcSolution>,
+    /// Every area's net interchange (AC only): the areas listed in
+    /// [`PowerFlowOptions::interchange`] in order, then the other areas
+    /// found on buses, ascending. Empty for DC solves.
+    pub areas: Vec<AreaSolution>,
+    /// Number of passes that moved area slack generation.
+    pub interchange_passes: usize,
 }
 
 fn linear(
@@ -1415,6 +1427,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
         mtdc: Vec::new(),
+        areas: Vec::new(),
+        interchange_passes: 0,
     })
 }
 
@@ -1427,6 +1441,7 @@ fn zero_offline(net: &Network, case: &mut Case) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn solve_core(
     input: &Case,
     opt: &PowerFlowOptions,
@@ -1435,6 +1450,7 @@ fn solve_core(
     adjust_taps: bool,
     vsc_terminals: &mut [VscTerminal<'_>],
     setup: &Setup<'_>,
+    dc_pairs: &[[usize; 2]],
 ) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
@@ -1451,6 +1467,9 @@ fn solve_core(
     let mut net = Network::new(input)?;
     let mut case = input.clone();
     if opt.model == Model::Dc {
+        if opt.interchange.mode != InterchangeMode::Off {
+            log::warn!("area interchange control applies to AC solves only; ignored");
+        }
         return dc(&net, case, opt);
     }
     let base_kv = |c: &dc::LccConverter, name: &str| -> Result<(usize, f64), Error> {
@@ -1473,6 +1492,13 @@ fn solve_core(
         Ok((i, kv))
     };
     let mut controller = Controller::new(setup, &net, &case);
+    let mut terminal_gen = vec![false; case.generators.len()];
+    for &g in dc_pairs.iter().flatten() {
+        terminal_gen[g] = true;
+    }
+    let mut areas = Interchange::new(&opt.interchange, &net, &case, |g| {
+        g < setup.limited_from && !terminal_gen[g]
+    });
     let mut terminals = Vec::with_capacity(lines.len() + systems.len());
     for &line in lines {
         let mut ends = [0; 2];
@@ -1601,6 +1627,8 @@ fn solve_core(
     // State before the last control pass, to go back to if the solve after
     // it fails.
     let mut checkpoint = None;
+    // State before the last area interchange pass, likewise.
+    let mut area_checkpoint = None;
     // Continuous-shunt helpers always keep to their range.
     let limited = |g: usize| opt.enforce_q_limits || g >= setup.limited_from;
     let limits = opt.enforce_q_limits || !setup.continuous.is_empty();
@@ -1690,7 +1718,20 @@ fn solve_core(
             reason = "after undoing the last shunt and tap moves";
             continue;
         }
+        if status != SolveStatus::Converged
+            && let Some((saved_case, saved_v, saved_terminals)) = area_checkpoint.take()
+            && areas.retreat()
+        {
+            log::warn!(
+                "solve failed after area interchange pass {}; undoing it and retrying with half the step",
+                areas.passes()
+            );
+            (case, v, terminals) = (saved_case, saved_v, saved_terminals);
+            reason = "after undoing the last area slack moves";
+            continue;
+        }
         checkpoint = None;
+        area_checkpoint = None;
         allocate(&net, &mut case, &kinds, &references, &v, &terminals);
         if status != SolveStatus::Converged {
             break (status, residual);
@@ -1778,6 +1819,16 @@ fn solve_core(
                 reason = "reactive limits settled, finishing at full tolerance";
                 continue;
             }
+            // Area slack generation moves once the reactive limits have
+            // settled, before shunts and taps.
+            let dc = dc_flows(&net, &case, dc_pairs, &terminals);
+            let floor = opt.tolerance * case.base_mva;
+            let saved = (case.clone(), v.clone(), terminals.clone());
+            if areas.pass(&net, &mut case, &references, &v, &dc, floor) > 0 {
+                area_checkpoint = Some(saved);
+                reason = "after moving area slack generation";
+                continue;
+            }
             // Shunts and taps move once the generators have settled, so they
             // see the final reactive limits rather than fight them.
             if !controller.is_empty() && control_passes < MAX_CONTROL_PASSES {
@@ -1855,6 +1906,13 @@ fn solve_core(
                     "Reactive limits are infeasible in island {}: no generator is left to hold its voltage",
                     k + 1
                 );
+                let report = areas.report(
+                    &net,
+                    &case,
+                    &references,
+                    &v,
+                    &dc_flows(&net, &case, dc_pairs, &terminals),
+                );
                 return finish_ac(
                     input,
                     &net,
@@ -1869,7 +1927,8 @@ fn solve_core(
                     &terminals,
                     vsc_terminals,
                 )
-                .map(|r| with_controls(r, &controller, opt, control_passes, &stats));
+                .map(|r| with_controls(r, &controller, opt, control_passes, &stats))
+                .map(|r| with_areas(r, report, &areas));
             }
         }
         if loose && violations.iter().any(|v| kinds[v.0] == BusType::Reference) {
@@ -2000,6 +2059,13 @@ fn solve_core(
         }
         reason = "after reactive-limit switching";
     };
+    let report = areas.report(
+        &net,
+        &case,
+        &references,
+        &v,
+        &dc_flows(&net, &case, dc_pairs, &terminals),
+    );
     finish_ac(
         input,
         &net,
@@ -2015,6 +2081,43 @@ fn solve_core(
         vsc_terminals,
     )
     .map(|r| with_controls(r, &controller, opt, control_passes, &stats))
+    .map(|r| with_areas(r, report, &areas))
+}
+
+/// Record the area interchange report on a result.
+fn with_areas(
+    mut result: PowerFlowResult,
+    report: Vec<AreaSolution>,
+    areas: &Interchange<'_>,
+) -> PowerFlowResult {
+    result.areas = report;
+    result.interchange_passes = areas.passes();
+    result
+}
+
+/// The DC devices' AC ends and the MW each injects, for area interchange.
+fn dc_flows(
+    net: &Network,
+    case: &Case,
+    pairs: &[[usize; 2]],
+    terminals: &[DcTerminal<'_>],
+) -> Vec<Vec<(usize, f64)>> {
+    interchange::dc_ends(
+        net,
+        case,
+        pairs,
+        terminals.iter().map(|t| {
+            t.ends()
+                .iter()
+                .copied()
+                .zip(
+                    t.injections(case.base_mva)
+                        .iter()
+                        .map(|z| z.re * case.base_mva),
+                )
+                .collect()
+        }),
+    )
 }
 
 /// Record the switched shunts' and taps' final settings, and the
@@ -2121,6 +2224,8 @@ fn finish_ac(
                 DcTerminal::Lcc(_) => None,
             })
             .collect(),
+        areas: Vec::new(),
+        interchange_passes: 0,
     })
 }
 
@@ -2510,6 +2615,10 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         adjust_taps,
         &mut vsc_terminals,
         &setup,
+        &mappings
+            .iter()
+            .map(|m| [m.from_generator, m.to_generator])
+            .collect::<Vec<_>>(),
     )
     .inspect_err(|error| match error {
         // Stopped on request: not a failure.
@@ -2589,6 +2698,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         (result.voltage_control_passes, "shunt and tap"),
         (result.dc_tap_passes, "DC tap"),
         (result.vsc_limit_passes, "VSC limit"),
+        (result.interchange_passes, "area interchange"),
     ] {
         if n > 0 {
             passes.push(format!("{n} {what}"));
