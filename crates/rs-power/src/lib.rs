@@ -25,7 +25,8 @@ pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
     BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawSubstation,
-    RawWarning, load_raw, load_raw_with_options, parse_raw, parse_raw_with_options,
+    RawWarning, SwitchType, SwitchingDevice, load_raw, load_raw_with_options, parse_raw,
+    parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,

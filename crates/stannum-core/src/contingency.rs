@@ -311,9 +311,11 @@ fn outages(
         }
     };
     for (row, e) in power.elements.branches.iter().enumerate() {
+        // Switching devices run only when listed: opening one is a
+        // switching study, not a branch outage.
         let chosen = match &wanted {
             Some(w) => w.contains(e.element.as_str()),
-            None => settings.branches,
+            None => settings.branches && !e.element.starts_with("switch:"),
         };
         if chosen {
             take(&e.element, "branch", row, true);

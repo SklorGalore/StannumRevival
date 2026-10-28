@@ -805,6 +805,8 @@ export type NetworkBranch = {
   online: boolean;
   rate_a: number;
   shift: number;
+  /** Set when the branch is a RAW system switching device. */
+  switching?: NetworkSwitch | null;
   /** Off-nominal turns ratio (1.0 when unity) and phase shift in degrees. */
   tap: number;
   to: number;
@@ -858,6 +860,16 @@ export type NetworkGenerator = {
   index: number;
   online: boolean;
   pmax: number;
+};
+
+/** A system switching device drawn on a one-line. */
+export type NetworkSwitch = {
+  /** "breaker", "disconnector" or "connector" (PSS/E's generic type). */
+  kind: "breaker" | "disconnector" | "connector";
+  /** The device's name; may be empty. */
+  name: string;
+  /** Its normal status is open. */
+  normally_open: boolean;
 };
 
 export type NodeColumns = {
@@ -1984,15 +1996,15 @@ export const ELEMENT_KINDS = [
   {
     "buses": 2,
     "format": "<bus>:<bus>:<circuit>",
-    "inspector": "topology",
+    "inspector": "model",
     "kind": "switch",
     "label": "Switch",
     "matpower_table": null,
-    "outage": false,
+    "outage": true,
     "raw_sections": [
       "SYSTEM SWITCHING DEVICE"
     ],
-    "solved": false
+    "solved": true
   },
   {
     "buses": 1,

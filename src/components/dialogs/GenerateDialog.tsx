@@ -119,7 +119,7 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
         </div>
 
         <p className="text-xs text-slate-500">
-          Draws buses, generators, loads, lines and transformers from <b>{summary?.name}</b>. Symbols stay linked
+          Draws buses, generators, loads, lines, transformers and switching devices from <b>{summary?.name}</b>. Symbols stay linked
           to the case, so power flow results show on them.
         </p>
 
