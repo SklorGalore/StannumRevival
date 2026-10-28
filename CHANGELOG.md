@@ -8,6 +8,8 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 0.4.1 - 2026-10-28
+
 ### Added
 
 - AC solution methods: **Auto** (the new default), **Full Newton**,
