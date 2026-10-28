@@ -208,8 +208,12 @@ foreach ($file in Get-ChildItem $rulesetDir -Filter *.json | Sort-Object Name) {
     $body = Get-Content -Raw $file.FullName
     $name = ($body | ConvertFrom-Json).name
     if ($existing.ContainsKey($name)) {
+        # Look the id up here, not inside the step: in the step's script block
+        # $name would be Invoke-Step's own $Name (variable names ignore case),
+        # so the lookup came back empty and the PUT went to rulesets/.
+        $rulesetPath = "repos/$Repo/rulesets/$($existing[$name])"
         Invoke-Step "Ruleset '$name' (update)" {
-            Invoke-GhApi "repos/$Repo/rulesets/$($existing[$name])" -Method PUT -Body $body | Out-Null
+            Invoke-GhApi $rulesetPath -Method PUT -Body $body | Out-Null
         }
     } else {
         Invoke-Step "Ruleset '$name' (create)" {
