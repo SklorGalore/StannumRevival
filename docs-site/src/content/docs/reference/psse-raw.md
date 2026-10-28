@@ -120,8 +120,13 @@ case-diff's parser can't read (such as records with trailing fields left
 out) are written from the power flow model, with the study's edits applied:
 buses, one load per bus (with its constant-current and constant-impedance
 parts), fixed shunts, generators, lines, two-winding transformers on the
-system base, switched shunts and tap changers in voltage control, areas,
-zones and one owner. Three-winding transformers are written as two-winding
-transformers to their star buses, and transformer line charging as fixed
-shunts at their buses (the same π model). DC lines, generator costs and
-anything else the model doesn't hold are left out, with a note.
+system base, switched shunts (every MODSW, 1 to 6), tap changers and phase
+shifters in control, two-terminal and VSC DC lines, FACTS devices, areas
+with their slack bus and interchange target (PDES, PTOL), zones and one
+owner. Three-winding transformers are written as two-winding transformers
+to their star buses, and transformer line charging as fixed shunts at their
+buses (the same π model). FACTS series elements get PSS/E's default limits
+(TRMX, VTMN, VTMX, VSMX, IMX) and impedance (LINX), which the model doesn't
+hold. Multi-terminal DC, MATPOWER's DC line rows, loads assigned to another
+area than their bus's, generator costs and anything else the model doesn't
+hold are left out, with a note.
