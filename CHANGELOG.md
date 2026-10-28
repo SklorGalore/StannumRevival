@@ -26,6 +26,16 @@ section into the next version's when a release is cut (see
   record by record, keeping every record and converting between the two
   revisions; MATPOWER and older RAW revisions are written from the power flow
   model. Anything the file can't keep is listed after the export.
+- Large tables read a page at a time. Power flow's bus, generator and
+  branch tables, Records, and contingency results are now sorted, searched
+  and filtered in the core, and the window reads only the rows in view as
+  you scroll. On an 80,000-bus case a Records table no longer copies 19 MB
+  into the window, and every contingency result can be sorted and scrolled
+  without **Load all**. Under a filtered table the count reads "69 rows of
+  80,000". Scripts get the same pages with `result_buses`,
+  `result_generators`, `result_branches`, `record_page` and
+  `contingency_page` (plus `result_bus_values`, `record_fields` and
+  `record_values` for filter choices).
 - Generated one-lines draw RAW switching devices: breakers and disconnectors
   with their name, open or closed state (flagged when not in their normal
   position) and flow. Double-click one to open or close it in the study.

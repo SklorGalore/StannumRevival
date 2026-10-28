@@ -1,0 +1,42 @@
+name: Large case budgets (80,000 buses)
+
+# The budgets test (crates/stannum-core/tests/budgets.rs) at the size of the
+# large cases people open: 80,000 buses. Pull requests run it at 12,000 buses
+# (ci.yml); this runs weekly and on request, since building the case takes
+# about half an hour and an N-1 run over every branch and generator about ten
+# minutes. The case is kept until the generator or the solver changes.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      buses:
+        description: Case size in buses
+        default: "80000"
+
+permissions:
+  contents: read
+
+jobs:
+  budgets:
+    name: Large case budgets (${{ inputs.buses || '80000' }} buses)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      STANNUM_BUDGET_BUSES: ${{ inputs.buses || '80000' }}
+      STANNUM_BUDGET_CACHE: ${{ github.workspace }}/.budget-case
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Restore the synthetic case
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .budget-case
+          key: budget-case-${{ env.STANNUM_BUDGET_BUSES }}-${{ hashFiles('crates/stannum-synth/**', 'crates/rs-power/src/**', 'Cargo.lock') }}
+      - name: Time and size budgets
+        run: cargo test --locked --release -p stannum-core --test budgets -- --ignored --nocapture
