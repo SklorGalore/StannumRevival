@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { catchUpLog, useLog } from "../../store/logStore";
+import { useCrash } from "../../store/crashStore";
 import type {
   CaseNetwork,
   CaseSummary,
@@ -123,7 +124,10 @@ export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: A
   try {
     result = await invoke<CoreResult<C>>("stannum_command", { command, args: args ?? {} });
   } catch (e) {
-    throw toStannumError(e);
+    const error = toStannumError(e);
+    // A bug in the core, not a bad input: tell the person, who can carry on.
+    if (error.kind === "internal") useCrash.getState().report(LOG_LABELS[command]?.label ?? command.replace(/_/g, " "), error.message, false);
+    throw error;
   }
   for (const watcher of watchers) watcher(command, (args ?? {}) as Record<string, unknown>);
   return result;

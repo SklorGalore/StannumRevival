@@ -12,6 +12,7 @@
 //! an error instead of reaching a different case.
 
 use crate::contingency::{ContingencySettings, ContingencySummary, Progress, RunHandle};
+use crate::crash::{self, relock};
 use crate::error::{Error, ErrorKind};
 use crate::paging::{self, PageQuery};
 use crate::power::{SolveReport, SolveSettings};
@@ -184,15 +185,21 @@ impl Session {
 
     /// Run one command. `args` is a JSON object of its arguments (null is
     /// read as no arguments). The result is JSON text, ready to send.
+    ///
+    /// A bug that panics while the command runs is logged and answered as an
+    /// [`ErrorKind::Internal`] error, so the caller carries on (see
+    /// [`crate::crash`]).
     pub fn invoke(&self, command: &str, args: Value) -> Result<String, Error> {
-        dispatch(self, command, args)
+        crash::catch(command, || {
+            #[cfg(feature = "fault-injection")]
+            crash::inject(command);
+            dispatch(self, command, args)
+        })
     }
 
     /// The workspace, for callers that need it directly (tests, examples).
     pub fn workspace(&self) -> Result<MutexGuard<'_, Workspace>, Error> {
-        self.workspace
-            .lock()
-            .map_err(|_| Error::internal("Workspace is unavailable after an earlier failure."))
+        Ok(relock(&self.workspace))
     }
 
     fn solve(
@@ -201,23 +208,21 @@ impl Session {
         settings: SolveSettings,
     ) -> Result<crate::power::SolveReport, Error> {
         let flag = Arc::new(AtomicBool::new(false));
-        if let Ok(mut slot) = self.solving.lock() {
-            *slot = Some(flag.clone());
-        }
+        *relock(&self.solving) = Some(flag.clone());
+        // Only clear the slot if a newer solve hasn't taken it; also if the
+        // solve panics.
+        let _clear = OnDrop(|| {
+            let mut slot = relock(&self.solving);
+            if slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag)) {
+                *slot = None;
+            }
+        });
         // The solve runs without the workspace lock, so other commands
         // keep answering meanwhile.
-        let result = self
-            .workspace()
+        self.workspace()
             .and_then(|ws| ws.case(case)?.solve_job(settings, Some(flag.clone())))
             .and_then(|job| job.run())
-            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done));
-        // Only clear the slot if a newer solve hasn't taken it.
-        if let Ok(mut slot) = self.solving.lock()
-            && slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag))
-        {
-            *slot = None;
-        }
-        result
+            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done))
     }
 
     /// The order `key` names, from the kept ones or made now (without the
@@ -339,7 +344,7 @@ impl Session {
     }
 
     fn cancel_solve(&self) {
-        if let Some(flag) = self.solving.lock().ok().and_then(|f| f.clone()) {
+        if let Some(flag) = relock(&self.solving).clone() {
             flag.store(true, Ordering::Relaxed);
         }
     }
@@ -356,13 +361,11 @@ impl Session {
             let open = ws.case(case)?;
             (open.contingency_job(settings)?, open.version)
         };
-        if let Ok(mut slot) = self.contingencies.lock() {
-            *slot = Some(job.handle());
-        }
+        *relock(&self.contingencies) = Some(job.handle());
+        // Cleared however the run ends, so a crashed run doesn't look busy.
+        let clear = OnDrop(|| *relock(&self.contingencies) = None);
         let results = job.run();
-        if let Ok(mut slot) = self.contingencies.lock() {
-            *slot = None;
-        }
+        drop(clear);
         let results = results?;
         self.workspace()?
             .case_mut(case)?
@@ -446,9 +449,7 @@ impl Session {
     ) -> Result<run_file::RunReport, Error> {
         let flag = Arc::new(AtomicBool::new(false));
         {
-            let mut slot = self.running_file.lock().map_err(|_| {
-                Error::internal("Run files are unavailable after an earlier failure.")
-            })?;
+            let mut slot = relock(&self.running_file);
             if slot.is_some() {
                 return Err(Error::not_ready(
                     "A run file is already running. Wait for it, or cancel it first.",
@@ -456,6 +457,7 @@ impl Session {
             }
             *slot = Some(flag.clone());
         }
+        let clear = OnDrop(|| *relock(&self.running_file) = None);
         let started = Instant::now();
         let mut report = run_file::RunReport {
             path: path.display().to_string(),
@@ -503,9 +505,7 @@ impl Session {
                 break;
             }
         }
-        if let Ok(mut slot) = self.running_file.lock() {
-            *slot = None;
-        }
+        drop(clear);
         report.seconds = started.elapsed().as_secs_f64();
         let ran = report.outcomes.len();
         if report.cancelled {
@@ -543,7 +543,7 @@ impl Session {
     /// Stops the run file in progress before its next step, and the solve
     /// or contingency run it is waiting on.
     fn cancel_run_file(&self) {
-        let running = self.running_file.lock().ok().and_then(|f| f.clone());
+        let running = relock(&self.running_file).clone();
         if let Some(flag) = running {
             flag.store(true, Ordering::Relaxed);
             self.cancel_solve();
@@ -552,17 +552,25 @@ impl Session {
     }
 
     fn cancel_contingencies(&self) {
-        if let Some(handle) = self.contingencies.lock().ok().and_then(|h| h.clone()) {
+        if let Some(handle) = relock(&self.contingencies).clone() {
             handle.cancel();
         }
     }
 
     fn contingency_progress(&self) -> Progress {
-        self.contingencies
-            .lock()
-            .ok()
-            .and_then(|h| h.as_ref().map(RunHandle::progress))
+        relock(&self.contingencies)
+            .as_ref()
+            .map(RunHandle::progress)
             .unwrap_or_default()
+    }
+}
+
+/// Runs its closure when dropped: on return and on panic alike.
+struct OnDrop<F: FnMut()>(F);
+
+impl<F: FnMut()> Drop for OnDrop<F> {
+    fn drop(&mut self) {
+        (self.0)()
     }
 }
 
@@ -948,6 +956,10 @@ commands! {
     /// Log lines numbered above `since`.
     log_entries { since: u64 } -> Vec<logbook::Entry> => |_, a| Ok(logbook::since(a.since));
 
+    /// Versions and platform for a problem report, and how many internal
+    /// errors there have been. Nothing from the case.
+    diagnostics {} -> crash::Diagnostics => |_, _| Ok(crash::diagnostics());
+
     /// Size, hash and date of a file, so a study can tell whether its case changed.
     file_fingerprint { path: PathBuf } -> study_file::Fingerprint => |_, a| study_file::fingerprint(&a.path);
 
@@ -1013,6 +1025,31 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn a_crash_holding_the_workspace_leaves_it_usable() {
+        crate::logbook::install();
+        let session = Session::new();
+        session
+            .invoke("open_case", json!({ "path": case_file() }))
+            .unwrap();
+        // A bug that panics while it holds the workspace lock poisons it.
+        let crashed: Result<(), Error> = crash::catch("a test", || {
+            let _held = session.workspace()?;
+            panic!("bug while holding the workspace");
+        });
+        assert!(crashed.unwrap_err().is(ErrorKind::Internal));
+        // Every later command still works, on the case as it was.
+        let summary: Value =
+            serde_json::from_str(&session.invoke("case_summary", json!({})).unwrap()).unwrap();
+        assert_eq!(summary["power"]["info"]["counts"]["buses"], 9, "{summary}");
+        session
+            .invoke("solve_power_flow", json!({}))
+            .expect("solves after the crash");
+        let d: Value =
+            serde_json::from_str(&session.invoke("diagnostics", json!({})).unwrap()).unwrap();
+        assert!(d["internal_errors"].as_u64().unwrap() >= 1);
     }
 
     #[test]

@@ -17,6 +17,7 @@ import {
   MapPinOff,
   Moon,
   Layers,
+  LifeBuoy,
   Table2,
   PencilRuler,
   Play,
@@ -30,6 +31,7 @@ import {
 } from "lucide-react";
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
+import { saveDiagnostics } from "../lib/diagnostics/save";
 import { useStudyFile } from "../store/studyFileStore";
 import { useRunFile } from "../store/runFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
@@ -185,6 +187,13 @@ export function paletteCommands(): Command[] {
     icon: <Terminal size={14} />,
     keywords: "console output messages progress errors warnings",
     run: () => useLog.getState().setOpen(!logOpen),
+  });
+  list.push({
+    id: "save-diagnostics",
+    title: "Save diagnostics…",
+    icon: <LifeBuoy size={14} />,
+    keywords: "report problem bug crash error log versions support",
+    run: () => void saveDiagnostics(),
   });
   return list;
 }

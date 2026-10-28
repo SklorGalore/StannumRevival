@@ -1,4 +1,7 @@
 #![doc = include_str!("../README.md")]
+/// This crate's version, for problem reports.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 mod case;
 mod controls;
 mod dc;

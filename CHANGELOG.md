@@ -120,6 +120,14 @@ section into the next version's when a release is cut (see
   without a coordinates file: each substation's latitude and longitude places
   the buses its nodes name. An attached coordinates CSV still wins for the
   buses it lists.
+- **Crash handling**: a bug inside Stannum no longer takes the window down.
+  The step that hit it fails with a notice and an error line in the log, and
+  everything else keeps working. A view that fails while drawing can be drawn
+  again on its own. Python and run files get an `internal` error instead of a
+  crash.
+- **Save diagnostics…** (log toolbar, crash notice and command palette)
+  saves the log with Stannum's, rs-power's and nodal's versions and the
+  platform, for bug reports. No case data. Also the `diagnostics` command.
 
 ### Changed
 

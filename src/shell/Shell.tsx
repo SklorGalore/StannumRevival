@@ -12,6 +12,7 @@ import { useStudyFile } from "../store/studyFileStore";
 import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
 import { LogDock } from "./LogDock";
+import { CrashBoundary, CrashNoticeBar } from "./CrashNotice";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { MODULES } from "./ModuleRail";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
@@ -159,7 +160,9 @@ export function Shell() {
         data-pane={side ?? undefined}
       >
         {side && <PaneHeader side={side} />}
-        <div className="flex-1 min-h-0 relative">{content}</div>
+        <div className="flex-1 min-h-0 relative">
+          <CrashBoundary name={`the ${MODULES.find((m) => m.id === id)?.label ?? id} view`}>{content}</CrashBoundary>
+        </div>
       </div>
     );
   };
@@ -169,6 +172,7 @@ export function Shell() {
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
         <StudyNoticeBar />
+        <CrashNoticeBar />
         <RunFileBar />
         <CommandPalette />
         <div ref={body} className="flex-1 min-h-0 relative">
