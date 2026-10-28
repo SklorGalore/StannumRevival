@@ -1185,7 +1185,7 @@ pub fn report(
                 tolerance_mw: a.tolerance_mw,
                 error_mw: a.desired_mw.map(|d| a.interchange_mw - d),
                 slack_bus: a.slack_bus,
-                slack_bus_name: a.slack_bus.map(&name_of).unwrap_or_default(),
+                slack_bus_name: a.slack_bus.map(name_of).unwrap_or_default(),
                 controlled: a.controlled,
                 slack_change_mw: a.slack_change_mw,
             })
