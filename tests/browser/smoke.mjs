@@ -914,7 +914,8 @@ if (STANNUM_VIOLATIONS) {
   await voltage.locator("td").nth(1).getByRole("button").click();
   const only = page.getByLabel(/Voltage violations only/);
   assert.equal(await only.isChecked(), true, "only violations listed");
-  await page.getByText(new RegExp(`^${violations} rows?$`)).waitFor();
+  // The count says how many of the whole table are listed.
+  await page.getByText(new RegExp(`^${violations} rows? of [\\d,]+$`)).waitFor();
   const first = page.locator("table tbody tr:visible").first();
   assert.equal((await first.locator("td").first().innerText()).trim(), worst.replace("Bus ", ""), "worst first");
   await first.click();

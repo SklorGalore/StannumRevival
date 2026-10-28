@@ -472,8 +472,10 @@ impl ContingencyJob {
             power: self.power,
             base: self.base,
             settings: self.settings,
+            id: next_run_id(),
             last_detail: None,
             last_solution: None,
+            last_report: None,
         })
     }
 }
@@ -1060,9 +1062,19 @@ pub struct ContingencyResults {
     power: PowerCase,
     base: PowerFlowResult,
     settings: ContingencySettings,
+    /// Different for every run, so a sorted order kept for one run's rows
+    /// is never used for another's.
+    pub id: u64,
     last_detail: Option<(usize, ContingencyDetail)>,
     /// The converged AC solution of the last outage solved in full, by rank.
     last_solution: Option<(usize, PowerFlowResult)>,
+    /// The last outage's report, kept while its tables are paged through.
+    last_report: Option<(usize, std::sync::Arc<power::SolveReport>)>,
+}
+
+fn next_run_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl ContingencyResults {
@@ -1121,6 +1133,25 @@ impl ContingencyResults {
     /// view can show it like the base solve. Solved in AC even when the run
     /// only screened the outage.
     pub fn report(&mut self, rank: usize) -> Result<power::SolveReport, Error> {
+        self.shared_report(rank).map(|r| (*r).clone())
+    }
+
+    /// [`Self::report`], kept for the next call with the same rank.
+    pub fn shared_report(
+        &mut self,
+        rank: usize,
+    ) -> Result<std::sync::Arc<power::SolveReport>, Error> {
+        if let Some((r, report)) = &self.last_report
+            && *r == rank
+        {
+            return Ok(report.clone());
+        }
+        let report = std::sync::Arc::new(self.build_report(rank)?);
+        self.last_report = Some((rank, report.clone()));
+        Ok(report)
+    }
+
+    fn build_report(&mut self, rank: usize) -> Result<power::SolveReport, Error> {
         let i = self.index(rank)?;
         let start = Instant::now();
         let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);

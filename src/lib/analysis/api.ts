@@ -30,7 +30,8 @@ import type {
   TopoCase,
   TopoPath,
 } from "./types";
-import { decodeSolveReport, fromColumns } from "./wire";
+import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
+import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
 import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, Step } from "./commands.gen";
 
@@ -64,6 +65,11 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   element_detail: { label: "Reading an element", quiet: true },
   case_records: { label: "Reading the case's records", quiet: true },
   record_table: { label: "Reading records", quiet: true },
+  record_page: { label: "Reading records", quiet: true },
+  result_buses: { label: "Reading bus results", quiet: true },
+  result_generators: { label: "Reading generator results", quiet: true },
+  result_branches: { label: "Reading branch results", quiet: true },
+  contingency_page: { label: "Reading contingency results", quiet: true },
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
@@ -214,6 +220,14 @@ export async function saveTextExport(
   return true;
 }
 
+/** A page as the core sends it: rows as columns. */
+function decodePage<T>(page: { total: number; matched: number; offset: number; positions: number[]; found?: number | null; rows: unknown }): Page<T> {
+  return { ...page, found: page.found ?? null, rows: fromColumns<T>(page.rows as Columns<T>) };
+}
+
+/** A Power flow table read a page at a time. */
+export type ResultTable = "buses" | "generators" | "branches";
+
 export const api = {
   openCase: (path: string): Promise<CaseSummary> => call("open_case", { path }),
   closeCase: () => call("close_case"),
@@ -249,6 +263,22 @@ export const api = {
   resultReport: async (name: string): Promise<SolveReport> =>
     decodeSolveReport(await call("result_report", { name })),
 
+  /**
+   * A page of a result's table ("latest" for the latest solve), sorted,
+   * searched and filtered in the core; `busRules` are the filter chips.
+   */
+  resultBuses: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<BusRow>> =>
+    decodePage<BusRow>(await call("result_buses", { name, query, busRules })),
+  resultGenerators: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<GeneratorRow>> =>
+    decodePage<GeneratorRow>(await call("result_generators", { name, query, busRules })),
+  resultBranches: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<BranchRow>> =>
+    decodePage<BranchRow>(await call("result_branches", { name, query, busRules })),
+  /** The values a bus filter field takes in a result, for its picker. */
+  resultBusValues: (name: string, field: string): Promise<(string | number | null)[]> =>
+    call("result_bus_values", { name, field }) as Promise<(string | number | null)[]>,
+  contingencyPage: async (query: PageQuery): Promise<Page<ContingencyRow>> =>
+    decodePage<ContingencyRow>(await call("contingency_page", { query })),
+
   diagramNetwork: (): Promise<CaseNetwork> => call("diagram_network"),
   elementDetail: (element: string): Promise<ElementDetail> => call("element_detail", { element }),
   caseRecords: (): Promise<RecordBook> => call("case_records"),
@@ -256,6 +286,13 @@ export const api = {
     const table = await call("record_table", { section });
     return { ...table, rows: fromColumns<CaseRecord>(table.rows) };
   },
+  recordPage: async (section: string, query: PageQuery): Promise<RecordPage> => {
+    const r = await call("record_page", { section, query });
+    return { ...r, page: decodePage<CaseRecord>(r.page) };
+  },
+  recordFields: (section: string): Promise<FieldType[]> => call("record_fields", { section }),
+  recordValues: (section: string, field: string): Promise<(string | number | null)[]> =>
+    call("record_values", { section, field }) as Promise<(string | number | null)[]>,
   applyRecordEdits: (edits: RecordEdit[]): Promise<CaseSummary> => call("apply_record_edits", { edits }),
   saveCaseAs: (path: string): Promise<CaseSummary> => call("save_case_as", { path }),
 

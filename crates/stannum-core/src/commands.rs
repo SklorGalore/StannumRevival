@@ -13,7 +13,8 @@
 
 use crate::contingency::{ContingencySettings, ContingencySummary, Progress, RunHandle};
 use crate::error::{Error, ErrorKind};
-use crate::power::SolveSettings;
+use crate::paging::{self, PageQuery};
+use crate::power::{SolveReport, SolveSettings};
 use crate::record_edit::RecordEdit;
 use crate::study::Edit;
 use crate::workspace::{CaseId, Workspace};
@@ -22,6 +23,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +35,7 @@ use std::time::Instant;
 ///
 /// 2: errors are `{kind, message}` objects instead of text.
 /// 3: `record_table` rows and `contingency_rows` come as columns.
+/// (Paged tables, `result_buses` and the like, were added within 3.)
 pub const API_VERSION: u32 = 3;
 
 /// How many times work done without the workspace lock is redone when the
@@ -120,7 +123,50 @@ pub struct Session {
     contingencies: Mutex<Option<RunHandle>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
+    /// Sorted, filtered orders of the tables being paged through, newest
+    /// last: scrolling asks for the next page of the same order.
+    orders: Mutex<Vec<KeptOrder>>,
 }
+
+/// How many sorted orders [`Session`] keeps.
+const ORDERS_KEPT: usize = 8;
+
+/// A table's order for one query. `source` holds the rows' owner so its
+/// address, part of `key`, can't be reused by other rows meanwhile.
+struct KeptOrder {
+    key: String,
+    _source: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    order: Arc<paging::Order>,
+}
+
+/// Which Power flow table a page is cut from.
+#[derive(Clone, Copy)]
+struct ResultTable<R: 'static> {
+    name: &'static str,
+    rows: fn(&SolveReport) -> &[R],
+    view: for<'a> fn(&'a SolveReport) -> paging::StructRows<'a, R>,
+    /// Whether a row touches one of the buses passing the bus rules.
+    touches: fn(&R, &HashSet<u32>) -> bool,
+}
+
+const BUSES: ResultTable<crate::power::BusRow> = ResultTable {
+    name: "buses",
+    rows: |r| &r.buses,
+    view: paging::results::buses,
+    touches: |b, p| p.contains(&b.id),
+};
+const GENERATORS: ResultTable<crate::power::GeneratorRow> = ResultTable {
+    name: "generators",
+    rows: |r| &r.generators,
+    view: paging::results::generators,
+    touches: |g, p| p.contains(&g.bus),
+};
+const BRANCHES: ResultTable<crate::power::BranchRow> = ResultTable {
+    name: "branches",
+    rows: |r| &r.branches,
+    view: paging::results::branches,
+    touches: |b, p| p.contains(&b.from) || p.contains(&b.to),
+};
 
 /// How [`Session::run_steps`] runs a run file.
 #[derive(Clone, Copy, Debug, Default)]
@@ -172,6 +218,124 @@ impl Session {
             *slot = None;
         }
         result
+    }
+
+    /// The order `key` names, from the kept ones or made now (without the
+    /// workspace lock or the kept orders' lock) and kept.
+    fn ordered(
+        &self,
+        key: String,
+        source: Option<Arc<dyn std::any::Any + Send + Sync>>,
+        make: impl FnOnce() -> paging::Order,
+    ) -> Arc<paging::Order> {
+        if let Ok(kept) = self.orders.lock()
+            && let Some(k) = kept.iter().find(|k| k.key == key)
+        {
+            return k.order.clone();
+        }
+        let order = Arc::new(make());
+        if let Ok(mut kept) = self.orders.lock() {
+            kept.retain(|k| k.key != key);
+            if kept.len() >= ORDERS_KEPT {
+                kept.remove(0);
+            }
+            kept.push(KeptOrder {
+                key,
+                _source: source,
+                order: order.clone(),
+            });
+        }
+        order
+    }
+
+    /// A page of one of a result's Power flow tables. `bus_rules` keep the
+    /// rows touching a bus that passes them (the filter chips).
+    fn result_page<R: Serialize + JsonSchema + Clone + Send + Sync + 'static>(
+        &self,
+        case: Option<CaseId>,
+        name: &str,
+        table: ResultTable<R>,
+        query: PageQuery,
+        bus_rules: Vec<paging::Rule>,
+    ) -> Result<paging::Page<R>, Error> {
+        let report = self.workspace()?.case_mut(case)?.shared_result(name)?;
+        let key = format!(
+            "result {}|{:p}|{}|{}",
+            table.name,
+            Arc::as_ptr(&report),
+            query.order_key(),
+            serde_json::to_string(&bus_rules).unwrap_or_default()
+        );
+        let source: Arc<dyn std::any::Any + Send + Sync> = report.clone();
+        let order = self.ordered(key, Some(source), || {
+            let passing = paging::results::passing(&report, &bus_rules);
+            let rows = (table.rows)(&report);
+            let touches = |i: usize| {
+                passing
+                    .as_ref()
+                    .is_none_or(|p| (table.touches)(&rows[i], p))
+            };
+            let extra: Option<&dyn Fn(usize) -> bool> = if passing.is_some() {
+                Some(&touches)
+            } else {
+                None
+            };
+            paging::order(&(table.view)(&report), &query, extra)
+        });
+        Ok(paging::Page::cut((table.rows)(&report), &order, &query))
+    }
+
+    /// The case's records, read first if they haven't been.
+    fn records(&self, case: Option<CaseId>) -> Result<Arc<crate::records::Records>, Error> {
+        self.read_records(case)?;
+        self.workspace()?.case_mut(case)?.shared_records()
+    }
+
+    fn record_page(
+        &self,
+        case: Option<CaseId>,
+        section: &str,
+        query: PageQuery,
+    ) -> Result<crate::records::RecordPage, Error> {
+        let records = self.records(case)?;
+        let table = records.table(section)?;
+        let key = format!(
+            "records {section}|{:p}|{}",
+            Arc::as_ptr(&records),
+            query.order_key()
+        );
+        let source: Arc<dyn std::any::Any + Send + Sync> = records.clone();
+        let order = self.ordered(key, Some(source), || paging::order(table, &query, None));
+        Ok(crate::records::RecordPage {
+            id: table.id.clone(),
+            label: table.label.clone(),
+            columns: table.columns.clone(),
+            skipped: table.skipped,
+            note: table.note.clone(),
+            page: paging::Page::cut(&table.rows, &order, &query),
+        })
+    }
+
+    fn contingency_page(
+        &self,
+        case: Option<CaseId>,
+        query: PageQuery,
+    ) -> Result<paging::Page<crate::contingency::ContingencyRow>, Error> {
+        let ws = self.workspace()?;
+        let results = ws
+            .case(case)?
+            .contingencies
+            .as_ref()
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let key = format!("contingencies|{}|{}", results.id, query.order_key());
+        let order = self.ordered(key, None, || {
+            let rows = paging::StructRows {
+                rows: &results.rows,
+                element: |r: &crate::contingency::ContingencyRow| Some(r.element.clone()),
+            };
+            paging::order(&rows, &query, None)
+        });
+        Ok(paging::Page::cut(&results.rows, &order, &query))
     }
 
     fn cancel_solve(&self) {
@@ -652,6 +816,21 @@ commands! {
         s.workspace()?.case_mut(a.case)?.record_table(&a.section)
     };
 
+    /// A page of one record type, sorted, searched and filtered in the core
+    /// (fields are column positions, "line" and "element").
+    record_page { case: Option<CaseId>, section: String, query: Option<PageQuery> } -> crate::records::RecordPage =>
+        |s, a| s.record_page(a.case, &a.section, a.query.unwrap_or_default());
+
+    /// How each column of one record type filters: by number, by text, or
+    /// by picking one of its few values.
+    record_fields { case: Option<CaseId>, section: String } -> Vec<paging::FieldType> =>
+        |s, a| Ok(paging::record_field_types(s.records(a.case)?.table(&a.section)?));
+
+    /// The distinct values of one column of a record type, sorted, missing
+    /// last: the choices its filter offers. At most `limit` (500 when left out).
+    record_values { case: Option<CaseId>, section: String, field: String, limit: Option<usize> } -> Vec<Value> =>
+        |s, a| Ok(paging::distinct(s.records(a.case)?.table(&a.section)?, &a.field, a.limit.unwrap_or(500)));
+
     /// Write cell edits into the case and reopen it in place.
     apply_record_edits { case: Option<CaseId>, edits: Vec<RecordEdit> } -> crate::CaseSummary =>
         |s, a| s.apply_record_edits(a.case, &a.edits);
@@ -721,6 +900,11 @@ commands! {
     contingency_rows { case: Option<CaseId>, offset: usize, limit: usize } -> crate::table::Table<crate::contingency::ContingencyRow> =>
         |s, a| s.workspace()?.case(a.case)?.contingency_rows(a.offset, a.limit);
 
+    /// A page of the last run's results, sorted, searched and filtered in
+    /// the core. Left unsorted, the rows keep their rank order.
+    contingency_page { case: Option<CaseId>, query: Option<PageQuery> } -> paging::Page<crate::contingency::ContingencyRow> =>
+        |s, a| s.contingency_page(a.case, a.query.unwrap_or_default());
+
     /// One outage's flow and voltage changes, by rank.
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
@@ -733,6 +917,27 @@ commands! {
     /// as a full solve report.
     result_report { case: Option<CaseId>, name: String } -> crate::power::SolveReport =>
         |s, a| s.workspace()?.case_mut(a.case)?.result(&a.name);
+
+    /// A page of a result's buses, sorted, searched and filtered in the
+    /// core. `name` is a result name, or "latest" for the latest solve. `busRules` keep the buses passing every rule (the Power flow
+    /// filter chips: area, base_kv, kind, number, name, vm).
+    result_buses { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::BusRow> =>
+        |s, a| s.result_page(a.case, &a.name, BUSES, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// A page of a result's generators. `busRules` keep the generators at a
+    /// bus passing every rule.
+    result_generators { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::GeneratorRow> =>
+        |s, a| s.result_page(a.case, &a.name, GENERATORS, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// A page of a result's branches. `busRules` keep the branches with an
+    /// end at a bus passing every rule.
+    result_branches { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::BranchRow> =>
+        |s, a| s.result_page(a.case, &a.name, BRANCHES, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// The distinct values of a bus filter field in a result, sorted,
+    /// missing last. At most `limit` (500 when left out).
+    result_bus_values { case: Option<CaseId>, name: String, field: String, limit: Option<usize> } -> Vec<Value> =>
+        |s, a| Ok(paging::results::bus_values(&*s.workspace()?.case_mut(a.case)?.shared_result(&a.name)?, &a.field, a.limit.unwrap_or(500)));
 
     /// Log lines numbered above `since`.
     log_entries { since: u64 } -> Vec<logbook::Entry> => |_, a| Ok(logbook::since(a.since));
@@ -860,8 +1065,9 @@ mod tests {
         // arguments only need to parse.
         let value = |name: &str| match name {
             "settings" => json!({ "solve": SolveSettings::default() }),
-            "path" | "quantity" | "element" | "section" | "name" => json!("unused"),
-            "edits" => json!([]),
+            "path" | "quantity" | "element" | "section" | "name" | "field" => json!("unused"),
+            "edits" | "bus_rules" => json!([]),
+            "query" => json!({}),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),
             _ => json!(1),
