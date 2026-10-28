@@ -113,7 +113,10 @@ voltage control are also listed in `RawImport::voltage_controls` (see below).
 Transformer magnetizing admittance, other tap controls, correction tables and
 wind control are ignored with warnings when present, and so is remote
 regulation unless `remote_regulation` is set. Unsupported equipment sections are skipped with warnings, following
-MATPOWER; ownership, zone, interchange and grouping metadata are not retained.
+MATPOWER; ownership, zone, inter-area transfer and grouping metadata are not
+retained. Area data is kept in `RawImport::areas`, and loads whose area differs
+from their bus's in `RawImport::area_loads`, for area interchange control
+(see below).
 Change-code files warn and are treated as standalone cases, never incremental
 updates. Unknown branch endpoints are retained with warnings; invalid transformer
 endpoints are skipped. `solve` still validates the resulting network.
@@ -206,6 +209,27 @@ On SyntheticUSA (150 continuous shunts, 291 taps) the reactive-limit solve
 still converges with both on and the largest bus voltage error against the
 saved solution drops from 0.076 to 0.047 p.u. On the Memphis case (61
 continuous shunts) the mean error drops from 0.0013 to 0.00006 p.u.
+
+### Area interchange control
+
+`PowerFlowOptions::interchange` holds each listed `Area`'s net interchange
+(MW, positive for export) at `desired_mw` within `tolerance_mw` by moving the
+generation at its `slack_bus`, shared by machine base (AC only). Off by
+default (`InterchangeMode::Off`). `TieLines` counts the active power leaving
+the area on branches to other areas, metered at the from end, and on DC lines,
+metered at the sending converter; `TieLinesAndLoads` also counts each
+`AreaLoad` (a load owned by another area than its bus's) as an export to its
+area. RAW area data and such loads come from `RawImport::areas` and
+`RawImport::area_loads`.
+
+The areas are checked once reactive limits have settled at full tolerance,
+before shunts and taps move. An area holding an island's reference bus is not
+held, since the reference balances the island. A solve that fails after a
+pass is undone and retried with half the step. `PowerFlowResult::areas` gives
+every area's interchange (`AreaSolution`), also with control off, and
+`interchange_passes` the passes that moved anything. On SyntheticUSA, with a
+slack unit picked in each area and 20 areas asked to move 100 MW, 73 areas are
+held to 5 MW in two passes.
 
 ### Detailed two-terminal DC model
 

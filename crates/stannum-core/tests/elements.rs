@@ -254,6 +254,40 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
 }
 
 #[test]
+fn area_interchange_setting_holds_the_raw_areas() {
+    use stannum_core::power::{InterchangeChoice, SolveSettings};
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |area_interchange| {
+        ws.current_mut()
+            .unwrap()
+            .solve(SolveSettings {
+                enforce_q_limits: true,
+                area_interchange,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let off = solve(InterchangeChoice::Off);
+    assert!(off.converged);
+    assert_eq!(off.area_interchange, InterchangeChoice::Off);
+    assert_eq!(off.areas.len(), 6);
+    assert_eq!(off.areas[0].name, "CENTRAL");
+    assert!(off.areas.iter().all(|a| !a.controlled));
+    // EAST is 260 MW short of its PDES with control off.
+    let east = &off.areas[1];
+    assert!(east.error_mw.unwrap().abs() > 100.0, "{east:?}");
+    let on = solve(InterchangeChoice::TieLines);
+    assert!(on.converged);
+    assert!(on.interchange_passes > 0);
+    for a in on.areas.iter().filter(|a| a.number <= 2) {
+        assert!(a.controlled, "{a:?}");
+        assert!(a.error_mw.unwrap().abs() <= a.tolerance_mw, "{a:?}");
+        assert!(a.slack_change_mw != 0.0);
+    }
+    assert_eq!(on.areas[1].slack_bus_name, "URBGEN");
+}
+
+#[test]
 fn solve_settings_switch_voltage_controls() {
     let mut ws = open(rs_power_raw("t_psse_case3.raw"));
     let mut solve = |switch_shunts: bool, adjust_transformer_taps: bool| {

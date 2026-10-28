@@ -10,6 +10,13 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Area interchange** control in AC solves: each area's slack generation
+  moves until its net interchange is within `PTOL` of the RAW area data's
+  `PDES`, counting tie lines, or tie lines and loads that belong to another
+  area. Off by default; choose it under **Area interchange** in the solve
+  settings, or with `area_interchange` in run files and Python. A new
+  **Areas** tab lists every area's interchange, desired value and slack
+  movement, also with control off.
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton
