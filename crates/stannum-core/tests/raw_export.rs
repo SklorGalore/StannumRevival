@@ -596,3 +596,40 @@ fn model_exports_keep_dc_lines_facts_and_every_control() {
     }
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// SyntheticUSA names all nine of its DC lines 'DC Line 1'. A repeated key
+/// is numbered in file order and matched by that number, so the case can
+/// still be compared.
+#[test]
+fn case_diff_compares_records_that_repeat_a_key() {
+    let text = std::fs::read_to_string(fixture("five_bus_dc.raw")).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("'East link"))
+        .unwrap();
+    let record = lines[at..at + 3].join("\n");
+    let with_copy = |copy: &str| {
+        let mut out = lines[..at + 3].join("\n");
+        out.push('\n');
+        out.push_str(copy);
+        out.push('\n');
+        out.push_str(&lines[at + 3..].join("\n"));
+        out.push('\n');
+        out
+    };
+    let before = with_copy(&record);
+    let after = with_copy(&record.replacen("40.00", "45.00", 1));
+    let before = parse_bytes("before", before.as_bytes()).unwrap();
+    assert!(
+        before
+            .diagnostics
+            .iter()
+            .any(|d| d.message == diff::parser::REPEATED_KEY)
+    );
+    let after = parse_bytes("after", after.as_bytes()).unwrap();
+    let found = changes(before, after);
+    assert_eq!(found.len(), 1, "{found:?}");
+    let only = found.iter().next().unwrap();
+    assert!(only.contains("'#2'") || only.contains("#2"), "{only}");
+}

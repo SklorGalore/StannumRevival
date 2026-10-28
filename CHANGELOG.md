@@ -167,6 +167,10 @@ section into the next version's when a release is cut (see
 - Branches results show **Loading** next to **Status**, where it is in view.
 - Sorting a table high to low keeps rows without a value (such as unrated
   branches' loading) at the bottom instead of the top.
+- Case diff compares cases whose records repeat a key, such as
+  SyntheticUSA's nine DC lines all named 'DC Line 1'. Repeats are numbered
+  in file order ("#2" on) and matched by that number, with a note on each.
+- One-line labels clear the result halo and layer ring around a symbol.
 
 - Power flow reads RAW revision 34 and 35 system switching devices instead
   of skipping them, so buses joined only by a breaker or disconnector are no

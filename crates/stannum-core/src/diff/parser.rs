@@ -191,7 +191,6 @@ impl<'a> Parser<'a> {
         fields: Vec<(String, Value)>,
         raw: Vec<String>,
         index: usize,
-        error_section: Option<&str>,
     ) -> Result<()> {
         let normalized: Key = key.iter().map(Value::normalized).collect();
         let seen = self.keys.entry(section.to_string()).or_default();
@@ -212,19 +211,32 @@ impl<'a> Parser<'a> {
                 });
                 return Ok(());
             }
-            let shown = normalized
-                .iter()
-                .map(Value::display)
-                .collect::<Vec<_>>()
-                .join(", ");
-            return self.fail(
-                error_section.unwrap_or(section),
-                index,
-                format!(
-                    "Duplicate record key ({shown}{})",
-                    if normalized.len() == 1 { "," } else { "" }
-                ),
-            );
+            // A repeated key (SyntheticUSA names all nine of its DC lines
+            // 'DC Line 1') is numbered in file order, "#2" on, and matched
+            // with the other file's record of the same number.
+            let numbered = (2..)
+                .map(|n| {
+                    let mut k = normalized.clone();
+                    k.push(Value::Text(format!("#{n}")));
+                    k
+                })
+                .find(|k| !seen.contains(k))
+                .expect("a free number");
+            seen.insert(numbered.clone());
+            self.diagnostics.push(Diagnostic {
+                section: section.to_string(),
+                line_number: index + 1,
+                message: REPEATED_KEY.into(),
+                raw_lines: Vec::new(),
+            });
+            self.section_mut(section).push(Record {
+                section: section.to_string(),
+                key: numbered,
+                fields,
+                raw_lines: raw,
+                line_number: index + 1,
+            });
+            return Ok(());
         }
         self.section_mut(section).push(Record {
             section: section.to_string(),
@@ -344,7 +356,7 @@ impl<'a> Parser<'a> {
             vec![Value::Text(tag)]
         };
         let raw = vec![self.lines[index].clone()];
-        self.add(CASE_DETAILS, key, fields, raw, index, Some("SYSTEM-WIDE"))
+        self.add(CASE_DETAILS, key, fields, raw, index)
     }
 
     fn run(mut self) -> Result<DiffCase> {
@@ -384,7 +396,6 @@ impl<'a> Parser<'a> {
             identification,
             vec![line],
             position,
-            None,
         )?;
         position += 1;
         for title in 1..=2 {
@@ -398,7 +409,6 @@ impl<'a> Parser<'a> {
                 vec![("TITLE".into(), Value::Text(line.clone()))],
                 vec![line],
                 position,
-                None,
             )?;
             position += 1;
         }
@@ -557,7 +567,7 @@ impl<'a> Parser<'a> {
                             .unwrap_or(Value::Text(String::new()))
                     })
                     .collect();
-                self.add(section, key, fields, raw, start, None)?;
+                self.add(section, key, fields, raw, start)?;
             }
         }
         position = self.skip_headers(position);
@@ -595,6 +605,10 @@ fn effective_keys(section: &str, revision: &str) -> Vec<String> {
         .or_else(|| pick(&definition["key_fields"]))
         .unwrap_or_default()
 }
+
+/// Diagnostic for a record whose key repeats an earlier one in a comparison.
+pub const REPEATED_KEY: &str =
+    "Repeats an earlier record's key; numbered in file order and matched by that number";
 
 /// Parse a RAW file's bytes. `name` is used only in error messages.
 pub fn parse_bytes(name: &str, bytes: &[u8]) -> Result<DiffCase> {
