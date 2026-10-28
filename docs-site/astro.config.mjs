@@ -79,6 +79,19 @@ export default defineConfig({
           ],
         },
         {
+          label: "Developer guide",
+          items: [
+            { label: "Codebase tour", slug: "develop/overview" },
+            { label: "Set up and run", slug: "develop/setup" },
+            { label: "Crates", slug: "develop/crates" },
+            { label: "The command registry", slug: "develop/commands" },
+            { label: "Add a command", slug: "develop/add-a-command" },
+            { label: "Desktop shell", slug: "develop/desktop-shell" },
+            { label: "Frontend", slug: "develop/frontend" },
+            { label: "Tests and CI", slug: "develop/testing" },
+          ],
+        },
+        {
           label: "File formats",
           items: [
             { label: "PSS/E RAW", slug: "reference/psse-raw" },

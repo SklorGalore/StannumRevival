@@ -41,7 +41,9 @@ npm test               # frontend unit tests (Vitest)
 ```
 
 The browser smoke test drives the real interface in Chromium against the real
-Rust core; see the repository README for how to run it.
+Rust core; see [Tests and CI](/StannumRevival/develop/testing/) for how to run
+it, and the [developer guide](/StannumRevival/develop/overview/) for a tour of
+the code.
 
 ## Build these docs
 
