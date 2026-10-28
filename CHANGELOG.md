@@ -10,6 +10,9 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
+  `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
+  `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton

@@ -9,6 +9,7 @@ Cargo.toml of the app, stannum-cli and the Python package (stannum-py), and
 their entries in Cargo.lock. In CHANGELOG.md the
 notes under "## Unreleased" become the new version's section, dated today,
 and an empty "## Unreleased" section is left above it.
+THIRD-PARTY-LICENSES.txt is regenerated for the dependencies being released.
 
 Commit the result in a pull request. Once it is merged, tag the merge
 commit with v<version> and push the tag to start the release workflow.
@@ -58,6 +59,14 @@ if ($null -ne (Get-ChangelogSection -Path $changelog -Heading $Version)) {
     $nl = if ([IO.File]::ReadAllText($changelog).Contains("`r`n")) { "`r`n" } else { "`n" }
     Set-InFile $changelog '^## Unreleased[ \t]*$' ("## Unreleased$nl$nl## $Version - $Date")
 }
+
+# The licence list ships with the release, so bring it up to date with the
+# dependencies being released.
+if (-not (Test-Path (Join-Path $root 'node_modules'))) {
+    Push-Location $root
+    try { npm ci } finally { Pop-Location }
+}
+& (Join-Path $PSScriptRoot 'third-party-licenses.ps1')
 
 Write-Host "Version set to $Version."
 & (Join-Path $PSScriptRoot 'check-release.ps1') -Tag "v$Version"

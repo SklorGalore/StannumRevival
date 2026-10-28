@@ -33,8 +33,9 @@ The wheels go on the release page only; they are not published to PyPI.
 
    This updates `package.json`, `package-lock.json`,
    `src-tauri/tauri.conf.json`, the `Cargo.toml` of the app, `stannum-cli`
-   and the Python package (`crates/stannum-py`), and `Cargo.lock`, and
-   runs the same check the workflow runs.
+   and the Python package (`crates/stannum-py`), and `Cargo.lock`,
+   regenerates `THIRD-PARTY-LICENSES.txt`, and runs the same check the
+   workflow runs.
 3. Open a pull request with those changes and merge it.
 4. Tag the merge commit on `main` and push the tag. Tags matching `v*` are
    protected by the `release tags` ruleset, so only admins can create them.
@@ -46,13 +47,28 @@ The wheels go on the release page only; they are not published to PyPI.
    ```
 
 5. Wait for the **Release** workflow. Its first job fails fast if the tag,
-   the three version fields and the changelog don't agree.
+   the three version fields and the changelog don't agree, or if
+   `THIRD-PARTY-LICENSES.txt` no longer matches the dependencies (run
+   `pwsh scripts/release/third-party-licenses.ps1` and commit the result).
 6. Open the draft on the
    [releases page](https://github.com/SklorGalore/StannumRevival/releases),
    try an installer or two (and `pip install` a wheel), then press **Publish release**. The docs site's
    Download page links to the latest published release.
 
 A version with a suffix (`0.3.0-beta.1`) is published as a pre-release.
+
+## Licence files
+
+Every installer, wheel and `stannum-cli` archive carries `LICENSE`
+(BSD-3-Clause), `THIRD-PARTY-NOTICES.md` (hand-written: MATPOWER, ELK,
+MapLibre, Natural Earth and the copyleft-licensed packages) and
+`THIRD-PARTY-LICENSES.txt` (generated: every Rust crate and npm package
+built in, with its licence text). The installers list them as Tauri
+resources, `build-cli.ps1` packs them, and `scripts/ci/test-python.ps1`
+copies them beside `pyproject.toml` so maturin puts them in the wheel's
+`.dist-info/licenses`. When a new dependency with an unusual licence
+(anything beyond MIT, Apache-2.0, BSD, ISC, Zlib or Unicode) arrives, add a
+line for it to `THIRD-PARTY-NOTICES.md`.
 
 ## Test builds
 

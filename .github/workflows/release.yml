@@ -20,6 +20,8 @@ on:
       - "scripts/release/**"
       - "scripts/ci/test-python.ps1"
       - "crates/stannum-py/pyproject.toml"
+      - "LICENSE"
+      - "THIRD-PARTY-*"
       - "src-tauri/tauri*.conf.json"
       - "src-tauri/icons/**"
   workflow_dispatch:
@@ -49,6 +51,22 @@ jobs:
           # Only a tag push is held to "tag matches version".
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: ./scripts/release/check-release.ps1 -Tag "$env:TAG" -NotesFile release-notes.md
+      # The installers, wheels and CLI archives ship THIRD-PARTY-LICENSES.txt
+      # as committed, so it must list the dependencies being built.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check the third-party licence list is current
+        shell: pwsh
+        run: |
+          ./scripts/release/third-party-licenses.ps1 -Out "$env:RUNNER_TEMP/licenses.txt"
+          $want = Get-Content "$env:RUNNER_TEMP/licenses.txt" -Raw
+          $have = Get-Content THIRD-PARTY-LICENSES.txt -Raw
+          if ($want -ne $have) {
+            throw 'THIRD-PARTY-LICENSES.txt is out of date. Run scripts/release/third-party-licenses.ps1 and commit it.'
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-notes
