@@ -22,7 +22,7 @@ holds:
 | **Move switched shunts** | Let switched shunts in voltage control move (RAW only). Off locks them where they are: where the last solve left them, or at their case values with Flat start | On |
 | **Move transformer taps** | Let tap changers in voltage control move (RAW only). Off locks them like shunts | On |
 | **DC line model** | **Detailed converters** or the simplified generator pair | Detailed |
-| **Adjust DC converter taps** | Let converter taps step to hold scheduled DC voltage and firing angles. Off locks them like shunts | On |
+| **Adjust DC converter taps** | Let converter taps, and the AC transformers some converters move instead (COD 4), step to hold scheduled DC voltage and firing angles. Off locks them like shunts | On |
 
 **Solve** runs the power flow. You can also solve from the palette or the
 diagram toolbar. The [technical manual](/StannumRevival/manual/ac-power-flow/)

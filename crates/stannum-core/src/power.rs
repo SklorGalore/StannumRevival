@@ -273,7 +273,8 @@ pub struct SolveSettings {
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
-    /// Step DC converter taps (detailed model only).
+    /// Step DC converter taps, and the transformers that some converters
+    /// step instead (COD 4); detailed model only.
     #[serde(default = "yes")]
     pub adjust_dc_taps: bool,
     /// Switch shunts in voltage control (AC only). When false they are
@@ -452,6 +453,15 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
             if ratio.is_finite() && tap.branch < warm.branches.len() {
                 tap.ratio = ratio;
                 warm.branches[tap.branch].tap = tap.tap_per_ratio * ratio;
+            }
+        }
+    }
+    let dc_taps = &mut options.flow_controls.dc_line_taps;
+    if dc_taps.len() == last.dc_line_tap_ratios.len() {
+        for (tap, &ratio) in dc_taps.iter_mut().zip(&last.dc_line_tap_ratios) {
+            if ratio.is_finite() && tap.branch < warm.branches.len() {
+                tap.ratio = ratio;
+                warm.branches[tap.branch].tap = ratio;
             }
         }
     }
@@ -837,7 +847,8 @@ pub struct SolveReport {
     /// Switched shunts that ended away from their starting susceptance.
     pub shunts_switched: usize,
     /// Transformer taps that ended away from their starting ratio, in
-    /// voltage control (COD 1) or reactive flow control (COD 2).
+    /// voltage control (COD 1), reactive flow control (COD 2) or moved by a
+    /// DC line converter (COD 4, with the DC converter taps).
     pub taps_moved: usize,
     /// Whether the solve locked the switched shunts, and the transformer
     /// taps, where they were instead of moving them (AC only).
@@ -1267,7 +1278,8 @@ pub fn report(
         taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio)
             + moved(&result.reactive_tap_ratios, &flow.reactive_taps, |t| {
                 t.ratio
-            }),
+            })
+            + moved(&result.dc_line_tap_ratios, &flow.dc_line_taps, |t| t.ratio),
         shunts_locked: ac && !settings.switch_shunts,
         taps_locked: ac && !settings.adjust_transformer_taps,
         phase_shifters: if ac { flow.phase_shifters.len() } else { 0 },

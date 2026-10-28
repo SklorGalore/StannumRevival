@@ -1291,7 +1291,8 @@ export type SolveReport = {
   taps_locked: boolean;
   /**
    * Transformer taps that ended away from their starting ratio, in
-   * voltage control (COD 1) or reactive flow control (COD 2).
+   * voltage control (COD 1), reactive flow control (COD 2) or moved by a
+   * DC line converter (COD 4, with the DC converter taps).
    */
   taps_moved: number;
   total_generation_mw: number;
@@ -1314,7 +1315,10 @@ export type SolveReport = {
  * every control on.
  */
 export type SolveSettings = {
-  /** Step DC converter taps (detailed model only). */
+  /**
+   * Step DC converter taps, and the transformers that some converters
+   * step instead (COD 4); detailed model only.
+   */
   adjust_dc_taps?: boolean;
   /**
    * Move phase shifters in active power flow control (AC only). When

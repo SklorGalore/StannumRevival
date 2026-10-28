@@ -1,7 +1,9 @@
 //! Power-flow controls applied between Newton solves: phase shifters that
 //! hold the active power through a transformer winding within a band (PSS/E
 //! winding COD 3, symmetric, and COD 5, asymmetric), and tap changers that
-//! hold its reactive power within a band (COD 2).
+//! hold its reactive power within a band (COD 2). Transformers that a
+//! two-terminal DC line converter adjusts in place of its own tap (COD 4)
+//! are listed here too, and move with the DC converter taps.
 
 /// Flow controls to apply during an AC solve, usually from
 /// [`crate::RawImport::flow_controls`]. Empty by default.
@@ -13,13 +15,44 @@ pub struct FlowControls {
     /// Transformer windings whose tap ratio holds their reactive power flow
     /// within a band.
     pub reactive_taps: Vec<ReactiveTap>,
+    /// Two-winding transformers whose ratio a two-terminal DC line
+    /// converter moves in place of its own tap.
+    pub dc_line_taps: Vec<DcLineTap>,
 }
 
 impl FlowControls {
     /// True when there is nothing to control.
     pub fn is_empty(&self) -> bool {
-        self.phase_shifters.is_empty() && self.reactive_taps.is_empty()
+        self.phase_shifters.is_empty()
+            && self.reactive_taps.is_empty()
+            && self.dc_line_taps.is_empty()
     }
+}
+
+/// A two-winding transformer whose ratio a two-terminal DC line converter
+/// moves in place of its own tap (PSS/E COD 4, named by the converter's
+/// IFR, ITR, IDR or IFI, ITI, IDI fields).
+///
+/// The converter's own tap holds at its case value (TAPR, TAPI), and the
+/// branch tap steps instead, within the converter's tap limits (TMX, TMN)
+/// and by its tap step (STP), to keep the rectifier's firing angle in range
+/// or the inverter's DC voltage at schedule, as the converter tap would.
+/// It moves when the DC converter taps do (the detailed DC model's
+/// `adjust_taps`), between Newton solves.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DcLineTap {
+    /// Index of the transformer's entry in `case.branches`.
+    pub branch: usize,
+    /// The DC line's `case.dcline` row, as in [`crate::LccLine::row`].
+    pub dc_line: usize,
+    /// The converter that adjusts it.
+    pub end: crate::LccEnd,
+    /// Starting off-nominal branch tap.
+    pub ratio: f64,
+    /// False for COD -4: the transformer and the converter tap both hold.
+    pub enabled: bool,
+    /// One-based source line of the winding record, for messages.
+    pub line: usize,
 }
 
 /// A transformer winding whose tap steps to hold the reactive power flowing

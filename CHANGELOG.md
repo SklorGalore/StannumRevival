@@ -43,6 +43,14 @@ section into the next version's when a release is cut (see
   position) and flow. Double-click one to open or close it in the study.
   The inspector shows their type, state, normal state and flow, and its
   study action reads **Open** / **Close** for them.
+- **DC line transformer taps**: when a two-terminal DC line converter in a
+  RAW file names a two-winding transformer with `COD` 4 (`IFR`/`ITR`/`IDR`
+  or `IFI`/`ITI`/`IDI`), that transformer's tap now steps in place of the
+  converter's own tap, within the converter's tap limits, to keep the
+  rectifier's firing angle in range or the inverter's DC voltage at
+  schedule. **Adjust DC converter taps** moves and locks them. RAW exports
+  written from the model keep these transformers and reactive flow taps
+  (`COD` 2).
 - **Reactive flow taps**: transformer windings in reactive power flow
   control in RAW files (`COD` 2) now step their taps in AC solves to hold
   their Mvar band, moving with the phase shifters. **Move transformer taps**

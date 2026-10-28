@@ -278,8 +278,10 @@ rows stay simplified, and DC (linear) solves always use the simplified model.
 - `PowerFlowResult::lcc` reports current, DC voltages, angles, taps, control
   mode, losses and both ends' P and Q; the `dcline` row gets the AC-side P and
   Q (absorbed Q negative) and terminal voltages.
-- Not modelled: capacitor-commutated converters (XCAP), the AC transformer
-  named by IF/IT/ID (the tap is applied inside the converter), a separate
+- A converter that names a two-winding transformer with COD 4 (IF/IT/ID)
+  holds its own tap and steps that transformer's branch tap instead, within
+  its TMX..TMN, when `flow_controls` lists it (`FlowControls::dc_line_taps`).
+- Not modelled: capacitor-commutated converters (XCAP), a separate
   commutating bus (IC), and DCVMIN. Import warns when a line uses them.
 
 ### Detailed VSC model

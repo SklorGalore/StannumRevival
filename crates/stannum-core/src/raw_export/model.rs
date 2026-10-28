@@ -3,7 +3,8 @@
 //!
 //! Written: buses, loads (one per bus), fixed shunts, generators, lines,
 //! two-winding transformers (on the system base, ratio in per unit of the
-//! bus base), switched shunts, tap changers and phase shifters in control,
+//! bus base), switched shunts, tap changers, reactive flow taps, phase
+//! shifters and DC line transformers (COD 4) in control,
 //! two-terminal and VSC DC lines with their full data, FACTS devices, areas
 //! with their interchange targets, zones and one owner. Multi-terminal DC
 //! and anything else the model doesn't hold are left out, with a note.
@@ -208,6 +209,18 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         .iter()
         .map(|p| (p.branch, p))
         .collect();
+    let flow_taps: HashMap<usize, &rs_power::ReactiveTap> = power
+        .flow_controls
+        .reactive_taps
+        .iter()
+        .map(|t| (t.branch, t))
+        .collect();
+    let dc_line_taps: HashMap<usize, &rs_power::DcLineTap> = power
+        .flow_controls
+        .dc_line_taps
+        .iter()
+        .map(|t| (t.branch, t))
+        .collect();
     let mut circuits: HashSet<(u32, u32, String)> = HashSet::new();
     let mut three_winding = 0;
     let mut charging_ids: HashMap<u32, u32> = HashMap::new();
@@ -343,7 +356,22 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
                     ps.mw_min,
                     33,
                 ),
-                None => (0, 0, 1.1, 0.9, 1.1, 0.9, 33),
+                // A reactive flow tap: VMA/VMI are the Mvar band.
+                None => match (flow_taps.get(&k), dc_line_taps.get(&k)) {
+                    (Some(t), _) => (
+                        2,
+                        0,
+                        t.ratio_max * t.tap_per_ratio,
+                        t.ratio_min * t.tap_per_ratio,
+                        t.mvar_max,
+                        t.mvar_min,
+                        i64::from(t.positions),
+                    ),
+                    // Moved by the DC line converter that names it, within
+                    // the converter's limits.
+                    (None, Some(t)) => (if t.enabled { 4 } else { -4 }, 0, 1.1, 0.9, 1.1, 0.9, 33),
+                    (None, None) => (0, 0, 1.1, 0.9, 1.1, 0.9, 33),
+                },
             },
         };
         let cnxa = shifters
