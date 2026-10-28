@@ -48,7 +48,9 @@ section into the next version's when a release is cut (see
   or `IFI`/`ITI`/`IDI`), that transformer's tap now steps in place of the
   converter's own tap, within the converter's tap limits, to keep the
   rectifier's firing angle in range or the inverter's DC voltage at
-  schedule. **Adjust DC converter taps** moves and locks them.
+  schedule. **Adjust DC converter taps** moves and locks them. RAW exports
+  written from the model keep these transformers and reactive flow taps
+  (`COD` 2).
 - **Reactive flow taps**: transformer windings in reactive power flow
   control in RAW files (`COD` 2) now step their taps in AC solves to hold
   their Mvar band, moving with the phase shifters. **Move transformer taps**

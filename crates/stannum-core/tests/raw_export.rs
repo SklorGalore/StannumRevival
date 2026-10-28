@@ -518,6 +518,8 @@ fn controls(power: &stannum_core::power::PowerCase) -> String {
     v.facts.iter_mut().for_each(|d| d.line = 0);
     let mut f = power.flow_controls.clone();
     f.phase_shifters.iter_mut().for_each(|p| p.line = 0);
+    f.reactive_taps.iter_mut().for_each(|t| t.line = 0);
+    f.dc_line_taps.iter_mut().for_each(|t| t.line = 0);
     format!(
         "{v:#?}\n{f:#?}\n{:#?}\n{:#?}\n{:#?}",
         power.areas, power.lcc_lines, power.vsc_lines
