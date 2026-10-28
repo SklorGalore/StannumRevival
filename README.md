@@ -3,13 +3,14 @@
 # Stannum
 
 A desktop workbench for power system engineers, built with Tauri 2, Rust and
-React. Stannum brings four tools into one app that shares a single open case:
+React. Its modules share a single open case:
 
 | Module | What it does | Engine |
 |---|---|---|
-| **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own; draw the network graph with topology layers and tables | React Flow + [ELK](https://eclipse.dev/elk/), Cytoscape |
-| **Power flow** | AC/DC power flow, operating-limit checks, result tables and sensitivities | [rs-power](crates/rs-power) |
-| Topology (in Diagram) | Islands, bridges, cut buses and shortest paths, as layers on either drawing and as tables | [nodal](crates/nodal) |
+| **Diagram** | Generate one-lines from the open case with power flow results on them, or draw, edit and export your own; draw the network graph or a map, with topology layers and tables | React Flow + [ELK](https://eclipse.dev/elk/), Cytoscape, MapLibre |
+| **Power flow** | AC and DC power flow with voltage, flow and area interchange controls, limit checks, result tables, sensitivities, N-1 contingencies and studies | [rs-power](crates/rs-power) |
+| **Records** | Every record in the open case as a table, to sort, filter and edit | stannum-core |
+| Topology (in Diagram) | Islands, bridges, cut buses and shortest paths, as layers on any drawing and as tables | [nodal](crates/nodal) |
 | **Case diff** | Exact record-by-record comparison of two RAW cases | Rust port of [case-diff](https://github.com/SklorGalore/case-diff) |
 
 All analysis runs locally in native Rust. Case files never leave your machine.
@@ -31,138 +32,55 @@ cover every module and the solver models behind them. Their source is in
 Open a case with **Open case…** or drop a `.raw` / `.m` file on the window. The
 case bar shows what loaded, and each module uses the case if it can:
 
-- **MATPOWER** (`.m`, version 2) works in Power flow.
-- **PSS/E RAW** revisions 23–35 work in Power flow; revision 35 also works in
-  Topology; revisions 33 and 35 work in Case diff.
+- **PSS/E RAW** revisions 23–35 and **MATPOWER** (`.m`, version 2) work in
+  Power flow, Records and Diagram.
+- Topology reads revision 35 RAW files itself; for other files it builds the
+  network from the power flow model.
+- Case diff compares RAW revisions 33 and 35.
 
 If a module can't use the open case it says why, and the other modules keep
-working.
+working. The [user guide](https://sklorgalore.github.io/StannumRevival/guide/shell/) walks through every module and the
+[technical manual](https://sklorgalore.github.io/StannumRevival/manual/architecture/) gives the models behind them.
 
-### Log
+- **Power flow.** AC by Auto (decoupled, finishing in Newton), full Newton,
+  fixed-slope decoupled or fast decoupled XB/BX, or linear DC. Generator
+  reactive limits, remote regulation, switched shunts in every RAW mode (1–6),
+  tap changers and reactive flow taps, phase shifters, FACTS devices
+  (STATCOM, UPFC), area interchange and detailed HVDC (two-terminal LCC and
+  VSC, multi-terminal and meshed VSC grids). Shunts, taps and phase shifters
+  can be locked where they are.
+  Result tables page from the core, so they stay quick on 80,000-bus cases.
+  See [Power flow](https://sklorgalore.github.io/StannumRevival/guide/power-flow/).
+- **Contingencies.** N-1 outages of branches and generators, screened with
+  linear outage factors and the worst checked in AC, ranked by the overloads
+  and voltage problems they cause, and shown on the diagram. See
+  [Contingencies](https://sklorgalore.github.io/StannumRevival/guide/contingencies/).
+- **Studies.** Edits every solve uses without changing the file (outages,
+  generator output, loads, switch states), with saved solves to compare,
+  kept in a study file. See
+  [Studies](https://sklorgalore.github.io/StannumRevival/guide/studies/).
+- **Records.** Every record and field of the case, sorted, searched and
+  filtered in the core; edits are written back into the case. See
+  [Records](https://sklorgalore.github.io/StannumRevival/guide/records/).
+- **Export.** PSS/E RAW 33 or 35 from any open case, with its Records and
+  study edits (RAW 33 and 35 files are written record by record), and
+  MATPOWER. See [PSS/E RAW](https://sklorgalore.github.io/StannumRevival/reference/psse-raw/#writing-raw).
+- **Diagram.** One-lines generated around a bus, an area or the whole case,
+  with buses, generators, loads, shunts, lines, transformers, DC lines and
+  switching devices, and results on them; a hand-drawing editor with
+  right-angle wire routing; the network graph and a map from bus coordinates
+  or RAW substation data. Exports SVG, PNG and PDF. See
+  [Diagram](https://sklorgalore.github.io/StannumRevival/guide/diagram/).
+- **Case diff.** Exact record-by-record comparison of two RAW cases. Numbers
+  compare exactly, formatting and comments are ignored, and layouts that are
+  not verified are listed as unsupported. See [Case diff](https://sklorgalore.github.io/StannumRevival/guide/case-diff/).
+- **Scripting.** Run files (`.stnrun`) recorded from the app and replayed in
+  it or by `stannum-cli`, and a Python package, `stannum`. See
+  [Run files](https://sklorgalore.github.io/StannumRevival/guide/run-files/) and [Python](https://sklorgalore.github.io/StannumRevival/guide/python/).
 
-The strip along the bottom of the window says what Stannum is doing: the step
-in progress with a running timer (opening, solving, comparing, drawing), or the
-latest message. Click it or press **Ctrl+`** to open the log, which keeps every
-step with its time and source: the app's own lines and those from the core,
-rs-power and nodal. A power flow is reported as a solver output window would:
-the network and controls it starts from, each pass and why it runs, every
-Newton iteration with the largest P and Q mismatches and voltage correction
-and the buses they are at, each generator switched at a reactive limit, each
-switched shunt and tap moved, then totals and operating-limit violations.
-Filter to warnings or errors, search, or tick **Details** for parser and
-network-assembly lines and the long tails of per-device lists. Bus numbers in a line are links that
-show the bus in every module. **Copy** and **Save…** write the lines shown as
-plain text, for a bug report or a study record.
-
-### Power flow
-
-Choose AC or DC, the starting voltages, tolerance, Newton iterations and
-whether to enforce generator reactive limits, then **Solve**. For RAW cases,
-**Switch shunts** and **Adjust transformer taps** (both on by default) let
-switched shunts and transformer taps in voltage control hold their buses within
-their bands. The overview shows convergence, residual (MVA and p.u.), how many
-shunts and taps moved, totals and operating-limit checks
-(voltage limits, generator Q limits, branch loading against rate A). The bus,
-generator and branch tables are searchable, sortable and export to CSV; rows
-outside limits are highlighted. A nonconverged result is kept and labelled so
-you can inspect the final iterate.
-
-**Calculate sensitivities** linearizes the solved case. Pick an injection bus
-and P or Q, then a response (voltage angle, voltage magnitude or one of the four
-branch-end flows), in engineering or raw units, ordered by magnitude, signed
-value or input order. "How to read these results" explains the sign conventions.
-
-**Export MATPOWER** writes the input case or the latest solved case.
-
-### Topology
-
-The case's topology is part of the Diagram. **Layers** draws it on the Network
-and One-line styles alike: bridges and cut buses, islands, zero-impedance
-groups (optionally merged into one node), the fewest equipment hops between
-two buses, and filters and colours by field. **Tables** opens a drawer under
-the drawing with buses, islands, critical connections, equipment and parser
-diagnostics; picking a row selects the element in the drawing, all tables
-export to CSV, and **JSON** saves the parsed case, analysis and current path.
-
-### Case diff
-
-Choose a baseline and a comparison RAW file (the open case is offered as the
-baseline) and **Compare files**. Sections list added, removed, changed and
-unchanged counts; select a record to see its fields side by side with the
-original lines. Numbers compare exactly (`1.0` equals `1.000`, any other change
-counts), string padding is shown in quotes, and formatting, comments and line
-endings are ignored. Content in layouts that are not verified is listed as
-unsupported and the result is marked incomplete rather than guessed at.
-
-### Diagram
-
-**From case** draws a one-line of the open case (MATPOWER or RAW): the whole
-case, one area, or the buses within a few hops of a chosen bus. Buses,
-generators, loads, lines and transformers are laid out top to bottom with
-right-angle wiring (ELK layered layout, run in a worker). Branches that leave
-the selection end in off-page markers naming the far bus. Three-winding
-transformers appear as their star point with a two-winding symbol per winding.
-Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
-solved voltage) sit directly on their bus bar; the bus's wires leave from the
-rest of the bar.
-
-Cases with more than 20 buses default to drawing around a bus, which is how a
-one-line is usually used: to look into a local problem. The studied bus sits at
-the top, highlighted, and each row below is one more hop out. The bar at the
-bottom of the canvas changes the hop count. On a drawing linked to the open
-case, double-click an off-page marker to bring its bus in, or right-click a bus
-for **Show neighbours** and **Draw N hops around** it. Brought-in buses are
-placed below what is already drawn and nothing that is there moves.
-
-Generated symbols stay linked to case records. After a solve (in Power flow, or
-**Solve** on the diagram toolbar) the diagram shows bus voltage and angle,
-generator and load MW/Mvar, and branch flows with direction arrows and loading;
-branches at 80% or more turn amber, overloads red. **Results** toggles them.
-A saved diagram keeps the link and shows results again when the same case is open.
-
-The editor also draws by hand: drag symbols from the palette, then drag from a
-terminal to wire it. Releasing a wire anywhere along a bus bar adds a tap
-there. Symbols sit on a 20 px grid with one stroke weight, so wires line up.
-Wires take right-angle paths around symbols and their labels: a new wire is
-routed when you draw it, and the wires of a moved symbol are rerouted when you
-drop it. Select a wire and drag one of its segments to move it by hand; it then
-keeps that shape until you press **Reroute** in its properties.
-A generator, load or shunt dropped onto a bus bar, or dragged up until it
-touches one, hangs from the bar and is connected there.
-Breakers and disconnectors open and close on double-click. A selected bus has a
-grip on its far end for changing its length.
-
-**R** turns the selected symbols a quarter clockwise about their centres
-(**Shift+R** back, or the buttons under **Rotation** in the properties panel);
-terminals turn with the symbol and text stays upright. On a bus, **R** swaps it
-between horizontal and vertical: generators, loads and shunts sitting on it go
-round with it, and its other wires move to the side of the bar facing where
-they go. A symbol dropped beside a vertical bus turns to face it and goes on it.
-
-Any label can be dragged to a clearer spot: a symbol's text, a bus's name and
-voltage, or the flow figures on a wire. A label pulled clear of what it belongs
-to gets a thin dashed leader back to it, and a wire's figures keep their
-distance from the wire when it moves. **Reset label position** in the
-properties panel puts one back; turning a symbol does too. Moved labels are
-saved with the drawing and appear where they were put in exports.
-
-| Action | How |
-| --- | --- |
-| Select several | Drag a box on empty canvas, or Shift/Ctrl-click |
-| Pan | Middle or right drag, or hold Space |
-| Undo / redo | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) |
-| Copy, cut, paste, duplicate | Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D |
-| Select all / clear | Ctrl+A / Esc |
-| Nudge | Arrow keys (one grid step; Shift for 1 px) |
-| Rotate | R (clockwise) / Shift+R; on a bus, horizontal ⇄ vertical |
-| Move a label | Drag its text |
-| Align and space evenly | Bar over the canvas, shown with two or more symbols selected |
-
-**Print style** draws everything in black for printing and export. Diagrams
-save as `.sld` and export to SVG, PNG or PDF with a title block. Keyboard
-shortcuts act on the diagram only while it is showing.
-
-Not yet: switched devices and HVDC from the case.
+The bottom strip and the log (**Ctrl+`**) say what Stannum is doing and keep
+every step, including a solver report of each power flow. What isn't modelled
+is listed in [What isn't modelled](https://sklorgalore.github.io/StannumRevival/reference/limitations/).
 
 ## Install
 
@@ -225,25 +143,31 @@ Branching, pull request rules and the repository's security settings are in
 ## Layout
 
 ```
-crates/rs-power/          AC/DC power flow, sensitivities, MATPOWER and RAW loading
+crates/rs-power/          AC/DC power flow, controls, HVDC, sensitivities, outages, MATPOWER and RAW loading
 crates/nodal/             RAW v35 parser and topology (islands, bridges, paths)
 crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
   src/commands.rs         Every command the app, the dev bridge and scripts use, listed once
   src/workspace.rs        The shared open case; parses once per engine
   src/run_file.rs         Run files (.stnrun): commands one per line, read and written
   src/power.rs            rs-power solve/sensitivity results shaped for the UI
+  src/contingency.rs      N-1 contingency runs: linear screen, AC check, ranking
+  src/paging.rs           Sorted, searched and filtered table pages
+  src/raw_export/         PSS/E RAW 33/35 export
   src/diff/               case-diff port: tokenizer, exact values, parser, comparison
   schemas/raw.schema.json RAW field layouts (shared with nodal and case-diff)
   tests/                  Integration tests and fixtures
 crates/stannum-cli/       stannum-cli: runs and checks run files without the app
+crates/stannum-py/        The `stannum` Python package (PyO3)
+crates/stannum-synth/     Synthetic test cases
 src-tauri/                Desktop shell; src/analysis.rs passes commands to the core's list
 src/
   shell/                  Module rail, case bar, drag-and-drop
-  modules/                diagram/, power/, diff/ (topology/ holds the shared graph and field code)
+  modules/                diagram/, power/, records/, diff/ (topology/ holds the shared graph and field code)
   lib/analysis/           Typed command wrappers and result types
   ui/                     Shared table and form components
   components/, store/     The diagram editor (from StannumSLD)
 tests/browser/            Browser smoke test
+docs-site/                Documentation site (Astro + Starlight)
 ```
 
 rs-power and nodal used to be separate repositories. They now live here as
