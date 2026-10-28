@@ -153,6 +153,16 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- Sensitivities work on 80,000-bus cases. They used to hold every injection
+  column at once, over 13 GB at 82,000 buses, and the app was shut down by
+  the system; now the case is factored once and the picked column is solved
+  when asked (about 3 s and 0.5 GB for SyntheticUSA).
+- A three-winding transformer's winding loading is measured at its own bus,
+  not at the internal star bus, in results, checks and contingencies.
+- RAW transformers with a 1.0 ratio and no phase shift show as transformers
+  in Branches and in network drawings, not as lines.
+- Branches results show **Loading** next to **Status**, where it is in view.
+
 - Power flow reads RAW revision 34 and 35 system switching devices instead
   of skipping them, so buses joined only by a breaker or disconnector are no
   longer split apart. Each solves as a lossless branch of the device's

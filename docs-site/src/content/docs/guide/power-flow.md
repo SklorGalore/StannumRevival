@@ -57,7 +57,9 @@ it:
 **Buses**, **Generators** and **Branches** list every element with its solved
 values. Tables are searchable and sortable, show names, and export to CSV.
 Cells carry small bars and colours for voltage against its limits and branch
-loading, and rows outside limits are highlighted. The checkbox above each
+loading, and rows outside limits are highlighted. Loading is the larger
+end's MVA against rate A; a three-winding transformer's winding is measured
+at its own bus, since the star bus between the windings is internal. The checkbox above each
 table (for example **Voltage violations only**) narrows it to the problems.
 
 Selecting a row puts the element in the selection chip and opens its details,
