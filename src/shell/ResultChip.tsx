@@ -50,7 +50,7 @@ export function ResultChip() {
       data-result={shown?.name ?? latestName}
       title="The result the diagram, tables and inspector show"
     >
-      <Activity size={12} className={shown ? "text-amber-700" : "text-slate-400"} />
+      <Activity size={12} className={shown ? "text-amber-700" : "text-slate-500"} />
       <span className="truncate max-w-[16rem] pl-1">
         {shown ? (
           <>

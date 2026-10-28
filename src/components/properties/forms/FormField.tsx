@@ -46,7 +46,7 @@ export function Select({ children, ...props }: SelectProps) {
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-4 first:mt-0">
+    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 mt-4 first:mt-0">
       {children}
     </p>
   );

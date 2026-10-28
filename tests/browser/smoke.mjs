@@ -871,9 +871,9 @@ if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
   const tab = page.getByTestId("vsc-grids");
   await tab.getByText("AC/DC iterations").waitFor();
   assert.equal(await tab.getByTestId("vsc-grid").count(), 2, "both DC grids reported");
-  await tab.getByRole("cell", { name: "Offshore", exact: true }).first().waitFor();
-  await tab.getByRole("cell", { name: "DC slack" }).waitFor();
-  await tab.getByRole("cell", { name: "Droop" }).first().waitFor();
+  await tab.getByRole("gridcell", { name: "Offshore", exact: true }).first().waitFor();
+  await tab.getByRole("gridcell", { name: "DC slack" }).waitFor();
+  await tab.getByRole("gridcell", { name: "Droop" }).first().waitFor();
   await shot("vsc-grids");
   await tab.getByTestId("vsc-grid").nth(1).scrollIntoViewIfNeeded();
   await shot("vsc-grids-droop");
@@ -1249,6 +1249,8 @@ await page.getByRole("button", { name: "Open another…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
 await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
+// The header can show before the rows arrive from the core.
+await recordRows.nth(8).waitFor();
 assert.equal(await recordRows.count(), 9, "nine buses in case9");
 await shot("records-matpower");
 
@@ -1381,6 +1383,73 @@ await shot("diff-working");
   await notice.getByText("The run file didn't run.").waitFor();
   await notice.getByText(/Line 2: Stannum has no command called solve_powerflow\./).waitFor();
   await notice.getByRole("button", { name: "Dismiss" }).click();
+}
+
+// Keyboard: modules by Ctrl+number, tables by arrows, tabs by arrows, the
+// shortcut list, and focus going back where it was after the palette.
+{
+  await queue(STANNUM_RAW);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.locator("[data-case-summary]").getByText("five_bus.raw").waitFor();
+  await page.keyboard.press("Control+3");
+  const recordsPane = page.locator('[data-module="records"]');
+  await recordsPane.getByTestId("record-types").getByRole("button", { name: /^Buses/ }).click();
+  const grid = recordsPane.getByRole("grid");
+  await grid.locator("tbody tr:not([data-spacer])").first().waitFor();
+  await grid.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  const cursorRow = grid.locator("tr[data-cursor]");
+  assert.equal(await cursorRow.getAttribute("aria-rowindex"), "4", "two rows down from the first");
+  assert.equal(await grid.getAttribute("aria-activedescendant"), await cursorRow.getAttribute("id"));
+  await page.keyboard.press("Enter");
+  await page.getByTestId("records-inspector").getByTestId("inspector-title").filter({ hasText: /^Bus / }).waitFor();
+  await shot("keyboard-records-row");
+  // F2 edits the row's first editable field; Escape gives the keyboard back to the table.
+  await grid.focus();
+  await page.keyboard.press("F2");
+  const editor = grid.getByRole("textbox", { name: "Cell value" });
+  await editor.waitFor();
+  await page.keyboard.press("Escape");
+  await editor.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "grid");
+  // Up from the first row reaches the headers; Enter sorts.
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  await grid.locator('th[aria-sort="ascending"]').waitFor();
+  await page.keyboard.press("ArrowDown");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "grid");
+
+  // Power flow tabs: one Tab stop, arrows switch.
+  await page.keyboard.press("Control+2");
+  const powerPane = page.locator('[data-module="power"]');
+  await powerPane.getByRole("button", { name: "Solve", exact: true }).click();
+  await powerPane.locator("text=Converged >> visible=true").first().waitFor();
+  const results = powerPane.getByRole("tablist", { name: "Power flow results" });
+  await results.getByRole("tab", { selected: true }).focus();
+  const before = await results.getByRole("tab", { selected: true }).textContent();
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(
+    (was) => document.activeElement?.getAttribute("role") === "tab" && document.activeElement.getAttribute("aria-selected") === "true" && document.activeElement.textContent !== was,
+    before
+  );
+  assert.equal(await results.locator('[role="tab"][tabindex="0"]').count(), 1, "one tab in the Tab order");
+  await shot("keyboard-tabs");
+
+  // "?" lists the shortcuts; Escape closes it and focus comes back.
+  await page.keyboard.press("?");
+  const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await shortcuts.getByText("Move between rows").waitFor();
+  await shot("keyboard-shortcuts");
+  await page.keyboard.press("Escape");
+  await shortcuts.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("dialog", { name: "Search and commands" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

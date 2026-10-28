@@ -321,7 +321,7 @@ function MapBar({
             </button>
           </>
         )}
-        {hint && start === null && <span className="px-1 text-slate-400">Double-click a site to highlight around it</span>}
+        {hint && start === null && <span className="px-1 text-slate-500">Double-click a site to highlight around it</span>}
       </div>
     );
   }
@@ -367,7 +367,7 @@ export function MapInspector({ floating = false }: { floating?: boolean }) {
     useWorkspace.getState().select(next, "diagram");
   };
   return (
-    <aside className={inspectorClass(floating)} data-testid="map-selection">
+    <aside aria-label="Inspector" className={inspectorClass(floating)} data-testid="map-selection">
       <ElementInspector element={element} from="diagram" onPick={pick} onClose={() => setElement(null)}>
         {data && <MapSection element={element} data={data} onPick={pick} />}
       </ElementInspector>

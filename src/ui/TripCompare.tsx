@@ -85,7 +85,7 @@ export function TripOutcome({ element, onPick }: { element: string; onPick: (ele
                 {elementLabel(o.element)}
               </button>
               <span className="tabular-nums font-semibold text-red-700">{fixed(o.pct, 0)}%</span>
-              <span className="tabular-nums text-slate-400">was {fixed(o.base_pct, 0)}</span>
+              <span className="tabular-nums text-slate-500">was {fixed(o.base_pct, 0)}</span>
             </li>
           ))}
         </ul>

@@ -117,11 +117,10 @@ function LogStrip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      aria-label={open ? "Hide log" : "Show log"}
       title={`${open ? "Hide" : "Show"} the log (${SHORTCUT})`}
       className="h-7 w-full flex items-center gap-2 px-3 text-[11px] text-slate-500 hover:bg-slate-50 text-left"
     >
-      <Terminal size={12} className="shrink-0 text-slate-400" />
+      <Terminal size={12} className="shrink-0 text-slate-500" />
       <span className="font-medium text-slate-600 shrink-0">Log</span>
       <span className="text-slate-300 shrink-0">|</span>
       <span className="min-w-0 flex-1 truncate" data-testid="log-status" aria-live="polite">
@@ -129,11 +128,11 @@ function LogStrip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
           <span className="inline-flex items-center gap-1.5 text-teal-800">
             <Loader2 size={12} className="animate-spin shrink-0" />
             {busy.label}… <span className="tabular-nums text-slate-500">{duration(now - busy.started)}</span>
-            {running.length > 1 && <span className="text-slate-400">· {running.length - 1} more</span>}
+            {running.length > 1 && <span className="text-slate-500">· {running.length - 1} more</span>}
           </span>
         ) : latest ? (
           <span className={latest.level === "error" ? "text-red-700" : latest.level === "warn" ? "text-amber-700" : ""}>
-            <span className="tabular-nums text-slate-400">{clock(latest.time).slice(0, 8)}</span> {latest.message}
+            <span className="tabular-nums text-slate-500">{clock(latest.time).slice(0, 8)}</span> {latest.message}
           </span>
         ) : (
           "Ready"
@@ -149,7 +148,7 @@ function LogStrip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
           <AlertTriangle size={12} /> {unseen.warn}
         </span>
       )}
-      <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-400 shrink-0">{SHORTCUT}</kbd>
+      <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-500 shrink-0">{SHORTCUT}</kbd>
       {open ? <ChevronDown size={13} className="shrink-0" /> : <ChevronUp size={13} className="shrink-0" />}
     </button>
   );
@@ -259,7 +258,7 @@ function LogDrawer({ height, onClose }: { height: number; onClose: () => void })
           className="absolute inset-0 overflow-auto font-mono text-[11.5px] leading-5 py-1"
         >
           {visible.length > DRAWN && (
-            <p className="px-3 text-slate-400">
+            <p className="px-3 text-slate-500">
               Showing the last {DRAWN.toLocaleString()} of {visible.length.toLocaleString()} lines. Save keeps them all.
             </p>
           )}
@@ -299,8 +298,8 @@ function LogLine({ entry }: { entry: LogEntry }) {
   const focus = useWorkspace((s) => s.focus);
   return (
     <div className={`flex gap-3 px-3 ${LEVEL_STYLE[entry.level]}`} data-level={entry.level}>
-      <span className="shrink-0 tabular-nums text-slate-400">{clock(entry.time)}</span>
-      <span className="shrink-0 w-14 truncate text-slate-400" title={entry.source}>
+      <span className="shrink-0 tabular-nums text-slate-500">{clock(entry.time)}</span>
+      <span className="shrink-0 w-14 truncate text-slate-500" title={entry.source}>
         {entry.source}
       </span>
       <span className="min-w-0 whitespace-pre-wrap break-words">

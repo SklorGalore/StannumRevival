@@ -9,6 +9,7 @@ import {
   FileCode2,
   FlaskConical,
   FolderOpen,
+  Keyboard,
   Save,
   GitCompareArrows,
   Link2,
@@ -37,6 +38,7 @@ import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
+import { useShortcuts } from "./ShortcutsDialog";
 
 export interface Command {
   id: string;
@@ -171,6 +173,13 @@ export function paletteCommands(): Command[] {
       ? { id: "record-stop", title: "Stop recording and save run file…", icon: <Save size={14} />, keywords: "record macro script automation stnrun", run: () => void runFile.saveRecording() }
       : { id: "record", title: "Record a run file", icon: <Circle size={14} />, keywords: "record macro script automation stnrun replay", run: runFile.startRecording }
   );
+  list.push({
+    id: "shortcuts",
+    title: "Keyboard shortcuts",
+    icon: <Keyboard size={14} />,
+    keywords: "keys hotkeys help accessibility ?",
+    run: () => useShortcuts.getState().setOpen(true),
+  });
   list.push({ id: "run-file", title: "Run a run file…", icon: <FileCode2 size={14} />, keywords: "play replay macro script automation stnrun batch", run: () => void runFile.run() });
   list.push({
     id: "theme",
@@ -246,6 +255,14 @@ function Palette({ onClose }: { onClose: () => void }) {
   }, [query, commands, elements]);
 
   useEffect(() => setActive(0), [query]);
+  // Back to where the keyboard was when the palette closes. Read while
+  // rendering: by the time effects run, the search box has taken focus.
+  const [before] = useState(() => document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    return () => {
+      if (before?.isConnected && before !== document.body) before.focus({ preventScroll: true });
+    };
+  }, [before]);
   useEffect(() => {
     listRef.current?.querySelector("[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
   }, [active]);
@@ -273,6 +290,9 @@ function Palette({ onClose }: { onClose: () => void }) {
       e.preventDefault();
       e.stopPropagation();
       onClose();
+    } else if (e.key === "Tab") {
+      // Nothing else in the palette takes focus.
+      e.preventDefault();
     }
   }
 
@@ -294,25 +314,28 @@ function Palette({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[12vh]" onMouseDown={onClose}>
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Search and commands"
         className="w-[min(640px,92vw)] rounded-lg bg-white shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-3 border-b border-slate-200">
-          <Search size={16} className="text-slate-400 shrink-0" />
+          <Search size={16} className="text-slate-500 shrink-0" />
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={summary?.power.available ? "Bus number or name, branch, generator, or a command…" : "Type a command…"}
-            className="flex-1 py-3 text-sm bg-transparent outline-none text-slate-800 placeholder:text-slate-400"
+            className="flex-1 py-3 text-sm bg-transparent outline-none text-slate-800 placeholder:text-slate-500"
             aria-label="Search"
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-results"
+            aria-autocomplete="list"
+            aria-activedescendant={rows[active] ? `palette-option-${active}` : undefined}
           />
-          <kbd className="text-[10px] text-slate-400 border border-slate-200 rounded px-1">Esc</kbd>
+          <kbd className="text-[10px] text-slate-500 border border-slate-200 rounded px-1" aria-hidden="true">Esc</kbd>
         </div>
         <ul id="palette-results" ref={listRef} role="listbox" className="max-h-[52vh] overflow-y-auto py-1">
           {rows.map((row, i) => {
@@ -321,9 +344,10 @@ function Palette({ onClose }: { onClose: () => void }) {
               i === firstElement ? "In this case" : i === firstCommand ? "Commands" : null;
             return (
               <li key={row.kind === "command" ? row.command.id : row.item.element} role="presentation">
-                {heading && <p className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wider uppercase text-slate-400">{heading}</p>}
+                {heading && <p className="px-3 pt-2 pb-1 text-[10px] font-semibold tracking-wider uppercase text-slate-500" aria-hidden="true">{heading}</p>}
                 <div
                   role="option"
+                  id={`palette-option-${i}`}
                   aria-selected={selected}
                   className={`mx-1 flex items-center gap-2.5 rounded-md px-2.5 py-1.5 cursor-pointer ${selected ? "bg-teal-50" : ""}`}
                   onMouseMove={() => setActive(i)}
@@ -343,6 +367,7 @@ function Palette({ onClose }: { onClose: () => void }) {
                       {selected && summary?.power.available && centreBus(row.item.element) !== null && (
                         <button
                           type="button"
+                          tabIndex={-1}
                           className="shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-teal-700 hover:bg-teal-100"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -355,14 +380,14 @@ function Palette({ onClose }: { onClose: () => void }) {
                       )}
                     </>
                   )}
-                  {selected && <CornerDownLeft size={13} className="shrink-0 text-slate-400" aria-hidden="true" />}
+                  {selected && <CornerDownLeft size={13} className="shrink-0 text-slate-500" aria-hidden="true" />}
                 </div>
               </li>
             );
           })}
         </ul>
-        {hint && <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100">{hint}</p>}
-        <p className="px-3 py-1.5 text-[10.5px] text-slate-400 border-t border-slate-100 bg-slate-50 flex gap-3">
+        {hint && <p role="status" className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100">{hint}</p>}
+        <p aria-hidden="true" className="px-3 py-1.5 text-[10.5px] text-slate-500 border-t border-slate-100 bg-slate-50 flex gap-3">
           <span>↑↓ choose</span>
           <span>Enter show everywhere</span>
           <span>Shift+Enter draw around</span>

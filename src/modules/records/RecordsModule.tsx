@@ -75,10 +75,19 @@ function CellEditor({
       onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") finish(null);
-        else if ((e.key === "Enter" || e.key === "Tab") && !problem) {
+        // Done with the keyboard: unless Tab opened the next field, the table takes it back.
+        const table = e.currentTarget.closest("table");
+        const back = () =>
+          requestAnimationFrame(() => {
+            if (!document.activeElement || document.activeElement === document.body) table?.focus({ preventScroll: true });
+          });
+        if (e.key === "Escape") {
+          finish(null);
+          back();
+        } else if ((e.key === "Enter" || e.key === "Tab") && !problem) {
           e.preventDefault();
           finish(text, e.key === "Tab");
+          back();
         } else if (e.key === "Tab") e.preventDefault();
       }}
       onBlur={() => finish(problem ? null : text)}
@@ -122,7 +131,7 @@ function columnsFor(table: TableInfo, raw: boolean, edit: EditState): Column<Pag
       header: canEdit || !edit.editable ? c.name : (
         <span className="inline-flex items-center gap-0.5">
           {c.name}
-          <Lock size={9} className="text-slate-400" aria-hidden="true" />
+          <Lock size={9} className="text-slate-500" aria-hidden="true" />
         </span>
       ),
       title: `${c.name} (${c.kind})${edit.editable && !c.editable ? ": identifies the record, so it can't be edited" : ""}`,
@@ -147,7 +156,7 @@ function columnsFor(table: TableInfo, raw: boolean, edit: EditState): Column<Pag
             className={`block -mx-2.5 px-2.5 leading-7 cursor-text ${pending !== undefined ? "bg-amber-100 text-amber-950 font-medium" : ""}`}
             data-pending={pending !== undefined ? "" : undefined}
             data-cell={`${row}:${i}`}
-            title={pending !== undefined ? `Was ${shownValue(r.cells[i]) || "empty"}` : "Double-click to edit"}
+            title={pending !== undefined ? `Was ${shownValue(r.cells[i]) || "empty"}` : "Double-click (or F2 on the row) to edit"}
             onDoubleClick={(e) => {
               e.stopPropagation();
               edit.start({ row, column: i });
@@ -176,7 +185,7 @@ function SectionList({ book, value, onChange }: { book: RecordBook; value: strin
       title={s.skipped ? `${count(s.skipped)} not listed` : undefined}
       className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-left text-xs ${
         value === s.id ? "bg-teal-50 text-teal-900 font-medium ring-1 ring-inset ring-teal-200" : "text-slate-700 hover:bg-slate-100"
-      } ${s.count === 0 ? "text-slate-400" : ""}`}
+      } ${s.count === 0 ? "text-slate-500" : ""}`}
     >
       <span className="flex-1 min-w-0 truncate">{s.label}</span>
       {s.skipped > 0 && <AlertTriangle size={11} className="shrink-0 text-amber-600" aria-label="Some not listed" />}
@@ -479,7 +488,7 @@ export function RecordsModule({ active }: { active: boolean }) {
           <span className="text-[11px] text-slate-500 truncate" data-testid="records-summary">
             {count(table.columns.length)} fields
             {raw && book.revision !== null ? ` · RAW revision ${book.revision}` : book.source === "model" ? " · power flow model" : ""}
-            {book.editable ? " · double-click a cell to edit" : " · read only"}
+            {book.editable ? " · double-click a cell (or F2) to edit" : " · read only"}
           </span>
           <span className="ml-auto flex items-center gap-1">
             {selected && !(dockInspector || !split) && (
@@ -575,6 +584,16 @@ export function RecordsModule({ active }: { active: boolean }) {
             rowKey={(r) => r.position}
             search={search}
             onRowClick={pick}
+            label={table.label}
+            onRowKeyDown={(r, e) => {
+              // F2 edits the record's first editable field; Tab in the editor moves along.
+              if (e.key !== "F2" || !book?.editable) return false;
+              const column = table.columns.findIndex((c) => c.editable);
+              if (column < 0) return false;
+              setEditError(null);
+              setEditing({ row: r.position, column });
+              return true;
+            }}
             isSelected={(r) => (selected !== null && r.element === selected) || r.position === pickedRow?.position}
             rowClassName={(r) => (r.element ? "" : "text-slate-600")}
             empty={table.total ? "No records match." : `The case has no ${table.label.toLowerCase()}.`}
@@ -599,7 +618,7 @@ export function RecordsModule({ active }: { active: boolean }) {
       <div className="flex-1 min-w-0 flex flex-col">{body}</div>
       {selected && (dockInspector || !split) && (
         // Side by side in a narrow pane, the other pane's inspector shows it.
-        <aside className={inspectorClass(!dockInspector)} data-testid="records-inspector">
+        <aside aria-label="Inspector" className={inspectorClass(!dockInspector)} data-testid="records-inspector">
           <ElementInspector
             element={selected}
             from="records"

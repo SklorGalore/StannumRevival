@@ -614,12 +614,12 @@ function SolvePanel({
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   const exportRaw = useStudyFile((s) => s.exportRaw);
   return (
-    <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
+    <aside aria-label="Solve settings" className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Solve settings</p>
+        <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Solve settings</p>
         <button
           type="button"
-          className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+          className="p-0.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100"
           onClick={onHide}
           title="Hide solve settings"
           aria-label="Hide solve settings"
@@ -807,14 +807,14 @@ function SolvePanel({
         <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
       </Button>
       <div className="mt-2 pt-3 border-t border-slate-200 flex flex-col gap-1.5">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export MATPOWER</p>
+        <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export MATPOWER</p>
         <Button variant="ghost" className="justify-start" onClick={() => onExport(false)} disabled={!!busy}>
           <Download size={13} /> Input case…
         </Button>
         <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
           <Download size={13} /> Solved case…
         </Button>
-        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export PSS/E RAW</p>
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export PSS/E RAW</p>
         {([35, 33] as const).map((revision) => (
           <Button
             key={revision}
@@ -1112,7 +1112,7 @@ function TableTab<T>({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 border-b border-slate-200 bg-white">
         <SearchBox value={search} onChange={setSearch} placeholder={placeholder} />
         {problem && (
-          <label className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${problemCount ? "text-slate-700" : "text-slate-400"}`}>
+          <label className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${problemCount ? "text-slate-700" : "text-slate-500"}`}>
             <input
               type="checkbox"
               checked={problemsOnly}
@@ -1149,6 +1149,7 @@ function TableTab<T>({
           search={search}
           rowClassName={rowClassName}
           isSelected={isSelected}
+          label={exportName.replace(/\.csv$/, "").replace(/[-_]/g, " ")}
           onRowClick={(r) => onPick(element(r))}
           initialSort={problem && initialProblemsOnly ? { key: problem.sortKey, dir: "desc" } : null}
         />
@@ -1559,6 +1560,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         ) : (
           <>
             <Tabs
+              label="Power flow results"
               tabs={tabs}
               value={tab}
               onChange={(t) => {
@@ -1630,7 +1632,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   placeholder="Search generators…"
                   exportName="generators.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "branches" && report && (
@@ -1650,7 +1652,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   placeholder="Search branches…"
                   exportName="branches.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "dc" && report?.dc_lines && (
@@ -1664,7 +1666,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   placeholder="Search DC lines…"
                   exportName="dc-lines.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
@@ -1702,7 +1704,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       {selected && (showInspector || (!split && selection?.from === "power")) && (
         // In a narrow window it floats, clear of the tab bar. Side by side,
         // the other pane's inspector shows the selection instead.
-        <aside className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
+        <aside aria-label="Inspector" className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
           <ElementInspector
             element={selected}
             from="power"

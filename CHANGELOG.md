@@ -10,6 +10,18 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Keyboard and screen reader pass.** Tables are one Tab stop: arrow keys,
+  Page Up/Down and Home/End move between rows, Enter opens a row, Up from
+  the first row reaches the column headers to sort, and **F2** edits a
+  Records cell. Rows of tabs switch with the arrow keys, menus open and move
+  with the arrow keys, and dialogs keep focus inside and give it back when
+  they close. **Ctrl+1** to **4** show the modules (with Shift, side by
+  side), the menu key or **Shift+F10** opens the diagram's case actions on
+  the selected symbol, **?** lists every shortcut, and the first Tab offers
+  **Skip to the module**. One teal focus ring everywhere, landmarks and
+  labels for screen readers, darker small grey text in both themes, and
+  less motion when the system asks for it.
+
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.

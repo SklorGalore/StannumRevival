@@ -123,6 +123,10 @@
           opacity: 0;
         }
       }
+          /* Reduced motion: the finished mark, without the drawing. */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+      }
     </style>
   </head>
   <body>

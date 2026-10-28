@@ -18,6 +18,8 @@ export function Logo({ size = 28 }: { size?: number }) {
   return <img src={size < 40 ? logoSmallUrl : logoUrl} width={size} height={size} alt="" aria-hidden="true" draggable={false} />;
 }
 
+const MOD = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
+
 export function ModuleRail() {
   const module = useWorkspace((s) => s.module);
   const setModule = useWorkspace((s) => s.setModule);
@@ -33,10 +35,12 @@ export function ModuleRail() {
         <Logo />
         <span className="text-[11px] font-semibold tracking-wide">Stannum</span>
       </div>
-      {MODULES.map((m) => (
+      {MODULES.map((m, i) => (
         <button
           key={m.id}
-          title={`${m.hint}. Shift+click to open it beside the current module.`}
+          type="button"
+          title={`${m.hint} (${MOD}+${i + 1}). Shift+click or ${MOD}+Shift+${i + 1} to open it beside the current module.`}
+          aria-keyshortcuts={`Control+${i + 1}`}
           aria-current={module === m.id || split === m.id ? "page" : undefined}
           onClick={(e) => (e.shiftKey && m.id !== module ? setSplit(m.id) : setModule(m.id))}
           className={`mx-2 flex flex-col items-center gap-1 rounded-lg py-2 text-[10.5px] font-medium transition-colors ${
@@ -47,12 +51,12 @@ export function ModuleRail() {
                 : "text-teal-100/70 hover:bg-white/5 hover:text-white"
           }`}
         >
-          {m.icon}
+          <span aria-hidden="true">{m.icon}</span>
           {m.label}
         </button>
       ))}
       <ThemeButton />
-      <div className="text-center text-[9px] text-teal-100/40" title={`Stannum ${__APP_VERSION__}`}>
+      <div className="text-center text-[9px] text-teal-100/70" title={`Stannum ${__APP_VERSION__}`}>
         v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
       </div>
     </nav>
