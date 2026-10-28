@@ -70,7 +70,7 @@ checks their hashes.
 
 ## Time and size budgets
 
-Every pull request builds a 12,000-bus [synthetic case](/manual/synthetic-cases/)
+Every pull request builds a 12,000-bus [synthetic case](/StannumRevival/manual/synthetic-cases/)
 and works through it with the commands the app sends: open, attach
 coordinates, solve, the diagram, the map, topology, Records, pages of the
 Power flow, Records and contingency tables sorted, searched and filtered in
