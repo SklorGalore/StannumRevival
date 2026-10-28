@@ -165,6 +165,8 @@ section into the next version's when a release is cut (see
 - RAW transformers with a 1.0 ratio and no phase shift show as transformers
   in Branches and in network drawings, not as lines.
 - Branches results show **Loading** next to **Status**, where it is in view.
+- Sorting a table high to low keeps rows without a value (such as unrated
+  branches' loading) at the bottom instead of the top.
 
 - Power flow reads RAW revision 34 and 35 system switching devices instead
   of skipping them, so buses joined only by a breaker or disconnector are no
