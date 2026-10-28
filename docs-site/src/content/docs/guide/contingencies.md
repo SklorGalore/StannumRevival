@@ -70,6 +70,21 @@ outage. **Clear** in the Layers panel turns it off.
 
 ![The Contingency layer on a one-line around the tripped line, with the legend](../../../assets/screens/contingency-layer.png)
 
+### The result every view shows
+
+While an outage is on the diagram, every view shows that outage's AC
+solution instead of the latest solve: the diagram's flow and voltage labels,
+the Power flow tables and overview, the **Results** layer and the element
+inspector. The case bar says which result is shown (**Outage #3 · Line 6–8
+circuit 1 out**, or **Base case**); its menu switches between the latest
+solve and the open outage, and the cross goes back to the latest solve. A
+new solve, a study change or clearing the outage goes back too.
+
+An outage the run only screened is solved in AC when it is shown. Results
+have names, which the log and (later) Python scripts use as well: `base` or
+`study` for the latest solve, `contingency 3` for the outage ranked third,
+and `trip line:6:8:1` for the last **Trip and compare**.
+
 ## Trip and compare
 
 To ask about one element without running every outage, select a branch or

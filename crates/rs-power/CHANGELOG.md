@@ -16,6 +16,13 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- `PowerFlowOptions::method` (`AcMethod`): fixed-slope decoupled Newton,
+  fast decoupled XB and BX, and `Auto` alongside full Newton (the default),
+  with `decoupled_iterations` as their iteration limit and
+  `PowerFlowResult::decoupled_iterations` and `newton_fallbacks` to report
+  them.
+- `PowerFlowOptions::lock_switched_shunts` and `lock_taps` hold listed
+  voltage controls at their starting values.
 - Voltage-dependent (ZIP) loads. `Bus` gains constant-current (`pd_i`,
   `qd_i`) and constant-impedance (`pd_z`, `qd_z`) parts, drawn in
   proportion to |V| and |V|²; AC power flow, its Jacobian and sensitivities
@@ -87,6 +94,14 @@ All notable changes to this project will be documented here. This project uses
   branch derivatives instead of multiplying dense zero-filled rows.
 - RAW section parsing now follows the revision-defined section order and `0`
   terminators without interpreting human-readable `@!` section headers.
+
+### Fixed
+
+- A generator bus holding a remote bus that a reactive-limit pass fixes at
+  its limit restarts from the held bus's voltage. Its own voltage was free
+  while it regulated and could be left near 0 pu, nearly in antiphase,
+  after a solve that asked it for far more than its limit; Newton from
+  there found the collapsed root of the fixed injection.
 
 ## 0.1.0 - 2026-09-14
 

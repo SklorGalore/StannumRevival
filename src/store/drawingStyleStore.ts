@@ -2,8 +2,11 @@
 // neighbourhood is drawn around, its hop count, and the selected element.
 import { create } from "zustand";
 
-/** One-line: symbols and routed wires. Network: the bus-branch graph (Cytoscape). */
-export type DrawingStyle = "oneline" | "network";
+/**
+ * One-line: symbols and routed wires. Network: the bus-branch graph
+ * (Cytoscape). Map: the whole case at its bus coordinates (MapLibre).
+ */
+export type DrawingStyle = "oneline" | "network" | "map";
 
 export interface Focus {
   bus: number;
@@ -61,7 +64,8 @@ export const useDrawingStyle = create<DrawingStyleState>((set) => ({
     }),
   view: { kind: "around" },
   showIsland: (island) => set({ style: "network", view: { kind: "island", island } }),
-  showPath: () => set({ style: "network", view: { kind: "path" } }),
+  // The map draws the path where it is; the other styles show it in the network.
+  showPath: () => set((s) => (s.style === "map" ? { view: { kind: "path" } } : { style: "network", view: { kind: "path" } })),
   showAround: () => set({ view: { kind: "around" } }),
   element: null,
   setElement: (element) => set({ element }),

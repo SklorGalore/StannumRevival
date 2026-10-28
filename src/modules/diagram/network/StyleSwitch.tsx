@@ -1,9 +1,9 @@
-import { Share2, Spline } from "lucide-react";
+import { Map as MapIcon, Share2, Spline } from "lucide-react";
 import { useDrawingStyle, type DrawingStyle } from "../../../store/drawingStyleStore";
 import { useWorkspace } from "../../../store/workspaceStore";
 import { showNetwork, showOneLine } from "./switchStyle";
 
-/** The Network / One-line switch at the start of the Diagram's toolbar. */
+/** The Network / One-line / Map switch at the start of the Diagram's toolbar. */
 export function StyleSwitch({ compact = false }: { compact?: boolean }) {
   const style = useDrawingStyle((s) => s.style);
   const busy = useDrawingStyle((s) => s.busy);
@@ -28,6 +28,19 @@ export function StyleSwitch({ compact = false }: { compact?: boolean }) {
       title: "Draw the neighbourhood as a one-line: symbols, routed wires, results and editing",
       disabled: false,
     },
+    {
+      id: "map",
+      label: "Map",
+      icon: <MapIcon size={13} />,
+      title: !summary
+        ? "Open a case to draw it on a map"
+        : !summary.power.available
+          ? "This case can't be read for power flow, so it has no buses to place"
+          : summary.coordinates
+            ? "Draw the whole case at its bus coordinates, with the neighbourhood highlighted"
+            : "Draw the case on a map: attach a CSV of bus coordinates first (RAW files with substation places draw on their own)",
+      disabled: !summary?.power.available,
+    },
   ];
   return (
     <div role="radiogroup" aria-label="Drawing style" className="flex items-center rounded-md border border-slate-200 bg-slate-50 p-0.5 mr-2 shrink-0">
@@ -43,8 +56,8 @@ export function StyleSwitch({ compact = false }: { compact?: boolean }) {
             aria-label={o.label}
             onClick={() => {
               if (on) return;
-              if (o.id === "network") showNetwork();
-              else void showOneLine();
+              if (o.id === "oneline") void showOneLine();
+              else showNetwork(o.id);
             }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs whitespace-nowrap font-medium transition-colors ${
               on ? "bg-white text-teal-800 shadow-sm ring-1 ring-inset ring-teal-200" : "text-slate-600 hover:text-slate-900"

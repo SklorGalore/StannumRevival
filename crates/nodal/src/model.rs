@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Diagnostic {
+    #[cfg_attr(
+        feature = "schemars",
+        schemars(extend("enum" = ["error", "warning", "info"]))
+    )]
     pub severity: String,
     pub section: String,
     pub line: usize,
@@ -18,6 +23,7 @@ impl std::fmt::Display for Diagnostic {
 impl std::error::Error for Diagnostic {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SourceRecord {
     pub line: usize,
     pub section: String,
@@ -26,6 +32,7 @@ pub struct SourceRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Bus {
     pub number: i32,
     pub name: String,
@@ -38,6 +45,7 @@ pub struct Bus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EquipmentKind {
     Line,
@@ -46,6 +54,7 @@ pub enum EquipmentKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Equipment {
     pub id: String,
     pub kind: EquipmentKind,
@@ -58,6 +67,7 @@ pub struct Equipment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Injection {
     pub id: String,
     pub bus: i32,
@@ -68,6 +78,7 @@ pub struct Injection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Case {
     pub revision: i32,
     pub base_mva: f64,

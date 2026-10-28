@@ -1,5 +1,5 @@
 use rs_power::{
-    BusType, Model, PowerFlowOptions, SolveStatus, load_matpower, parse_matpower, solve,
+    AcMethod, BusType, Model, PowerFlowOptions, SolveStatus, load_matpower, parse_matpower, solve,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -46,14 +46,29 @@ fn reference(name: &str) {
     let data = fixture(name);
     assert_eq!(data["matpower_version"], "8.1");
     let case = input(&data);
-    for (model, key) in [(Model::Ac, "ac"), (Model::Dc, "dc")] {
+    // Every AC method stops at the same tolerance, so each must match
+    // MATPOWER's Newton solution as closely as Newton does.
+    let runs = [
+        AcMethod::Newton,
+        AcMethod::FixedSlope,
+        AcMethod::FastDecoupledXb,
+        AcMethod::FastDecoupledBx,
+        AcMethod::Auto,
+    ]
+    .map(|m| (Model::Ac, m))
+    .into_iter()
+    .chain([(Model::Dc, AcMethod::Newton)]);
+    for (model, method) in runs {
+        let key = if model == Model::Ac { "ac" } else { "dc" };
         let opt = PowerFlowOptions {
             model,
+            method,
             enforce_q_limits: model == Model::Ac && data["enforce_q_limits"].as_bool().unwrap(),
             ..Default::default()
         };
+        let key = &format!("{key} ({})", method.label());
+        let expected = &data[if model == Model::Ac { "ac" } else { "dc" }];
         let result = solve(&case, &opt).unwrap();
-        let expected = &data[key];
         assert_eq!(
             result.status == SolveStatus::Converged,
             expected["success"].as_bool().unwrap(),

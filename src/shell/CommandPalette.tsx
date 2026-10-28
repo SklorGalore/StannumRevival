@@ -3,13 +3,17 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  Circle,
   Columns2,
   CornerDownLeft,
+  FileCode2,
   FlaskConical,
   FolderOpen,
   Save,
   GitCompareArrows,
   Link2,
+  MapPin,
+  MapPinOff,
   Moon,
   Layers,
   Table2,
@@ -26,13 +30,14 @@ import {
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
 import { useStudyFile } from "../store/studyFileStore";
+import { useRunFile } from "../store/runFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
 
-interface Command {
+export interface Command {
   id: string;
   title: string;
   icon: ReactNode;
@@ -56,86 +61,123 @@ function useCommands(): Command[] {
   const split = useWorkspace((s) => s.split);
   const logOpen = useLog((s) => s.open);
   const studyPath = useStudyFile((s) => s.path);
-  return useMemo(() => {
-    const w = useWorkspace.getState();
-    const next = NEXT_PREFERENCE[preference];
-    const list: Command[] = [
-      { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
-      { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
-    ];
-    if (summary) {
-      const studyFile = useStudyFile.getState();
-      list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
-      if (studyPath)
-        list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
-    }
-    if (summary?.power.available)
-      list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
-    for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
-    if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
-    else
-      for (const m of MODULE_COMMANDS)
-        if (m.id !== module)
-          list.push({
-            id: `split-${m.id}`,
-            title: `Open ${m.title.replace("Go to ", "")} side by side`,
-            icon: <Columns2 size={14} />,
-            keywords: `split view pane beside ${m.id === SPLIT_PARTNER[module] ? "default" : ""}`,
-            run: () => w.setSplit(m.id),
-          });
-    if (summary?.topology.available) {
-      // Topology lives in the Diagram: its tables drawer and its layers.
-      const showDiagram = () => {
-        if (w.module !== "diagram" && w.split !== "diagram") w.setModule("diagram");
-      };
-      list.push({
-        id: "tables",
-        title: "Show topology tables",
-        icon: <Table2 size={14} />,
-        keywords: "topology buses islands critical connections bridges equipment diagnostics nodal",
-        run: () => {
-          showDiagram();
-          useLayers.getState().setTables(true);
-        },
-      });
-      list.push({
-        id: "layers",
-        title: "Show layers",
-        icon: <Layers size={14} />,
-        keywords: "topology islands bridges cut buses articulation shortest path filters colours fields nodal",
-        run: () => {
-          showDiagram();
-          useLayers.getState().setPanel(true);
-        },
-      });
-    }
-    if (summary) {
-      list.push({
-        id: "link",
-        title: linked ? "Unlink selection" : "Link selection",
-        icon: <Link2 size={14} />,
-        keywords: "linked selection follow modules",
-        run: () => w.setLinked(!linked),
-      });
-      if (selection) list.push({ id: "clear", title: "Clear selection", icon: <X size={14} />, keywords: "deselect escape", run: () => w.select(null, w.module) });
-      list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
-    }
+  const recording = useRunFile((s) => s.recording);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording]);
+}
+
+/**
+ * The commands Ctrl+K offers now. Scripts list and run the same ones by id
+ * (stannum.attach(): app.commands(), app.run(id)).
+ */
+export function paletteCommands(): Command[] {
+  const w = useWorkspace.getState();
+  const { caseSummary: summary, linked, selection, module, split } = w;
+  const preference = useTheme.getState().preference;
+  const logOpen = useLog.getState().open;
+  const studyPath = useStudyFile.getState().path;
+  const recording = useRunFile.getState().recording;
+  const next = NEXT_PREFERENCE[preference];
+  const list: Command[] = [
+    { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
+    { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
+  ];
+  if (summary) {
+    const studyFile = useStudyFile.getState();
+    list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
+    if (studyPath)
+      list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+  }
+  if (summary?.power.available)
+    list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
+  for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
+  if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
+  else
+    for (const m of MODULE_COMMANDS)
+      if (m.id !== module)
+        list.push({
+          id: `split-${m.id}`,
+          title: `Open ${m.title.replace("Go to ", "")} side by side`,
+          icon: <Columns2 size={14} />,
+          keywords: `split view pane beside ${m.id === SPLIT_PARTNER[module] ? "default" : ""}`,
+          run: () => w.setSplit(m.id),
+        });
+  if (summary?.topology.available) {
+    // Topology lives in the Diagram: its tables drawer and its layers.
+    const showDiagram = () => {
+      if (w.module !== "diagram" && w.split !== "diagram") w.setModule("diagram");
+    };
     list.push({
-      id: "theme",
-      title: next === "system" ? "Use the system theme" : `Switch to ${next} theme`,
-      icon: next === "dark" ? <Moon size={14} /> : <Sun size={14} />,
-      keywords: "theme dark light appearance colour",
-      run: () => useTheme.getState().setPreference(next),
+      id: "tables",
+      title: "Show topology tables",
+      icon: <Table2 size={14} />,
+      keywords: "topology buses islands critical connections bridges equipment diagnostics nodal",
+      run: () => {
+        showDiagram();
+        useLayers.getState().setTables(true);
+      },
     });
     list.push({
-      id: "log",
-      title: logOpen ? "Hide log" : "Show log",
-      icon: <Terminal size={14} />,
-      keywords: "console output messages progress errors warnings",
-      run: () => useLog.getState().setOpen(!logOpen),
+      id: "layers",
+      title: "Show layers",
+      icon: <Layers size={14} />,
+      keywords: "topology islands bridges cut buses articulation shortest path filters colours fields nodal",
+      run: () => {
+        showDiagram();
+        useLayers.getState().setPanel(true);
+      },
     });
-    return list;
-  }, [summary, linked, selection, preference, module, split, logOpen, studyPath]);
+  }
+  if (summary) {
+    list.push({
+      id: "link",
+      title: linked ? "Unlink selection" : "Link selection",
+      icon: <Link2 size={14} />,
+      keywords: "linked selection follow modules",
+      run: () => w.setLinked(!linked),
+    });
+    if (summary.power.available) {
+      list.push({
+        id: "coordinates",
+        title: summary.coordinates?.path ? "Attach other bus coordinates…" : "Attach bus coordinates…",
+        icon: <MapPin size={14} />,
+        keywords: "map geography latitude longitude csv location substation place",
+        run: () => void w.attachCoordinates(),
+      });
+      if (summary.coordinates?.path)
+        list.push({
+          id: "coordinates-clear",
+          title: `Detach bus coordinates (${summary.coordinates.name})`,
+          icon: <MapPinOff size={14} />,
+          keywords: "map geography latitude longitude csv location remove",
+          run: () => void w.detachCoordinates(),
+        });
+    }
+    if (selection) list.push({ id: "clear", title: "Clear selection", icon: <X size={14} />, keywords: "deselect escape", run: () => w.select(null, w.module) });
+    list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
+  }
+  const runFile = useRunFile.getState();
+  list.push(
+    recording
+      ? { id: "record-stop", title: "Stop recording and save run file…", icon: <Save size={14} />, keywords: "record macro script automation stnrun", run: () => void runFile.saveRecording() }
+      : { id: "record", title: "Record a run file", icon: <Circle size={14} />, keywords: "record macro script automation stnrun replay", run: runFile.startRecording }
+  );
+  list.push({ id: "run-file", title: "Run a run file…", icon: <FileCode2 size={14} />, keywords: "play replay macro script automation stnrun batch", run: () => void runFile.run() });
+  list.push({
+    id: "theme",
+    title: next === "system" ? "Use the system theme" : `Switch to ${next} theme`,
+    icon: next === "dark" ? <Moon size={14} /> : <Sun size={14} />,
+    keywords: "theme dark light appearance colour",
+    run: () => useTheme.getState().setPreference(next),
+  });
+  list.push({
+    id: "log",
+    title: logOpen ? "Hide log" : "Show log",
+    icon: <Terminal size={14} />,
+    keywords: "console output messages progress errors warnings",
+    run: () => useLog.getState().setOpen(!logOpen),
+  });
+  return list;
 }
 
 type Row = { kind: "command"; command: Command } | { kind: "element"; item: PaletteElement };

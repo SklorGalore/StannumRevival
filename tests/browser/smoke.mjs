@@ -88,7 +88,7 @@ const log = page.getByRole("log", { name: "Log lines" });
 await page.keyboard.press("Control+Backquote");
 await log.getByText(/Solved power flow \(/).last().waitFor();
 await log.getByText(/Finished AC power flow: converged/).last().waitFor();
-await log.getByText(/Newton iteration 1: largest P mismatch .* MW at bus/).last().waitFor();
+await log.getByText(/(Fixed-slope|Fast decoupled|Newton) iteration 1: largest P mismatch .* MW at bus/).last().waitFor();
 await log.getByText(/Totals: generation/).last().waitFor();
 await log.getByText(/Sensitivities: \d+ injection columns/).last().waitFor();
 assert.equal(await log.getByText(/assembling active network/).count(), 0, "detail lines are hidden by default");
@@ -136,6 +136,8 @@ const tripped = page.locator("[data-testid=trip-outcome]:visible");
 await tripped.getByText("If it trips").waitFor();
 await tripped.getByText(/Solved in AC|did not converge/).waitFor();
 await shot("trip-and-compare");
+// Every view shows the tripped case now: the case bar's result chip names it.
+await page.locator('[data-testid=result-chip][data-result="trip line:4:5:1"]').filter({ hasText: "Tripped" }).waitFor();
 // Colour the drawing by the latest solve's branch loading, then by voltage.
 await page.getByRole("button", { name: "Layers", exact: true }).click();
 const resultLayer = page.getByTestId("layers-panel").locator('[data-layer="results"]');
@@ -147,6 +149,7 @@ await shot("diagram-colour-by-result");
 await resultLayer.getByRole("checkbox").uncheck();
 await tripped.getByRole("button", { name: "Clear" }).click();
 await tripped.waitFor({ state: "detached" });
+await page.locator('[data-testid=result-chip][data-result="base"]').filter({ hasText: "Base case" }).waitFor();
 await page.getByRole("button", { name: "Hide layers" }).click();
 await page.getByRole("button", { name: "Power flow", exact: true }).click();
 await inspector.getByTestId("inspector-title").filter({ hasText: "Line 4–5 circuit 1" }).waitFor();
@@ -465,6 +468,12 @@ await page.waitForTimeout(300);
 await networkBus(5);
 await page.getByTestId("network-selection").filter({ hasText: "Bus 5" }).waitFor();
 await page.getByTestId("network-selection").getByTestId("element-inspector").filter({ hasText: "Network" }).waitFor();
+// The snapshot leaves out RAW fields; opening the section fetches the bus's.
+await page.getByTestId("network-selection").getByText(/RAW fields · line \d+/).click();
+await page.getByTestId("source-fields").filter({ hasText: "BASKV" }).filter({ hasText: "Spur_69" }).waitFor();
+await page.getByTestId("source-fields").evaluate((el) => el.scrollIntoView({ block: "end" }));
+await shot("diagram-network-raw-fields");
+await page.getByTestId("network-selection").getByText(/RAW fields · line \d+/).click();
 await hopBar.getByRole("button", { name: "One hop more" }).click();
 await hopBar.filter({ hasText: "2 hops" }).filter({ hasText: "5 buses" }).waitFor();
 await shot("diagram-network");
@@ -1198,6 +1207,15 @@ await recordInspector.getByTestId("inspector-title").filter({ hasText: /^Load / 
 await shot("records-inspector");
 // Edit a load's MW, apply it, and see the inspector read the new value.
 const plIndex = await records.locator("thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent.trim() === "PL"));
+// Double-clicking a record not yet picked opens the inspector between the
+// two clicks, which narrows the columns: the cell clicked first is edited.
+await recordInspector.getByRole("button", { name: "Close inspector" }).click();
+await recordInspector.waitFor({ state: "detached" });
+await recordRows.nth(1).locator(`td:nth-child(${plIndex + 1}) span`).dblclick();
+await recordRows.nth(1).locator(`td:nth-child(${plIndex + 1})`).getByLabel("Cell value").waitFor();
+await shot("records-double-click");
+await records.getByLabel("Cell value").press("Escape");
+await recordRows.first().click();
 await recordRows.first().locator(`td:nth-child(${plIndex + 1}) span`).dblclick();
 await records.getByLabel("Cell value").fill("abc");
 await records.getByLabel("Cell value").press("Enter");
@@ -1292,6 +1310,77 @@ assert.deepEqual(
   "the outage sets the branch's STAT from 1 to 0"
 );
 await shot("diff-working");
+
+// Run files: Record keeps what you do as a run file, and Run plays one back.
+{
+  const palette = page.getByRole("dialog", { name: "Search and commands" });
+  const command = async (text, option) => {
+    await page.keyboard.press("Control+k");
+    await palette.getByRole("combobox").fill(text);
+    await palette.getByRole("option", { name: option }).click();
+  };
+  const runDir = mkdtempSync(`${tmpdir()}/stannum-run-`);
+  copyFileSync(STANNUM_MATPOWER, `${runDir}/case9.m`);
+  await queue(`${runDir}/case9.m`);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await command("record", /Record a run file/);
+  const bar = page.getByTestId("recording-bar");
+  await bar.getByText("1 step so far.").waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await page.getByRole("tab", { name: /Branches/ }).click();
+  await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
+  await inspector.getByRole("button", { name: "Take out" }).click();
+  await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
+  // The edit, then the solve that follows it.
+  await bar.getByText("4 steps so far.").waitFor();
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await shot("run-file-recording");
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("combobox").fill("run file");
+  await palette.getByRole("option", { name: /Stop recording and save run file/ }).waitFor();
+  await shot("run-file-palette");
+  await page.keyboard.press("Escape");
+  const runFile = `${runDir}/case9_outage.stnrun`;
+  await queue(runFile);
+  await page.getByTestId("save-recording").click();
+  await bar.waitFor({ state: "detached" });
+  const recorded = readFileSync(runFile, "utf8");
+  assert.match(recorded, /^open_case path=case9\.m$/m, recorded);
+  assert.match(recorded, /^set_study_edits edits=\[\{"element": "line:4:5:1", "kind": "status", "online": false\}\]$/m, recorded);
+  // The app's solve settings are the defaults, so the solves read plainly.
+  assert.equal(recorded.match(/^solve_power_flow$/gm)?.length, 2, recorded);
+
+  // Played back on an empty window, it opens the case, takes the line out
+  // and solves, and the app shows all of it.
+  await page.getByRole("button", { name: "Close case" }).click();
+  await page.getByText("No case open.").waitFor();
+  await queue(runFile);
+  await command("run file", /Run a run file/);
+  await page.getByTestId("run-file-notice").getByText(/^Ran case9_outage\.stnrun: 4 steps in \d+ ms\.$/).waitFor();
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await shot("run-file-ran");
+
+  // A line that fails stops the run and says which; a misspelled command
+  // stops the file before anything runs.
+  writeFileSync(`${runDir}/broken.stnrun`, "open_case path=case9.m\nelement_detail element=bus:99\nsolve_power_flow\n");
+  await queue(`${runDir}/broken.stnrun`);
+  await command("run file", /Run a run file/);
+  const notice = page.getByTestId("run-file-notice");
+  await notice.getByText("broken.stnrun stopped: a line failed, 1 not run.").waitFor();
+  await notice.getByText("Line 2, element_detail: bus:99 isn't in this case.").waitFor();
+  await shot("run-file-failed");
+  writeFileSync(`${runDir}/typo.stnrun`, "open_case path=case9.m\nsolve_powerflow\n");
+  await queue(`${runDir}/typo.stnrun`);
+  await command("run file", /Run a run file/);
+  await notice.getByText("The run file didn't run.").waitFor();
+  await notice.getByText(/Line 2: Stannum has no command called solve_powerflow\./).waitFor();
+  await notice.getByRole("button", { name: "Dismiss" }).click();
+}
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
 await browser.close();

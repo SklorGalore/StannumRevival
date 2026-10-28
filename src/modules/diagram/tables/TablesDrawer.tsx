@@ -158,7 +158,8 @@ export function TablesDrawer() {
   else if (!snapshot || !rows || !shown) body = <p className="p-4 text-xs text-slate-500">Building the topology…</p>;
   else {
     const { case: c, analysis: a } = snapshot;
-    const derived = !!summary.topology.info?.derived;
+    // Built from the power flow model: nodal reads RAW 35, anything else is revision 0.
+    const derived = c.revision === 0;
     const warnings = c.diagnostics.filter((d) => d.severity === "warning");
     const tabs = [
       { id: "buses" as const, label: "Buses", count: shown.buses.length },

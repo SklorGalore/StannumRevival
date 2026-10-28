@@ -5,7 +5,7 @@ use crate::power::PowerCase;
 use serde::{Deserialize, Serialize};
 
 /// One change to the case, by shared element id or bus number.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Edit {
     /// Take a branch or generator out of service, or put it back. Every leg of

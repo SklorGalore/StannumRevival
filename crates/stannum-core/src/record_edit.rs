@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 /// One cell's new value, as typed.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, schemars::JsonSchema)]
 pub struct RecordEdit {
     /// Table id, such as "BUS" or "gen".
     pub section: String,

@@ -17,7 +17,12 @@ fn matpower_case_solves_and_reports_limits() {
     let summary = ws.open(&fixture("case9.m")).unwrap();
     assert_eq!(summary.format, CaseFormat::Matpower);
     assert!(summary.power.available);
-    // nodal can't read MATPOWER, so topology comes from the power flow model.
+    // nodal can't read MATPOWER, so topology comes from the power flow
+    // model. It's built the first time it's asked for.
+    assert!(summary.topology.available && summary.topology.info.is_none());
+    assert!(!ws.current().unwrap().topology_built());
+    ws.current().unwrap().topology_snapshot().unwrap();
+    let summary = ws.current().unwrap().summary();
     let topo = summary
         .topology
         .info
@@ -312,6 +317,9 @@ fn derived_topology_keeps_three_winding_transformers_whole() {
         .join("../rs-power/tests/fixtures/raw/transformers.raw");
     let mut ws = Workspace::default();
     let summary = ws.open(&path).unwrap();
+    assert_eq!(summary.power.info.as_ref().unwrap().revision, Some(33));
+    ws.current().unwrap().topology_snapshot().unwrap();
+    let summary = ws.current().unwrap().summary();
     let topo = summary
         .topology
         .info
@@ -395,7 +403,7 @@ fn study_edits_change_what_is_solved() {
             online: false,
         }])
         .unwrap_err();
-    assert!(err.contains("line:1:99:1"));
+    assert!(err.message.contains("line:1:99:1"));
     assert_eq!(case.edits.len(), 2);
 
     let unit = out.generators[1].element.clone();
@@ -415,7 +423,8 @@ fn study_edits_change_what_is_solved() {
     .unwrap();
     let err = case.solve(tight()).unwrap_err();
     assert!(
-        err.starts_with("The study's outages split the network"),
+        err.message
+            .starts_with("The study's outages split the network"),
         "{err}"
     );
 
@@ -548,10 +557,11 @@ fn dc_grid_file_attaches_to_a_case_and_solves() {
     assert_eq!(three.converters[1].ac_control, "voltage");
     assert!((three.converters[2].ps_mw + 150.0).abs() < 1e-6);
     assert!(four.converters.iter().all(|c| c.q_max_mvar.is_some()));
-    // Losses: generation covers load, AC losses and the DC grids' losses
-    // (to the 2 MVA tolerance at each bus).
+    // Losses: generation covers load, AC losses and the DC grids' losses,
+    // to the solve's mismatch at each bus.
     let gap = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
-    assert!(gap.abs() < 0.5, "{gap}");
+    let allowed = report.buses.len() as f64 * report.residual_mva;
+    assert!(gap.abs() <= allowed, "{gap} MW, allowed {allowed}");
 
     // A DC solve leaves the grids out; detaching them returns to plain AC.
     let dc = SolveSettings {
@@ -576,7 +586,10 @@ fn a_dc_grid_file_that_does_not_fit_the_case_is_refused() {
     let error = case
         .load_dc_grids(&fixture("vsc_grids/two_area.dcgrid.json"))
         .unwrap_err();
-    assert!(error.contains("AC bus 105 is not in the case"), "{error}");
+    assert!(
+        error.message.contains("AC bus 105 is not in the case"),
+        "{error}"
+    );
     assert!(case.dc_grids.is_none());
 }
 
@@ -595,6 +608,7 @@ fn a_cancelled_solve_keeps_the_previous_results() {
         )
         .unwrap_err();
     assert_eq!(err, stannum_core::workspace::SOLVE_CANCELLED);
+    assert_eq!(err.kind, stannum_core::ErrorKind::Cancelled);
     assert!(case.solved.is_some());
 }
 
@@ -629,8 +643,8 @@ fn the_report_sends_its_tables_as_columns() {
 
 #[test]
 fn every_row_field_has_a_column() {
-    // A field added to a row struct must also be added to its column list
-    // in `power::wire`, or the frontend never sees it.
+    // Columns come from the row's own fields (`stannum_core::table`), so a
+    // field added to a row is always sent.
     let mut ws = Workspace::default();
     ws.open(&fixture("five_bus_zip.raw")).unwrap();
     let report = ws

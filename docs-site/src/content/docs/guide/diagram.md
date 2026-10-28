@@ -9,15 +9,17 @@ draw by hand.
 
 ![A one-line generated around a bus, two hops deep, with solved flows](../../../assets/screens/diagram-local.png)
 
-## Two drawing styles
+## Three drawing styles
 
-The switch at the start of the toolbar draws the same neighbourhood in two
+The switch at the start of the toolbar draws the same neighbourhood in three
 styles:
 
 - **One-line**: symbols, routed wires, results and editing (everything below).
 - **Network**: the bus-branch graph of the case's topology. Buses are dots
   and branches are lines (transformers dashed), so it stays quick and readable
   for hundreds of buses. The bus it is drawn around has a teal halo.
+- **Map**: the case's buses at their latitude and longitude, over country and
+  state outlines (see [The map](#the-map)).
 
 ![The Network style, two hops around a bus, with a bus selected](../../../assets/screens/diagram-network.png)
 
@@ -40,9 +42,50 @@ In the Network style:
 "Draw around" from another module and selections from linked modules move
 both styles.
 
+## The map
+
+The Map style needs a [bus coordinates file](/StannumRevival/reference/coordinates-file/):
+attach one from the map's toolbar or the command palette (**Attach bus
+coordinates**). The case's buses are gathered into sites, one dot for each
+substation the file names (or each point, where it names none), coloured by
+the site's highest voltage. Branches are straight lines between sites, and DC
+lines are dashed. A site whose buses were all placed next to their neighbours,
+rather than by the file, is drawn hollow.
+
+![The Map style: the whole case over state outlines](../../../assets/screens/diagram-map.png)
+
+- The map opens on the whole case. Double-click a site, or **Highlight around
+  here** in its Map section, to highlight the buses within a few hops of it;
+  everything else is dimmed and the map zooms to fit. The bar at the bottom
+  changes the hop count, and **Whole case** clears the highlight.
+- Click a site or line to inspect it. A site's Map section lists its buses.
+- **Draw as one-line** switches to the one-line around the selected bus.
+- The outlines (Natural Earth, public domain) ship with the app, so the map
+  works offline. They follow the light and dark themes.
+
+### Layers and results on the map
+
+The map draws the same [layers](#layers-and-tables) as the other styles. A
+site stands for several buses, so it takes the colour of the first of its
+buses a layer colours (highest voltage first) and fades only when all of them
+are filtered out. A transformer inside a substation has no line of its own,
+so a layer that marks it (the outage, a bridge) rings its site instead.
+
+![The map coloured by branch loading, with flow arrows](../../../assets/screens/diagram-map-results.png)
+
+- **Flows** in the toolbar (after a solve) draws an arrow on each line
+  pointing the way power flows, larger for heavier flows. Hover a line for
+  its MW and loading, or a site for its voltages.
+- The map shows the same result as every other view: show an outage from
+  Contingencies or Trip and compare, and the flows, the colours and the
+  outage's status are that outage's. The outage is ringed in red and the map
+  highlights around it.
+- **Find** in the Shortest path layer highlights the path on the map, with
+  everything else dimmed; **Back to around** returns to the neighbourhood.
+
 ## Layers and tables
 
-**Layers** draws the case's topology on either style: bridges and cut buses,
+**Layers** draws the case's topology on every style: bridges and cut buses,
 islands, zero-impedance groups, a shortest path, and filters and colours by
 field. **Tables** opens the topology tables (buses, islands, critical
 connections, equipment, diagnostics) in a drawer under the drawing. See

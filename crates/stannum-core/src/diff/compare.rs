@@ -5,8 +5,9 @@ use super::value::Value;
 use serde::Serialize;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[schemars(rename = "DiffStatus")]
 pub enum Status {
     Added,
     Removed,

@@ -1,0 +1,936 @@
+//! Every command Stannum's core answers, listed once.
+//!
+//! The desktop app, the dev bridge and (later) the Python package all reach
+//! the core through [`Session::invoke`]: a command name and its arguments as
+//! JSON in, the result as JSON text out. Each command is declared once in the
+//! `commands!` block below, with its arguments and what it does, so the
+//! clients can't drift apart.
+//!
+//! Commands that work on a case take an optional `case` argument, a
+//! [`CaseId`] from [`crate::CaseSummary::id`]. Left out, the command uses the open
+//! case. Given, it must name the open case, so a script holding an old id gets
+//! an error instead of reaching a different case.
+
+use crate::contingency::{ContingencySettings, ContingencySummary, Progress, RunHandle};
+use crate::error::{Error, ErrorKind};
+use crate::power::SolveSettings;
+use crate::record_edit::RecordEdit;
+use crate::study::Edit;
+use crate::workspace::{CaseId, Workspace};
+use crate::{logbook, run_file, study_file};
+use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+use std::borrow::Cow;
+use std::marker::PhantomData;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
+
+/// Version of the command set. It goes up when a command is removed or an
+/// argument or result changes in a way existing callers would notice.
+///
+/// 2: errors are `{kind, message}` objects instead of text.
+/// 3: `record_table` rows and `contingency_rows` come as columns.
+pub const API_VERSION: u32 = 3;
+
+/// How many times work done without the workspace lock is redone when the
+/// case changes under it, before it waits for the lock instead.
+const RETRIES: usize = 3;
+
+/// One command, as `list_commands` describes it.
+#[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
+pub struct CommandInfo {
+    pub name: &'static str,
+    /// What it does, from its doc comment.
+    #[serde(serialize_with = "write_doc")]
+    pub doc: &'static str,
+    /// Whether it takes a `case` argument.
+    pub takes_case: bool,
+    /// Whether it changes the case or writes a file, so Record writes it
+    /// into a run file.
+    pub action: bool,
+}
+
+/// A doc comment as plain text: lines trimmed, no trailing newline.
+pub fn clean_doc(doc: &str) -> String {
+    doc.trim()
+        .lines()
+        .map(str::trim)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn write_doc<S: serde::Serializer>(doc: &&'static str, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&clean_doc(doc))
+}
+
+/// The answer to `list_commands`.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CommandList {
+    pub api_version: u32,
+    pub commands: Vec<CommandInfo>,
+}
+
+/// A result already turned into JSON, with the schema of `T`. For results
+/// that borrow the workspace, which is let go before the answer is written.
+pub struct Json<T>(Value, PhantomData<T>);
+
+impl<T> Json<T> {
+    pub fn from_value(value: Value) -> Self {
+        Json(value, PhantomData)
+    }
+
+    pub fn of<U: Serialize>(value: &U) -> Result<Self, Error> {
+        serde_json::to_value(value)
+            .map(|v| Json(v, PhantomData))
+            .map_err(|e| Error::internal(e.to_string()))
+    }
+}
+
+impl<T> Serialize for Json<T> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(s)
+    }
+}
+
+impl<T: JsonSchema> JsonSchema for Json<T> {
+    fn schema_name() -> Cow<'static, str> {
+        T::schema_name()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        T::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        T::inline_schema()
+    }
+}
+
+/// The workspace shared by every caller, plus the handles that stop or
+/// follow long runs without waiting for the workspace lock.
+#[derive(Default)]
+pub struct Session {
+    workspace: Mutex<Workspace>,
+    /// The flag that stops the solve in progress, if one is running.
+    solving: Mutex<Option<Arc<AtomicBool>>>,
+    /// The contingency run in progress, if one is running.
+    contingencies: Mutex<Option<RunHandle>>,
+    /// The flag that stops the run file in progress, if one is running.
+    running_file: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+/// How [`Session::run_steps`] runs a run file.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunOptions {
+    /// Run the remaining lines after one fails.
+    pub keep_going: bool,
+    /// Keep each command's answer in the report.
+    pub results: bool,
+}
+
+impl Session {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Run one command. `args` is a JSON object of its arguments (null is
+    /// read as no arguments). The result is JSON text, ready to send.
+    pub fn invoke(&self, command: &str, args: Value) -> Result<String, Error> {
+        dispatch(self, command, args)
+    }
+
+    /// The workspace, for callers that need it directly (tests, examples).
+    pub fn workspace(&self) -> Result<MutexGuard<'_, Workspace>, Error> {
+        self.workspace
+            .lock()
+            .map_err(|_| Error::internal("Workspace is unavailable after an earlier failure."))
+    }
+
+    fn solve(
+        &self,
+        case: Option<CaseId>,
+        settings: SolveSettings,
+    ) -> Result<crate::power::SolveReport, Error> {
+        let flag = Arc::new(AtomicBool::new(false));
+        if let Ok(mut slot) = self.solving.lock() {
+            *slot = Some(flag.clone());
+        }
+        // The solve runs without the workspace lock, so other commands
+        // keep answering meanwhile.
+        let result = self
+            .workspace()
+            .and_then(|ws| ws.case(case)?.solve_job(settings, Some(flag.clone())))
+            .and_then(|job| job.run())
+            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done));
+        // Only clear the slot if a newer solve hasn't taken it.
+        if let Ok(mut slot) = self.solving.lock()
+            && slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag))
+        {
+            *slot = None;
+        }
+        result
+    }
+
+    fn cancel_solve(&self) {
+        if let Some(flag) = self.solving.lock().ok().and_then(|f| f.clone()) {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The run itself doesn't hold the workspace, so other commands keep
+    /// working and Cancel can reach it.
+    fn run_contingencies(
+        &self,
+        case: Option<CaseId>,
+        settings: ContingencySettings,
+    ) -> Result<ContingencySummary, Error> {
+        let (job, version) = {
+            let ws = self.workspace()?;
+            let open = ws.case(case)?;
+            (open.contingency_job(settings)?, open.version)
+        };
+        if let Ok(mut slot) = self.contingencies.lock() {
+            *slot = Some(job.handle());
+        }
+        let results = job.run();
+        if let Ok(mut slot) = self.contingencies.lock() {
+            *slot = None;
+        }
+        let results = results?;
+        self.workspace()?
+            .case_mut(case)?
+            .keep_contingencies(version, results)
+    }
+
+    /// Sensitivities, calculated without the workspace lock.
+    fn sensitivities(
+        &self,
+        case: Option<CaseId>,
+        settings: SolveSettings,
+    ) -> Result<crate::power::SensitivitySummary, Error> {
+        let job = self.workspace()?.case(case)?.sensitivity_job(settings)?;
+        let done = job.run()?;
+        self.workspace()?.case_mut(case)?.finish_sensitivities(done)
+    }
+
+    /// "Trip and compare", solved without the workspace lock.
+    fn trip_and_compare(
+        &self,
+        case: Option<CaseId>,
+        element: &str,
+        limit_pct: f64,
+    ) -> Result<crate::contingency::ContingencyDetail, Error> {
+        let job = self.workspace()?.case(case)?.trip_job(element, limit_pct)?;
+        let done = job.run()?;
+        self.workspace()?.case_mut(case)?.finish_trip(done)
+    }
+
+    /// Read the case's records the first time they're asked for, without
+    /// the workspace lock. If the case changes meanwhile, read them again.
+    fn read_records(&self, case: Option<CaseId>) -> Result<(), Error> {
+        for _ in 0..RETRIES {
+            let Some(job) = self.workspace()?.case(case)?.records_job() else {
+                return Ok(());
+            };
+            let read = job.run();
+            match self.workspace()?.case_mut(case)?.keep_records(read) {
+                Err(e) if e.is(ErrorKind::CaseChanged) => continue,
+                kept => return kept,
+            }
+        }
+        // Still changing: the caller reads them under the lock.
+        Ok(())
+    }
+
+    /// Write cell edits into the case and read the edited case back
+    /// without the workspace lock. If the case changed meanwhile, the edits
+    /// are written again into the case as it is now, as if they had waited
+    /// their turn.
+    fn apply_record_edits(
+        &self,
+        case: Option<CaseId>,
+        edits: &[RecordEdit],
+    ) -> Result<crate::CaseSummary, Error> {
+        if edits.is_empty() {
+            return Ok(self.workspace()?.case(case)?.summary());
+        }
+        for _ in 0..RETRIES {
+            self.read_records(case)?;
+            let job = self.workspace()?.case_mut(case)?.record_edit_job(edits)?;
+            let done = job.run()?;
+            match self.workspace()?.case_mut(case)?.finish_record_edits(done) {
+                Err(e) if e.is(ErrorKind::CaseChanged) => continue,
+                applied => return applied,
+            }
+        }
+        // Still changing: apply them under the lock.
+        self.workspace()?.case_mut(case)?.apply_record_edits(edits)
+    }
+
+    /// Run a run file's steps in order, telling `each` how every step went
+    /// as it finishes. Stops at the first failure unless `keep_going`, and
+    /// before the next step once `cancel_run_file` is called.
+    pub fn run_steps(
+        &self,
+        path: &std::path::Path,
+        steps: &[run_file::Step],
+        options: RunOptions,
+        mut each: impl FnMut(&run_file::StepOutcome),
+    ) -> Result<run_file::RunReport, Error> {
+        let flag = Arc::new(AtomicBool::new(false));
+        {
+            let mut slot = self.running_file.lock().map_err(|_| {
+                Error::internal("Run files are unavailable after an earlier failure.")
+            })?;
+            if slot.is_some() {
+                return Err(Error::not_ready(
+                    "A run file is already running. Wait for it, or cancel it first.",
+                ));
+            }
+            *slot = Some(flag.clone());
+        }
+        let started = Instant::now();
+        let mut report = run_file::RunReport {
+            path: path.display().to_string(),
+            steps: steps.len(),
+            outcomes: Vec::new(),
+            failed: 0,
+            cancelled: false,
+            seconds: 0.0,
+        };
+        log::info!("Running {} ({} steps)", path.display(), steps.len());
+        for step in steps {
+            if flag.load(Ordering::Relaxed) {
+                report.cancelled = true;
+                break;
+            }
+            let at = Instant::now();
+            let answer = self.invoke(&step.command, Value::Object(step.args.clone()));
+            let outcome = run_file::StepOutcome {
+                line: step.line,
+                command: step.command.clone(),
+                seconds: at.elapsed().as_secs_f64(),
+                result: match (&answer, options.results) {
+                    (Ok(text), true) => serde_json::from_str(text).ok(),
+                    _ => None,
+                },
+                error: answer.err(),
+            };
+            match &outcome.error {
+                Some(e) if e.is(ErrorKind::Cancelled) => report.cancelled = true,
+                Some(e) => {
+                    report.failed += 1;
+                    log::warn!("Line {}: {}: {}", step.line, step.command, e.message);
+                }
+                None => log::debug!(
+                    "Line {}: {} ({:.2} s)",
+                    step.line,
+                    step.command,
+                    outcome.seconds
+                ),
+            }
+            let stop = outcome.error.is_some() && (!options.keep_going || report.cancelled);
+            each(&outcome);
+            report.outcomes.push(outcome);
+            if stop {
+                break;
+            }
+        }
+        if let Ok(mut slot) = self.running_file.lock() {
+            *slot = None;
+        }
+        report.seconds = started.elapsed().as_secs_f64();
+        let ran = report.outcomes.len();
+        if report.cancelled {
+            log::warn!(
+                "Cancelled {} after {ran} of {} steps",
+                path.display(),
+                report.steps
+            );
+        } else if report.failed > 0 {
+            log::warn!(
+                "{}: {} of {ran} steps failed ({} not run)",
+                path.display(),
+                report.failed,
+                report.steps - ran
+            );
+        } else {
+            log::info!(
+                "Ran {} ({ran} steps, {:.1} s)",
+                path.display(),
+                report.seconds
+            );
+        }
+        Ok(report)
+    }
+
+    fn run_file(
+        &self,
+        path: &std::path::Path,
+        options: RunOptions,
+    ) -> Result<run_file::RunReport, Error> {
+        let steps = run_file::read(path)?;
+        self.run_steps(path, &steps, options, |_| {})
+    }
+
+    /// Stops the run file in progress before its next step, and the solve
+    /// or contingency run it is waiting on.
+    fn cancel_run_file(&self) {
+        let running = self.running_file.lock().ok().and_then(|f| f.clone());
+        if let Some(flag) = running {
+            flag.store(true, Ordering::Relaxed);
+            self.cancel_solve();
+            self.cancel_contingencies();
+        }
+    }
+
+    fn cancel_contingencies(&self) {
+        if let Some(handle) = self.contingencies.lock().ok().and_then(|h| h.clone()) {
+            handle.cancel();
+        }
+    }
+
+    fn contingency_progress(&self) -> Progress {
+        self.contingencies
+            .lock()
+            .ok()
+            .and_then(|h| h.as_ref().map(RunHandle::progress))
+            .unwrap_or_default()
+    }
+}
+
+fn parse<T: serde::de::DeserializeOwned>(command: &str, args: Value) -> Result<T, Error> {
+    let args = if args.is_null() {
+        Value::Object(Default::default())
+    } else {
+        args
+    };
+    serde_json::from_value(args).map_err(|e| Error::invalid_arguments(format!("{command}: {e}")))
+}
+
+fn json<T: Serialize>(value: Result<T, Error>) -> Result<String, Error> {
+    serde_json::to_string(&value?).map_err(|e| Error::internal(e.to_string()))
+}
+
+/// Where argument types' definitions go before they join the result
+/// types' (see [`crate::schema::merge_definitions`]).
+const INPUTS: &str = "/$inputs";
+
+/// The generators the schemas come from (JSON Schema 2020-12, named types
+/// under `$defs`): one for what the core reads, where a field with a default
+/// may be left out, and one for what it writes, where every field is there.
+fn schema_generators() -> (SchemaGenerator, SchemaGenerator) {
+    let mut inputs = SchemaSettings::draft2020_12().for_deserialize();
+    inputs.definitions_path = INPUTS.into();
+    let outputs = SchemaSettings::draft2020_12().for_serialize();
+    (inputs.into_generator(), outputs.into_generator())
+}
+
+/// Declares each command once: its doc, its arguments (camelCase in JSON),
+/// its result type and its body. A command whose arguments include `case`
+/// is case-scoped.
+macro_rules! commands {
+    ($(
+        $(#[doc = $doc:literal])*
+        $name:ident { $($field:ident : $ty:ty),* $(,)? } -> $ret:ty
+        => |$s:pat_param, $a:pat_param| $body:expr;
+    )*) => {
+        #[allow(non_camel_case_types, dead_code)]
+        mod args {
+            use super::*;
+            $(
+                #[derive(Deserialize, JsonSchema)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                pub struct $name { $(pub $field: $ty),* }
+            )*
+        }
+
+        /// Every command, in the order declared.
+        pub const COMMANDS: &[CommandInfo] = &[$(
+            CommandInfo {
+                name: stringify!($name),
+                doc: concat!($($doc, "\n",)*),
+                takes_case: false $(|| matches!(stringify!($field).as_bytes(), b"case"))*,
+                action: crate::run_file::is_action(stringify!($name)),
+            },
+        )*];
+
+        /// Each command's arguments, as declared (snake_case), and whether
+        /// each is a file path. Same order as [`COMMANDS`].
+        const ARGS: &[&[(&str, bool)]] = &[$(&[$(
+            (stringify!($field), matches!(stringify!($ty).as_bytes(), b"PathBuf")),
+        )*],)*];
+
+        fn dispatch(session: &Session, command: &str, raw: Value) -> Result<String, Error> {
+            match command {
+                $(stringify!($name) => {
+                    let $a: args::$name = parse(command, raw)?;
+                    let $s = session;
+                    let result: Result<$ret, Error> = $body;
+                    json(result)
+                })*
+                other => Err(Error::new(
+                    ErrorKind::UnknownCommand,
+                    format!("Stannum has no command called {other}."),
+                )),
+            }
+        }
+
+        /// A command's arguments, as declared (snake_case), and whether each
+        /// is a file path; None if there is no such command.
+        pub fn command_args(command: &str) -> Option<&'static [(&'static str, bool)]> {
+            COMMANDS.iter().position(|c| c.name == command).map(|i| ARGS[i])
+        }
+
+        /// Every command's arguments and result as JSON Schema, with the
+        /// error every command can return. Named types are under `$defs`.
+        pub fn schemas() -> Value {
+            let (mut inputs, mut outputs) = schema_generators();
+            let mut commands = Map::new();
+            $(
+                let mut arguments = <args::$name as JsonSchema>::json_schema(&mut inputs);
+                // The argument struct is named after the command; the
+                // command's own entry already says that.
+                arguments.remove("title");
+                commands.insert(stringify!($name).into(), json!({
+                    "doc": clean_doc(concat!($($doc, "\n",)*)),
+                    "takes_case": (false $(|| matches!(stringify!($field).as_bytes(), b"case"))*),
+                    "action": crate::run_file::is_action(stringify!($name)),
+                    "args": arguments,
+                    "result": outputs.subschema_for::<$ret>(),
+                }));
+            )*
+            let error = outputs.subschema_for::<Error>();
+            let mut defs = outputs.take_definitions(true);
+            let prefix = format!("#{INPUTS}/");
+            let mapping = crate::schema::merge_definitions(
+                &mut defs,
+                inputs.take_definitions(true),
+                &prefix,
+            );
+            for command in commands.values_mut() {
+                crate::schema::rewrite_refs(&mut command["args"], &prefix, &mapping);
+            }
+            json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Stannum commands",
+                "api_version": API_VERSION,
+                "element_kinds": crate::elements::KINDS,
+                "commands": commands,
+                "error": error,
+                "$defs": defs,
+            })
+        }
+    };
+}
+
+commands! {
+    /// The commands this version answers, and the API version.
+    list_commands {} -> CommandList => |_, _| Ok(CommandList {
+        api_version: API_VERSION,
+        commands: COMMANDS.to_vec(),
+    });
+
+    /// Every command's arguments and result, and the error, as JSON Schema
+    /// (2020-12), for clients that check calls or generate types.
+    command_schemas {} -> Value => |_, _| Ok(schemas());
+
+    /// Open a case file (PSS/E RAW or MATPOWER). It replaces the open case.
+    open_case { path: PathBuf } -> crate::CaseSummary => |s, a| s.workspace()?.open(&a.path);
+
+    /// Close the case.
+    close_case { case: Option<CaseId> } -> () => |s, a| {
+        let mut ws = s.workspace()?;
+        ws.case(a.case)?;
+        ws.close();
+        Ok(())
+    };
+
+    /// The open case's summary, or null when none is open.
+    case_summary { case: Option<CaseId> } -> Option<crate::CaseSummary> => |s, a| {
+        let ws = s.workspace()?;
+        match (&ws.case, a.case) {
+            (None, None) => Ok(None),
+            _ => ws.case(a.case).map(|c| Some(c.summary())),
+        }
+    };
+
+    /// Solve the power flow with the study's edits. `cancel_solve` stops it.
+    /// Settings left out take their defaults.
+    solve_power_flow { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SolveReport =>
+        |s, a| s.solve(a.case, a.settings.unwrap_or_default());
+
+    /// Stop the solve in progress; the case keeps its previous results.
+    cancel_solve {} -> () => |s, _| {
+        s.cancel_solve();
+        Ok(())
+    };
+
+    /// Attach a Stannum DC grid file to the case.
+    load_dc_grids { case: Option<CaseId>, path: PathBuf } -> crate::dc_grids::DcGridsSummary =>
+        |s, a| s.workspace()?.case_mut(a.case)?.load_dc_grids(&a.path);
+
+    /// Detach the DC grid file.
+    clear_dc_grids { case: Option<CaseId> } -> () => |s, a| {
+        s.workspace()?.case_mut(a.case)?.clear_dc_grids();
+        Ok(())
+    };
+
+    /// Attach a bus coordinates CSV (bus, latitude, longitude, optional
+    /// substation) to the case, for the map.
+    load_coordinates { case: Option<CaseId>, path: PathBuf } -> crate::geo::CoordinatesSummary =>
+        |s, a| s.workspace()?.case_mut(a.case)?.load_coordinates(&a.path);
+
+    /// Detach the bus coordinates file.
+    clear_coordinates { case: Option<CaseId> } -> () => |s, a| {
+        s.workspace()?.case_mut(a.case)?.clear_coordinates();
+        Ok(())
+    };
+
+    /// Where every bus goes on the map, as columns in bus order, with the
+    /// source of each place ("file", "estimated" or "none").
+    bus_coordinates { case: Option<CaseId> } -> crate::geo::BusCoordinates =>
+        |s, a| s.workspace()?.case(a.case)?.bus_coordinates();
+
+    /// Replace the study's edits; every later solve uses them.
+    set_study_edits { case: Option<CaseId>, edits: Vec<Edit> } -> () =>
+        |s, a| s.workspace()?.case_mut(a.case)?.set_edits(a.edits);
+
+    /// The study's edits, as `set_study_edits` last set them.
+    study_edits { case: Option<CaseId> } -> Vec<Edit> =>
+        |s, a| Ok(s.workspace()?.case(a.case)?.edits.clone());
+
+    /// Calculate sensitivities at the solved operating point.
+    calculate_sensitivities { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SensitivitySummary =>
+        |s, a| s.sensitivities(a.case, a.settings.unwrap_or_default());
+
+    /// One sensitivity column's responses at every bus.
+    sensitivity_responses {
+        case: Option<CaseId>,
+        column: usize,
+        quantity: String,
+        engineering: bool,
+    } -> crate::power::ResponseTable => |s, a| s.workspace()?.case(a.case)?.responses(a.column, &a.quantity, a.engineering);
+
+    /// Write the case, solved or as filed, as a MATPOWER file.
+    export_matpower { case: Option<CaseId>, path: PathBuf, solved: bool } -> () =>
+        |s, a| s.workspace()?.case(a.case)?.export_matpower(&a.path, a.solved);
+
+    /// The case as a drawable network, for one-line diagrams.
+    diagram_network { case: Option<CaseId> } -> crate::diagram::CaseNetwork =>
+        |s, a| s.workspace()?.case(a.case)?.diagram_network();
+
+    /// One element's data and limits from the file.
+    element_detail { case: Option<CaseId>, element: String } -> crate::inspect::ElementDetail => |s, a| {
+        // Shunts, FACTS devices and the like are read from their records.
+        let from_record = crate::elements::kind_of(&a.element)
+            .is_some_and(|k| k.inspector == crate::elements::Source::Record);
+        if from_record {
+            s.read_records(a.case)?;
+            s.workspace()?.case_mut(a.case)?.records()?;
+        }
+        s.workspace()?.case(a.case)?.element_detail(&a.element)
+    };
+
+    /// Every kind of element id: its format, the RAW section and MATPOWER
+    /// table it comes from, and where the inspector reads it.
+    element_kinds {} -> Vec<crate::elements::ElementKind> =>
+        |_, _| Ok(crate::elements::KINDS.to_vec());
+
+    /// The case's record types and their counts.
+    case_records { case: Option<CaseId> } -> crate::records::RecordBook => |s, a| {
+        s.read_records(a.case)?;
+        s.workspace()?.case_mut(a.case)?.record_book()
+    };
+
+    /// Every record of one type, with every field.
+    record_table { case: Option<CaseId>, section: String } -> crate::records::RecordTable => |s, a| {
+        s.read_records(a.case)?;
+        s.workspace()?.case_mut(a.case)?.record_table(&a.section)
+    };
+
+    /// Write cell edits into the case and reopen it in place.
+    apply_record_edits { case: Option<CaseId>, edits: Vec<RecordEdit> } -> crate::CaseSummary =>
+        |s, a| s.apply_record_edits(a.case, &a.edits);
+
+    /// Save the case, with its edits, to a new file.
+    save_case_as { case: Option<CaseId>, path: PathBuf } -> crate::CaseSummary =>
+        |s, a| s.workspace()?.case_mut(a.case)?.save_as(&a.path);
+
+    /// Islands, bridges and articulation buses, with the case's graph, as
+    /// compact columns (see `topology_wire`). Source fields are left out:
+    /// `topology_source` sends one element's.
+    topology_snapshot { case: Option<CaseId> } -> Json<crate::topology_wire::TopologyWire<'static>> =>
+        |s, a| Ok(Json::from_value(s.workspace()?.case(a.case)?.topology_wire()?));
+
+    /// The record an element was read from: its fields and RAW lines, or null.
+    topology_source { case: Option<CaseId>, element: String } -> Option<nodal::model::SourceRecord> =>
+        |s, a| s.workspace()?.case(a.case)?.topology_source(&a.element);
+
+    /// Merge buses joined by zero-impedance lines, or split them again. The
+    /// answer is the new analysis and graph in the same form as `topology_snapshot`.
+    topology_set_merge { case: Option<CaseId>, enabled: bool } -> Json<crate::topology_wire::TopologyViewWire<'static>> =>
+        |s, a| Ok(Json::from_value(s.workspace()?.case_mut(a.case)?.set_merge_zero_impedance_wire(a.enabled)?));
+
+    /// The shortest path between two buses, or null.
+    topology_shortest_path { case: Option<CaseId>, from: i32, to: i32 } -> Option<nodal::topology::Path> =>
+        |s, a| s.workspace()?.case(a.case)?.shortest_path(a.from, a.to);
+
+    /// Compare two RAW files record by record.
+    diff_compare { baseline: PathBuf, comparison: PathBuf } -> crate::diff::DiffSummary =>
+        |s, a| s.workspace()?.compare(&a.baseline, &a.comparison);
+
+    /// Compare the case's file with the case as it is being worked on.
+    diff_compare_working { case: Option<CaseId> } -> crate::diff::DiffSummary => |s, a| {
+        let mut ws = s.workspace()?;
+        ws.case(a.case)?;
+        ws.compare_working()
+    };
+
+    /// The last comparison's records of one type.
+    diff_section_records { section: String } -> Vec<crate::diff::RecordRow> =>
+        |s, a| Ok(s.workspace()?.comparison()?.section_records(&a.section));
+
+    /// One record of the last comparison, field by field.
+    diff_record_detail { section: String, index: usize } -> Option<crate::diff::RecordDetail> =>
+        |s, a| Ok(s.workspace()?.comparison()?.record_detail(&a.section, a.index));
+
+    /// Run N-1 contingencies. `cancel_contingencies` stops the run and
+    /// `contingency_progress` follows it. Settings left out take their
+    /// defaults: every branch and generator, screened, then the worst in AC.
+    run_contingencies { case: Option<CaseId>, settings: Option<ContingencySettings> } -> ContingencySummary =>
+        |s, a| s.run_contingencies(a.case, a.settings.unwrap_or_default());
+
+    /// Stop the contingency run in progress.
+    cancel_contingencies {} -> () => |s, _| {
+        s.cancel_contingencies();
+        Ok(())
+    };
+
+    /// How far the contingency run in progress has got.
+    contingency_progress {} -> Progress => |s, _| Ok(s.contingency_progress());
+
+    /// The last contingency run's summary, or null.
+    contingency_summary { case: Option<CaseId> } -> Option<ContingencySummary> =>
+        |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
+
+    /// A page of the last run's ranked results.
+    contingency_rows { case: Option<CaseId>, offset: usize, limit: usize } -> crate::table::Table<crate::contingency::ContingencyRow> =>
+        |s, a| s.workspace()?.case(a.case)?.contingency_rows(a.offset, a.limit);
+
+    /// One outage's flow and voltage changes, by rank.
+    contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
+        |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
+
+    /// Take one element out of the last AC solve and solve again.
+    trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } -> crate::contingency::ContingencyDetail =>
+        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct);
+
+    /// A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
+    /// as a full solve report.
+    result_report { case: Option<CaseId>, name: String } -> crate::power::SolveReport =>
+        |s, a| s.workspace()?.case_mut(a.case)?.result(&a.name);
+
+    /// Log lines numbered above `since`.
+    log_entries { since: u64 } -> Vec<logbook::Entry> => |_, a| Ok(logbook::since(a.since));
+
+    /// Size, hash and date of a file, so a study can tell whether its case changed.
+    file_fingerprint { path: PathBuf } -> study_file::Fingerprint => |_, a| study_file::fingerprint(&a.path);
+
+    /// A case's path relative to a study file's folder, if there is one.
+    study_relative_path { study: PathBuf, case_path: PathBuf } -> Option<String> =>
+        |_, a| Ok(study_file::relative_path(&a.study, &a.case_path));
+
+    /// Where a study's case is now (see `study_file::locate_case`).
+    study_locate_case { study: PathBuf, absolute: String, relative: Option<String> } -> Option<String> =>
+        |_, a| Ok(study_file::locate_case(&a.study, &a.absolute, a.relative.as_deref()));
+
+    /// Run a run file (`.stnrun`): commands one per line, in order (see
+    /// `run_file`). Every line is checked first. The run stops at the first
+    /// command that fails unless `keepGoing`; `results` keeps each answer.
+    run_file { path: PathBuf, keep_going: Option<bool>, results: Option<bool> } -> crate::run_file::RunReport =>
+        |s, a| s.run_file(&a.path, RunOptions {
+            keep_going: a.keep_going.unwrap_or(false),
+            results: a.results.unwrap_or(false),
+        });
+
+    /// Stop the run file in progress before its next line, and the solve or
+    /// contingency run it is waiting on.
+    cancel_run_file {} -> () => |s, _| {
+        s.cancel_run_file();
+        Ok(())
+    };
+
+    /// Write commands as a run file, such as the ones Record kept. Paths in
+    /// the run file's folder are written relative to it, and settings at
+    /// their defaults are left out.
+    save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
+        let folder = crate::run_file::folder_of(&a.path);
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        let text = crate::run_file::format(&steps, Some(&folder), &format!(
+            "Stannum run file, recorded in the app.\nRun it from Ctrl+K > Run a run file, or: stannum-cli run {}",
+            a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+        ))?;
+        std::fs::write(&a.path, text).map_err(|e| Error::file(&a.path, e))
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn case_file() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rs-power/tests/fixtures/case9.m")
+    }
+
+    fn camel(name: &str) -> String {
+        let mut out = String::new();
+        let mut upper = false;
+        for ch in name.chars() {
+            if ch == '_' {
+                upper = true;
+            } else if upper {
+                out.extend(ch.to_uppercase());
+                upper = false;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn names_are_unique_and_documented() {
+        let mut names: Vec<_> = COMMANDS.iter().map(|c| c.name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), COMMANDS.len());
+        for c in COMMANDS {
+            assert!(!c.doc.trim().is_empty(), "{} has no doc", c.name);
+        }
+    }
+
+    #[test]
+    fn unknown_commands_and_arguments_are_refused() {
+        let s = Session::new();
+        let e = s.invoke("no_such_command", Value::Null).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::UnknownCommand);
+        assert!(e.message.contains("no command"), "{e}");
+        let e = s
+            .invoke("open_case", json!({ "path": "x", "pth": "y" }))
+            .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidArguments);
+        assert!(e.message.contains("unknown field"), "{e}");
+        let e = s.invoke("open_case", json!({ "path": 3 })).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidArguments);
+    }
+
+    #[test]
+    fn list_commands_reports_every_command() {
+        let s = Session::new();
+        let list: Value =
+            serde_json::from_str(&s.invoke("list_commands", Value::Null).unwrap()).unwrap();
+        assert_eq!(list["api_version"], API_VERSION);
+        assert_eq!(list["commands"].as_array().unwrap().len(), COMMANDS.len());
+        let solve = COMMANDS
+            .iter()
+            .find(|c| c.name == "solve_power_flow")
+            .unwrap();
+        assert!(solve.takes_case);
+        let open = COMMANDS.iter().find(|c| c.name == "open_case").unwrap();
+        assert!(!open.takes_case);
+    }
+
+    #[test]
+    fn every_case_command_checks_the_case_id() {
+        let s = Session::new();
+        let summary: Value = serde_json::from_str(
+            &s.invoke("open_case", json!({ "path": case_file() }))
+                .unwrap(),
+        )
+        .unwrap();
+        let id = summary["id"].as_u64().unwrap();
+        assert!(id >= 1);
+        // A wrong id is refused before any argument is used, so the other
+        // arguments only need to parse.
+        let value = |name: &str| match name {
+            "settings" => json!({ "solve": SolveSettings::default() }),
+            "path" | "quantity" | "element" | "section" | "name" => json!("unused"),
+            "edits" => json!([]),
+            "engineering" | "solved" | "enabled" => json!(false),
+            "limit_pct" => json!(100.0),
+            _ => json!(1),
+        };
+        for (c, names) in COMMANDS.iter().zip(ARGS).filter(|(c, _)| c.takes_case) {
+            let mut args = serde_json::Map::new();
+            for (name, _) in *names {
+                args.insert(camel(name), value(name));
+            }
+            if c.name != "run_contingencies" && args.contains_key("settings") {
+                args.insert("settings".into(), json!(SolveSettings::default()));
+            }
+            args.insert("case".into(), json!(id + 1));
+            let e = s.invoke(c.name, Value::Object(args)).unwrap_err();
+            assert_eq!(e.kind, ErrorKind::CaseNotOpen, "{}", c.name);
+            assert_eq!(
+                e.message,
+                format!("Case {} isn't open.", id + 1),
+                "{}",
+                c.name
+            );
+        }
+        // The right id, or none, reaches the case.
+        assert!(s.invoke("case_summary", json!({ "case": id })).is_ok());
+        assert!(
+            s.invoke(
+                "solve_power_flow",
+                json!({ "settings": SolveSettings::default() })
+            )
+            .is_ok()
+        );
+        assert!(
+            s.invoke(
+                "solve_power_flow",
+                json!({ "case": id, "settings": SolveSettings::default() })
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_reopened_case_gets_a_new_id() {
+        let s = Session::new();
+        let first: Value = serde_json::from_str(
+            &s.invoke("open_case", json!({ "path": case_file() }))
+                .unwrap(),
+        )
+        .unwrap();
+        let second: Value = serde_json::from_str(
+            &s.invoke("open_case", json!({ "path": case_file() }))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(first["id"], second["id"]);
+        let e = s
+            .invoke("diagram_network", json!({ "case": first["id"] }))
+            .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::CaseNotOpen);
+        assert!(e.message.contains("isn't open"), "{e}");
+    }
+
+    #[test]
+    fn no_case_reads_as_null_or_a_prompt() {
+        let s = Session::new();
+        assert_eq!(s.invoke("case_summary", Value::Null).unwrap(), "null");
+        assert_eq!(
+            s.invoke("diagram_network", Value::Null).unwrap_err(),
+            Error::new(ErrorKind::NoCase, "Open a case first.")
+        );
+        assert_eq!(s.invoke("cancel_solve", Value::Null).unwrap(), "null");
+    }
+}

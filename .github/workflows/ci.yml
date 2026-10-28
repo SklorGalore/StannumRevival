@@ -56,7 +56,62 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
-        run: cargo test --locked -p stannum-core -p rs-power -p nodal
+        run: cargo test --locked -p stannum-core -p stannum-cli -p stannum-synth -p rs-power -p nodal
+
+  budgets:
+    name: Large case budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      # The case is the same for the same generator code, so it's built
+      # once and kept until stannum-synth or rs-power changes.
+      - name: Restore the synthetic case
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .budget-case
+          key: budget-case-${{ hashFiles('crates/stannum-synth/**', 'crates/rs-power/src/**', 'Cargo.lock') }}
+      # Times the app's commands on a 12,000-bus synthetic case; the table
+      # lands in the run summary.
+      - name: Time and size budgets
+        timeout-minutes: 30
+        env:
+          STANNUM_BUDGET_CACHE: ${{ github.workspace }}/.budget-case
+        run: cargo test --locked --release -p stannum-core --test budgets -- --ignored --nocapture
+
+  python:
+    name: Python package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      # Builds the abi3 wheel with the runner's Python, installs it in a
+      # fresh venv and runs crates/stannum-py/tests against it.
+      - name: Build the wheel and test it
+        shell: pwsh
+        timeout-minutes: 30
+        run: ./scripts/ci/test-python.ps1 -Out dist-py
+      # For trying a PR's package without building it. Release wheels come
+      # from the release workflow.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stannum-wheel-${{ matrix.os }}
+          path: dist-py/*.whl
+          retention-days: 14
 
   frontend:
     name: Frontend build and browser smoke test

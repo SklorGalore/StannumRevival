@@ -3,18 +3,20 @@
 //! latest solve and study edits from the study, both of which the frontend
 //! already holds, so they are not repeated here.
 
+use crate::error::Error;
 use crate::power::{PowerCase, bus_names, kind_label};
 use serde::Serialize;
 
 /// A number, or text for values that aren't numbers (a bus type, a missing limit).
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(untagged)]
+#[schemars(rename = "FieldValue")]
 pub enum Value {
     Number(f64),
     Text(String),
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Field {
     pub label: String,
     pub value: Value,
@@ -23,24 +25,24 @@ pub struct Field {
 }
 
 /// A titled list of fields, such as one winding of a transformer.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Group {
     /// Empty when the element only has one group.
     pub title: String,
     pub fields: Vec<Field>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BusRef {
     pub number: u32,
     pub name: String,
     pub base_kv: f64,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ElementDetail {
     pub element: String,
-    /// "bus", "line", "transformer", "generator", "load" or "dcline".
+    /// The element's kind, as `element_kinds` lists them.
     pub kind: String,
     /// The terminals: the bus itself, or the buses a branch or DC line joins.
     pub buses: Vec<BusRef>,
@@ -109,7 +111,7 @@ pub fn element(
     power: &PowerCase,
     topology: Option<&nodal::model::Case>,
     id: &str,
-) -> Result<ElementDetail, String> {
+) -> Result<ElementDetail, Error> {
     let kind = id.split(':').next().unwrap_or_default();
     let case = &power.case;
     let names = bus_names(case);
@@ -121,7 +123,7 @@ pub fn element(
             base_kv: i.map_or(0.0, |i| case.buses[i].base_kv),
         }
     };
-    let missing = || format!("{id} isn't in this case.");
+    let missing = || Error::not_found(format!("{id} isn't in this case."));
     let mut detail = ElementDetail {
         element: id.to_string(),
         kind: kind.to_string(),
@@ -429,7 +431,162 @@ pub fn element(
                     .to_string(),
             );
         }
-        _ => return Err(format!("{id} isn't an element id.")),
+        _ => {
+            return Err(Error::invalid_arguments(format!(
+                "{id} isn't an element id."
+            )));
+        }
     }
     Ok(detail)
+}
+
+/// An element known only by its record in the file (see
+/// [`crate::elements::Source::Record`]): every field as filed.
+pub fn from_record(
+    power: &PowerCase,
+    records: &crate::records::Records,
+    kind: &crate::elements::ElementKind,
+    id: &str,
+) -> Result<ElementDetail, Error> {
+    let missing = || Error::not_found(format!("{id} isn't in this case."));
+    let (table, row) = kind
+        .raw_sections
+        .iter()
+        .filter_map(|section| records.table(section).ok())
+        .find_map(|t| {
+            t.rows
+                .iter()
+                .find(|r| r.element.as_deref() == Some(id))
+                .map(|r| (t, r))
+        })
+        .ok_or_else(missing)?;
+    let cell = |name: &str| {
+        table
+            .columns
+            .iter()
+            .position(|c| c.name == name)
+            .and_then(|i| row.cells.get(i))
+    };
+    let whole = |name: &str| {
+        cell(name)
+            .and_then(serde_json::Value::as_f64)
+            .map(|v| v as u32)
+    };
+    let names = bus_names(&power.case);
+    let bus_ref = |number: u32| {
+        let i = power.case.buses.iter().position(|b| b.id == number);
+        BusRef {
+            number,
+            name: i.and_then(|i| names.get(i)).cloned().unwrap_or_default(),
+            base_kv: i.map_or(0.0, |i| power.case.buses[i].base_kv),
+        }
+    };
+    let buses = ["I", "J"]
+        .iter()
+        .filter_map(|f| whole(f))
+        .filter(|&b| b != 0)
+        .map(bus_ref)
+        .collect();
+    let online = ["STATUS", "STAT", "ST", "MODE"]
+        .iter()
+        .find_map(|f| cell(f).and_then(serde_json::Value::as_f64))
+        .is_none_or(|s| s != 0.0);
+    let fields = table
+        .columns
+        .iter()
+        .zip(&row.cells)
+        .filter_map(|(c, v)| {
+            let value = match v {
+                serde_json::Value::Number(n) => Value::Number(n.as_f64()?),
+                serde_json::Value::String(t) if !t.trim().is_empty() => {
+                    Value::Text(t.trim().into())
+                }
+                _ => return None,
+            };
+            Some(Field {
+                label: c.name.clone(),
+                value,
+                unit: "",
+            })
+        })
+        .collect();
+    Ok(ElementDetail {
+        element: id.to_string(),
+        kind: kind.kind.to_string(),
+        buses,
+        online,
+        data: vec![Group {
+            title: String::new(),
+            fields,
+        }],
+        limits: vec![],
+        connected: vec![],
+        note: Some(match kind.kind {
+            "shunt" => {
+                "As filed. Power flow adds in-service fixed shunts to their bus's shunt.".into()
+            }
+            "switched-shunt" => {
+                "As filed. Power flow switches it when switching shunts is on.".into()
+            }
+            _ => format!(
+                "As filed. Power flow doesn't model {}s yet.",
+                kind.label.to_lowercase()
+            ),
+        }),
+    })
+}
+
+/// The elements read from records (see [`from_record`]) that sit at `bus`.
+pub fn record_elements_at(records: &crate::records::Records, bus: u32) -> Vec<String> {
+    let mut out = vec![];
+    for kind in crate::elements::KINDS
+        .iter()
+        .filter(|k| k.inspector == crate::elements::Source::Record)
+    {
+        for table in kind
+            .raw_sections
+            .iter()
+            .filter_map(|s| records.table(s).ok())
+        {
+            let at = |name: &str| table.columns.iter().position(|c| c.name == name);
+            let columns: Vec<usize> = ["I", "J"].iter().filter_map(|f| at(f)).collect();
+            for row in table.rows.iter() {
+                let here = columns.iter().any(|&c| {
+                    row.cells.get(c).and_then(serde_json::Value::as_f64) == Some(bus as f64)
+                });
+                if here && let Some(e) = &row.element {
+                    out.push(e.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A bus's place on the map: "from file" (the attached coordinates file),
+/// "from case substation" (RAW substation data), "estimated" from its
+/// neighbours, or "nowhere" when nothing in its island has a place.
+pub fn location(place: Option<(f64, f64, &'static str, Option<&str>)>) -> Group {
+    let fields = match place {
+        Some((lat, lon, source, substation)) => {
+            let mut f = vec![num("Latitude", lat, "°"), num("Longitude", lon, "°")];
+            f.push(text(
+                "Placed",
+                match source {
+                    "file" => "from file",
+                    "case" => "from case substation",
+                    _ => "estimated",
+                },
+            ));
+            if let Some(s) = substation {
+                f.push(text("Substation", s));
+            }
+            f
+        }
+        None => vec![text("Placed", "nowhere")],
+    };
+    Group {
+        title: "Location".to_string(),
+        fields,
+    }
 }

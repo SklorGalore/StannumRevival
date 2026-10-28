@@ -4,16 +4,30 @@
 function Get-AppVersions([string] $Root) {
     $package = Get-Content (Join-Path $Root 'package.json') -Raw | ConvertFrom-Json
     $tauri = Get-Content (Join-Path $Root 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
-    $cargo = Get-Content (Join-Path $Root 'src-tauri/Cargo.toml') -Raw
-    if ($cargo -notmatch '(?ms)^\[package\][^\[]*?^version\s*=\s*"([^"]+)"') {
-        throw 'No [package] version in src-tauri/Cargo.toml'
-    }
-    [ordered]@{
+    $versions = [ordered]@{
         'package.json'              = $package.version
         'src-tauri/tauri.conf.json' = $tauri.version
-        'src-tauri/Cargo.toml'      = $Matches[1]
     }
+    # The CLI and the Python package ship with the app, so they share its version.
+    foreach ($manifest in $CrateManifests) {
+        $cargo = Get-Content (Join-Path $Root $manifest) -Raw
+        if ($cargo -notmatch '(?ms)^\[package\][^\[]*?^version\s*=\s*"([^"]+)"') {
+            throw "No [package] version in $manifest"
+        }
+        $versions[$manifest] = $Matches[1]
+    }
+    $versions
 }
+
+# Cargo.toml files whose [package] version is the app version.
+$CrateManifests = @(
+    'src-tauri/Cargo.toml'
+    'crates/stannum-cli/Cargo.toml'
+    'crates/stannum-py/Cargo.toml'
+)
+
+# Their package names, as Cargo.lock lists them.
+$CratePackages = @('stannum', 'stannum-cli', 'stannum-py')
 
 # The body of the "## <Heading>" section of a changelog, or $null if there is
 # none. A heading may carry a date after the name: "## 0.3.0 - 2026-10-27".

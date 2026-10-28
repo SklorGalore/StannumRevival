@@ -29,6 +29,14 @@ field, and bus names, against MATPOWER 8.1's importer. They cover all
 supported revision layouts, every transformer `CW`/`CZ` combination, partial
 winding statuses, DC control modes and three upstream RAW fixtures.
 
+Stannum reads a RAW file with three readers: one for power flow (revisions
+23 to 35), one for topology (35) and one for Records and Case diff (33 and
+35). A test reads every RAW fixture with each reader that supports its
+revision and checks they count the same buses, generators, branches,
+switching devices and loads. Known gaps are listed in the test with their
+reason: Records and Case diff can't yet read a RAW 35 file with substation
+data, or bus records that leave out trailing fields.
+
 ## Numerical checks
 
 - Analytic Jacobians against finite differences.
@@ -59,6 +67,26 @@ checks their hashes.
 | ACTIVSg70k (MATPOWER) | 70,000 buses | Solve speed |
 | Synthetic East–West US (RAW 34) | 80,000 buses | Revision 34 import |
 | Memphis 2026 (RAW 35) | 993 buses | Shunt control, remote regulation, nodal parsing |
+
+## Time and size budgets
+
+Every pull request builds a 12,000-bus [synthetic case](/manual/synthetic-cases/)
+and works through it with the commands the app sends: open, attach
+coordinates, solve, the diagram, the map, topology, Records and an N-1
+contingency run. Each command has a budget for how long it takes and how much
+it sends back, and the test fails when one goes over, so a change that makes
+large cases several times slower is caught before it merges. It also checks
+that the app keeps answering while a solve runs. The run's summary on GitHub
+shows the table.
+
+```powershell
+cargo test --release -p stannum-core --test budgets -- --ignored --nocapture
+```
+
+`STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion.
+The same seed always builds the same case, so `STANNUM_BUDGET_CACHE` can name
+a folder to keep it in and reuse; CI keeps one until the generator or the
+solver changes.
 
 ## Interface
 

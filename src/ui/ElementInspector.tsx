@@ -4,26 +4,17 @@
 // diagram's drawing fields) slot in below.
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight, Play, X } from "lucide-react";
-import { useWorkspace, type ModuleId } from "../store/workspaceStore";
+import { useShownReport, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useStudy, editTarget } from "../store/studyStore";
 import { api } from "../lib/analysis/api";
 import type { DetailField, ElementDetail } from "../lib/analysis/types";
 import { fixed } from "../lib/analysis/format";
-import { busElement, elementLabel, parseElement } from "../lib/elements";
+import { busElement, elementLabel, kindLabel, parseElement } from "../lib/elements";
 import { elementResults, type ResultRow, type Tone } from "../lib/inspect";
 import { DrawAroundButton } from "./DrawAround";
 import { StudyActions, describeEdit } from "./StudyActions";
 import { TripButton, TripOutcome } from "./TripCompare";
 
-const KIND_LABEL: Record<string, string> = {
-  bus: "Bus",
-  line: "Line",
-  transformer: "Transformer",
-  switch: "Switch",
-  generator: "Generator",
-  load: "Load",
-  dcline: "DC line",
-};
 
 const TONE_TEXT: Record<Tone, string> = { ok: "text-slate-800", warn: "text-amber-700", bad: "text-red-700" };
 const TONE_CHIP: Record<Tone, string> = {
@@ -34,14 +25,17 @@ const TONE_CHIP: Record<Tone, string> = {
 
 // File data per element, kept for the open case so picking back and forth
 // doesn't ask the core again.
-let cacheVersion = -1;
+let cacheVersion = "";
 const cache = new Map<string, ElementDetail | string>();
 
 function useElementDetail(element: string): { detail: ElementDetail | null; error: string | null } {
   const caseVersion = useWorkspace((s) => s.caseVersion);
   const canRead = useWorkspace((s) => !!s.caseSummary?.power.available);
-  if (cacheVersion !== caseVersion) {
-    cacheVersion = caseVersion;
+  // A bus's Location section comes from the attached coordinates file.
+  const coordinates = useWorkspace((s) => s.caseSummary?.coordinates?.path ?? "");
+  const key = `${caseVersion}:${coordinates}`;
+  if (cacheVersion !== key) {
+    cacheVersion = key;
     cache.clear();
   }
   const [, setTick] = useState(0);
@@ -56,7 +50,7 @@ function useElementDetail(element: string): { detail: ElementDetail | null; erro
     return () => {
       live = false;
     };
-  }, [element, caseVersion, canRead]);
+  }, [element, key, canRead]);
   const hit = cache.get(element);
   return { detail: typeof hit === "object" ? hit : null, error: typeof hit === "string" ? hit : null };
 }
@@ -176,7 +170,8 @@ export interface ElementInspectorProps {
 }
 
 export function ElementInspector({ element, from, onPick, onClose, children, drawing }: ElementInspectorProps) {
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
+  const shown = useWorkspace((s) => (s.shown?.report ? s.shown : null));
   const focus = useWorkspace((s) => s.focus);
   const requestSolve = useWorkspace((s) => s.requestSolve);
   const canSolve = useWorkspace((s) => !!s.caseSummary?.power.available);
@@ -195,7 +190,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
     <div className="flex flex-col text-xs" data-testid="element-inspector" data-element={element}>
       <header className="px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{KIND_LABEL[kind] ?? kind}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{kindLabel(kind)}</p>
           <span
             className={`rounded px-1.5 py-px text-[10px] font-semibold ${
               offline ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"
@@ -257,6 +252,11 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
       <TripOutcome element={element} onPick={pick} />
 
       <Section id="results" title="Results">
+        {shown && (
+          <p className="mb-1.5 text-[11px] text-amber-800" data-testid="inspector-shown-result">
+            {shown.label}: {elementLabel(shown.element)} out
+          </p>
+        )}
         {!report ? (
           <p className="text-slate-500">
             Not solved yet.{" "}

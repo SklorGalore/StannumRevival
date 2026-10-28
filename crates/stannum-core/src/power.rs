@@ -1,6 +1,7 @@
 //! Power flow and sensitivities (rs-power), shaped for the frontend.
 
 use crate::elements::Elements;
+use crate::table::{self, Table};
 use rs_power::{
     BusType, Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
     PowerFlowSensitivity, SolveStatus, StateVariable,
@@ -27,6 +28,11 @@ pub struct PowerCase {
     pub voltage_controls: rs_power::VoltageControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
+    /// Substations with their places and buses, from RAW revision 34-35
+    /// substation data; empty otherwise.
+    pub substations: Vec<rs_power::RawSubstation>,
+    /// The RAW revision the file was read as; None for MATPOWER.
+    pub revision: Option<u32>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -37,13 +43,14 @@ fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Warning {
     pub line: usize,
     pub message: String,
     /// The branch or generator whose record the warning is about, as a
     /// shared element id, when the line is one of theirs.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "String")]
     pub element: Option<String>,
 }
 
@@ -60,6 +67,8 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: Vec::new(),
             voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
+            substations: Vec::new(),
+            revision: None,
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -101,6 +110,8 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             vsc_lines: import.vsc_lines,
             voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
+            substations: import.substations,
+            revision: Some(import.revision),
             case: import.case,
             warnings: import
                 .warnings
@@ -115,7 +126,9 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelChoice {
     #[default]
@@ -123,7 +136,9 @@ pub enum ModelChoice {
     Dc,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum StartChoice {
     /// The voltages in the case.
@@ -138,7 +153,9 @@ pub enum StartChoice {
 
 /// How two-terminal (LCC), VSC and multi-terminal DC lines are solved when
 /// the case has their data.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum DcModelChoice {
     /// MATPOWER's lossless generator pair.
@@ -148,29 +165,81 @@ pub enum DcModelChoice {
     Detailed,
 }
 
+/// How each AC pass finds the voltages. Every method stops at the same
+/// mismatch tolerance, so they reach the same answer at different speeds.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MethodChoice {
+    /// Decoupled iterations first, finishing with Newton when they slow
+    /// down; Newton alone on cases under 2,000 buses.
+    #[default]
+    Auto,
+    /// Full Newton–Raphson.
+    Newton,
+    /// Fixed-slope decoupled Newton (FDNS).
+    FixedSlope,
+    /// Fast decoupled load flow, XB version.
+    FastDecoupledXb,
+    /// Fast decoupled load flow, BX version.
+    FastDecoupledBx,
+}
+
+impl From<MethodChoice> for rs_power::AcMethod {
+    fn from(m: MethodChoice) -> Self {
+        match m {
+            MethodChoice::Auto => Self::Auto,
+            MethodChoice::Newton => Self::Newton,
+            MethodChoice::FixedSlope => Self::FixedSlope,
+            MethodChoice::FastDecoupledXb => Self::FastDecoupledXb,
+            MethodChoice::FastDecoupledBx => Self::FastDecoupledBx,
+        }
+    }
+}
+
 fn yes() -> bool {
     true
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+fn decoupled_iterations() -> usize {
+    PowerFlowOptions::default().decoupled_iterations
+}
+
+/// How to solve. Fields left out take their defaults: AC with the automatic
+/// method from the last solution, to 2 MVA, without reactive limits, with
+/// every control on.
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(default)]
 pub struct SolveSettings {
     pub model: ModelChoice,
+    /// AC solution method.
+    #[serde(default)]
+    pub method: MethodChoice,
     pub start: StartChoice,
     /// Largest power mismatch allowed at any bus, in MVA. It converts to per
     /// unit on each case's own base at solve time, so the same setting means
     /// the same MW and Mvar on every case.
     pub tolerance_mva: f64,
+    /// Newton iterations per pass.
     pub max_iterations: usize,
+    /// Decoupled iterations per pass (fixed-slope and fast decoupled, and
+    /// the decoupled stage of the automatic method).
+    #[serde(default = "decoupled_iterations")]
+    pub decoupled_iterations: usize,
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
     /// Step DC converter taps (detailed model only).
     #[serde(default = "yes")]
     pub adjust_dc_taps: bool,
-    /// Switch shunts in voltage control (AC only).
+    /// Switch shunts in voltage control (AC only). When false they are
+    /// locked: they stay where they are, which is where the last solve left
+    /// them when starting from it, and at their case values otherwise.
     #[serde(default = "yes")]
     pub switch_shunts: bool,
-    /// Step transformer taps in voltage control (AC only).
+    /// Step transformer taps in voltage control (AC only). When false they
+    /// are locked, like shunts.
     #[serde(default = "yes")]
     pub adjust_transformer_taps: bool,
 }
@@ -185,9 +254,11 @@ impl Default for SolveSettings {
         let d = PowerFlowOptions::default();
         Self {
             model: ModelChoice::Ac,
+            method: MethodChoice::Auto,
             start: StartChoice::Last,
             tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
+            decoupled_iterations: d.decoupled_iterations,
             enforce_q_limits: false,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
@@ -215,13 +286,11 @@ impl SolveSettings {
             };
         }
         if self.model == ModelChoice::Ac {
-            let controls = &power.voltage_controls;
-            if self.switch_shunts {
-                options.voltage_controls.switched_shunts = controls.switched_shunts.clone();
-            }
-            if self.adjust_transformer_taps {
-                options.voltage_controls.taps = controls.taps.clone();
-            }
+            // Locked controls stay listed, so that a solve from the last
+            // solution starts them where it left them and holds them there.
+            options.voltage_controls = power.voltage_controls.clone();
+            options.lock_switched_shunts = !self.switch_shunts;
+            options.lock_taps = !self.adjust_transformer_taps;
         }
         options
     }
@@ -241,6 +310,8 @@ impl SolveSettings {
             },
             tolerance: tolerance_pu(self.tolerance_mva, base_mva),
             max_iterations: self.max_iterations,
+            method: self.method.into(),
+            decoupled_iterations: self.decoupled_iterations,
             // Q limits only apply to AC; the solver rejects them for DC.
             enforce_q_limits: self.enforce_q_limits && self.model == ModelChoice::Ac,
             ..PowerFlowOptions::default()
@@ -257,8 +328,8 @@ pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
 /// ended, with `options` changed to match.
 ///
 /// Bus voltages and generator reactive outputs come from `last`. Switched
-/// shunts, transformer taps and DC converter taps that `options` controls
-/// start at their final settings. Everything else, such as dispatch, loads
+/// shunts, transformer taps and DC converter taps that `options` lists
+/// start at their final settings, also when `options` locks them there. Everything else, such as dispatch, loads
 /// and statuses, stays as in `case`. Generators `last` held at a reactive
 /// limit start there, also after study edits: on SyntheticUSA an outage then
 /// solves in 6 iterations and lands within 0.02 MW of losses of a solve from
@@ -305,12 +376,7 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
             }
         }
     }
-    if let rs_power::DcModel::Detailed {
-        lines,
-        adjust_taps: true,
-        ..
-    } = &mut options.dc_model
-    {
+    if let rs_power::DcModel::Detailed { lines, .. } = &mut options.dc_model {
         for line in lines {
             if let Some(s) = last.lcc.iter().find(|s| s.row == line.row) {
                 line.rectifier.tap = s.rectifier_tap;
@@ -322,7 +388,7 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
     warm
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct CaseCounts {
     pub base_mva: f64,
     pub buses: usize,
@@ -341,29 +407,38 @@ pub fn counts(case: &Case) -> CaseCounts {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct BusRow {
     pub id: u32,
     pub name: String,
+    #[schemars(extend("enum" = ["PQ", "PV", "Ref", "Isolated"]))]
     pub kind: &'static str,
+    #[serde(serialize_with = "table::mw")]
     pub base_kv: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vm: f64,
+    #[serde(serialize_with = "table::mw")]
     pub va: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vmin: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vmax: f64,
     /// Load drawn at the solved voltage, all parts together.
+    #[serde(serialize_with = "table::mw")]
     pub pd: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qd: f64,
     /// The load split by how it varies with voltage, when any of it does.
     pub load_parts: Option<LoadParts>,
     pub area: u32,
     /// Distance outside [vmin, vmax] in p.u.; zero when within limits.
+    #[serde(serialize_with = "table::pu")]
     pub violation: f64,
 }
 
 /// A bus's load at the solved voltage by part, in MW and Mvar:
 /// `[constant power, constant current, constant impedance]`.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct LoadParts {
     pub p: [f64; 3],
     pub q: [f64; 3],
@@ -380,7 +455,7 @@ impl LoadParts {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct GeneratorRow {
     pub index: usize,
     /// Shared id, such as `generator:101:1`.
@@ -389,17 +464,24 @@ pub struct GeneratorRow {
     pub bus: u32,
     pub bus_name: String,
     pub online: bool,
+    #[serde(serialize_with = "table::mw")]
     pub pg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qmin: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qmax: f64,
+    #[serde(serialize_with = "table::pu")]
     pub vg: f64,
+    #[serde(serialize_with = "table::mw")]
     pub pmax: f64,
     /// MVAr outside [qmin, qmax]; zero when within limits or offline.
+    #[serde(serialize_with = "table::mw")]
     pub q_violation: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct BranchRow {
     pub index: usize,
     /// Shared id, such as `line:101:102:1`.
@@ -411,24 +493,32 @@ pub struct BranchRow {
     pub to: u32,
     pub online: bool,
     pub is_transformer: bool,
+    #[serde(serialize_with = "table::mw")]
     pub pf: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qf: f64,
+    #[serde(serialize_with = "table::mw")]
     pub pt: f64,
+    #[serde(serialize_with = "table::mw")]
     pub qt: f64,
+    #[serde(serialize_with = "table::mw")]
     pub loss_mw: f64,
+    #[serde(serialize_with = "table::mw")]
     pub rate_a: f64,
     /// Highest end MVA as a percent of rate A; `None` when unrated or offline.
+    #[serde(serialize_with = "table::pct")]
     pub loading_pct: Option<f64>,
 }
 
 /// A solved DC line row, from its sending (rectifier) bus to its receiving
 /// (inverter) bus.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcLineRow {
     pub index: usize,
     /// Shared id, such as `dcline:101:205:DC1`.
     pub element: String,
     /// "two_terminal", "vsc" or "multi_terminal".
+    #[schemars(extend("enum" = ["two_terminal", "vsc", "multi_terminal"]))]
     pub kind: &'static str,
     pub from: u32,
     pub to: u32,
@@ -462,11 +552,12 @@ pub struct DcLineRow {
 
 /// One converter of a multi-terminal DC system under the detailed model, as
 /// shown on the row that links it to the voltage-controlling converter.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct MtdcDetail {
     /// The system's name.
     pub system: String,
     /// "voltage", "order", "angle_limited" or "blocked".
+    #[schemars(extend("enum" = ["voltage", "order", "angle_limited", "blocked"]))]
     pub control: &'static str,
     /// Low DC voltage switched the power orders to current orders.
     pub reduced_voltage: bool,
@@ -491,7 +582,7 @@ fn mtdc_control(mode: rs_power::MtdcMode) -> &'static str {
 }
 
 /// A multi-terminal DC system's DC network under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcSystemReport {
     pub name: String,
     pub reduced_voltage: bool,
@@ -502,13 +593,14 @@ pub struct DcSystemReport {
     pub links: Vec<DcLinkRow>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcConverterRow {
     /// AC bus number and name.
     pub bus: u32,
     pub bus_name: String,
     /// DC bus number.
     pub dc_bus: u32,
+    #[schemars(extend("enum" = ["voltage", "order", "angle_limited", "blocked"]))]
     pub control: &'static str,
     pub rectifier: bool,
     pub current_ka: f64,
@@ -522,14 +614,14 @@ pub struct DcConverterRow {
     pub loss_mw: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcBusRow {
     pub number: u32,
     pub name: String,
     pub kv: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct DcLinkRow {
     pub from: u32,
     pub to: u32,
@@ -541,7 +633,7 @@ pub struct DcLinkRow {
 }
 
 /// Operating point of a VSC DC line under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct VscDetail {
     /// DC current from the sending to the receiving end, kA.
     pub current_ka: f64,
@@ -574,10 +666,11 @@ fn vsc_detail(s: &rs_power::VscSolution) -> VscDetail {
 }
 
 /// Operating point of a two-terminal DC line under the detailed model.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct LccDetail {
     /// "rectifier", "inverter" (current margin), "angle_limited" or "blocked":
     /// which converter holds the DC current.
+    #[schemars(extend("enum" = ["rectifier", "inverter", "angle_limited", "blocked"]))]
     pub control: &'static str,
     /// Low DC voltage switched a power order to current control.
     pub reduced_voltage: bool,
@@ -613,7 +706,7 @@ fn lcc_detail(s: &rs_power::LccSolution) -> LccDetail {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, schemars::JsonSchema)]
 pub struct LimitSummary {
     pub voltage_violations: usize,
     pub worst_voltage: Option<(u32, f64)>,
@@ -624,12 +717,19 @@ pub struct LimitSummary {
     pub worst_branch: Option<(u32, u32, f64)>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct SolveReport {
     pub status: &'static str,
     pub converged: bool,
     pub model: ModelChoice,
+    /// The AC method asked for.
+    pub method: MethodChoice,
+    /// Iterations in all passes, Newton and decoupled together.
     pub iterations: usize,
+    /// How many of `iterations` were decoupled iterations.
+    pub decoupled_iterations: usize,
+    /// Passes in which the automatic method finished with Newton.
+    pub newton_fallbacks: usize,
     pub q_limit_passes: usize,
     /// Passes that stepped DC converter taps (detailed model).
     pub dc_tap_passes: usize,
@@ -641,6 +741,10 @@ pub struct SolveReport {
     pub shunts_switched: usize,
     /// Transformer taps that ended away from their starting ratio.
     pub taps_moved: usize,
+    /// Whether the solve locked the switched shunts, and the transformer
+    /// taps, where they were instead of moving them (AC only).
+    pub shunts_locked: bool,
+    pub taps_locked: bool,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -648,120 +752,16 @@ pub struct SolveReport {
     pub total_load_mw: f64,
     pub total_losses_mw: f64,
     pub limits: LimitSummary,
-    /// Sent as columns (see [`wire`]); the frontend turns them back into rows.
-    #[serde(serialize_with = "wire::bus_columns")]
-    pub buses: Vec<BusRow>,
-    #[serde(serialize_with = "wire::generator_columns")]
-    pub generators: Vec<GeneratorRow>,
-    #[serde(serialize_with = "wire::branch_columns")]
-    pub branches: Vec<BranchRow>,
+    /// Sent as columns (see [`Table`]); the frontend turns them back into rows.
+    pub buses: Table<BusRow>,
+    pub generators: Table<GeneratorRow>,
+    pub branches: Table<BranchRow>,
     pub dc_lines: Vec<DcLineRow>,
     /// DC networks of the multi-terminal systems (detailed model).
     pub dc_systems: Vec<DcSystemReport>,
     /// VSC DC grids from an attached DC grid file, solved in sequence with
     /// the AC network.
     pub vsc_grids: Option<crate::dc_grids::VscGridsReport>,
-}
-
-/// How the row tables travel to the frontend. A large case has hundreds of
-/// thousands of rows, and as JSON objects every row repeats its field names.
-/// Sending one array per field, with numbers rounded to what any table or
-/// chart shows, cuts the report to about a third (62 MB to 23 MB on a
-/// 78,000-bus case). `src/lib/analysis/api.ts` turns the columns back into
-/// row objects.
-pub mod wire {
-    use super::{BranchRow, BusRow, GeneratorRow};
-    use serde::Serialize;
-    use serde::ser::{SerializeMap, Serializer};
-
-    /// One field of every row, serialized as an array without copying.
-    struct Column<'a, T, V>(&'a [T], fn(&'a T) -> V);
-
-    impl<'a, T, V: Serialize> Serialize for Column<'a, T, V> {
-        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-            s.collect_seq(self.0.iter().map(self.1))
-        }
-    }
-
-    fn round(x: f64, places: i32) -> f64 {
-        if !x.is_finite() {
-            return x;
-        }
-        let k = 10f64.powi(places);
-        let r = (x * k).round() / k;
-        // Keep a tiny value tiny rather than rounding it to zero, so
-        // "outside limits" checks (violation > 0) still hold.
-        if r == 0.0 && x != 0.0 { x } else { r }
-    }
-    /// MW, MVAr, kV and degrees: 0.1 kW is far below anything shown.
-    fn mw(x: f64) -> f64 {
-        round(x, 4)
-    }
-    /// Per-unit voltages.
-    fn pu(x: f64) -> f64 {
-        round(x, 6)
-    }
-
-    macro_rules! columns {
-        ($name:ident, $row:ty, { $($field:ident => $value:expr),* $(,)? }) => {
-            pub fn $name<S: Serializer>(rows: &[$row], s: S) -> Result<S::Ok, S::Error> {
-                let mut map = s.serialize_map(None)?;
-                map.serialize_entry("count", &rows.len())?;
-                $(map.serialize_entry(stringify!($field), &Column::<$row, _>(rows, $value))?;)*
-                map.end()
-            }
-        };
-    }
-
-    columns!(bus_columns, BusRow, {
-        id => |r| r.id,
-        name => |r| r.name.as_str(),
-        kind => |r| r.kind,
-        base_kv => |r| mw(r.base_kv),
-        vm => |r| pu(r.vm),
-        va => |r| mw(r.va),
-        vmin => |r| pu(r.vmin),
-        vmax => |r| pu(r.vmax),
-        pd => |r| mw(r.pd),
-        qd => |r| mw(r.qd),
-        load_parts => |r| r.load_parts.as_ref(),
-        area => |r| r.area,
-        violation => |r| pu(r.violation),
-    });
-
-    columns!(generator_columns, GeneratorRow, {
-        index => |r| r.index,
-        element => |r| r.element.as_str(),
-        machine_id => |r| r.machine_id.as_str(),
-        bus => |r| r.bus,
-        bus_name => |r| r.bus_name.as_str(),
-        online => |r| r.online,
-        pg => |r| mw(r.pg),
-        qg => |r| mw(r.qg),
-        qmin => |r| mw(r.qmin),
-        qmax => |r| mw(r.qmax),
-        vg => |r| pu(r.vg),
-        pmax => |r| mw(r.pmax),
-        q_violation => |r| mw(r.q_violation),
-    });
-
-    columns!(branch_columns, BranchRow, {
-        index => |r| r.index,
-        element => |r| r.element.as_str(),
-        circuit => |r| r.circuit.as_str(),
-        winding => |r| r.winding,
-        from => |r| r.from,
-        to => |r| r.to,
-        online => |r| r.online,
-        is_transformer => |r| r.is_transformer,
-        pf => |r| mw(r.pf),
-        qf => |r| mw(r.qf),
-        pt => |r| mw(r.pt),
-        qt => |r| mw(r.qt),
-        loss_mw => |r| mw(r.loss_mw),
-        rate_a => |r| mw(r.rate_a),
-        loading_pct => |r| r.loading_pct.map(|p| round(p, 3)),
-    });
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -1063,6 +1063,7 @@ pub fn report(
     let total_losses_mw = branches.iter().map(|b| b.loss_mw).sum::<f64>()
         + dc_lines.iter().map(|d| d.loss_mw).sum::<f64>();
 
+    let ac = settings.model == ModelChoice::Ac;
     let (status, converged) = match result.status {
         SolveStatus::Converged => ("Converged", true),
         SolveStatus::IterationLimit => ("Iteration limit", false),
@@ -1072,7 +1073,10 @@ pub fn report(
         status,
         converged,
         model: settings.model,
+        method: settings.method,
         iterations: result.iterations,
+        decoupled_iterations: result.decoupled_iterations,
+        newton_fallbacks: result.newton_fallbacks,
         q_limit_passes: result.q_limit_passes,
         dc_tap_passes: result.dc_tap_passes,
         vsc_limit_passes: result.vsc_limit_passes,
@@ -1081,6 +1085,8 @@ pub fn report(
             s.initial
         }),
         taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio),
+        shunts_locked: ac && !settings.switch_shunts,
+        taps_locked: ac && !settings.adjust_transformer_taps,
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,
@@ -1088,9 +1094,9 @@ pub fn report(
         total_load_mw,
         total_losses_mw,
         limits,
-        buses,
-        generators,
-        branches,
+        buses: buses.into(),
+        generators: generators.into(),
+        branches: branches.into(),
         dc_lines,
         dc_systems,
         vsc_grids: None,
@@ -1101,22 +1107,23 @@ pub fn report(
 // Sensitivities
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct InjectionColumn {
     pub column: usize,
     pub bus: u32,
     pub bus_name: String,
     /// "p" (active) or "q" (reactive).
+    #[schemars(extend("enum" = ["p", "q"]))]
     pub kind: &'static str,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct QuantityInfo {
     pub key: String,
     pub title: &'static str,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct SensitivitySummary {
     pub model: ModelChoice,
     pub status: &'static str,
@@ -1274,7 +1281,7 @@ pub fn sensitivity_summary(
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Response {
     /// Original row (state row or branch index), for stable "input order" sorting.
     pub index: usize,
@@ -1285,7 +1292,7 @@ pub struct Response {
     pub offline: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct ResponseTable {
     pub units: String,
     pub title: &'static str,

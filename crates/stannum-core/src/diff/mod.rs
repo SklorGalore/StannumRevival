@@ -14,13 +14,13 @@ pub use parser::{DiffCase, RawParseError, parse_bytes, parse_path};
 
 use serde::Serialize;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct CaseInfo {
     pub name: String,
     pub revision: i64,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct StatusCounts {
     pub added: usize,
     pub removed: usize,
@@ -28,15 +28,16 @@ pub struct StatusCounts {
     pub unchanged: usize,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct SectionSummary {
     pub name: String,
     pub counts: StatusCounts,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct DiagnosticRow {
     /// "baseline" or "comparison".
+    #[schemars(extend("enum" = ["baseline", "comparison"]))]
     pub side: String,
     pub file: String,
     pub section: String,
@@ -45,7 +46,7 @@ pub struct DiagnosticRow {
     pub raw_lines: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct DiffSummary {
     pub baseline: CaseInfo,
     pub comparison: CaseInfo,
@@ -56,7 +57,8 @@ pub struct DiffSummary {
     pub diagnostics: Vec<DiagnosticRow>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
+#[schemars(rename = "DiffRecordRow")]
 pub struct RecordRow {
     /// Position within the section, used to request details.
     pub index: usize,
@@ -67,7 +69,7 @@ pub struct RecordRow {
     pub element: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct FieldRow {
     pub name: String,
     /// `None` means the field is absent on that side.
@@ -76,7 +78,8 @@ pub struct FieldRow {
     pub status: Status,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
+#[schemars(rename = "DiffRecordDetail")]
 pub struct RecordDetail {
     pub section: String,
     pub key: String,
@@ -139,6 +142,24 @@ pub fn record_element(
             field("IPI")?,
             &id(0),
         )),
+        "VSC DC LINE" => {
+            // Both converters are IBUS lines of the one record.
+            let record = record?;
+            let buses: Vec<u32> = record
+                .fields
+                .iter()
+                .filter(|(n, _)| n == "IBUS")
+                .filter_map(|(_, v)| number(v))
+                .collect();
+            match buses.as_slice() {
+                [a, b, ..] => Some(crate::elements::dc_line(*a, *b, &id(0))),
+                _ => None,
+            }
+        }
+        "FIXED SHUNT" => Some(crate::elements::shunt(int(0)?, &id(1))),
+        "SWITCHED SHUNT" => Some(crate::elements::switched_shunt(int(0)?, &id(1))),
+        "INDUCTION MACHINE" => Some(crate::elements::machine(int(0)?, &id(1))),
+        "FACTS DEVICE" => Some(crate::elements::facts(&id(0))),
         _ => None,
     }
 }

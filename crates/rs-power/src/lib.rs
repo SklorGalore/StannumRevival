@@ -24,8 +24,8 @@ pub use mtdc::{
 pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
-    BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawWarning,
-    load_raw, load_raw_with_options, parse_raw, parse_raw_with_options,
+    BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawSubstation,
+    RawWarning, load_raw, load_raw_with_options, parse_raw, parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,
@@ -35,7 +35,7 @@ pub use sensitivity::{
     make_ptdf_transfers, make_ptdf_with_slack_matrix,
 };
 pub use solver::{
-    DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
+    AcMethod, DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,
 };
 pub use vsc::{VscAcControl, VscConverter, VscDcControl, VscLine, VscSolution};
 pub use vsc_grid::{

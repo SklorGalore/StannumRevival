@@ -27,6 +27,7 @@ export const studySchema = z.object({
     fingerprint,
   }),
   dcGrids: z.object({ path: z.string(), relative: z.string().nullable() }).nullable(),
+  coordinates: z.object({ path: z.string(), relative: z.string().nullable() }).nullable().optional(),
   solveSettings: z.looseObject({ model: z.enum(["ac", "dc"]) }),
   edits: z.array(entry),
   solves: z.array(

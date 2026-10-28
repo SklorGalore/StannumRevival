@@ -14,6 +14,8 @@ use faer::{
 };
 use num_complex::Complex64 as C;
 
+mod decoupled;
+
 /// Power-flow formulation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Model {
@@ -40,11 +42,61 @@ pub enum Initialization {
     Solution,
 }
 
+/// How each AC solve pass finds the voltages. Every method stops at the
+/// same mismatch tolerance, checked on the full AC equations, so they
+/// reach the same answer; they differ in speed and in how hard a case they
+/// can solve.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AcMethod {
+    /// Full Newton–Raphson: builds and factors the whole Jacobian at every
+    /// iteration. The most robust method, and the fewest iterations.
+    #[default]
+    Newton,
+    /// Fixed-slope decoupled Newton: the active power–angle and reactive
+    /// power–magnitude blocks of the Jacobian at the start of the pass,
+    /// factored once and reused, with the two halves solved in turn. The
+    /// blocks are taken again when an iteration stops reducing the
+    /// mismatch. Iterations are cheap and take the exact network,
+    /// remote regulation and DC converter terms at the starting point.
+    FixedSlope,
+    /// Fast decoupled load flow, XB version (Stott and Alsac 1974; van
+    /// Amerongen 1989): constant matrices from the network alone, with
+    /// series resistance left out of the angle matrix.
+    FastDecoupledXb,
+    /// Fast decoupled load flow, BX version: series resistance left out of
+    /// the magnitude matrix instead, which can suit networks with high R/X
+    /// ratios better.
+    FastDecoupledBx,
+    /// Start each pass with fixed-slope decoupled iterations, which are
+    /// cheap, and finish with full Newton when they stop converging
+    /// quickly or fail.
+    Auto,
+}
+
+impl AcMethod {
+    /// Name for messages, such as "fast decoupled (XB)".
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Newton => "Newton",
+            Self::FixedSlope => "fixed-slope decoupled Newton",
+            Self::FastDecoupledXb => "fast decoupled (XB)",
+            Self::FastDecoupledBx => "fast decoupled (BX)",
+            Self::Auto => "automatic",
+        }
+    }
+}
+
 /// Solver settings; defaults to AC with a 1e-8 p.u. tolerance and 10 Newton steps.
 #[derive(Clone, Debug)]
 pub struct PowerFlowOptions {
     /// Formulation; defaults to [`Model::Ac`].
     pub model: Model,
+    /// AC solution method; defaults to [`AcMethod::Newton`]. Ignored for DC.
+    pub method: AcMethod,
+    /// Iterations per pass for the decoupled methods, each one an angle
+    /// half-step and a magnitude half-step. They need more iterations than
+    /// Newton, but each is much cheaper. Defaults to 30.
+    pub decoupled_iterations: usize,
     /// AC starting voltages; defaults to [`Initialization::Case`]. Ignored for DC.
     pub initialization: Initialization,
     /// Infinity norm of the constrained power mismatch, in per unit.
@@ -64,6 +116,13 @@ pub struct PowerFlowOptions {
     /// Newton solves (AC only); empty by default. Continuous shunts keep to
     /// their susceptance range even when `enforce_q_limits` is false.
     pub voltage_controls: VoltageControls,
+    /// Keep every switched shunt in `voltage_controls` at its starting
+    /// susceptance instead of switching it; the result still lists them.
+    /// Defaults to false.
+    pub lock_switched_shunts: bool,
+    /// Keep every tap control in `voltage_controls` at its starting ratio
+    /// instead of moving it; the result still lists them. Defaults to false.
+    pub lock_taps: bool,
     /// Set this flag from another thread to stop the solve: it returns
     /// [`Error::Cancelled`] before its next Newton step. None by default.
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -105,6 +164,8 @@ impl Default for PowerFlowOptions {
     fn default() -> Self {
         Self {
             model: Model::Ac,
+            method: AcMethod::Newton,
+            decoupled_iterations: 30,
             initialization: Initialization::Case,
             tolerance: 1e-8,
             max_iterations: 10,
@@ -112,6 +173,8 @@ impl Default for PowerFlowOptions {
             q_limit_tolerance: 5e-6,
             dc_model: DcModel::Simplified,
             voltage_controls: VoltageControls::default(),
+            lock_switched_shunts: false,
+            lock_taps: false,
             cancel: None,
         }
     }
@@ -147,8 +210,15 @@ pub struct PowerFlowResult {
     pub branch_flows: Vec<[f64; 4]>,
     /// Outcome to check even when [`solve`] returns `Ok`.
     pub status: SolveStatus,
-    /// Total Newton steps across all reactive-limit passes (one for DC).
+    /// Total iterations across all passes (one for DC), counting both
+    /// Newton steps and decoupled iterations.
     pub iterations: usize,
+    /// How many of `iterations` were decoupled iterations (fixed-slope or
+    /// fast decoupled); the rest were full Newton steps.
+    pub decoupled_iterations: usize,
+    /// Passes in which [`AcMethod::Auto`] switched from decoupled
+    /// iterations to full Newton.
+    pub newton_fallbacks: usize,
     /// Infinity norm of the final constrained mismatch in per unit.
     /// This does not measure reactive-limit feasibility.
     pub residual: f64,
@@ -471,9 +541,20 @@ pub(crate) fn layout_jacobian(
     v: &[C],
     layout: &Layout,
 ) -> Vec<Triplet<usize, usize, f64>> {
+    admittance_jacobian(&net.y, &net.current_loads, v, layout)
+}
+
+/// [`layout_jacobian`] for the bus admittance rows `y` and constant-current
+/// loads `current_loads`.
+fn admittance_jacobian(
+    y: &[std::collections::BTreeMap<usize, C>],
+    current_loads: &[C],
+    v: &[C],
+    layout: &Layout,
+) -> Vec<Triplet<usize, usize, f64>> {
     let at = layout.indices(v.len());
     let mut entries = Vec::new();
-    for (i, row) in net.y.iter().enumerate() {
+    for (i, row) in y.iter().enumerate() {
         let current: C = row.iter().map(|(&j, &y)| y * v[j]).sum();
         for (&j, &y) in row {
             let mut da = -C::i() * v[i] * (y * v[j]).conj();
@@ -482,7 +563,7 @@ pub(crate) fn layout_jacobian(
                 da += C::i() * v[i] * current.conj();
                 dm += v[i] / v[i].norm() * current.conj();
                 // Constant-current load draws current_loads·|V|.
-                dm += net.current_loads[i];
+                dm += current_loads[i];
             }
             if let Some(r) = at.angle[i] {
                 if let Some(c) = at.angle[j] {
@@ -842,7 +923,59 @@ fn dc_jacobian(
     Ok(entries)
 }
 
-fn newton(
+/// Iteration counts gathered across the passes of one AC solve.
+#[derive(Default)]
+struct MethodStats {
+    decoupled_iterations: usize,
+    newton_fallbacks: usize,
+}
+
+/// Power injections at voltages `v`, with the detailed DC lines updated to
+/// them, and the constrained mismatch and its infinity norm.
+fn evaluate(
+    net: &Network,
+    case: &Case,
+    layout: &Layout,
+    base: &[C],
+    v: &[C],
+    terminals: &mut [DcTerminal<'_>],
+) -> Result<(Vec<f64>, f64), Error> {
+    let s = if terminals.is_empty() {
+        base.to_vec()
+    } else {
+        let dc = dc_injections(terminals, v, case.base_mva)?;
+        base.iter().zip(dc).map(|(a, b)| a + b).collect()
+    };
+    mismatch(net, v, &s, layout)
+}
+
+/// "largest P mismatch … MW at bus …, largest Q mismatch … Mvar at bus …".
+fn mismatch_text(net: &Network, case: &Case, layout: &Layout, f: &[f64]) -> String {
+    let bus_id = |i: usize| case.buses[net.external[i]].id;
+    let na = layout.angles.len();
+    let (p, at_p) = largest(&f[..na], &layout.angles);
+    let (q, at_q) = largest(&f[na..na + layout.q_rows.len()], &layout.q_rows);
+    let mut text = String::new();
+    if let Some(i) = at_p {
+        text += &format!(
+            "largest P mismatch {} MW at bus {}",
+            amount(p * case.base_mva),
+            bus_id(i)
+        );
+    }
+    if let Some(i) = at_q {
+        text += &format!(
+            ", largest Q mismatch {} Mvar at bus {}",
+            amount(q * case.base_mva),
+            bus_id(i)
+        );
+    }
+    text
+}
+
+/// One AC solve pass with the method `opt.method` asks for.
+#[allow(clippy::too_many_arguments)]
+fn ac_pass(
     net: &Network,
     case: &Case,
     kinds: &[BusType],
@@ -850,6 +983,7 @@ fn newton(
     terminals: &mut [DcTerminal<'_>],
     opt: &PowerFlowOptions,
     tolerance: f64,
+    stats: &mut MethodStats,
 ) -> Result<(SolveStatus, usize, f64), Error> {
     let layout = if opt.enforce_q_limits {
         Layout::new(net, case, kinds)
@@ -860,6 +994,105 @@ fn newton(
         v[i] = C::from_polar(vm, v[i].arg());
     }
     let base = net.injections(case);
+    let pass = Pass {
+        net,
+        case,
+        layout: &layout,
+        base: &base,
+        opt,
+        tolerance,
+    };
+    let matrices = match opt.method {
+        AcMethod::Newton => return newton(&pass, v, terminals),
+        AcMethod::FixedSlope => decoupled::Matrices::FixedSlope,
+        AcMethod::FastDecoupledXb => decoupled::Matrices::Xb,
+        AcMethod::FastDecoupledBx => decoupled::Matrices::Bx,
+        AcMethod::Auto => {
+            let start = v.to_vec();
+            let (it, residual) = match decoupled::solve(
+                &pass,
+                v,
+                terminals,
+                decoupled::Matrices::FixedSlope,
+                true,
+            ) {
+                Ok(decoupled::Outcome::Finished(status, it, residual)) => {
+                    stats.decoupled_iterations += it;
+                    return Ok((status, it, residual));
+                }
+                Ok(decoupled::Outcome::GaveUp(it, residual)) => {
+                    log::info!(
+                        "Decoupled iterations slowed down at a mismatch of {} MVA after {}; finishing with Newton",
+                        mva(residual * case.base_mva),
+                        count(it, "iteration", "iterations")
+                    );
+                    (it, residual)
+                }
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(e) => {
+                    log::info!("Decoupled iterations failed ({e}); solving this pass with Newton");
+                    v.copy_from_slice(&start);
+                    (0, f64::NAN)
+                }
+            };
+            let _ = residual;
+            stats.decoupled_iterations += it;
+            stats.newton_fallbacks += 1;
+            let (status, more, residual) = newton(&pass, v, terminals)?;
+            return Ok((status, it + more, residual));
+        }
+    };
+    match decoupled::solve(&pass, v, terminals, matrices, false)? {
+        decoupled::Outcome::Finished(status, it, residual) => {
+            stats.decoupled_iterations += it;
+            Ok((status, it, residual))
+        }
+        decoupled::Outcome::GaveUp(..) => unreachable!("only watched solves give up"),
+    }
+}
+
+/// The fixed parts of one AC pass, shared by the solution methods.
+struct Pass<'a> {
+    net: &'a Network,
+    case: &'a Case,
+    layout: &'a Layout,
+    /// Generator and load injections apart from the detailed DC lines.
+    base: &'a [C],
+    opt: &'a PowerFlowOptions,
+    tolerance: f64,
+}
+
+impl Pass<'_> {
+    fn evaluate(
+        &self,
+        v: &[C],
+        terminals: &mut [DcTerminal<'_>],
+    ) -> Result<(Vec<f64>, f64), Error> {
+        evaluate(self.net, self.case, self.layout, self.base, v, terminals)
+    }
+
+    fn mismatch_text(&self, f: &[f64]) -> String {
+        mismatch_text(self.net, self.case, self.layout, f)
+    }
+
+    fn bus_id(&self, i: usize) -> u32 {
+        self.case.buses[self.net.external[i]].id
+    }
+}
+
+fn newton(
+    pass: &Pass<'_>,
+    v: &mut [C],
+    terminals: &mut [DcTerminal<'_>],
+) -> Result<(SolveStatus, usize, f64), Error> {
+    let Pass {
+        net,
+        case,
+        layout,
+        opt,
+        tolerance,
+        ..
+    } = *pass;
     log::debug!(
         "starting Newton solve ({} angle variables, {} magnitude variables, {} remotely held buses, {} detailed DC lines)",
         layout.angles.len(),
@@ -872,41 +1105,11 @@ fn newton(
             log::info!("solve cancelled before Newton iteration {iteration}");
             return Err(Error::Cancelled);
         }
-        let s = if terminals.is_empty() {
-            base.clone()
-        } else {
-            let dc = dc_injections(terminals, v, case.base_mva)?;
-            base.iter().zip(dc).map(|(a, b)| a + b).collect()
-        };
-        let (f, residual) = mismatch(net, v, &s, &layout)?;
-        let bus_id = |i: usize| case.buses[net.external[i]].id;
-        let mismatch_text = || {
-            let (p, at_p) = largest(&f[..layout.angles.len()], &layout.angles);
-            let (q, at_q) = largest(
-                &f[layout.angles.len()..layout.angles.len() + layout.q_rows.len()],
-                &layout.q_rows,
-            );
-            let mut text = String::new();
-            if let Some(i) = at_p {
-                text += &format!(
-                    "largest P mismatch {} MW at bus {}",
-                    amount(p * case.base_mva),
-                    bus_id(i)
-                );
-            }
-            if let Some(i) = at_q {
-                text += &format!(
-                    ", largest Q mismatch {} Mvar at bus {}",
-                    amount(q * case.base_mva),
-                    bus_id(i)
-                );
-            }
-            text
-        };
+        let (f, residual) = pass.evaluate(v, terminals)?;
         if residual < tolerance {
             log::info!(
                 "Newton iteration {iteration}: {}; converged (largest mismatch {:.2e} pu, tolerance {tolerance:.0e})",
-                mismatch_text(),
+                pass.mismatch_text(&f),
                 residual
             );
             return Ok((SolveStatus::Converged, iteration, residual));
@@ -914,14 +1117,14 @@ fn newton(
         if iteration == opt.max_iterations {
             log::warn!(
                 "Newton iteration {iteration}: {}; stopped at the iteration limit with largest mismatch {residual:.2e} pu",
-                mismatch_text()
+                pass.mismatch_text(&f)
             );
             return Ok((SolveStatus::IterationLimit, iteration, residual));
         }
-        let mismatch_now = mismatch_text();
+        let mismatch_now = pass.mismatch_text(&f);
         debug_assert_eq!(f.len(), layout.len());
-        let mut j = layout_jacobian(net, v, &layout);
-        j.extend(dc_jacobian(terminals, v, &layout, case.base_mva)?);
+        let mut j = layout_jacobian(net, v, layout);
+        j.extend(dc_jacobian(terminals, v, layout, case.base_mva)?);
         let dx = linear(f.len(), &j, &f.iter().map(|x| -x).collect::<Vec<_>>())?;
         let mut va: Vec<_> = v.iter().map(|z| z.arg()).collect();
         let mut vm: Vec<_> = v.iter().map(|z| z.norm()).collect();
@@ -933,14 +1136,14 @@ fn newton(
             step += &format!(
                 "; correction: largest |dV| {} pu at bus {}",
                 amount((scale * dvm).abs()),
-                bus_id(i)
+                pass.bus_id(i)
             );
         }
         if let Some(i) = at_va {
             step += &format!(
                 ", largest |dθ| {}° at bus {}",
                 amount((scale * dva).abs().to_degrees()),
-                bus_id(i)
+                pass.bus_id(i)
             );
         }
         if scale < 1.0 {
@@ -953,16 +1156,23 @@ fn newton(
         for (k, &i) in layout.magnitudes.iter().enumerate() {
             vm[i] += scale * dx[k + layout.angles.len()];
         }
-        for i in 0..v.len() {
-            if !vm[i].is_finite() || vm[i] <= 0.0 || !va[i].is_finite() {
-                return Err(Error::Numerical(
-                    "Newton step produced a non-positive or non-finite voltage magnitude".into(),
-                ));
-            }
-            v[i] = C::from_polar(vm[i], va[i]);
-        }
+        set_voltages(v, &vm, &va)?;
     }
     unreachable!()
+}
+
+/// Write magnitudes `vm` and angles `va` into `v`, refusing a non-positive
+/// or non-finite magnitude or angle.
+fn set_voltages(v: &mut [C], vm: &[f64], va: &[f64]) -> Result<(), Error> {
+    for i in 0..v.len() {
+        if !vm[i].is_finite() || vm[i] <= 0.0 || !va[i].is_finite() {
+            return Err(Error::Numerical(
+                "solver step produced a non-positive or non-finite voltage magnitude".into(),
+            ));
+        }
+        v[i] = C::from_polar(vm[i], va[i]);
+    }
+    Ok(())
 }
 
 /// A number for the log: three decimals, or scientific notation when that
@@ -1193,6 +1403,8 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         branch_flows: flows,
         status: SolveStatus::Converged,
         iterations: 1,
+        decoupled_iterations: 0,
+        newton_fallbacks: 0,
         residual,
         q_limit_passes: 0,
         lcc: Vec::new(),
@@ -1382,6 +1594,7 @@ fn solve_core(
         }
     }
     let mut restores = vec![0; remote.len()];
+    let mut stats = MethodStats::default();
     let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
     let mut control_passes = 0;
     let mut round = 0;
@@ -1446,15 +1659,24 @@ fn solve_core(
             opt.tolerance
         };
         log::info!(
-            "Pass {round}: Newton solve to {tolerance:.0e} pu, {reason}{}",
+            "Pass {round}: {} solve to {tolerance:.0e} pu, {reason}{}",
+            opt.method.label(),
             if loose && limits {
                 " (loose while reactive limits may still switch)"
             } else {
                 ""
             }
         );
-        let (status, it, residual) =
-            newton(&net, &case, &kinds, &mut v, &mut terminals, opt, tolerance)?;
+        let (status, it, residual) = ac_pass(
+            &net,
+            &case,
+            &kinds,
+            &mut v,
+            &mut terminals,
+            opt,
+            tolerance,
+            &mut stats,
+        )?;
         iterations += it;
         if status != SolveStatus::Converged
             && let Some((earlier, saved_case, saved_v, saved_terminals)) = checkpoint.take()
@@ -1647,7 +1869,7 @@ fn solve_core(
                     &terminals,
                     vsc_terminals,
                 )
-                .map(|r| with_controls(r, &controller, opt, control_passes));
+                .map(|r| with_controls(r, &controller, opt, control_passes, &stats));
             }
         }
         if loose && violations.iter().any(|v| kinds[v.0] == BusType::Reference) {
@@ -1731,8 +1953,16 @@ fn solve_core(
                 continue;
             }
             case.generators[g].qg = limit;
-            if remote.binary_search(&i).is_ok() {
+            if let Ok(k) = remote.binary_search(&i) {
                 released[i] = Some(upper);
+                // While the bus held a remote bus, its own voltage was free,
+                // and a solve asking a small unit for far more than it has
+                // can leave it anywhere (on the 80,000-bus synthetic case, a
+                // 10 Mvar unit asked for 150 Mvar sat at 0.15 pu, nearly in
+                // antiphase). Newton from there finds the collapsed root of
+                // the now fixed injection, so the bus restarts from the
+                // voltage of the bus it held.
+                v[i] = v[held[k]];
             }
         }
         for k in restored {
@@ -1784,18 +2014,22 @@ fn solve_core(
         &terminals,
         vsc_terminals,
     )
-    .map(|r| with_controls(r, &controller, opt, control_passes))
+    .map(|r| with_controls(r, &controller, opt, control_passes, &stats))
 }
 
-/// Record the switched shunts' and taps' final settings on a result.
+/// Record the switched shunts' and taps' final settings, and the
+/// iteration counts by method, on a result.
 fn with_controls(
     mut result: PowerFlowResult,
     controller: &Controller<'_>,
     opt: &PowerFlowOptions,
     passes: usize,
+    stats: &MethodStats,
 ) -> PowerFlowResult {
     (result.switched_shunts, result.tap_ratios) = controller.values(Some(&opt.voltage_controls));
     result.voltage_control_passes = passes;
+    result.decoupled_iterations = stats.decoupled_iterations;
+    result.newton_fallbacks = stats.newton_fallbacks;
     result
 }
 
@@ -1863,6 +2097,8 @@ fn finish_ac(
         branch_flows: flows,
         status,
         iterations,
+        decoupled_iterations: 0,
+        newton_fallbacks: 0,
         residual,
         q_limit_passes: passes,
         lcc: terminals
@@ -2098,7 +2334,7 @@ fn write_mtdc_rows(
 pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Error> {
     let started = std::time::Instant::now();
     log::info!(
-        "Starting {} power flow: {} buses, {} generators, {} branches; {} start, mismatch tolerance {} MVA ({:.0e} pu), up to {} Newton iterations per pass, generator Q limits {}",
+        "Starting {} power flow: {} buses, {} generators, {} branches; {} start, mismatch tolerance {} MVA ({:.0e} pu), {}, generator Q limits {}",
         if opt.model == Model::Dc { "DC" } else { "AC" },
         input.buses.len(),
         input.generators.len(),
@@ -2110,7 +2346,18 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         },
         mva(opt.tolerance * input.base_mva),
         opt.tolerance,
-        opt.max_iterations,
+        match opt.method {
+            AcMethod::Newton => format!("Newton, up to {} iterations per pass", opt.max_iterations),
+            AcMethod::Auto => format!(
+                "automatic method, up to {} decoupled then {} Newton iterations per pass",
+                opt.decoupled_iterations, opt.max_iterations
+            ),
+            m => format!(
+                "{}, up to {} iterations per pass",
+                m.label(),
+                opt.decoupled_iterations
+            ),
+        },
         if opt.enforce_q_limits {
             "enforced"
         } else {
@@ -2245,7 +2492,11 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         })
         .collect();
     let setup = if opt.model == Model::Ac {
-        controls::setup(&mut working, &opt.voltage_controls)?
+        controls::setup(
+            &mut working,
+            &opt.voltage_controls,
+            [opt.lock_switched_shunts, opt.lock_taps],
+        )?
     } else {
         Setup::none(&working)
     };
@@ -2342,14 +2593,30 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         }
     }
     log::info!(
-        "Finished {} power flow: {}, {} Newton iterations in total{}, largest mismatch {} MVA ({:.2e} pu), {} ms",
+        "Finished {} power flow: {}, {} in total{}{}, largest mismatch {} MVA ({:.2e} pu), {} ms",
         if opt.model == Model::Dc { "DC" } else { "AC" },
         match result.status {
             SolveStatus::Converged => "converged",
             SolveStatus::IterationLimit => "iteration limit reached",
             SolveStatus::ReactiveLimitsInfeasible => "reactive limits infeasible",
         },
-        result.iterations,
+        match (result.iterations, result.decoupled_iterations) {
+            (n, 0) => count(n, "Newton iteration", "Newton iterations"),
+            (n, d) if d == n => count(n, "decoupled iteration", "decoupled iterations"),
+            (n, d) => format!(
+                "{} ({d} decoupled, {} Newton)",
+                count(n, "iteration", "iterations"),
+                n - d
+            ),
+        },
+        if result.newton_fallbacks > 0 {
+            format!(
+                ", finished with Newton in {}",
+                count(result.newton_fallbacks, "pass", "passes")
+            )
+        } else {
+            String::new()
+        },
         if passes.is_empty() {
             String::new()
         } else {

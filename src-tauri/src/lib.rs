@@ -1,4 +1,5 @@
 mod analysis;
+mod attach;
 mod splash;
 
 use base64::{engine::general_purpose, Engine as _};
@@ -83,12 +84,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(analysis::SharedWorkspace::default())
-        .manage(analysis::ContingencyRun::default())
-        .manage(analysis::SolveRun::default())
+        .manage(analysis::SharedSession::default())
         .manage(splash::Splash::default())
         .setup(|app| {
             analysis::stream_log(app.handle().clone());
+            // Scripts reach the window's own session (stannum.attach()).
+            let session = app.state::<analysis::SharedSession>().0.clone();
+            let attach = attach::start(app.handle(), session);
+            app.manage(std::sync::Mutex::new(attach));
             splash::start(app.handle());
             Ok(())
         })
@@ -113,42 +116,15 @@ pub fn run() {
             save_binary,
             splash::app_ready,
             show_snap_layouts,
-            analysis::open_case,
-            analysis::file_fingerprint,
-            analysis::study_relative_path,
-            analysis::study_locate_case,
-            analysis::close_case,
-            analysis::case_summary,
-            analysis::solve_power_flow,
-            analysis::set_study_edits,
-            analysis::load_dc_grids,
-            analysis::clear_dc_grids,
-            analysis::calculate_sensitivities,
-            analysis::sensitivity_responses,
-            analysis::export_matpower,
-            analysis::diagram_network,
-            analysis::element_detail,
-            analysis::case_records,
-            analysis::record_table,
-            analysis::apply_record_edits,
-            analysis::save_case_as,
-            analysis::topology_snapshot,
-            analysis::topology_set_merge,
-            analysis::topology_shortest_path,
-            analysis::diff_compare,
-            analysis::diff_compare_working,
-            analysis::diff_section_records,
-            analysis::diff_record_detail,
-            analysis::run_contingencies,
-            analysis::cancel_contingencies,
-            analysis::contingency_progress,
-            analysis::contingency_summary,
-            analysis::contingency_rows,
-            analysis::contingency_detail,
-            analysis::trip_and_compare,
-            analysis::cancel_solve,
-            analysis::log_entries,
+            analysis::stannum_command,
+            attach::attach_ui_reply,
+            attach::attach_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                attach::stop(app);
+            }
+        });
 }

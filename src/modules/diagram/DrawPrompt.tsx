@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Crosshair, TriangleAlert, Wand2 } from "lucide-react";
-import { useWorkspace } from "../../store/workspaceStore";
+import { useShownReport, useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SolveReport } from "../../lib/analysis/types";
 import { busElement, elementLabel } from "../../lib/elements";
@@ -36,7 +36,7 @@ export function worstFinding(report: SolveReport | null): { element: string; wha
 export function DrawPrompt() {
   const summary = useWorkspace((s) => s.caseSummary);
   const selection = useWorkspace((s) => s.selection);
-  const report = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
   const drawAround = useWorkspace((s) => s.drawAround);
   const empty = useDiagramStore((s) => s.nodes.length === 0);
   const [other, setOther] = useState(false);

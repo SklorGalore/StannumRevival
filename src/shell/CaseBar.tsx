@@ -4,6 +4,8 @@ import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
 import { Button } from "../ui/primitives";
 import { count } from "../lib/analysis/format";
 import { SelectionChip } from "./SelectionChip";
+import { ResultChip } from "./ResultChip";
+import { ScriptChip } from "./ScriptChip";
 import { useWidth } from "../ui/useWidth";
 import { WindowControls, dragRegion } from "./WindowControls";
 import { StudyFileButton } from "./StudyFileControls";
@@ -28,6 +30,7 @@ export function CaseBar() {
 
   const counts = summary?.power.info?.counts;
   const topo = summary?.topology.info;
+  const revision = summary?.power.info?.revision ?? (topo && !topo.derived ? topo.revision : null);
 
   // In a narrow window the buttons drop their labels and the selection's
   // "Show in" links fold into a menu, rather than running into each other.
@@ -42,7 +45,7 @@ export function CaseBar() {
             {summary.name}
           </span>
           <span className="min-w-0 text-[11px] text-slate-500 truncate">
-            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${topo && !topo.derived ? ` v${topo.revision}` : ""}`}
+            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${revision ? ` v${revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(
                 counts.branches
@@ -66,7 +69,9 @@ export function CaseBar() {
           <FlaskConical size={12} /> {edits} edit{edits === 1 ? "" : "s"}
         </button>
       )}
+      {summary && <ResultChip />}
       <SelectionChip />
+      <ScriptChip />
       {openError && (
         <span role="alert" className="text-[11px] text-red-700 truncate" title={openError}>
           {openError}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
-import { useWorkspace } from "../../store/workspaceStore";
-import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
+import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   DcLineKind,
   DcGridsSummary,
@@ -49,6 +49,7 @@ import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
 import { tolerancePu } from "../../lib/analysis/tolerance";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -425,6 +426,7 @@ function SolvePanel({
   onExport: (solved: boolean) => void;
 }) {
   const ac = settings.model === "ac";
+  const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
@@ -454,6 +456,22 @@ function SolvePanel({
           ))}
         </div>
       </Field>
+      <Field label="AC method">
+        <select
+          className={inputClass}
+          value={settings.method}
+          disabled={!ac}
+          data-testid="ac-method"
+          onChange={(e) => setSettings({ ...settings, method: e.target.value as AcMethod })}
+          title={AC_METHODS.find((m) => m.value === (settings.method))?.about}
+        >
+          {AC_METHODS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Mismatch tolerance (MVA)">
         <input
           className={inputClass}
@@ -466,17 +484,35 @@ function SolvePanel({
           title={`${sig(tolerancePu(settings.tolerance_mva, baseMva))} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
-      <Field label="Newton iterations per pass">
-        <input
-          className={inputClass}
-          type="number"
-          min={0}
-          step={1}
-          value={settings.max_iterations}
-          disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
-        />
-      </Field>
+      {method !== "fixed_slope" && method !== "fast_decoupled_xb" && method !== "fast_decoupled_bx" && (
+        <Field label="Newton iterations per pass">
+          <input
+            className={inputClass}
+            type="number"
+            min={0}
+            step={1}
+            value={settings.max_iterations}
+            disabled={!ac}
+            onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
+          />
+        </Field>
+      )}
+      {method !== "newton" && (
+        <Field label="Decoupled iterations per pass">
+          <input
+            className={inputClass}
+            type="number"
+            min={0}
+            step={1}
+            value={settings.decoupled_iterations}
+            disabled={!ac}
+            data-testid="decoupled-iterations"
+            onChange={(e) =>
+              setSettings({ ...settings, decoupled_iterations: Math.max(0, Math.round(Number(e.target.value))) })
+            }
+          />
+        </Field>
+      )}
       <label
         className="flex items-center gap-2 text-xs text-slate-700"
         title="Without it, each solve starts where the last one ended (the case voltages for the first solve)."
@@ -498,23 +534,31 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
-      <label className="flex items-center gap-2 text-xs text-slate-700">
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Switched shunts", "susceptance")}
+      >
         <input
           type="checkbox"
           checked={settings.switch_shunts && ac}
           disabled={!ac}
+          data-testid="switch-shunts"
           onChange={(e) => setSettings({ ...settings, switch_shunts: e.target.checked })}
         />
-        Switch shunts
+        Move switched shunts
       </label>
-      <label className="flex items-center gap-2 text-xs text-slate-700">
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Transformer taps", "ratio")}
+      >
         <input
           type="checkbox"
           checked={settings.adjust_transformer_taps && ac}
           disabled={!ac}
+          data-testid="adjust-taps"
           onChange={(e) => setSettings({ ...settings, adjust_transformer_taps: e.target.checked })}
         />
-        Adjust transformer taps
+        Move transformer taps
       </label>
       <Field label="DC line model">
         <select
@@ -629,13 +673,14 @@ function Overview({
         <Metric
           label="Status"
           value={report.status}
-          detail={`${report.model.toUpperCase()} solve`}
+          detail={`${report.model.toUpperCase()} solve${report.model === "ac" ? `, ${methodLabel(report.method)}` : ""}`}
           tone={report.converged ? "good" : "bad"}
         />
         <Metric
           label="Iterations"
           value={report.iterations}
           detail={
+            (iterationSplit(report) ? `${iterationSplit(report)}; ` : "") +
             `${report.q_limit_passes} Q-limit pass${report.q_limit_passes === 1 ? "" : "es"}` +
             (report.dc_tap_passes ? `, ${report.dc_tap_passes} DC tap pass${report.dc_tap_passes === 1 ? "" : "es"}` : "") +
             (report.vsc_limit_passes ? `, ${report.vsc_limit_passes} VSC limit pass${report.vsc_limit_passes === 1 ? "" : "es"}` : "")
@@ -644,11 +689,7 @@ function Overview({
         <Metric
           label="Voltage controls"
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
-          detail={
-            report.voltage_control_passes
-              ? `Moved, over ${report.voltage_control_passes} switching pass${report.voltage_control_passes === 1 ? "" : "es"}`
-              : "Moved from their starting values"
-          }
+          detail={controlsDetail(report)}
         />
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
@@ -861,6 +902,31 @@ function tabFor(element: string): Tab | null {
   return kind === "bus" || kind === "load" ? "buses" : kind === "generator" ? "generators" : kind === "line" || kind === "transformer" ? "branches" : kind === "dcline" ? "dc" : null;
 }
 
+/** Says which result the tables show when it isn't the latest solve. */
+function ShownResultNotice({ shown, onBack }: { shown: ShownResult; onBack: () => void }) {
+  return (
+    <div className="p-3 pb-0" data-testid="shown-result-notice">
+      <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <span className="min-w-0 flex-1">
+          {shown.error ? (
+            <>
+              Couldn't show {shown.label.toLowerCase()} ({elementLabel(shown.element)} out): {shown.error} These are the latest solve's results.
+            </>
+          ) : (
+            <>
+              Showing <strong>{shown.label}</strong>, the case with {elementLabel(shown.element)} out
+              {shown.report ? "" : " (solving…)"}. Every view shows this result until you go back.
+            </>
+          )}
+        </span>
+        <button type="button" className="shrink-0 font-medium text-amber-900 underline" onClick={onBack} data-testid="show-latest">
+          Back to the latest solve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PowerFlowModule({ active }: { active: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const caseVersion = useWorkspace((s) => s.caseVersion);
@@ -869,8 +935,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const settings = useStudy((s) => s.settings);
   const setSettings = useStudy((s) => s.setSettings);
   const [tab, setTab] = useState<Tab>("overview");
-  // Shared so the diagram can overlay the same results.
-  const report = useWorkspace((s) => s.solveReport);
+  // The latest solve, and the result every view shows (the latest solve, or
+  // the outage drawn on the diagram). The tables show the second.
+  const latest = useWorkspace((s) => s.solveReport);
+  const report = useShownReport();
+  const shown = useWorkspace((s) => s.shown);
+  const showLatest = useWorkspace((s) => s.showLatest);
   // Solve settings fold away in a narrow pane (side by side) unless asked for.
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
@@ -889,7 +959,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   );
   const setReport = useWorkspace((s) => s.setSolveReport);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<StannumError | null>(null);
   const [sensitivityVersion, setSensitivityVersion] = useState(0);
   const [sensitivity, setSensitivity] = useState<Awaited<ReturnType<typeof api.sensitivities>> | null>(null);
 
@@ -959,7 +1029,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       const value = await work();
       if (version === useWorkspace.getState().caseVersion) done(value);
     } catch (e) {
-      if (version === useWorkspace.getState().caseVersion) setError((e as Error).message);
+      if (version === useWorkspace.getState().caseVersion) setError(toStannumError(e));
     } finally {
       setBusy(null);
     }
@@ -997,7 +1067,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const studyRevision = useStudy((s) => s.revision);
   const studyCount = useStudy((s) => s.entries.length);
   const [solvedRevision, setSolvedRevision] = useState(studyRevision);
-  const stale = !!report && solvedRevision !== studyRevision;
+  const stale = !!latest && solvedRevision !== studyRevision;
   const lastStudyRevision = useRef(studyRevision);
   useEffect(() => {
     if (studyRevision === lastStudyRevision.current) return;
@@ -1006,9 +1076,19 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
-    if (report && power?.available) void solve();
+    // A script that changed the study solves when it wants to.
+    if (latest && power?.available && !useStudy.getState().fromScript) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyRevision]);
+  // A script's solve is the latest one, made with the study as it is now.
+  const adoptedSolves = useWorkspace((s) => s.adoptedSolves);
+  const lastAdopted = useRef(adoptedSolves);
+  useEffect(() => {
+    if (adoptedSolves === lastAdopted.current) return;
+    lastAdopted.current = adoptedSolves;
+    setSolvedRevision(useStudy.getState().revision);
+    setError(null);
+  }, [adoptedSolves]);
   const studyShowRequest = useStudy((s) => s.showRequest);
   const lastShowRequest = useRef(studyShowRequest);
   useEffect(() => {
@@ -1064,10 +1144,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
-      { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !report },
+      { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
       { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
     ],
-    [report, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
   );
 
   if (!summary) {
@@ -1107,7 +1187,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           onSolve={solve}
           onCancelSolve={() => void api.cancelSolve()}
           onSensitivities={sensitivities}
-          report={report}
+          report={latest}
           onExport={exportMatpower}
           onHide={() => setSettingsOpen(false)}
         />
@@ -1138,7 +1218,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {error && (
           <div className="p-3 pb-0">
-            {error.startsWith("Solve cancelled") ? <Notice>{error}</Notice> : <ErrorBanner>{error}</ErrorBanner>}
+            {error.kind === "cancelled" ? <Notice>{error.message}</Notice> : <ErrorBanner>{error.message}</ErrorBanner>}
           </div>
         )}
         {stale && (
@@ -1146,6 +1226,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <Notice>These results are from before your latest study edits. Solve again to update them.</Notice>
           </div>
         )}
+        {shown && <ShownResultNotice shown={shown} onBack={showLatest} />}
         {!report && !sensitivity && tab !== "warnings" && tab !== "study" && tab !== "vsc" ? (
           <EmptyState icon={<Play size={20} />} title="Ready to solve">
             {count(power.info!.counts.buses)} buses, {count(power.info!.counts.generators)} generators and{" "}
@@ -1296,13 +1377,13 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "contingencies" && (
                 <ContingencyTab
-                  report={report}
+                  report={latest}
                   settings={settings}
                   scope={contingencyScope}
                   onPick={pick}
                 />
               )}
-              {tab === "study" && <StudyPanel onShow={pick} report={report} stale={stale} />}
+              {tab === "study" && <StudyPanel onShow={pick} report={latest} stale={stale} />}
               {tab === "warnings" && (
                 <WarningsTab
                   warnings={warnings}

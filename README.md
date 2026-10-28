@@ -200,7 +200,8 @@ npm test               # frontend unit tests (Vitest), e.g. the wire router
 ### Browser smoke test
 
 `tests/browser/smoke.mjs` drives the real UI in Chromium against the real Rust
-core. `dev_bridge` serves the same commands as the desktop app over local HTTP,
+core. `dev_bridge` serves the core's command list (the same one the desktop app
+uses) over local HTTP at `POST /invoke/<command>`,
 and the test swaps Tauri's IPC for a shim that calls it:
 
 ```sh
@@ -227,12 +228,15 @@ Branching, pull request rules and the repository's security settings are in
 crates/rs-power/          AC/DC power flow, sensitivities, MATPOWER and RAW loading
 crates/nodal/             RAW v35 parser and topology (islands, bridges, paths)
 crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topology, case diff
+  src/commands.rs         Every command the app, the dev bridge and scripts use, listed once
   src/workspace.rs        The shared open case; parses once per engine
+  src/run_file.rs         Run files (.stnrun): commands one per line, read and written
   src/power.rs            rs-power solve/sensitivity results shaped for the UI
   src/diff/               case-diff port: tokenizer, exact values, parser, comparison
   schemas/raw.schema.json RAW field layouts (shared with nodal and case-diff)
   tests/                  Integration tests and fixtures
-src-tauri/                Desktop shell; src/analysis.rs exposes the core as commands
+crates/stannum-cli/       stannum-cli: runs and checks run files without the app
+src-tauri/                Desktop shell; src/analysis.rs passes commands to the core's list
 src/
   shell/                  Module rail, case bar, drag-and-drop
   modules/                diagram/, power/, diff/ (topology/ holds the shared graph and field code)

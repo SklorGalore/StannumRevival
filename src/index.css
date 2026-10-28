@@ -399,3 +399,34 @@
 :root.dark svg [fill="white"] {
   fill: var(--color-white);
 }
+
+/* The map's hover tip, in the shell's colours (light and dark). */
+.stannum-map-tip .maplibregl-popup-content {
+  background: var(--color-white);
+  color: var(--color-slate-700);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+}
+.stannum-map-tip .maplibregl-popup-content .font-medium {
+  color: var(--color-slate-900);
+}
+.stannum-map-tip.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.stannum-map-tip.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.stannum-map-tip.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--color-slate-200);
+}
+.stannum-map-tip.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.stannum-map-tip.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.stannum-map-tip.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--color-slate-200);
+}
+.stannum-map-tip.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--color-slate-200);
+}
+.stannum-map-tip.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--color-slate-200);
+}

@@ -18,6 +18,7 @@ import { DrawPrompt } from "./DrawPrompt";
 import { useDarkCanvas } from "../../lib/diagram/ink";
 import { useDrawingStyle } from "../../store/drawingStyleStore";
 import { NetworkCanvas, NetworkInspector, NetworkToolbar } from "./network/NetworkView";
+import { MapCanvas, MapInspector, MapToolbar } from "./map/MapView";
 import { inspectorClass } from "../../ui/ElementInspector";
 import { useWidth } from "../../ui/useWidth";
 import { useLayers } from "../../store/layerStore";
@@ -39,7 +40,7 @@ function useDrawingStyleSync() {
     useDrawingStyle.getState().reset();
   }, [caseVersion]);
   useEffect(() => {
-    if (!topology) useDrawingStyle.getState().setStyle("oneline");
+    if (!topology && useDrawingStyle.getState().style === "network") useDrawingStyle.getState().setStyle("oneline");
   }, [topology]);
   const hadShared = useRef(false);
   useEffect(() => {
@@ -137,13 +138,17 @@ function useRevealSelection() {
 
 function Inner({ active }: { active: boolean }) {
   const style = useDrawingStyle((s) => s.style);
-  const network = style === "network";
-  // The network is mounted the first time it is shown, then kept, so
-  // switching back and forth doesn't lay it out again.
+  const map = style === "map";
+  // Network and Map both replace the one-line's canvas, toolbar and inspector.
+  const network = style === "network" || map;
+  // The network and the map are mounted the first time they are shown, then
+  // kept, so switching back and forth doesn't lay them out again.
   const [networkShown, setNetworkShown] = useState(false);
+  const [mapShown, setMapShown] = useState(false);
   useEffect(() => {
-    if (network) setNetworkShown(true);
-  }, [network]);
+    if (style === "network") setNetworkShown(true);
+    if (map) setMapShown(true);
+  }, [style, map]);
   const styleBusy = useDrawingStyle((s) => s.busy);
   const styleError = useDrawingStyle((s) => s.error);
   useDrawingStyleSync();
@@ -163,8 +168,8 @@ function Inner({ active }: { active: boolean }) {
   const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
   const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
   const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
-  // Layers (topology findings, filters and colours) are drawn on both
-  // styles; the one-line needs them only when it is drawn from the case.
+  // Layers (topology findings, filters and colours) are drawn on every
+  // style; the one-line needs them only when it is drawn from the case.
   useLayerSync(active && (network || generated));
   const layersOpen = useLayers((s) => s.panel);
   const legends = useLayers((s) => s.legends);
@@ -184,7 +189,7 @@ function Inner({ active }: { active: boolean }) {
   const floating = rowWidth < 900;
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-      {network ? <NetworkToolbar /> : <Toolbar />}
+      {map ? <MapToolbar /> : network ? <NetworkToolbar /> : <Toolbar />}
       <div ref={rowRef} className="relative flex flex-1 min-h-0">
         {layersOpen && floating && <LayersPanel floating />}
         {layersOpen && !floating ? (
@@ -217,9 +222,14 @@ function Inner({ active }: { active: boolean }) {
           <DiagramCanvas />
           {!drawing.busy && !network && <DrawPrompt />}
           {missing && !drawing.busy && !blank && !network && <NotDrawn element={missing} />}
-          {(networkShown || network) && (
-            <div className={network ? "absolute inset-0 z-20" : "hidden"}>
-              <NetworkCanvas visible={active && network} />
+          {(networkShown || style === "network") && (
+            <div className={style === "network" ? "absolute inset-0 z-20" : "hidden"}>
+              <NetworkCanvas visible={active && style === "network"} />
+            </div>
+          )}
+          {(mapShown || map) && (
+            <div className={map ? "absolute inset-0 z-20" : "hidden"}>
+              <MapCanvas visible={active && map} />
             </div>
           )}
           {showLegend && <LayerLegend legends={legends} />}
@@ -254,7 +264,8 @@ function Inner({ active }: { active: boolean }) {
             </div>
           )}
         </main>
-        {network && <NetworkInspector floating={floating} />}
+        {style === "network" && <NetworkInspector floating={floating} />}
+        {map && <MapInspector floating={floating} />}
         {!network && (hasSelection || missing) && (
           <aside className={inspectorClass(floating)} data-testid="inspector">
             <PropertiesPanel missing={hasSelection ? null : missing} />

@@ -17,13 +17,14 @@ const CAPACITY: usize = 5000;
 const OURS: [&str; 3] = ["stannum_core", "rs_power", "nodal"];
 
 /// One log line.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Entry {
     /// Increases by one per line, so a reader can ask for what it hasn't seen.
     pub seq: u64,
     /// Milliseconds since the Unix epoch.
     pub time: u64,
     /// "error", "warn", "info" or "debug".
+    #[schemars(extend("enum" = ["error", "warn", "info", "debug"]))]
     pub level: &'static str,
     /// The part of the program that wrote it, such as "rs-power".
     pub source: String,
@@ -177,7 +178,7 @@ mod tests {
         let mut ws = crate::Workspace::default();
         ws.open(&case).unwrap();
         let settings: crate::power::SolveSettings = serde_json::from_value(serde_json::json!({
-            "model": "ac", "start": "case", "tolerance_mva": 1e-6, "max_iterations": 20,
+            "model": "ac", "method": "newton", "start": "case", "tolerance_mva": 1e-6, "max_iterations": 20,
             "enforce_q_limits": true, "dc_model": "detailed", "adjust_dc_taps": true,
             "switch_shunts": true, "adjust_transformer_taps": true
         }))

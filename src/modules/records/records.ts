@@ -1,7 +1,7 @@
 // Helpers for the Records module: filter fields from a table's columns, rule
 // matching on a record, and which table lists an element.
 import { distinctValues, matchesValue, ruleReady, type FieldDefinition, type FieldValue, type FilterRule } from "../../lib/filters";
-import { elementSection, parseElement } from "../../lib/elements";
+import { elementSections, elementTable } from "../../lib/elements";
 import type { CaseRecord, RecordBook, RecordColumnKind, RecordTable } from "../../lib/analysis/types";
 
 /** Columns with this many distinct values or fewer filter by picking a value. */
@@ -34,15 +34,12 @@ export function passes(record: CaseRecord, rules: FilterRule[]): boolean {
   return rules.every((rule) => !ruleReady(rule) || matchesValue(record.cells[Number(rule.field)] ?? null, rule));
 }
 
-/** Model tables, by element kind. */
-const MODEL_SECTION: Record<string, string> = { bus: "bus", generator: "gen", line: "branch", transformer: "branch", dcline: "dcline" };
-
 /** The table that lists an element, if the case has one. */
 export function sectionFor(book: RecordBook, element: string): string | null {
-  const kind = parseElement(element)?.kind;
-  if (!kind) return null;
-  const id = book.source === "raw" ? elementSection(element) : MODEL_SECTION[kind];
-  return id && book.sections.some((s) => s.id === id) ? id : null;
+  const ids = book.source === "raw" ? elementSections(element) : [elementTable(element)];
+  // A DC line may be two-terminal or VSC: prefer the section that has records.
+  const has = (id: string | null, filled: boolean) => !!id && book.sections.some((s) => s.id === id && (!filled || s.count > 0));
+  return ids.find((id) => has(id, true)) ?? ids.find((id) => has(id, false)) ?? null;
 }
 
 /** The records as plain objects keyed by column name, for CSV export. */

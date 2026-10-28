@@ -21,7 +21,7 @@ fn check(path: PathBuf) -> (usize, usize) {
     let ws = open(path);
     let case = ws.case.as_ref().unwrap();
     let power = case.power.as_ref().unwrap();
-    let topo = case.topology.as_ref().unwrap();
+    let topo = case.topology().as_ref().unwrap();
 
     let equipment: HashSet<&str> = topo.case.equipment.iter().map(|e| e.id.as_str()).collect();
     let generators: HashSet<&str> = topo.case.generators.iter().map(|g| g.id.as_str()).collect();
@@ -100,7 +100,7 @@ fn matpower_parallel_branches_are_numbered() {
 fn diff_records_match_nodal_ids() {
     let path = sample("MemphisCase2026_Mar7.RAW");
     let mut ws = open(path.clone());
-    let topo = &ws.case.as_ref().unwrap().topology.as_ref().unwrap().case;
+    let topo = &ws.case.as_ref().unwrap().topology().as_ref().unwrap().case;
     let mut known: HashSet<String> = topo
         .buses
         .iter()
@@ -275,4 +275,71 @@ fn solve_settings_switch_voltage_controls() {
     assert!(on.converged);
     assert!(on.voltage_control_passes > 0);
     assert!(on.shunts_switched + on.taps_moved > 0);
+    // Locked after that solve, they stay where it left them rather than
+    // going back to their case values.
+    let locked = solve(false, false);
+    assert!(locked.converged);
+    assert_eq!(locked.voltage_control_passes, 0);
+    assert_eq!(
+        (locked.shunts_switched, locked.taps_moved),
+        (on.shunts_switched, on.taps_moved)
+    );
+    let worst = on
+        .buses
+        .iter()
+        .zip(locked.buses.iter())
+        .map(|(a, b)| (a.vm - b.vm).abs())
+        .fold(0.0, f64::max);
+    assert!(worst < 1e-3, "{worst}");
+    // From a flat start they are locked at their case values.
+    let flat = ws
+        .current_mut()
+        .unwrap()
+        .solve(stannum_core::power::SolveSettings {
+            enforce_q_limits: true,
+            switch_shunts: false,
+            adjust_transformer_taps: false,
+            start: stannum_core::power::StartChoice::Flat,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(flat.converged);
+    assert_eq!((flat.shunts_switched, flat.taps_moved), (0, 0));
+}
+
+#[test]
+fn every_solve_method_reaches_the_same_solution() {
+    use stannum_core::power::{MethodChoice, SolveSettings, StartChoice};
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |method: MethodChoice| {
+        ws.current_mut()
+            .unwrap()
+            .solve(SolveSettings {
+                method,
+                start: StartChoice::Case,
+                tolerance_mva: 1e-4,
+                enforce_q_limits: true,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let newton = solve(MethodChoice::Newton);
+    assert!(newton.converged);
+    assert_eq!(newton.method, MethodChoice::Newton);
+    assert_eq!(newton.decoupled_iterations, 0);
+    for method in [
+        MethodChoice::FixedSlope,
+        MethodChoice::FastDecoupledXb,
+        MethodChoice::FastDecoupledBx,
+        MethodChoice::Auto,
+    ] {
+        let report = solve(method);
+        assert!(report.converged, "{method:?}");
+        assert_eq!(report.method, method);
+        assert!(report.decoupled_iterations > 0, "{method:?}");
+        assert!(
+            (report.total_losses_mw - newton.total_losses_mw).abs() < 1e-3,
+            "{method:?}"
+        );
+    }
 }

@@ -1,6 +1,7 @@
 name: Release
 
-# Builds installers for Windows, macOS (Apple silicon) and Linux.
+# Builds installers for Windows, macOS (Apple silicon) and Linux, and for
+# each of them the stannum Python wheel and the stannum-cli binary.
 #
 # Releases follow git flow: release/vX.Y.Z is cut from development (hotfix/vX.Y.Z
 # from main), merged into main, and the merge commit is tagged vX.Y.Z.
@@ -24,6 +25,8 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/release/**"
+      - "scripts/ci/test-python.ps1"
+      - "crates/stannum-py/pyproject.toml"
       - "src-tauri/tauri*.conf.json"
       - "src-tauri/icons/**"
   workflow_dispatch:
@@ -136,10 +139,62 @@ jobs:
           path: installers/*
           if-no-files-found: error
 
+  python:
+    name: Python wheel and CLI (${{ matrix.name }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            artifact: windows-x64
+            wheel_args: ""
+          - name: macOS arm64
+            os: macos-latest
+            artifact: macos-arm64
+            wheel_args: ""
+          # The wheel is linked against an old glibc with zig (manylinux2014);
+          # the CLI is built on the oldest supported Ubuntu, as the installers.
+          - name: Linux x64
+            os: ubuntu-22.04
+            artifact: linux-x64
+            wheel_args: -Manylinux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: release-python
+      # One abi3 wheel per platform (Python 3.10 and newer), tested in a
+      # fresh venv before it is kept.
+      - name: Build and test the wheel
+        shell: pwsh
+        run: ./scripts/ci/test-python.ps1 -Out wheels ${{ matrix.wheel_args }}
+      - name: Build and pack stannum-cli
+        shell: pwsh
+        run: ./scripts/release/build-cli.ps1 -OutDir cli -Platform ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-${{ matrix.artifact }}
+          path: wheels/*.whl
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-${{ matrix.artifact }}
+          path: cli/*
+          if-no-files-found: error
+
   publish:
     name: Draft GitHub release
     if: github.ref_type == 'tag'
-    needs: [check, build]
+    needs: [check, build, python]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -156,7 +211,7 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           $files = Get-ChildItem -Path out -Recurse -File |
-            Where-Object { $_.Directory.Name -like 'installers-*' } |
+            Where-Object { $_.Directory.Name -match '^(installers|python|cli)-' } |
             ForEach-Object FullName
           $pre = if ($env:VERSION -match '-') { '--prerelease' } else { $null }
           gh release create $env:TAG @files --draft --verify-tag $pre `

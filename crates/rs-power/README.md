@@ -388,6 +388,22 @@ limit is switched only after a full-tolerance solve, since it keeps the
 active power it has at that moment, as in MATPOWER. On the 80,000-bus
 synthetic cases this cuts Newton iterations by about 40%.
 
+`method` picks how each AC pass finds the voltages (`AcMethod`): full
+`Newton` (the default), `FixedSlope` decoupled Newton, the fast decoupled
+`FastDecoupledXb` and `FastDecoupledBx` (Stott and Alsac 1974; van Amerongen
+1989), or `Auto`, which starts each pass with fixed-slope iterations and
+finishes it with Newton when they slow down or fail. The decoupled methods
+factor two smaller matrices once per pass and reuse them, so an iteration
+costs far less than a Newton step; they have their own limit,
+`decoupled_iterations` (30). Every method stops at the same `tolerance`, so
+the answers agree to it. `result.decoupled_iterations` and
+`result.newton_fallbacks` say how a solve went. On the 70,000–82,000-bus
+synthetic cases the decoupled methods and `Auto` typically solve twice as
+fast as Newton (1.1 to 4 times, depending on case and settings).
+
+`lock_switched_shunts` and `lock_taps` keep the shunts and taps listed in
+`voltage_controls` at their starting values; the result still lists them.
+
 Always check `SolveStatus`. Reaching the iteration limit returns the final
 iterate, computed outputs and residual. Reactive-limit infeasibility is a
 separate status. Invalid inputs, unsupported topology, and numerical failures

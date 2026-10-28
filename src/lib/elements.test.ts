@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { elementBus, elementLabel, elementSection, parseElement } from "./elements";
+import { elementBus, elementLabel, elementSection, elementSections, parseElement } from "./elements";
 
 describe("shared element ids", () => {
   it("parses branches, three-winding transformers and machines", () => {
@@ -28,5 +28,16 @@ describe("shared element ids", () => {
     expect(elementLabel("load:5:1")).toBe("Load 1 at bus 5");
     expect(elementLabel("dcline:301:3021:DC 1")).toBe("DC line DC 1 (301–3021)");
     expect(elementSection("dcline:301:3021:1")).toBe("TWO-TERMINAL DC");
+  });
+
+  it("knows the kinds that have their own ids since the kinds table", () => {
+    expect(parseElement("switched-shunt:5:1")).toEqual({ kind: "switched-shunt", buses: [5], circuit: "1" });
+    expect(parseElement("facts:SVC:A")).toEqual({ kind: "facts", buses: [], circuit: "SVC:A" });
+    expect(elementLabel("shunt:4:1")).toBe("Fixed shunt 1 at bus 4");
+    expect(elementLabel("facts:STATCOM_3")).toBe("FACTS device STATCOM_3");
+    expect(elementBus("switched-shunt:5:1")).toBe(5);
+    expect(elementBus("facts:STATCOM_3")).toBeNull();
+    expect(elementSection("machine:2:1")).toBe("INDUCTION MACHINE");
+    expect(elementSections("dcline:1:2:V1")).toEqual(["TWO-TERMINAL DC", "VSC DC LINE"]);
   });
 });
