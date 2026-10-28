@@ -40,7 +40,8 @@ these that a case uses.
 - FACTS devices in modes 3 to 8 (constant series impedance or voltage,
   IPFC); the series element's voltage and current limits and reactance.
 - GNE devices, induction machines.
-- RAWX (the JSON form of RAW). RAW export writes revisions 33 and 35 only;
-  DC lines are left out of RAW files written from a MATPOWER case.
+- RAWX (the JSON form of RAW). RAW export writes revisions 33 and 35 only.
+  RAW files written from the power flow model (MATPOWER and older RAW
+  revisions) leave out multi-terminal DC and MATPOWER's DC line rows.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.
