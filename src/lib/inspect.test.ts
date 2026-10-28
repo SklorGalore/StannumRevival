@@ -7,7 +7,7 @@ const bus = (id: number, vm: number, extra: Partial<BusRow> = {}): BusRow => ({
   violation: vm > 1.05 ? vm - 1.05 : vm < 0.95 ? 0.95 - vm : 0, load_parts: null, ...extra,
 });
 const branch = (extra: Partial<BranchRow>): BranchRow => ({
-  index: 0, element: "line:1:2:1", circuit: "1", winding: 0, from: 1, to: 2, online: true, is_transformer: false,
+  index: 0, element: "line:1:2:1", circuit: "1", winding: 0, from: 1, to: 2, online: true, is_transformer: false, tap: 1, shift_deg: 0,
   pf: 120, qf: 20, pt: -118, qt: -15, loss_mw: 2, rate_a: 100, loading_pct: 121.7, ...extra,
 });
 const gen = (extra: Partial<GeneratorRow>): GeneratorRow => ({

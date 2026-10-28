@@ -296,6 +296,11 @@ fn answers_fit_their_schemas() {
         "export_matpower",
         json!({ "path": dir.join("five_bus.m"), "solved": true }),
     );
+    let exported = c.ok(
+        "export_raw",
+        json!({ "path": dir.join("five_bus_v33.raw"), "revision": 33 }),
+    );
+    assert_eq!(exported["source"], "records");
     c.ok("apply_record_edits", json!({ "edits": [] }));
     c.ok(
         "save_case_as",

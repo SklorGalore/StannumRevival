@@ -783,6 +783,12 @@ commands! {
     export_matpower { case: Option<CaseId>, path: PathBuf, solved: bool } -> () =>
         |s, a| s.workspace()?.case(a.case)?.export_matpower(&a.path, a.solved);
 
+    /// Write the case, with its Records and study edits, as a complete PSS/E
+    /// RAW file of revision 33 or 35. The answer lists anything the file
+    /// couldn't keep.
+    export_raw { case: Option<CaseId>, path: PathBuf, revision: u32 } -> crate::raw_export::RawExport =>
+        |s, a| s.workspace()?.case_mut(a.case)?.export_raw(&a.path, a.revision);
+
     /// The case as a drawable network, for one-line diagrams.
     diagram_network { case: Option<CaseId> } -> crate::diagram::CaseNetwork =>
         |s, a| s.workspace()?.case(a.case)?.diagram_network();

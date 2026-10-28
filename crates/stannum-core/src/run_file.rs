@@ -48,6 +48,7 @@ const ACTIONS: &[&str] = &[
     "set_study_edits",
     "calculate_sensitivities",
     "export_matpower",
+    "export_raw",
     "apply_record_edits",
     "save_case_as",
     "topology_set_merge",

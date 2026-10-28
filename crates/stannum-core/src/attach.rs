@@ -316,15 +316,23 @@ fn serve(shared: &Shared, stream: TcpStream) -> io::Result<()> {
         "app": t.app, "version": t.version, "api_version": t.api_version,
         "protocol": t.protocol, "pid": t.pid,
     }});
-    send(&mut out, &welcome.to_string())?;
-    let client = hello.hello.client.unwrap_or_else(|| "a script".into());
-    log::info!(target: "attach", "{client} attached.");
-
+    // Count the client before welcoming it, so that once the client hears
+    // back, the window already shows it.
     if let Ok(mut open) = shared.open.lock() {
         open.push(stream.try_clone()?);
     }
     let count = shared.clients.fetch_add(1, Ordering::SeqCst) + 1;
     shared.window.clients(count);
+    let client = hello.hello.client.unwrap_or_else(|| "a script".into());
+    log::info!(target: "attach", "{client} attached.");
+    if let Err(e) = send(&mut out, &welcome.to_string()) {
+        let count = shared.clients.fetch_sub(1, Ordering::SeqCst) - 1;
+        shared.window.clients(count);
+        if let Ok(mut open) = shared.open.lock() {
+            open.retain(|s| s.peer_addr().ok() != me);
+        }
+        return Err(e);
+    }
     let result = requests(shared, &mut reader, &mut out);
     let count = shared.clients.fetch_sub(1, Ordering::SeqCst) - 1;
     shared.window.clients(count);
@@ -481,6 +489,14 @@ mod tests {
 
         let (mut c, hello) = Client::connect(server.ticket(), &server.ticket().token);
         assert_eq!(hello["ok"]["api_version"], API_VERSION);
+        // The server counts the client just after sending the welcome, so
+        // give its thread a moment.
+        for _ in 0..50 {
+            if window.clients.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
         assert_eq!(window.clients.load(Ordering::SeqCst), 1);
 
         let opened = c.call(1, "open_case", json!({ "path": case9() }));

@@ -252,9 +252,14 @@ this repository only. Each crate has its own README with its API and checks.
 
 ## Licensing
 
-rs-power is BSD-3-Clause with MATPOWER attribution (see
-`crates/rs-power/NOTICE`). The
-`case9.m` test fixture is MATPOWER case data; see
+Stannum is BSD-3-Clause; see [LICENSE](LICENSE). [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+covers the work it includes or adapts: MATPOWER (in rs-power, see also
+`crates/rs-power/NOTICE`), the Eclipse Layout Kernel via elkjs (EPL-2.0),
+MapLibre GL JS and Natural Earth map data. [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt)
+has the licence of every Rust crate and npm package built into the app, written by
+`pwsh scripts/release/third-party-licenses.ps1`. All three ship with the
+installers, the Python wheels and the `stannum-cli` archives. MATPOWER test
+cases in the repository keep their own terms; see
 `crates/stannum-core/tests/fixtures/README.md`.
 
 ## Logo

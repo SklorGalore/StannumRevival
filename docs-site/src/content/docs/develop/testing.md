@@ -88,8 +88,9 @@ The full rules are in
 [CONTRIBUTING.md](https://github.com/SklorGalore/StannumRevival/blob/main/CONTRIBUTING.md).
 In short:
 
-1. Branch from the latest `main`; `main` is protected and only changes by
-   pull request.
+1. Branch from the latest `development` and open the pull request into
+   `development`. Both `development` and `main` are protected and only
+   change by pull request; `main` changes only when a release is merged.
 2. Fill in the pull request template: summary, **screenshots** for
    anything visible in the app (as `<img src="https://…">` with full
    absolute URLs, so they render), and what you tested.
@@ -107,6 +108,8 @@ same on every platform.
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which checks the
 version and changelog, builds installers for Windows, macOS and Linux, the
 Python wheels and `stannum-cli`, and attaches them all to a draft GitHub
-release. `pwsh scripts/release/new-version.ps1 -Version x.y.z` sets the
-version everywhere first. The steps, signing and checks are in
+release. `pwsh scripts/release/start-release.ps1 -Version x.y.z` cuts
+`release/vx.y.z` from `development`, sets the version and opens its pull
+request into `main`; once that merges, `finish-release.ps1` tags it and
+merges `main` back into `development`. The steps, signing and checks are in
 [docs/releasing.md](https://github.com/SklorGalore/StannumRevival/blob/main/docs/releasing.md).

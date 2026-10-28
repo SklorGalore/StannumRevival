@@ -16,11 +16,13 @@ these that a case uses.
   and radial methods, three-phase models.
 - Enforcement of voltage, branch rating, angle-difference and generator P
   limits (they are checked in results only).
-- Area interchange control.
+- Inter-area transfer schedules (the RAW inter-area transfer data); area
+  interchange holds each area's total `PDES` only.
 
 ## Controls
 
-- Switched shunts in modes 3–6 (`MODSW`).
+- Switched shunts in mode 6 (`MODSW`), which watch FACTS devices: FACTS
+  devices are not modelled.
 - Transformer controls other than voltage (`COD` 2–5): reactive power, active
   power, DC line and asymmetric controls.
 - Impedance correction tables and magnetizing admittance.
@@ -38,6 +40,7 @@ these that a case uses.
 ## Data
 
 - FACTS, GNE devices, induction machines.
-- RAWX (the JSON form of RAW), RAW export.
+- RAWX (the JSON form of RAW). RAW export writes revisions 33 and 35 only;
+  DC lines are left out of RAW files written from a MATPOWER case.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.

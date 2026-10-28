@@ -86,6 +86,77 @@
       ],
       "type": "object"
     },
+    "AreaRow": {
+      "description": "One area's net interchange after a solve.",
+      "properties": {
+        "controlled": {
+          "description": "Whether the solve held this area's interchange.",
+          "type": "boolean"
+        },
+        "desired_mw": {
+          "description": "Desired net export in MW, when the case's area data gives one.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error_mw": {
+          "description": "Interchange minus desired, in MW, when there is a desired value.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interchange_mw": {
+          "description": "Net export in MW (negative is import).",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "number": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slack_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "slack_bus_name": {
+          "type": "string"
+        },
+        "slack_change_mw": {
+          "description": "How far the solve moved the area slack generation, in MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "tolerance_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "number",
+        "name",
+        "interchange_mw",
+        "desired_mw",
+        "tolerance_mw",
+        "error_mw",
+        "slack_bus",
+        "slack_bus_name",
+        "controlled",
+        "slack_change_mw"
+      ],
+      "type": "object"
+    },
     "BranchChange": {
       "description": "A branch's flow after one outage, for drawing the change on a diagram.",
       "properties": {
@@ -243,6 +314,22 @@
           },
           "type": "array"
         },
+        "shift_deg": {
+          "items": {
+            "description": "Phase shift angle in degrees, as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "tap": {
+          "items": {
+            "description": "Off-nominal tap ratio (1 for lines), as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
         "to": {
           "items": {
             "format": "uint32",
@@ -277,6 +364,8 @@
         "qf",
         "qt",
         "rate_a",
+        "shift_deg",
+        "tap",
         "to",
         "winding"
       ],
@@ -1347,7 +1436,9 @@
           "$ref": "#/$defs/SolveSettings",
           "default": {
             "adjust_dc_taps": true,
+            "adjust_phase_shifters": true,
             "adjust_transformer_taps": true,
+            "area_interchange": "off",
             "dc_model": "detailed",
             "decoupled_iterations": 30,
             "enforce_q_limits": false,
@@ -3025,6 +3116,26 @@
       ],
       "type": "object"
     },
+    "InterchangeChoice": {
+      "description": "Area interchange control: what counts as an area's net export when its\nslack generation holds it at the desired value.",
+      "oneOf": [
+        {
+          "const": "off",
+          "description": "No control; the report still lists each area's interchange.",
+          "type": "string"
+        },
+        {
+          "const": "tie_lines",
+          "description": "Flows on tie lines between areas.",
+          "type": "string"
+        },
+        {
+          "const": "tie_lines_and_loads",
+          "description": "Tie lines plus loads that belong to another area than their bus.",
+          "type": "string"
+        }
+      ]
+    },
     "IslandWire": {
       "properties": {
         "id": {
@@ -4252,6 +4363,45 @@
       ],
       "type": "object"
     },
+    "RawExport": {
+      "description": "What an export wrote, and what it couldn't keep.",
+      "properties": {
+        "notes": {
+          "description": "What changed on the way, such as fields the revision has no place\nfor. Empty when the file holds everything the case had.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "description": "Records written, in every section.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "description": "The RAW revision written: 33 or 35.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "description": "\"records\" when the file's own records were written, \"model\" when the\npower flow model was (MATPOWER cases, other RAW revisions).",
+          "enum": [
+            "records",
+            "model"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "source",
+        "records",
+        "notes"
+      ],
+      "type": "object"
+    },
     "RecordBook": {
       "properties": {
         "editable": {
@@ -4713,6 +4863,17 @@
     },
     "SolveReport": {
       "properties": {
+        "area_interchange": {
+          "$ref": "#/$defs/InterchangeChoice",
+          "description": "The area interchange control the solve used (off for DC)."
+        },
+        "areas": {
+          "description": "Every area's net interchange (AC only): areas from the case's area\ndata first, then the others found on buses.",
+          "items": {
+            "$ref": "#/$defs/AreaRow"
+          },
+          "type": "array"
+        },
         "branches": {
           "$ref": "#/$defs/BranchRowColumns"
         },
@@ -4752,8 +4913,21 @@
           "format": "double",
           "type": "number"
         },
+        "flow_control_passes": {
+          "default": 0,
+          "description": "Passes that moved phase shifters.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "generators": {
           "$ref": "#/$defs/GeneratorRowColumns"
+        },
+        "interchange_passes": {
+          "description": "Passes that moved area slack generation.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "iterations": {
           "description": "Iterations in all passes, Newton and decoupled together.",
@@ -4773,6 +4947,25 @@
         },
         "newton_fallbacks": {
           "description": "Passes in which the automatic method finished with Newton.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters": {
+          "default": 0,
+          "description": "Phase shifters in active power flow control in the case.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters_locked": {
+          "default": false,
+          "description": "Whether the solve locked the phase shifters at their angles (AC only).",
+          "type": "boolean"
+        },
+        "phase_shifters_moved": {
+          "default": 0,
+          "description": "Phase shifters that ended away from their starting angle.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -4864,6 +5057,10 @@
         "taps_moved",
         "shunts_locked",
         "taps_locked",
+        "phase_shifters",
+        "phase_shifters_moved",
+        "flow_control_passes",
+        "phase_shifters_locked",
         "residual_pu",
         "residual_mva",
         "elapsed_ms",
@@ -4876,7 +5073,10 @@
         "branches",
         "dc_lines",
         "dc_systems",
-        "vsc_grids"
+        "vsc_grids",
+        "areas",
+        "interchange_passes",
+        "area_interchange"
       ],
       "type": "object"
     },
@@ -4888,10 +5088,20 @@
           "description": "Step DC converter taps (detailed model only).",
           "type": "boolean"
         },
+        "adjust_phase_shifters": {
+          "default": true,
+          "description": "Move phase shifters in active power flow control (AC only). When\nfalse they are locked, like taps.",
+          "type": "boolean"
+        },
         "adjust_transformer_taps": {
           "default": true,
           "description": "Step transformer taps in voltage control (AC only). When false they\nare locked, like shunts.",
           "type": "boolean"
+        },
+        "area_interchange": {
+          "$ref": "#/$defs/InterchangeChoice",
+          "default": "off",
+          "description": "Hold each area's net interchange at its desired value with the\narea slack generation (AC only; RAW area data). Off by default."
         },
         "dc_model": {
           "$ref": "#/$defs/DcModelChoice",
@@ -6254,6 +6464,42 @@
       "doc": "Write the case, solved or as filed, as a MATPOWER file.",
       "result": {
         "type": "null"
+      },
+      "takes_case": true
+    },
+    "export_raw": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the case, with its Records and study edits, as a complete PSS/E\nRAW file of revision 33 or 35. The answer lists anything the file\ncouldn't keep.",
+      "result": {
+        "$ref": "#/$defs/RawExport"
       },
       "takes_case": true
     },

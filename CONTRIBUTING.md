@@ -91,5 +91,6 @@ the required check names in `.github/rulesets/` in the same PR, or PRs will
 wait forever for a check that never reports.
 
 Dependency updates arrive from Dependabot each Monday
-([`.github/dependabot.yml`](.github/dependabot.yml)). Actions in workflows are
+([`.github/dependabot.yml`](.github/dependabot.yml)), as PRs into
+`development`. Actions in workflows are
 pinned to commit SHAs; Dependabot keeps the pins current.

@@ -4,6 +4,7 @@ version = "0.3.0"
 edition = "2024"
 description = "Stannum's analysis core as a Python package (`import stannum`)"
 publish = false
+license.workspace = true
 
 # maturin builds this into stannum/_native; the Python half is in python/.
 [lib]

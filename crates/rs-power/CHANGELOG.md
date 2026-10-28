@@ -16,6 +16,21 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- Phase shifters: `RawImport::flow_controls` (`FlowControls`, `PhaseShifter`,
+  `Asymmetric`) keeps transformer windings in active power flow control
+  (COD 3 and 5). `PowerFlowOptions::flow_controls` moves their angles between
+  Newton solves to hold each MW band, with the moves solved together from
+  Jacobian sensitivities; `lock_phase_shifters` keeps them at their angles.
+  `PowerFlowResult::phase_shift_angles` and `flow_control_passes` report the
+  outcome. COD 3 and 5 windings no longer warn on import.
+- Area interchange control: `PowerFlowOptions::interchange`
+  (`AreaInterchange` with `InterchangeMode::TieLines` or `TieLinesAndLoads`)
+  moves each area's slack generation until its net interchange meets
+  `Area::desired_mw` within `tolerance_mw`. `PowerFlowResult::areas` reports
+  every area's interchange (`AreaSolution`), also with control off, and
+  `interchange_passes` counts the passes. RAW import reads area data into
+  `RawImport::areas` and loads assigned to another area into
+  `RawImport::area_loads`.
 - `PowerFlowOptions::method` (`AcMethod`): fixed-slope decoupled Newton,
   fast decoupled XB and BX, and `Auto` alongside full Newton (the default),
   with `decoupled_iterations` as their iteration limit and
