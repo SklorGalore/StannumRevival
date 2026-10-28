@@ -35,7 +35,7 @@ including its approximations, with the extensions marked below.
 | Buses | Sorted by number; names kept. Type 4 is isolated. |
 | Loads | Summed per bus. Constant-current (`IP`, `IQ`) and constant-admittance (`YP`, `YQ`) parts are kept, and the solve varies them with voltage. MATPOWER freezes them as constant power at the file's voltage. *Extension.* |
 | Fixed shunts | Summed into the bus shunt. |
-| Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in voltage control (MODSW 1, 2) are also kept for [voltage control](/StannumRevival/manual/voltage-controls/). *Extension.* |
+| Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in control (MODSW 1–5) are also kept for [voltage and reactive control](/StannumRevival/manual/voltage-controls/). *Extension.* |
 | Generators | One generator per record. `IREG` and `RMPCT` kept for [remote regulation](/StannumRevival/manual/remote-regulation/). *Extension.* |
 | Lines | π model; negative metered-end IDs normalized. Unknown endpoints kept with a warning. |
 | Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers). *Extension.* |
@@ -47,7 +47,7 @@ including its approximations, with the extensions marked below.
 ### Ignored with a warning
 
 Transformer magnetizing admittance, impedance correction tables, tap
-controls other than COD 1, switched shunt modes 3–6, wind control, FACTS
+controls other than COD 1, switched shunt mode 6, wind control, FACTS
 devices, GNE devices, induction machines and other unsupported equipment
 sections. Ownership, zone, interchange and grouping metadata are not kept.
 

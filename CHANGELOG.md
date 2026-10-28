@@ -19,6 +19,10 @@ section into the next version's when a release is cut (see
   Every method stops at the same mismatch tolerance. Choose it under **AC
   method** in the solve settings, or with `method` in run files and Python;
   `decoupled_iterations` sets the decoupled iteration limit.
+- Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
+  reactive output, a VSC converter's, or another switched shunt's setting
+  within their band, as PSS/E does. Mode 6 (FACTS) stays frozen at `BINIT`
+  with a warning, as FACTS devices are not modelled.
 - **Move switched shunts** and **Move transformer taps** (and **Adjust DC
   converter taps**) now lock those devices when turned off: they stay where
   the last solve left them, instead of going back to their case values.

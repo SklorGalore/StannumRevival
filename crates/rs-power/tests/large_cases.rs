@@ -197,9 +197,9 @@ fn synthetic_east_west_revision_34() {
     let extra = imported
         .warnings
         .iter()
-        .filter(|w| w.message.contains("additional section"))
+        .filter(|w| w.message.contains("substation node-breaker data"))
         .count();
-    assert_eq!(extra, 1, "substation data is reported once");
+    assert_eq!(extra, 1, "substation node-breaker data is reported once");
     for q in [false, true] {
         assert_eq!(
             solve(&imported.case, &options(q)).unwrap().status,
