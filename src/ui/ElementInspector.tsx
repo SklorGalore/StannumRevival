@@ -183,7 +183,15 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
   const kind = parseElement(element)?.kind ?? element.split(":")[0];
 
   const offline = outInStudy ?? (results ? results.offline : detail ? !detail.online : false);
-  const status = outInStudy === true ? "Out in this study" : offline ? "Out of service" : "In service";
+  // A switching device is open or closed rather than out or in service.
+  const status =
+    kind === "switch"
+      ? `${offline ? "Open" : "Closed"}${outInStudy != null ? " in this study" : ""}`
+      : outInStudy === true
+        ? "Out in this study"
+        : offline
+          ? "Out of service"
+          : "In service";
   const tone: Tone = results && !offline ? results.tone : "ok";
 
   return (
@@ -269,7 +277,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
         ) : !results ? (
           <p className="text-slate-500">The latest solve doesn't list this element.</p>
         ) : results.offline || outInStudy ? (
-          <p className="text-slate-500">Out of service, so it carries no flow.</p>
+          <p className="text-slate-500">{kind === "switch" ? "Open" : "Out of service"}, so it carries no flow.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {results.groups.map((g, i) => (

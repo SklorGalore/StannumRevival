@@ -9,6 +9,8 @@ import type {
   BusData,
   BusTap,
   CaseRef,
+  CircuitBreakerData,
+  DisconnectorData,
   ConductorData,
   DcLinkData,
   GeneratorData,
@@ -46,6 +48,8 @@ const XFMR = { w: 40, h: 100 };
 export const DC_LINK = { w: 40, h: 140 };
 const OFF_PAGE = { w: 40, h: 40 };
 const SHUNT = { w: 40, h: 60 };
+/** Breakers and disconnectors. */
+export const SWITCH = { w: 40, h: 60 };
 /** Width each generator, load or shunt takes along its bus, name and results included. */
 const SLOT = 100;
 /** Room between wires that leave a bus carrying injections. */
@@ -111,6 +115,34 @@ export function dcLinkData(d: NetworkDcLine, upperKV: number, lowerKV: number, r
     dcKind: d.kind && d.kind !== "two_terminal" ? d.kind : undefined,
   };
 }
+
+/** A switching device drawn as a symbol: breakers and disconnectors. A
+ *  generic connector is just a wire. */
+export const drawsSwitch = (br: Link) => br.switching != null && br.switching.kind !== "connector";
+
+/** The symbol for a breaker or disconnector drawn from `upper` down. */
+export function switchNode(br: NetworkBranch, id: string, upper: number, lower: number, kv: number, reversed: boolean): SLDNode {
+  const sw = br.switching!;
+  const state = br.online ? ("closed" as const) : ("open" as const);
+  const common = {
+    label: sw.name.trim() || `${sw.kind === "breaker" ? "CB" : "DS"} ${upper}-${lower}`,
+    state,
+    ratingKV: kv,
+    normallyOpen: sw.normally_open,
+    caseRef: { kind: "branch" as const, id: br.index, element: br.element },
+    reversed: reversed || undefined,
+  };
+  if (sw.kind === "breaker") {
+    const data: CircuitBreakerData = { ...common, ratingKA: 0 };
+    return { id, type: "circuitBreaker", position: { x: 0, y: 0 }, data } as SLDNode;
+  }
+  const data: DisconnectorData = { ...common, type: "gang-operated" };
+  return { id, type: "disconnector", position: { x: 0, y: 0 }, data } as SLDNode;
+}
+
+/** The handles a switch symbol's wires end at, top then bottom. */
+export const switchHandles = (n: SLDNode): [string, string] =>
+  n.type === "circuitBreaker" ? ["cb-top", "cb-bottom"] : ["ds-top", "ds-bottom"];
 
 interface Adjacent {
   branch: Link;
@@ -539,7 +571,7 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
     const below = new Map<number, number>();
     const hang = (bus: number, w: number) => below.set(bus, (below.get(bus) ?? 0) + w);
     for (const br of inner) {
-      if (starOf(br) != null || (!br.dc && !br.transformer)) continue;
+      if (starOf(br) != null || (!br.dc && !br.transformer && !drawsSwitch(br))) continue;
       // Hangs from whichever end ends up higher; count half at each.
       const w = (XFMR.w + SIDE_LABEL + NODE_GAP) / 2;
       hang(br.from, w);
@@ -614,6 +646,31 @@ export async function layoutPiece(net: CaseNetwork, piece: Piece): Promise<Gener
           source: { node: id, port: `${id}:b`, handle: "dc-bottom" },
           target: { node: `b${lower}` },
           data: conductor(kv(lower), { outOfService }),
+        });
+      } else if (drawsSwitch(br)) {
+        const id = `sw${br.index}`;
+        const node = switchNode(br, id, upper, lower, kv(upper), reversed);
+        const [top, bottom] = switchHandles(node);
+        nodes.push({
+          id,
+          width: SWITCH.w,
+          height: SWITCH.h,
+          ports: [port(`${id}:a`, SWITCH.w / 2, 0, "NORTH"), port(`${id}:b`, SWITCH.w / 2, SWITCH.h, "SOUTH")],
+          labels: [outside((node.data as CircuitBreakerData).label, "H_RIGHT", SIDE_LABEL)],
+          layoutOptions: { ...fixedPorts, ...row(upper, true) },
+        });
+        rfNodes.set(id, node);
+        specs.push({
+          id: `e-${id}-a`,
+          source: { node: `b${upper}` },
+          target: { node: id, port: `${id}:a`, handle: top },
+          data: conductor(kv(upper)),
+        });
+        specs.push({
+          id: `e-${id}-b`,
+          source: { node: id, port: `${id}:b`, handle: bottom },
+          target: { node: `b${lower}` },
+          data: conductor(kv(lower)),
         });
       } else if (br.transformer) {
         const id = `t${br.index}`;
