@@ -20,6 +20,12 @@ section into the next version's when a release is cut (see
   settings, or with `area_interchange` in run files and Python. A new
   **Areas** tab lists every area's interchange, desired value and slack
   movement, also with control off.
+- **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
+  and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
+  run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
+  record by record, keeping every record and converting between the two
+  revisions; MATPOWER and older RAW revisions are written from the power flow
+  model. Anything the file can't keep is listed after the export.
 - Generated one-lines draw RAW switching devices: breakers and disconnectors
   with their name, open or closed state (flagged when not in their normal
   position) and flow. Double-click one to open or close it in the study.

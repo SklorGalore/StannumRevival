@@ -40,6 +40,7 @@ these that a case uses.
 ## Data
 
 - FACTS, GNE devices, induction machines.
-- RAWX (the JSON form of RAW), RAW export.
+- RAWX (the JSON form of RAW). RAW export writes revisions 33 and 35 only;
+  DC lines are left out of RAW files written from a MATPOWER case.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.

@@ -43,6 +43,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
   calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
+  export_raw: { label: "Exporting PSS/E RAW case", done: "Exported PSS/E RAW case" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
@@ -237,6 +238,8 @@ export const api = {
     call("sensitivity_responses", { column, quantity, engineering }),
   exportMatpower: (path: string, solved: boolean) =>
     call("export_matpower", { path, solved }),
+  /** Write the case, with its Records and study edits, as a complete RAW 33 or 35 file. */
+  exportRaw: (path: string, revision: 33 | 35) => call("export_raw", { path, revision }),
 
   runContingencies: (settings: ContingencySettings): Promise<ContingencySummary> =>
     call("run_contingencies", { settings }),

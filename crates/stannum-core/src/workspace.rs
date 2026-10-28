@@ -899,6 +899,62 @@ impl OpenCase {
         Ok(())
     }
 
+    /// Write the case, with its Records edits and the study's edits, as a
+    /// complete PSS/E RAW file of revision 33 or 35.
+    ///
+    /// RAW 33 and 35 cases are written record by record from the file;
+    /// anything else from the power flow model (see [`crate::raw_export`]).
+    pub fn export_raw(
+        &mut self,
+        path: &Path,
+        revision: u32,
+    ) -> Result<crate::raw_export::RawExport, Error> {
+        if !matches!(revision, 33 | 35) {
+            return Err(Error::invalid_arguments(format!(
+                "Stannum writes RAW revisions 33 and 35, not {revision}."
+            )));
+        }
+        let start = Instant::now();
+        let from_records = if self.format == CaseFormat::Raw {
+            match self.working_bytes() {
+                Ok(bytes) => crate::raw_export::from_raw(&self.name, &bytes, revision),
+                Err(e) => Err(e.to_string()),
+            }
+        } else {
+            Err(String::new())
+        };
+        let (bytes, export) = match from_records {
+            Ok(done) => done,
+            Err(reason) => {
+                let power = self.power_case_shared()?;
+                let why = match (self.format, power.revision) {
+                    (CaseFormat::Matpower, _) => {
+                        "Written from the MATPOWER case's power flow model.".to_string()
+                    }
+                    (_, Some(rev)) if !matches!(rev, 33 | 35) => format!(
+                        "Written from the power flow model: Stannum reads RAW revision {rev} for power flow only, not record by record."
+                    ),
+                    _ => format!(
+                        "Written from the power flow model: the file's records couldn't be read one by one ({reason})."
+                    ),
+                };
+                crate::raw_export::from_model(&self.name, &power, revision, why)?
+            }
+        };
+        std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
+        log::info!(
+            "Exported {} as RAW {revision} to {} ({} records, {:.0} ms)",
+            self.name,
+            path.display(),
+            export.records,
+            elapsed_ms(start)
+        );
+        for note in &export.notes {
+            log::info!("RAW export: {note}");
+        }
+        Ok(export)
+    }
+
     /// The case as buses, generators and branches for the one-line diagram.
     pub fn diagram_network(&self) -> Result<crate::diagram::CaseNetwork, Error> {
         Ok(crate::diagram::network(self.power_case()?))

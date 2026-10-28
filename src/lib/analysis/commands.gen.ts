@@ -952,6 +952,24 @@ export type QuantityInfo = {
   title: string;
 };
 
+/** What an export wrote, and what it couldn't keep. */
+export type RawExport = {
+  /**
+   * What changed on the way, such as fields the revision has no place
+   * for. Empty when the file holds everything the case had.
+   */
+  notes: string[];
+  /** Records written, in every section. */
+  records: number;
+  /** The RAW revision written: 33 or 35. */
+  revision: number;
+  /**
+   * "records" when the file's own records were written, "model" when the
+   * power flow model was (MATPOWER cases, other RAW revisions).
+   */
+  source: "records" | "model";
+};
+
 export type RecordBook = {
   /** Whether cells can be edited at all (RAW 33/35 and MATPOWER files). */
   editable: boolean;
@@ -1531,6 +1549,19 @@ export interface CoreCommands {
     };
     result: null;
   };
+  /**
+   * Write the case, with its Records and study edits, as a complete PSS/E
+   * RAW file of revision 33 or 35. The answer lists anything the file
+   * couldn't keep.
+   */
+  export_raw: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+      revision: number;
+    };
+    result: RawExport;
+  };
   /** Size, hash and date of a file, so a study can tell whether its case changed. */
   file_fingerprint: {
     args: {
@@ -1757,6 +1788,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "diff_compare",
   "diff_compare_working",
   "export_matpower",
+  "export_raw",
   "load_coordinates",
   "load_dc_grids",
   "open_case",
