@@ -189,12 +189,6 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
   },
   { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line"), sortField: "is_transformer" },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
-  { key: "pf", header: "PF (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
-  { key: "qf", header: "QF (MVAr)", value: (r) => r.qf, render: (r) => fixed(r.qf), align: "right" },
-  { key: "pt", header: "PT (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
-  { key: "qt", header: "QT (MVAr)", value: (r) => r.qt, render: (r) => fixed(r.qt), align: "right" },
-  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
-  { key: "rate_a", header: "Rate A (MVA)", value: (r) => r.rate_a, render: (r) => (r.rate_a > 0 ? fixed(r.rate_a, 1) : "—"), align: "right" },
   {
     key: "loading",
     sortField: "loading_pct",
@@ -211,7 +205,14 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
         </LoadingBar>
       ),
     align: "right",
-  },  {
+  },
+  { key: "pf", header: "PF (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
+  { key: "qf", header: "QF (MVAr)", value: (r) => r.qf, render: (r) => fixed(r.qf), align: "right" },
+  { key: "pt", header: "PT (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
+  { key: "qt", header: "QT (MVAr)", value: (r) => r.qt, render: (r) => fixed(r.qt), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "rate_a", header: "Rate A (MVA)", value: (r) => r.rate_a, render: (r) => (r.rate_a > 0 ? fixed(r.rate_a, 1) : "—"), align: "right" },
+  {
     key: "tap",
     header: "Tap",
     value: (r) => r.tap,

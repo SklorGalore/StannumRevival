@@ -588,8 +588,10 @@ struct Outcome {
     cut_off: Vec<u32>,
 }
 
-fn loading(p_from: f64, q_from: f64, p_to: f64, q_to: f64, rate: f64) -> f64 {
-    p_from.hypot(q_from).max(p_to.hypot(q_to)) / rate * 100.0
+/// Loading of branch row `r`, measured as in the solve report.
+fn loading(power: &PowerCase, r: usize, pf: f64, qf: f64, pt: f64, qt: f64, rate: f64) -> f64 {
+    let winding = power.elements.branches.get(r).map_or(0, |e| e.winding);
+    power::loading_pct(pf, qf, pt, qt, rate, winding)
 }
 
 /// A branch is new or worse when it is over the limit now and was under it,
@@ -620,8 +622,10 @@ impl<'a> Context<'a> {
                 .branches
                 .iter()
                 .zip(flows)
-                .map(|(b, f)| {
-                    (b.online && b.rate_a > 0.0).then(|| loading(f[0], f[1], f[2], f[3], b.rate_a))
+                .enumerate()
+                .map(|(r, (b, f))| {
+                    (b.online && b.rate_a > 0.0)
+                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], b.rate_a))
                 })
                 .collect(),
             names: power::bus_names(case),
@@ -770,6 +774,8 @@ impl<'a> Context<'a> {
             let delta = flows[r] - self.pf[r];
             let pct = (!tripped && b.online && b.rate_a > 0.0).then(|| {
                 loading(
+                    self.power,
+                    r,
                     self.pf[r] + delta,
                     self.qf[r],
                     self.pt[r] - delta,
@@ -952,8 +958,8 @@ impl<'a> Context<'a> {
         for (r, (b, f)) in solved.branches.iter().zip(&result.branch_flows).enumerate() {
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
-            let pct =
-                (b.online && b.rate_a > 0.0).then(|| loading(f[0], f[1], f[2], f[3], b.rate_a));
+            let pct = (b.online && b.rate_a > 0.0)
+                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], b.rate_a));
             if let (Some(pct), Some(base)) = (pct, base_pct) {
                 let o = Overload {
                     element: self.element(r),

@@ -20,7 +20,7 @@ use crate::results::ResultName;
 use crate::study::{self, Edit};
 use crate::topology_wire;
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
-use rs_power::{PowerFlowResult, PowerFlowSensitivity};
+use rs_power::{PowerFlowResult, SensitivityModel};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -72,7 +72,7 @@ pub struct OpenCase {
     /// The last solve from before the study's edits changed, kept as a
     /// starting point for the next solve.
     pub before_edits: Option<Arc<Solved>>,
-    pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
+    pub sensitivity: Option<(SensitivityModel, power::ModelChoice)>,
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
     pub edited: Option<Arc<PowerCase>>,
@@ -1606,7 +1606,7 @@ pub struct SensitivityJob {
 /// Finished sensitivities, to keep with [`OpenCase::finish_sensitivities`].
 pub struct SensitivitiesDone {
     version: u64,
-    sensitivity: PowerFlowSensitivity,
+    sensitivity: SensitivityModel,
     model: power::ModelChoice,
     summary: power::SensitivitySummary,
 }
@@ -1615,7 +1615,7 @@ impl SensitivityJob {
     pub fn run(self) -> Result<SensitivitiesDone, Error> {
         let power = self.power.as_ref();
         let start = Instant::now();
-        let s = rs_power::calculate_sensitivities(&power.case, &self.settings.options_for(power))
+        let s = SensitivityModel::new(&power.case, &self.settings.options_for(power))
             .map_err(|e| e.to_string())?;
         let summary = power::sensitivity_summary(&s, self.settings.model, elapsed_ms(start));
         log::info!(

@@ -679,3 +679,41 @@ fn lodf_can_preserve_raw_matpower_bridge_results() {
             .any(|&outage| raw.iter().any(|row| !row[outage].is_finite()))
     );
 }
+
+/// The column-at-a-time model gives the dense result's numbers.
+fn model_matches_dense(case: rs_power::Case, options: &PowerFlowOptions) {
+    let dense = calculate_sensitivities(&case, options).unwrap();
+    let model = rs_power::SensitivityModel::new(&case, options).unwrap();
+    assert_eq!(model.state_variables, dense.state_variables);
+    assert_eq!(model.injection_variables, dense.injection_variables);
+    for column in 0..dense.injection_variables.len() {
+        let one = model.column(column).unwrap();
+        assert_eq!(one.states.len(), dense.state_variables.len());
+        for (row, value) in one.states.iter().enumerate() {
+            let expected = dense.state_sensitivities[row][column];
+            assert!((value - expected).abs() < 1e-9 * (1.0 + expected.abs()));
+        }
+        for (branch, value) in one.branches.iter().enumerate() {
+            let expected = dense.branch_flow_sensitivities[branch][column];
+            for (actual, expected) in value.iter().zip(expected) {
+                assert!((actual - expected).abs() < 1e-9 * (1.0 + expected.abs()));
+            }
+        }
+    }
+    assert!(model.column(dense.injection_variables.len()).is_err());
+}
+
+#[test]
+fn sensitivity_model_matches_dense_ac_and_dc() {
+    for model in [Model::Ac, Model::Dc] {
+        let options = PowerFlowOptions {
+            model,
+            tolerance: 1e-11,
+            ..Default::default()
+        };
+        model_matches_dense(case(), &options);
+        model_matches_dense(two_island_case(), &options);
+        let case300 = rs_power::parse_matpower(include_str!("fixtures/case300.m")).unwrap();
+        model_matches_dense(case300, &options);
+    }
+}
