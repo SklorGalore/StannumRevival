@@ -29,7 +29,9 @@ branch's pull request into `main` is the release. `main` only ever moves
 when a release or hotfix merges.
 
 1. Make sure `CHANGELOG.md` on `development` has a line under
-   **Unreleased** for everything worth telling users about.
+   **Unreleased** for everything worth telling users about. Each feature
+   PR into `development` adds its own line there, so this is usually a
+   read-through.
 2. Cut the release branch:
 
    ```powershell
@@ -61,6 +63,14 @@ when a release or hotfix merges.
    admins can create them), then opens a pull request from `main` into
    `development` so the bump and any release fixes reach `development`.
    Merge that one with a merge commit too.
+
+   Check `CHANGELOG.md` in that pull request first. The release branch
+   renamed the old **Unreleased** notes to `## 0.4.0`, and git applies that
+   rename on `development` too, so any line a feature PR added under
+   **Unreleased** after the release was cut ends up inside the `0.4.0`
+   section without a conflict. If the diff shows such lines, merge the
+   back-merge pull request and then open a small PR into `development` that
+   moves them back under **Unreleased**.
 6. Wait for the **Release** workflow. Its first job fails fast if the tag,
    the three version fields and the changelog don't agree.
 7. Open the draft on the
