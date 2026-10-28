@@ -4,6 +4,7 @@ version = "0.3.0"
 edition = "2024"
 description = "Run Stannum run files without the app"
 publish = false
+license.workspace = true
 
 [[bin]]
 name = "stannum-cli"

@@ -41,8 +41,9 @@ when a release or hotfix merges.
    This makes `release/v0.4.0` from the latest `origin/development`, runs
    `new-version.ps1` on it (which updates `package.json`,
    `package-lock.json`, `src-tauri/tauri.conf.json`, the `Cargo.toml` of
-   the app, `stannum-cli` and the Python package, and `Cargo.lock`, and
-   turns the Unreleased notes into the version's section), commits that as
+   the app, `stannum-cli` and the Python package, and `Cargo.lock`,
+   regenerates `THIRD-PARTY-LICENSES.txt`, and turns the Unreleased notes
+   into the version's section), commits that as
    "Release v0.4.0", pushes the branch and opens its pull request into
    `main`. The bump goes out with the branch's first push, because the
    `release branches` ruleset lets you create a `release/**` branch but
@@ -72,7 +73,9 @@ when a release or hotfix merges.
    back-merge pull request and then open a small PR into `development` that
    moves them back under **Unreleased**.
 6. Wait for the **Release** workflow. Its first job fails fast if the tag,
-   the three version fields and the changelog don't agree.
+   the three version fields and the changelog don't agree, or if
+   `THIRD-PARTY-LICENSES.txt` no longer matches the dependencies (run
+   `pwsh scripts/release/third-party-licenses.ps1` and commit the result).
 7. Open the draft on the
    [releases page](https://github.com/SklorGalore/StannumRevival/releases),
    try an installer or two (and `pip install` a wheel), then press **Publish release**. The docs site's
@@ -94,6 +97,19 @@ same command again on that branch to set the version, push and open the
 pull request into `main`, then carry on from step 4.
 
 A version with a suffix (`0.3.0-beta.1`) is published as a pre-release.
+
+## Licence files
+
+Every installer, wheel and `stannum-cli` archive carries `LICENSE`
+(BSD-3-Clause), `THIRD-PARTY-NOTICES.md` (hand-written: MATPOWER, ELK,
+MapLibre, Natural Earth and the copyleft-licensed packages) and
+`THIRD-PARTY-LICENSES.txt` (generated: every Rust crate and npm package
+built in, with its licence text). The installers list them as Tauri
+resources, `build-cli.ps1` packs them, and `scripts/ci/test-python.ps1`
+copies them beside `pyproject.toml` so maturin puts them in the wheel's
+`.dist-info/licenses`. When a new dependency with an unusual licence
+(anything beyond MIT, Apache-2.0, BSD, ISC, Zlib or Unicode) arrives, add a
+line for it to `THIRD-PARTY-NOTICES.md`.
 
 ## Test builds
 
