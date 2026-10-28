@@ -428,6 +428,7 @@ function SolvePanel({
   const ac = settings.model === "ac";
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
+  const exportRaw = useStudyFile((s) => s.exportRaw);
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -600,6 +601,19 @@ function SolvePanel({
         <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
           <Download size={13} /> Solved case…
         </Button>
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export PSS/E RAW</p>
+        {([35, 33] as const).map((revision) => (
+          <Button
+            key={revision}
+            variant="ghost"
+            className="justify-start"
+            onClick={() => void exportRaw(revision)}
+            disabled={!!busy}
+            title="The case with its Records edits and study edits, every record included"
+          >
+            <Download size={13} /> Revision {revision}…
+          </Button>
+        ))}
       </div>
     </aside>
   );

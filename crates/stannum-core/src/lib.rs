@@ -15,6 +15,7 @@
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
 //! - [`record_edit`]: edits from the Records module, written into the case.
 //! - [`records`]: the open case's records as tables, one per record type.
+//! - [`raw_export`]: the open case written as a complete RAW 33 or 35 file.
 //! - [`schema`]: checks values against the command schemas and writes them as TypeScript.
 //! - [`run_file`]: run files, commands one per line, run in order.
 //! - [`results`]: names for every solution the open case can show.
@@ -34,6 +35,7 @@ pub mod geo;
 pub mod inspect;
 pub mod logbook;
 pub mod power;
+pub mod raw_export;
 pub mod record_edit;
 pub mod records;
 pub mod results;

@@ -3852,6 +3852,45 @@
       ],
       "type": "object"
     },
+    "RawExport": {
+      "description": "What an export wrote, and what it couldn't keep.",
+      "properties": {
+        "notes": {
+          "description": "What changed on the way, such as fields the revision has no place\nfor. Empty when the file holds everything the case had.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "description": "Records written, in every section.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "description": "The RAW revision written: 33 or 35.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "description": "\"records\" when the file's own records were written, \"model\" when the\npower flow model was (MATPOWER cases, other RAW revisions).",
+          "enum": [
+            "records",
+            "model"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "source",
+        "records",
+        "notes"
+      ],
+      "type": "object"
+    },
     "RecordBook": {
       "properties": {
         "editable": {
@@ -5738,6 +5777,42 @@
       "doc": "Write the case, solved or as filed, as a MATPOWER file.",
       "result": {
         "type": "null"
+      },
+      "takes_case": true
+    },
+    "export_raw": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the case, with its Records and study edits, as a complete PSS/E\nRAW file of revision 33 or 35. The answer lists anything the file\ncouldn't keep.",
+      "result": {
+        "$ref": "#/$defs/RawExport"
       },
       "takes_case": true
     },

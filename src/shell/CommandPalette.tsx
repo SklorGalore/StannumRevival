@@ -12,6 +12,7 @@ import {
   Save,
   GitCompareArrows,
   Link2,
+  Download,
   MapPin,
   MapPinOff,
   Moon,
@@ -87,6 +88,14 @@ export function paletteCommands(): Command[] {
     list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
     if (studyPath)
       list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+    for (const revision of [35, 33] as const)
+      list.push({
+        id: `export-raw-${revision}`,
+        title: `Export case as PSS/E RAW ${revision}…`,
+        icon: <Download size={14} />,
+        keywords: "file save write psse raw convert revision version",
+        run: () => void studyFile.exportRaw(revision),
+      });
   }
   if (summary?.power.available)
     list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
