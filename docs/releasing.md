@@ -131,15 +131,28 @@ pwsh scripts/release/build-cli.ps1 -OutDir cli          # stannum-cli, packed
 pwsh scripts/release/collect-bundles.ps1 -OutDir out    # gather what was built
 ```
 
-## Signing (not set up yet)
+## Signing
 
-The installers are unsigned, so the first launch shows a warning:
+The macOS app is signed **ad hoc**: `src-tauri/tauri.macos.conf.json` sets
+`bundle.macOS.signingIdentity` to `"-"`, so Tauri seals the whole bundle
+without an Apple Developer account, and the release workflow checks the app
+inside the `.dmg` with `scripts/release/verify-macos-signature.ps1`. An app
+that isn't signed as a bundle is called **damaged** by macOS once downloaded,
+with no way past it in Finder (v0.4.1 and older).
 
-- **macOS:** "Stannum can't be opened because Apple cannot check it". Right-
-  click the app in Applications, choose **Open**, then **Open** again. Only
-  needed once.
-- **Windows:** SmartScreen says "Windows protected your PC". Choose **More
-  info**, then **Run anyway**.
+An ad hoc signature isn't from an identified developer, so the first launch
+still shows a warning, once:
+
+- **macOS 15 (Sequoia) and later:** "Apple could not verify Stannum is free of
+  malware". Choose **Done**, open **System Settings > Privacy & Security**,
+  scroll to **Security**, choose **Open Anyway** next to Stannum, and confirm.
+- **macOS 14 and earlier:** right-click the app in Applications, choose
+  **Open**, then **Open** again.
+- **Either, from Terminal:** `xattr -dr com.apple.quarantine
+  /Applications/Stannum.app` clears the download flag. This also opens the
+  older, unsigned builds that macOS calls damaged.
+- **Windows** (unsigned): SmartScreen says "Windows protected your PC".
+  Choose **More info**, then **Run anyway**.
 
 To sign later:
 
@@ -147,7 +160,8 @@ To sign later:
   `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`,
   `APPLE_SIGNING_IDENTITY`, and for notarization `APPLE_ID`, `APPLE_PASSWORD`
   (an app-specific password) and `APPLE_TEAM_ID`, then pass them as `env` to
-  the **Build installers** step. Tauri signs and notarizes when they are set.
+  the **Build installers** step. `APPLE_SIGNING_IDENTITY` takes the place of
+  the ad hoc `"-"`, and Tauri signs and notarizes when they are set.
 - **Windows** needs a code-signing certificate. Import it on the runner and
   set `bundle.windows.certificateThumbprint` in
   `src-tauri/tauri.windows.conf.json`, or use `bundle.windows.signCommand`
