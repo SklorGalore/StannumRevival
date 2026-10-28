@@ -376,3 +376,47 @@ fn every_solve_method_reaches_the_same_solution() {
         );
     }
 }
+
+#[test]
+fn solve_settings_move_or_lock_phase_shifters() {
+    // five_bus plus a phase shifter from bus 1 to bus 3 (COD 3) that holds
+    // 40-45 MW, which its 0 degree starting angle misses.
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_phase_shifter.raw");
+    let mut ws = open(path);
+    let mut solve = |adjust_phase_shifters: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_phase_shifters,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let flow = |r: &stannum_core::power::SolveReport| {
+        let k = r.branches.iter().position(|b| b.circuit == "PS").unwrap();
+        (r.branches[k].pf, r.branches[k].shift_deg)
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!(locked.phase_shifters, 1);
+    assert!(locked.phase_shifters_locked);
+    assert_eq!(locked.phase_shifters_moved, 0);
+    let (before, angle) = flow(&locked);
+    assert_eq!(angle, 0.0);
+    assert!(!(40.0..=45.0).contains(&before), "{before}");
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.phase_shifters_moved, 1);
+    assert!(moved.flow_control_passes > 0);
+    let (after, angle) = flow(&moved);
+    assert!((39.9..=45.1).contains(&after), "{after}");
+    assert!(angle != 0.0);
+    // Locked after that solve, it stays where the solve left it.
+    let kept = solve(false, Last);
+    assert_eq!(kept.flow_control_passes, 0);
+    assert_eq!(kept.phase_shifters_moved, 1);
+    assert!((flow(&kept).1 - angle).abs() < 1e-12);
+}

@@ -314,6 +314,22 @@
           },
           "type": "array"
         },
+        "shift_deg": {
+          "items": {
+            "description": "Phase shift angle in degrees, as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "tap": {
+          "items": {
+            "description": "Off-nominal tap ratio (1 for lines), as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
         "to": {
           "items": {
             "format": "uint32",
@@ -348,6 +364,8 @@
         "qf",
         "qt",
         "rate_a",
+        "shift_deg",
+        "tap",
         "to",
         "winding"
       ],
@@ -1418,6 +1436,7 @@
           "$ref": "#/$defs/SolveSettings",
           "default": {
             "adjust_dc_taps": true,
+            "adjust_phase_shifters": true,
             "adjust_transformer_taps": true,
             "area_interchange": "off",
             "dc_model": "detailed",
@@ -4427,6 +4446,13 @@
           "format": "double",
           "type": "number"
         },
+        "flow_control_passes": {
+          "default": 0,
+          "description": "Passes that moved phase shifters.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "generators": {
           "$ref": "#/$defs/GeneratorRowColumns"
         },
@@ -4454,6 +4480,25 @@
         },
         "newton_fallbacks": {
           "description": "Passes in which the automatic method finished with Newton.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters": {
+          "default": 0,
+          "description": "Phase shifters in active power flow control in the case.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters_locked": {
+          "default": false,
+          "description": "Whether the solve locked the phase shifters at their angles (AC only).",
+          "type": "boolean"
+        },
+        "phase_shifters_moved": {
+          "default": 0,
+          "description": "Phase shifters that ended away from their starting angle.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -4545,6 +4590,10 @@
         "taps_moved",
         "shunts_locked",
         "taps_locked",
+        "phase_shifters",
+        "phase_shifters_moved",
+        "flow_control_passes",
+        "phase_shifters_locked",
         "residual_pu",
         "residual_mva",
         "elapsed_ms",
@@ -4570,6 +4619,11 @@
         "adjust_dc_taps": {
           "default": true,
           "description": "Step DC converter taps (detailed model only).",
+          "type": "boolean"
+        },
+        "adjust_phase_shifters": {
+          "default": true,
+          "description": "Move phase shifters in active power flow control (AC only). When\nfalse they are locked, like taps.",
           "type": "boolean"
         },
         "adjust_transformer_taps": {

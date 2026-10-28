@@ -20,7 +20,9 @@ file or script, it is the value in the case. **Adjust DC converter taps** locks
 the HVDC converter taps the same way.
 
 In run files and Python the settings are `switch_shunts`,
-`adjust_transformer_taps` and `adjust_dc_taps`; `false` locks.
+`adjust_transformer_taps` and `adjust_dc_taps`; `false` locks. **Move phase
+shifters** (`adjust_phase_shifters`) locks
+[phase shifters](/StannumRevival/manual/phase-shifters/) the same way.
 
 | Device | RAW data | Supported |
 | --- | --- | --- |
@@ -31,7 +33,8 @@ In run files and Python the settings are `switch_shunts`,
 | Switched shunt, another shunt's setting | `MODSW` = 5 | Yes |
 | Switched shunt, FACTS shunt reactive power | `MODSW` = 6 | No (FACTS devices are not modelled; frozen at `BINIT` with a warning) |
 | Transformer winding, voltage control | `COD` = 1 | Yes |
-| Transformer winding, other controls | `COD` = 2–5 (reactive, active power, DC, asymmetric) | No |
+| Transformer winding, active power flow (phase shifter) | `COD` = 3, 5 (symmetric, asymmetric) | Yes, see [Phase shifters](/StannumRevival/manual/phase-shifters/) |
+| Transformer winding, other controls | `COD` = 2, 4 (reactive power flow, DC line) | No |
 
 ## When they move
 

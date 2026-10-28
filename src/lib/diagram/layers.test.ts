@@ -127,7 +127,7 @@ describe("layers", () => {
       id, name: "", kind: "PQ", base_kv: 138, vm, va: 0, vmin: 0.95, vmax: 1.05, pd: 0, qd: 0, area: 1, violation: 0, load_parts: null,
     });
     const branch = (element: string, pf: number, loading_pct: number | null, online = true): BranchRow => ({
-      index: 0, element, circuit: "1", winding: 0, from: 1, to: 2, online, is_transformer: false,
+      index: 0, element, circuit: "1", winding: 0, from: 1, to: 2, online, is_transformer: false, tap: 1, shift_deg: 0,
       pf, qf: 0, pt: -pf, qt: 0, loss_mw: 0, rate_a: 100, loading_pct,
     });
     const report = (buses: BusRow[], branches: BranchRow[]) => ({ buses, branches, generators: [] }) as unknown as SolveReport;

@@ -56,6 +56,17 @@ export function controlsDetail(
   return locked ? `${moved}; ${locked}` : moved;
 }
 
+/** How the overview describes the phase shifters after a solve. */
+export function flowControlsDetail(
+  report: Pick<SolveReport, "flow_control_passes" | "phase_shifters_locked">,
+): string {
+  if (report.phase_shifters_locked) return "Locked at their angles";
+  const passes = report.flow_control_passes ?? 0;
+  return passes
+    ? `Holding MW bands, over ${passes} flow control pass${passes === 1 ? "" : "es"}`
+    : "Holding MW bands";
+}
+
 /** Tooltip for a voltage control that can be locked. */
 export const LOCKED_HINT = (what: string, value: string) =>
   `Off: ${what.toLowerCase()} are locked. Each keeps its ${value} where it is, which is where the last solve left it unless Flat start is ticked, and at its case value then.`;

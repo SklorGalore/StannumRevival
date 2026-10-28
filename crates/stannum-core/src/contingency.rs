@@ -1148,16 +1148,13 @@ impl ContingencyResults {
             self.last_solution = Some((rank, solution));
         }
         let (_, solution) = self.last_solution.as_ref().expect("solved above");
-        let controls = self
-            .settings
-            .solve
-            .options_for(&self.power)
-            .voltage_controls;
+        let options = self.settings.solve.options_for(&self.power);
         Ok(power::report(
             solution,
             &self.power.elements,
             &self.power.dc_line_kinds,
-            &controls,
+            &options.voltage_controls,
+            &options.flow_controls,
             &self.settings.solve,
             start.elapsed().as_secs_f64() * 1000.0,
         ))

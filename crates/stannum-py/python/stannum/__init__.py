@@ -295,11 +295,12 @@ class Case:
         "flat" or "case"), ``tolerance_mva`` (2 by default),
         ``max_iterations`` (Newton, 10), ``decoupled_iterations`` (30),
         ``enforce_q_limits``, ``dc_model`` ("detailed" or "simplified"),
-        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``.
-        Setting one of the last three to False locks those controls where
-        they are instead of moving them. ``area_interchange`` ("off", the
-        default, "tie_lines" or "tie_lines_and_loads") holds each area's
-        net interchange at its RAW ``PDES`` with the area slack generation.
+        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
+        ``adjust_phase_shifters``. Setting one of the last four to False
+        locks those controls where they are instead of moving them.
+        ``area_interchange`` ("off", the default, "tie_lines" or
+        "tie_lines_and_loads") holds each area's net interchange at its RAW
+        ``PDES`` with the area slack generation.
         """
         return self.call("solve_power_flow", settings=_settings(settings, options))
 
