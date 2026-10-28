@@ -7,7 +7,20 @@ import { defaultTransformerData } from "../../store/defaults";
 import { busTaps } from "../../components/nodes/shared/busTaps";
 import { symbolSize } from "./sizes";
 import { gridAlong, isVertical } from "./bus";
-import { BUS_BAR, DC_LINK, dcLinkData, layoutPiece, linkRef, linksOf, offPageData, type Link } from "./generate";
+import {
+  BUS_BAR,
+  DC_LINK,
+  SWITCH,
+  dcLinkData,
+  drawsSwitch,
+  layoutPiece,
+  linkRef,
+  linksOf,
+  offPageData,
+  switchHandles,
+  switchNode,
+  type Link,
+} from "./generate";
 import { t3Terminal } from "./transformer3";
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -264,6 +277,38 @@ export async function expandDrawing(
           sourceHandle: "dc-bottom",
           target: lower.id,
           targetHandle: tapOn(lower, { x: pos.x, y: pos.y + DC_LINK.h }),
+          data: conductor(kvOf(lower)),
+        } as SLDEdge
+      );
+    } else if (drawsSwitch(br)) {
+      const id = `sw${br.index}`;
+      const pos = {
+        x: Math.round((upper.position.x + lower.position.x) / 2 / 20) * 20,
+        y: Math.round(((upper.position.y + lower.position.y) / 2 - SWITCH.h / 2) / 20) * 20,
+      };
+      const node = switchNode(br, id, (upper.data as BusData).caseRef?.id ?? 0, (lower.data as BusData).caseRef?.id ?? 0, kvOf(upper), !!reversed);
+      const others = [...existing, ...newNodes.map(boxOf), ...linkNodes.map(boxOf)];
+      const at = () => boxOf({ ...node, position: pos } as SLDNode);
+      for (let i = 0; i < 50 && others.some((o) => overlaps(at(), o)); i++) pos.x += 40;
+      const [top, bottom] = switchHandles(node);
+      linkNodes.push({ ...node, position: pos, selected: true } as SLDNode);
+      linkEdges.push(
+        {
+          id: `e-${id}-a`,
+          type: "conductor",
+          source: upper.id,
+          sourceHandle: tapOn(upper, pos),
+          target: id,
+          targetHandle: top,
+          data: conductor(kvOf(upper)),
+        } as SLDEdge,
+        {
+          id: `e-${id}-b`,
+          type: "conductor",
+          source: id,
+          sourceHandle: bottom,
+          target: lower.id,
+          targetHandle: tapOn(lower, { x: pos.x, y: pos.y + SWITCH.h }),
           data: conductor(kvOf(lower)),
         } as SLDEdge
       );

@@ -112,6 +112,14 @@ case, one area, or the buses within a few hops of a chosen bus.
 - Generators, loads and fixed shunts (capacitor or reactor, with Mvar at the
   solved voltage) sit directly on their bus bar.
 - DC lines are drawn with their converters.
+- RAW switching devices (revisions 34 and 35) are drawn as breakers (a
+  square, filled when closed) and disconnectors (a blade), each with its
+  name, whether it is open or closed, and the flow through it. One that isn't
+  in its normal position says so in amber, such as "Closed (normally open)".
+  Generic connectors (STYPE 1) are drawn as plain wires. Double-click a
+  breaker or disconnector to open or close it in the
+  [study](/StannumRevival/guide/studies/); the symbol shows the study's state
+  at once and the flows follow on the next solve.
 
 Cases with more than 20 buses default to drawing **around a bus**, which is
 how a one-line is usually used. The studied bus sits in the middle,
@@ -174,7 +182,8 @@ keeps the link and shows results again when the same case is open.
   until you press **Reroute** in its properties.
 - A generator, load or shunt dropped onto a bus bar, or dragged up until it
   touches one, hangs from the bar and is connected there.
-- Breakers and disconnectors open and close on double-click.
+- Breakers and disconnectors open and close on double-click. (One drawn from
+  the case is opened and closed in the study instead.)
 - A selected bus has a grip on its far end for changing its length.
 
 ### Rotating
@@ -210,6 +219,3 @@ Diagrams save as `.sld` files (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG,
 PNG or PDF with a title block. **Print style** draws everything in black.
 
 ![Print style](../../../assets/screens/diagram-print.png)
-
-Not yet generated from the case: switched devices (breakers and disconnectors
-exist only in hand drawings).

@@ -42,4 +42,3 @@ these that a case uses.
 - RAWX (the JSON form of RAW), RAW export.
 - Topology from RAW files other than revision 35 has no switching devices.
 - Case diff for revisions other than 33 and 35.
-- Diagram generation of switching devices.

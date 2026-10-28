@@ -3,6 +3,7 @@
 //! lays the network out, so this only says what exists and how it connects.
 
 use crate::power::{PowerCase, bus_names, kind_label};
+use rs_power::SwitchType;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -55,6 +56,21 @@ pub struct NetworkBranch {
     /// Off-nominal turns ratio (1.0 when unity) and phase shift in degrees.
     pub tap: f64,
     pub shift: f64,
+    /// Set when the branch is a RAW system switching device.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switching: Option<NetworkSwitch>,
+}
+
+/// A system switching device drawn on a one-line.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct NetworkSwitch {
+    /// "breaker", "disconnector" or "connector" (PSS/E's generic type).
+    #[schemars(extend("enum" = ["breaker", "disconnector", "connector"]))]
+    pub kind: &'static str,
+    /// The device's name; may be empty.
+    pub name: String,
+    /// Its normal status is open.
+    pub normally_open: bool,
 }
 
 /// A DC line, from its sending (rectifier) bus to its receiving (inverter)
@@ -92,6 +108,11 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
     let names = bus_names(case);
     let kv: HashMap<u32, f64> = case.buses.iter().map(|b| (b.id, b.base_kv)).collect();
     let base_kv = |id: u32| kv.get(&id).copied().unwrap_or(0.0);
+    let switches: HashMap<usize, &rs_power::SwitchingDevice> = power
+        .switching_devices
+        .iter()
+        .map(|d| (d.branch, d))
+        .collect();
     let buses = case
         .buses
         .iter()
@@ -136,7 +157,17 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             let (kv_from, kv_to) = (base_kv(br.from), base_kv(br.to));
             // A branch is drawn as a transformer when it changes voltage level,
             // has an off-nominal ratio, or shifts phase.
-            let transformer = (kv_from - kv_to).abs() > 1e-6 || tap != 1.0 || br.shift != 0.0;
+            let switching = switches.get(&index).map(|d| NetworkSwitch {
+                kind: match d.kind {
+                    SwitchType::Breaker => "breaker",
+                    SwitchType::Disconnector => "disconnector",
+                    SwitchType::Generic => "connector",
+                },
+                name: d.name.clone(),
+                normally_open: d.normally_open,
+            });
+            let transformer = switching.is_none()
+                && ((kv_from - kv_to).abs() > 1e-6 || tap != 1.0 || br.shift != 0.0);
             let e = power.elements.branches.get(index);
             NetworkBranch {
                 index,
@@ -150,6 +181,7 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
                 rate_a: br.rate_a,
                 tap,
                 shift: br.shift,
+                switching,
             }
         })
         .collect();

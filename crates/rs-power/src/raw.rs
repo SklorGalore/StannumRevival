@@ -95,6 +95,9 @@ pub struct RawImport {
     /// [`crate::AreaInterchange::loads`]. Their power is already in the
     /// bus's load in `case`.
     pub area_loads: Vec<AreaLoad>,
+    /// Revision 34-35 system switching devices, in file order. Each also
+    /// solves as a branch of `case`.
+    pub switching_devices: Vec<SwitchingDevice>,
 }
 
 /// A substation record of revision 34-35 RAW data.
@@ -134,6 +137,33 @@ pub enum BranchKind {
     Line,
     /// A two- or three-winding transformer record.
     Transformer,
+    /// A system switching device record (revisions 34-35).
+    Switch,
+}
+
+/// What a system switching device is, from its STYPE field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SwitchType {
+    /// STYPE 1, PSS/E's default: a generic connector.
+    Generic,
+    /// STYPE 2: a circuit breaker.
+    Breaker,
+    /// STYPE 3: a disconnect switch.
+    Disconnector,
+}
+
+/// A system switching device of revision 34-35 RAW data. It solves as a
+/// lossless branch of reactance X (`case.branches[branch]`), in service when
+/// closed (STAT 1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SwitchingDevice {
+    /// Row in `case.branches` and `branch_sources`.
+    pub branch: usize,
+    pub kind: SwitchType,
+    /// Device name, trimmed; may be empty.
+    pub name: String,
+    /// The normal status (NSTAT) is open.
+    pub normally_open: bool,
 }
 
 /// The RAW record a converted branch came from. MATPOWER rows have none.
@@ -842,6 +872,15 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &mut ctx,
         &mut voltage_controls.taps,
     )?;
+    // After the transformers, so branch rows of files that have none keep
+    // the numbers they had before switching devices were read.
+    let switching_devices = convert_switching_devices(
+        section("system switching device"),
+        &mut case,
+        &mut branch_sources,
+        &indices,
+        &mut ctx,
+    )?;
     let (mut dc_line_names, lcc_lines) = convert_dc(
         rev,
         section("two-terminal DC"),
@@ -930,6 +969,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 | "switched shunt"
                 | "generator"
                 | "branch"
+                | "system switching device"
                 | "transformer"
                 | "two-terminal DC"
                 | "area"
@@ -1000,7 +1040,88 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         substations,
         areas,
         area_loads,
+        switching_devices,
     })
+}
+
+/// PSS/E's default switching device reactance, in per unit.
+const SWITCH_X: f64 = 0.0001;
+
+/// Revision 34-35 system switching devices:
+/// `I, J, 'CKT', X, RATE1..RATE12, STAT, NSTAT, MET, STYPE, 'NAME'`. Each
+/// becomes a lossless branch of reactance X (PSS/E's 0.0001 when 0 or
+/// blank), in service when STAT is 1.
+fn convert_switching_devices(
+    rows: &[Record],
+    case: &mut Case,
+    branch_sources: &mut Vec<BranchSource>,
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context,
+) -> Result<Vec<SwitchingDevice>, Error> {
+    let mut devices = Vec::with_capacity(rows.len());
+    for r in rows {
+        let from = r.id(0)?;
+        let to = r.integer(1, true)?;
+        for id in [from, to] {
+            if !indices.contains_key(&id) {
+                ctx.warn(
+                    r.line,
+                    false,
+                    format!("switching device references unknown bus {id}; device retained"),
+                )?;
+            }
+        }
+        let x = r.optional(3, SWITCH_X)?;
+        let status = |i: usize| -> Result<bool, Error> {
+            if r.fields.get(i).is_none_or(|s| s.trim().is_empty()) {
+                Ok(true)
+            } else {
+                r.status(i)
+            }
+        };
+        let online = status(16)?;
+        let normally_open = !status(17)?;
+        let kind = match r.optional(19, 1.0)? {
+            2.0 => SwitchType::Breaker,
+            3.0 => SwitchType::Disconnector,
+            _ => SwitchType::Generic,
+        };
+        let name = r
+            .fields
+            .get(20)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        devices.push(SwitchingDevice {
+            branch: case.branches.len(),
+            kind,
+            name,
+            normally_open,
+        });
+        branch_sources.push(BranchSource {
+            kind: BranchKind::Switch,
+            buses: vec![from, to],
+            circuit: identifier(r, 2),
+            winding: 0,
+            line: r.line,
+        });
+        case.branches.push(Branch {
+            from,
+            to,
+            r: 0.0,
+            x: if x == 0.0 { SWITCH_X } else { x },
+            b: 0.0,
+            rate_a: r.optional(4, 0.0)?,
+            rate_b: r.optional(5, 0.0)?,
+            rate_c: r.optional(6, 0.0)?,
+            tap: 0.0,
+            shift: 0.0,
+            online,
+            angmin: -360.0,
+            angmax: 360.0,
+            extra: vec![],
+        });
+    }
+    Ok(devices)
 }
 
 /// Substation records from the sections after the known ones. A substation

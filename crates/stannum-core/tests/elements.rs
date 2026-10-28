@@ -46,7 +46,6 @@ fn check(path: PathBuf) -> (usize, usize) {
     }
     for e in &topo.case.equipment {
         let expected = match e.kind {
-            nodal::model::EquipmentKind::Switch => continue,
             _ if e.buses.len() == 3 => 3,
             _ => 1,
         };

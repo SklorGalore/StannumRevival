@@ -137,6 +137,13 @@ export interface CircuitBreakerData extends Record<string, unknown> {
   ratingKV: number;
   ratingKA: number;
   normallyOpen: boolean;
+  /** A RAW system switching device of the open case. Its state follows the
+   *  shown result (a study can open it) and it carries the device's flow. */
+  caseRef?: CaseRef;
+  /** The case's "to" bus is at the top terminal. */
+  reversed?: boolean;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
 export interface DisconnectorData extends Record<string, unknown> {
@@ -146,6 +153,14 @@ export interface DisconnectorData extends Record<string, unknown> {
   state: "open" | "closed";
   ratingKV: number;
   type: "gang-operated" | "single-pole";
+  normallyOpen?: boolean;
+  /** A RAW system switching device of the open case. Its state follows the
+   *  shown result (a study can open it) and it carries the device's flow. */
+  caseRef?: CaseRef;
+  /** The case's "to" bus is at the top terminal. */
+  reversed?: boolean;
+  /** The element a local drawing was made around: drawn with a halo. */
+  focus?: boolean;
 }
 
 export interface FuseData extends Record<string, unknown> {
