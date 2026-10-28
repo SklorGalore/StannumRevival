@@ -1,7 +1,7 @@
 //! Phase shifters holding transformer active power flows within a band.
 use rs_power::{
-    Asymmetric, Case, FlowControls, PhaseShifter, PowerFlowOptions, SolveStatus, parse_matpower,
-    solve,
+    Asymmetric, Case, FlowControls, PhaseShifter, PowerFlowOptions, ReactiveTap, SolveStatus,
+    parse_matpower, solve,
 };
 
 /// case9 with branch 4-5 (index 1) as a phase shifter.
@@ -28,6 +28,7 @@ fn with(shifters: Vec<PhaseShifter>, lock: bool) -> PowerFlowOptions {
     PowerFlowOptions {
         flow_controls: FlowControls {
             phase_shifters: shifters,
+            ..Default::default()
         },
         lock_phase_shifters: lock,
         ..Default::default()
@@ -217,4 +218,153 @@ Q
             result.flow_control_passes
         );
     }
+}
+
+/// A reactive flow tap on case9's transformer 8-2 (index 6), from bus 8.
+fn reactive_tap(band: (f64, f64)) -> ReactiveTap {
+    ReactiveTap {
+        branch: 6,
+        mvar_min: band.0,
+        mvar_max: band.1,
+        ratio: 1.0,
+        ratio_max: 1.1,
+        ratio_min: 0.9,
+        positions: 33,
+        tap_per_ratio: 1.0,
+        line: 0,
+    }
+}
+
+fn with_taps(taps: Vec<ReactiveTap>, lock: bool) -> PowerFlowOptions {
+    PowerFlowOptions {
+        flow_controls: FlowControls {
+            reactive_taps: taps,
+            ..Default::default()
+        },
+        lock_taps: lock,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_reactive_flow_tap_steps_its_mvar_into_the_band() {
+    let mut case = case9();
+    case.branches[6].tap = 1.0;
+    let before = solve(&case, &PowerFlowOptions::default())
+        .unwrap()
+        .branch_flows[6][1];
+    for target in [before + 15.0, before - 15.0] {
+        let t = reactive_tap((target - 3.0, target + 3.0));
+        let step = t.step();
+        let result = solve(&case, &with_taps(vec![t], false)).unwrap();
+        assert_eq!(result.status, SolveStatus::Converged);
+        let after = result.branch_flows[6][1];
+        assert!(
+            (target - 3.1..=target + 3.1).contains(&after),
+            "{after} vs {target}"
+        );
+        let ratio = result.reactive_tap_ratios[0];
+        // Whole tap steps from the starting ratio.
+        let steps = (ratio - 1.0) / step;
+        assert!(
+            (steps - steps.round()).abs() < 1e-9 && steps != 0.0,
+            "{steps}"
+        );
+        assert_eq!(result.case.branches[6].tap, ratio);
+        assert!(
+            result.flow_control_passes <= 4,
+            "{}",
+            result.flow_control_passes
+        );
+    }
+}
+
+#[test]
+fn a_locked_reactive_flow_tap_keeps_its_ratio() {
+    let mut case = case9();
+    case.branches[6].tap = 1.0;
+    let before = solve(&case, &PowerFlowOptions::default())
+        .unwrap()
+        .branch_flows[6][1];
+    let t = reactive_tap((before + 10.0, before + 12.0));
+    let result = solve(&case, &with_taps(vec![t], true)).unwrap();
+    assert_eq!(result.reactive_tap_ratios, [1.0]);
+    assert_eq!(result.flow_control_passes, 0);
+}
+
+#[test]
+fn raw_import_reads_reactive_flow_taps() {
+    // Winding 10-20 in COD 2 holding 5-15 Mvar, ratio 0.9-1.1 in 33 steps.
+    let text = "0,100,33,0,0,60
+reactive flow tap
+test
+10,'A',230,3,1,1,1,1,0,1.1,.9
+20,'B',230,1,1,1,1,1,0,1.1,.9
+0 / END OF BUS DATA
+20,1,1,1,1,100,40,0,0,0,0
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+10,1,100,0,1000,-1000,1,0,100,0,1,0,0,1,1,100,1000,0
+0 / END OF GENERATOR DATA
+10,20,'1',0.01,0.1,0.02,250,250,250,0,0,0,0,1,1,0,1,1
+0 / END OF BRANCH DATA
+10,20,0,'2',1,1,1,0,0,2,'q',1,1,1
+0.001,0.05,100
+1,230,0,250,250,250,2,0,1.1,0.9,15,5,33,0,0,0,0
+1,230
+0 / END OF TRANSFORMER DATA
+Q
+";
+    let imported =
+        rs_power::parse_raw_with_options(text, &rs_power::RawOptions::default()).unwrap();
+    let taps = &imported.flow_controls.reactive_taps;
+    assert_eq!(taps.len(), 1);
+    let t = &taps[0];
+    assert_eq!((t.branch, t.positions), (1, 33));
+    assert_eq!((t.mvar_min, t.mvar_max), (5.0, 15.0));
+    assert_eq!((t.ratio_min, t.ratio_max, t.ratio), (0.9, 1.1, 1.0));
+    assert!(
+        !imported
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("power or impedance-correction")),
+        "{:?}",
+        imported.warnings
+    );
+    let result = solve(
+        &imported.case,
+        &PowerFlowOptions {
+            flow_controls: imported.flow_controls.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let q = result.branch_flows[1][1];
+    // Whole steps of 0.00625 can overshoot a little; the band is 10 Mvar.
+    assert!(
+        (4.0..=16.0).contains(&q),
+        "{q} with ratio {:?}",
+        result.reactive_tap_ratios
+    );
+}
+
+#[test]
+fn a_shifter_and_a_reactive_flow_tap_move_together() {
+    let mut case = case9();
+    case.branches[6].tap = 1.0;
+    let base = solve(&case, &PowerFlowOptions::default()).unwrap();
+    let (p0, q0) = (base.branch_flows[1][0], base.branch_flows[6][1]);
+    let opt = PowerFlowOptions {
+        flow_controls: FlowControls {
+            phase_shifters: vec![shifter((p0 + 20.0, p0 + 24.0), None)],
+            reactive_taps: vec![reactive_tap((q0 - 15.0, q0 - 10.0))],
+        },
+        ..Default::default()
+    };
+    let result = solve(&case, &opt).unwrap();
+    assert_eq!(result.status, SolveStatus::Converged);
+    let (p, q) = (result.branch_flows[1][0], result.branch_flows[6][1]);
+    assert!((p0 + 19.9..=p0 + 24.1).contains(&p), "{p}");
+    assert!((q0 - 15.1..=q0 - 9.9).contains(&q), "{q}");
 }

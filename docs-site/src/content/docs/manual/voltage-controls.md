@@ -1,6 +1,6 @@
 ---
 title: Switched shunts and taps
-description: Switched shunts holding a voltage or another device's reactive output (MODSW 1–6) and transformer tap control (COD 1) between Newton solves.
+description: Switched shunts holding a voltage or another device's reactive output (MODSW 1–6) and transformer tap control (COD 1 voltage, COD 2 reactive flow) between Newton solves.
 ---
 
 RAW files describe switched shunts and transformer tap changers that hold bus
@@ -33,8 +33,9 @@ shifters** (`adjust_phase_shifters`) locks
 | Switched shunt, another shunt's setting | `MODSW` = 5 | Yes |
 | Switched shunt, FACTS shunt reactive power | `MODSW` = 6 | Yes (see [FACTS devices](/StannumRevival/manual/facts/)) |
 | Transformer winding, voltage control | `COD` = 1 | Yes |
+| Transformer winding, reactive power flow | `COD` = 2 | Yes, see [below](#reactive-flow-taps) |
 | Transformer winding, active power flow (phase shifter) | `COD` = 3, 5 (symmetric, asymmetric) | Yes, see [Phase shifters](/StannumRevival/manual/phase-shifters/) |
-| Transformer winding, other controls | `COD` = 2, 4 (reactive power flow, DC line) | No |
+| Transformer winding, DC line control | `COD` = 4 | No |
 
 ## When they move
 
@@ -136,6 +137,22 @@ positions while the controlled bus (`CONT`) is outside `VMI`…`VMA`.
   $0.05$ (relative voltage change per relative ratio change) barely moves its
   bus, usually because the controlled bus is on the stiff side; it is held.
 - **Hunting.** Like shunts, a tap that reverses direction twice is held.
+
+## Reactive flow taps
+
+A transformer winding in reactive power flow control (COD 2) steps its ratio
+in whole positions to keep the Mvar flowing into it at its own bus within
+`VMI`…`VMA`. **Move transformer taps** (`adjust_transformer_taps`) moves and
+locks these too.
+
+They move with the [phase shifters](/StannumRevival/manual/phase-shifters/),
+in the same flow control passes after the voltage controls have settled, and
+their moves are solved together with the shifters' from the power-flow
+Jacobian. Each tap aims 20% inside the nearer edge of its band and rounds its
+move to whole steps of $(R_{\max} - R_{\min})/(N_{tp} - 1)$, at least one and at
+most four per pass, within `RMI`…`RMA`. A tap that changes its flow by less
+than 0.01 Mvar per step is held, as is one that reverses direction twice. A
+band narrower than one step can leave the flow just outside it.
 
 ## Results
 

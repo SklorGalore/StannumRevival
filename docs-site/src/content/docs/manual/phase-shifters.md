@@ -9,7 +9,8 @@ active power through it. RAW files describe one as a transformer winding with
 moves within `RMI`…`RMA` (degrees) to keep the MW flowing into the winding at
 its own bus within `VMI`…`VMA`. Stannum applies them in AC solves when **Move
 phase shifters** is on (the default). A negative `COD` keeps the winding at
-its angle, as in PSS/E.
+its angle, as in PSS/E. Taps holding a reactive flow (`COD` = 2) move in the
+same passes; see [Reactive flow taps](/StannumRevival/manual/voltage-controls/#reactive-flow-taps).
 
 In run files and Python the setting is `adjust_phase_shifters`; `false`
 **locks** the shifters, like taps: each keeps its angle where the last solve

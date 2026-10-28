@@ -1289,7 +1289,10 @@ export type SolveReport = {
   shunts_switched: number;
   status: string;
   taps_locked: boolean;
-  /** Transformer taps that ended away from their starting ratio. */
+  /**
+   * Transformer taps that ended away from their starting ratio, in
+   * voltage control (COD 1) or reactive flow control (COD 2).
+   */
   taps_moved: number;
   total_generation_mw: number;
   total_load_mw: number;
@@ -1319,8 +1322,8 @@ export type SolveSettings = {
    */
   adjust_phase_shifters?: boolean;
   /**
-   * Step transformer taps in voltage control (AC only). When false they
-   * are locked, like shunts.
+   * Step transformer taps in voltage control (COD 1) and reactive flow
+   * control (COD 2) (AC only). When false they are locked, like shunts.
    */
   adjust_transformer_taps?: boolean;
   /**

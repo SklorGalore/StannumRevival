@@ -41,6 +41,10 @@ section into the next version's when a release is cut (see
   position) and flow. Double-click one to open or close it in the study.
   The inspector shows their type, state, normal state and flow, and its
   study action reads **Open** / **Close** for them.
+- **Reactive flow taps**: transformer windings in reactive power flow
+  control in RAW files (`COD` 2) now step their taps in AC solves to hold
+  their Mvar band, moving with the phase shifters. **Move transformer taps**
+  moves and locks them too.
 - **Phase shifters**: transformer windings in active power flow control in
   RAW files (`COD` 3, and asymmetric `COD` 5) now move their angles in AC
   solves to hold their MW band. The moves are solved together through the

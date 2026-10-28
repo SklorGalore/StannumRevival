@@ -26,7 +26,7 @@ pub struct PowerCase {
     pub vsc_lines: Vec<rs_power::VscLine>,
     /// Switched shunts and transformer taps in voltage control (RAW only).
     pub voltage_controls: rs_power::VoltageControls,
-    /// Phase shifters in active power flow control (RAW only).
+    /// Phase shifters and reactive flow taps (RAW only).
     pub flow_controls: rs_power::FlowControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
@@ -281,8 +281,8 @@ pub struct SolveSettings {
     /// them when starting from it, and at their case values otherwise.
     #[serde(default = "yes")]
     pub switch_shunts: bool,
-    /// Step transformer taps in voltage control (AC only). When false they
-    /// are locked, like shunts.
+    /// Step transformer taps in voltage control (COD 1) and reactive flow
+    /// control (COD 2) (AC only). When false they are locked, like shunts.
     #[serde(default = "yes")]
     pub adjust_transformer_taps: bool,
     /// Move phase shifters in active power flow control (AC only). When
@@ -440,6 +440,15 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
     }
     if controls.taps.len() == last.tap_ratios.len() {
         for (tap, &ratio) in controls.taps.iter_mut().zip(&last.tap_ratios) {
+            if ratio.is_finite() && tap.branch < warm.branches.len() {
+                tap.ratio = ratio;
+                warm.branches[tap.branch].tap = tap.tap_per_ratio * ratio;
+            }
+        }
+    }
+    let flow_taps = &mut options.flow_controls.reactive_taps;
+    if flow_taps.len() == last.reactive_tap_ratios.len() {
+        for (tap, &ratio) in flow_taps.iter_mut().zip(&last.reactive_tap_ratios) {
             if ratio.is_finite() && tap.branch < warm.branches.len() {
                 tap.ratio = ratio;
                 warm.branches[tap.branch].tap = tap.tap_per_ratio * ratio;
@@ -827,7 +836,8 @@ pub struct SolveReport {
     pub voltage_control_passes: usize,
     /// Switched shunts that ended away from their starting susceptance.
     pub shunts_switched: usize,
-    /// Transformer taps that ended away from their starting ratio.
+    /// Transformer taps that ended away from their starting ratio, in
+    /// voltage control (COD 1) or reactive flow control (COD 2).
     pub taps_moved: usize,
     /// Whether the solve locked the switched shunts, and the transformer
     /// taps, where they were instead of moving them (AC only).
@@ -1254,7 +1264,10 @@ pub fn report(
         shunts_switched: moved(&result.switched_shunts, &controls.switched_shunts, |s| {
             s.initial
         }),
-        taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio),
+        taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio)
+            + moved(&result.reactive_tap_ratios, &flow.reactive_taps, |t| {
+                t.ratio
+            }),
         shunts_locked: ac && !settings.switch_shunts,
         taps_locked: ac && !settings.adjust_transformer_taps,
         phase_shifters: if ac { flow.phase_shifters.len() } else { 0 },
