@@ -640,6 +640,36 @@ export type Error = {
 /** What went wrong, in a form a client can match on. */
 export type ErrorKind = "unknown_command" | "invalid_arguments" | "no_case" | "case_not_open" | "not_ready" | "not_found" | "unsupported" | "case_changed" | "cancelled" | "file" | "failed" | "internal";
 
+/** One FACTS device after a solve. */
+export type FactsRow = {
+  /** The shunt element ended at an end of its range. */
+  at_limit: boolean;
+  /** Sending-end bus, where the shunt element connects. */
+  bus: number;
+  bus_name: string;
+  /**
+   * The shunt element was held at zero (a generator holds its bus, or
+   * the solve was DC).
+   */
+  held: boolean;
+  name: string;
+  /** Bus whose voltage the shunt element holds. */
+  regulated_bus: number;
+  series_mvar: number;
+  /** Power the series element sends to the terminal-end bus. */
+  series_mw: number;
+  /** Largest shunt output at the setpoint (SHMX × VSET), in Mvar. */
+  shunt_max_mvar: number;
+  /** Reactive power the shunt element injects, in Mvar. */
+  shunt_mvar: number;
+  /** Terminal-end bus of the series element; none for a STATCOM. */
+  terminal_bus: number | null;
+  /** Solved voltage at the regulated bus, in per unit. */
+  vm: number;
+  /** Voltage setpoint in per unit. */
+  vset: number;
+};
+
 export type Field = {
   label: string;
   /** "MW", "p.u.", "kV", ... or empty. */
@@ -1226,6 +1256,8 @@ export type SolveReport = {
   /** How many of `iterations` were decoupled iterations. */
   decoupled_iterations: number;
   elapsed_ms: number;
+  /** FACTS devices in service, in file order (RAW only). */
+  facts: FactsRow[];
   /** Passes that moved phase shifters. */
   flow_control_passes: number;
   generators: GeneratorRowColumns;

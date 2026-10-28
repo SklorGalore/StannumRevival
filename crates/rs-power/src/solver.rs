@@ -3,6 +3,7 @@ use crate::{
     BusType, Case, Error, Generator, VoltageControls,
     controls::{self, Controller, Setup},
     dc::{self, LccLine, LccSolution, TapTargets, Taps},
+    facts::{self, FactsSolution},
     flow_controls::{self, FlowController, FlowControls, PhaseShifter},
     interchange::{self, AreaInterchange, AreaSolution, Interchange, InterchangeMode},
     mtdc::{self, MtdcMode, MtdcSolution, MtdcSystem},
@@ -259,6 +260,11 @@ pub struct PowerFlowResult {
     pub tap_ratios: Vec<f64>,
     /// Number of passes that switched shunts or moved taps.
     pub voltage_control_passes: usize,
+    /// Operating point of each FACTS device in
+    /// [`PowerFlowOptions::voltage_controls`], in its order. The shunt
+    /// elements' output is not in `case`; the series transfers are not in
+    /// its loads.
+    pub facts: Vec<FactsSolution>,
     /// Final phase shift angle (degrees) of each phase shifter in
     /// [`PowerFlowOptions::flow_controls`], in its order; also applied to
     /// the branches' `shift` (and `tap`, for asymmetric ones) in `case`.
@@ -1439,6 +1445,7 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         vsc: Vec::new(),
         vsc_limit_passes: 0,
         switched_shunts: Vec::new(),
+        facts: Vec::new(),
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
         phase_shift_angles: Vec::new(),
@@ -1651,7 +1658,7 @@ fn solve_core(
     let mut area_checkpoint = None;
     // Continuous-shunt helpers always keep to their range.
     let limited = |g: usize| opt.enforce_q_limits || g >= setup.limited_from;
-    let limits = opt.enforce_q_limits || !setup.continuous.is_empty();
+    let limits = opt.enforce_q_limits || !setup.continuous.is_empty() || !setup.facts.is_empty();
     // While reactive limits may still switch buses, solves stop at a looser
     // tolerance: the next pass changes the equations anyway. The last solve
     // always meets `opt.tolerance`. A tolerance already at or above the
@@ -1825,6 +1832,15 @@ fn solve_core(
                     violations.push((i, g, gen_data.qmin, false));
                 }
             }
+        }
+        // A continuous shunt at a limit stays fixed for good, so it waits
+        // until nothing else is switching: a generator or FACTS device
+        // reaching its own limit can move the voltages it saw a long way
+        // (on the PSS/E sample case, a STATCOM pulled two continuous shunts
+        // to the top of their range in its first pass, and they stayed
+        // there).
+        if violations.iter().any(|v| v.1 < setup.continuous_from) {
+            violations.retain(|v| v.1 < setup.continuous_from);
         }
         // A remote-regulating bus at a limit holds its bus again once that
         // bus's voltage is past the setpoint on the side the limit pushes.
@@ -2029,10 +2045,17 @@ fn solve_core(
         );
         for (n, &(i, g, limit, upper)) in violations.iter().enumerate() {
             let gen_data = &case.generators[g];
-            let text = if g >= setup.limited_from {
+            let text = if g >= setup.continuous_from {
                 format!(
                     "  continuous shunt at bus {} reaches the {} of its range ({:.1} Mvar)",
                     case.buses[net.external[i]].id,
+                    if upper { "top" } else { "bottom" },
+                    limit
+                )
+            } else if g >= setup.limited_from {
+                format!(
+                    "  FACTS shunt element at bus {} reaches the {} of its range ({:.1} Mvar); bus becomes PQ",
+                    gen_data.bus,
                     if upper { "top" } else { "bottom" },
                     limit
                 )
@@ -2075,7 +2098,7 @@ fn solve_core(
         let mut fixed = false;
         for &(i, g, limit, upper) in &violations {
             kinds[i] = BusType::Pq;
-            if g >= setup.limited_from {
+            if g >= setup.continuous_from {
                 // A continuous shunt at an end of its range is a fixed shunt
                 // from then on, so its output follows the voltage squared.
                 fixed |= controller.fix_continuous(&mut case, net.external[i], g, limit);
@@ -2297,6 +2320,7 @@ fn finish_ac(
         vsc,
         vsc_limit_passes: vsc_passes,
         switched_shunts: Vec::new(),
+        facts: Vec::new(),
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
         phase_shift_angles: Vec::new(),
@@ -2680,6 +2704,12 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             })
         })
         .collect();
+    let facts_from = working.generators.len();
+    let facts_setup = facts::setup(
+        &mut working,
+        &opt.voltage_controls.facts,
+        opt.model == Model::Ac,
+    )?;
     let setup = if opt.model == Model::Ac {
         controls::setup(
             &mut working,
@@ -2687,6 +2717,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             [opt.lock_switched_shunts, opt.lock_taps],
             original_generators,
             &mappings,
+            (&facts_setup.helpers, facts_from),
         )?
     } else {
         Setup::none(&working)
@@ -2716,6 +2747,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         _ => log::error!("{:?} power-flow solve failed: {error}", opt.model),
     })?;
     controls::finish(&setup, &mut result.case, &mut result.switched_shunts);
+    result.facts = facts::finish(&facts_setup, &opt.voltage_controls.facts, &mut result.case);
     let solved_vsc = std::mem::take(&mut result.vsc);
     result.vsc = detailed_vsc
         .iter()

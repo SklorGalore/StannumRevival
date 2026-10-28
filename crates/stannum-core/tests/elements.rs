@@ -378,6 +378,44 @@ fn every_solve_method_reaches_the_same_solution() {
 }
 
 #[test]
+fn solve_report_lists_facts_devices() {
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |model| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                enforce_q_limits: model == stannum_core::power::ModelChoice::Ac,
+                model,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let ac = solve(stannum_core::power::ModelChoice::Ac);
+    assert!(ac.converged);
+    let names: Vec<_> = ac
+        .facts
+        .iter()
+        .map(|f| (f.name.as_str(), f.bus, f.terminal_bus))
+        .collect();
+    assert_eq!(names, vec![("1", 153, None), ("2", 153, Some(155))]);
+    assert!(ac.facts.iter().all(|f| f.at_limit && !f.held));
+    // The UPFC sends 350 MW into bus 155, which passes it on to 154, also
+    // in a DC solve, where the shunts are held.
+    let dc = solve(stannum_core::power::ModelChoice::Dc);
+    assert_eq!(dc.facts[1].series_mw, 350.0);
+    assert!(dc.facts.iter().all(|f| f.held));
+    let flow = |r: &stannum_core::power::SolveReport| {
+        r.branches
+            .iter()
+            .find(|b| (b.from, b.to) == (154, 155))
+            .map(|b| b.pt)
+            .unwrap()
+    };
+    assert!((flow(&dc) - 350.0).abs() < 1.0, "{}", flow(&dc));
+    assert!((flow(&ac) - 350.0).abs() < 1.0, "{}", flow(&ac));
+}
+
+#[test]
 fn solve_settings_move_or_lock_phase_shifters() {
     // five_bus plus a phase shifter from bus 1 to bus 3 (COD 3) that holds
     // 40-45 MW, which its 0 degree starting angle misses.

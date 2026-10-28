@@ -1,6 +1,6 @@
 ---
 title: Switched shunts and taps
-description: Switched shunts holding a voltage or another device's reactive output (MODSW 1–5) and transformer tap control (COD 1) between Newton solves.
+description: Switched shunts holding a voltage or another device's reactive output (MODSW 1–6) and transformer tap control (COD 1) between Newton solves.
 ---
 
 RAW files describe switched shunts and transformer tap changers that hold bus
@@ -31,7 +31,7 @@ shifters** (`adjust_phase_shifters`) locks
 | Switched shunt, plant reactive power | `MODSW` = 3 | Yes |
 | Switched shunt, VSC converter reactive power | `MODSW` = 4 | Yes |
 | Switched shunt, another shunt's setting | `MODSW` = 5 | Yes |
-| Switched shunt, FACTS shunt reactive power | `MODSW` = 6 | No (FACTS devices are not modelled; frozen at `BINIT` with a warning) |
+| Switched shunt, FACTS shunt reactive power | `MODSW` = 6 | Yes (see [FACTS devices](/StannumRevival/manual/facts/)) |
 | Transformer winding, voltage control | `COD` = 1 | Yes |
 | Transformer winding, active power flow (phase shifter) | `COD` = 3, 5 (symmetric, asymmetric) | Yes, see [Phase shifters](/StannumRevival/manual/phase-shifters/) |
 | Transformer winding, other controls | `COD` = 2, 4 (reactive power flow, DC line) | No |
@@ -60,7 +60,7 @@ blocks.
 
 ## Shunts that watch another device
 
-In modes 3 to 5 a switched shunt switches whole blocks, like a discrete shunt,
+In modes 3 to 6 a switched shunt switches whole blocks, like a discrete shunt,
 to keep **another device's reactive output** within a band, so that device
 keeps reactive reserve. `VSWLO` and `VSWHI` are then fractions (0 to 1) of
 that device's whole reactive range, measured from its bottom:
@@ -75,6 +75,7 @@ $$
 | 3 | The plant at that bus: all its online generators together | Sum of their `QB`…`QT` |
 | 4 | The converter at that bus of the VSC line named in `RMIDNT` | The converter's `MINQ`…`MAXQ` |
 | 5 | The switched shunt at that bus (in revision 35, the one whose ID is `RMIDNT` when given) | That shunt's range, from all its reactor blocks to all its capacitor blocks |
+| 6 | The shunt element of the [FACTS device](/StannumRevival/manual/facts/) named in `RMIDNT` (at that bus, when given) | −`SHMX`·`VSET` to +`SHMX`·`VSET` |
 
 When the watched output is **above** the band (it supplies too much), the next
 block up switches in; when it is **below**, the next block down. Each pass
@@ -89,10 +90,9 @@ does not run to the end of its range for nothing.
 
 A shunt is held at its starting value when what it watches cannot respond: a
 plant with no online generator, a VSC converter that is off or in power factor
-control, or a watched shunt that is itself held or locked. A RAW record whose
-watched VSC line or shunt is not in the case is frozen at `BINIT` with an
-import warning; so is every MODSW 6 record, since FACTS devices are not
-modelled.
+control, a FACTS device whose shunt element is held, or a watched shunt that
+is itself held or locked. A RAW record whose watched VSC line, shunt or FACTS
+device is not in the case is frozen at `BINIT` with an import warning.
 
 ## Continuous shunts
 

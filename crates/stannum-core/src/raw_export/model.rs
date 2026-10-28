@@ -362,6 +362,7 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         })
         .collect();
     let mut frozen_converter_shunts = 0;
+    let mut frozen_facts_shunts = 0;
     for (s, id) in shunts.iter().zip(&ids) {
         // MODSW, the bus it watches (SWREG) and the device there (RMIDNT).
         let (modsw, swreg, rmidnt) = match s.mode {
@@ -372,6 +373,11 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             // to watch: the shunt stays at its setting.
             rs_power::ShuntMode::ConverterReactive { .. } => {
                 frozen_converter_shunts += 1;
+                (0, 0, String::new())
+            }
+            // Nor are FACTS devices (MODSW 6).
+            rs_power::ShuntMode::FactsReactive { .. } => {
+                frozen_facts_shunts += 1;
                 (0, 0, String::new())
             }
             rs_power::ShuntMode::ShuntSetting { shunt } => (
@@ -408,6 +414,11 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
     if frozen_converter_shunts > 0 {
         notes.add(format!(
             "{frozen_converter_shunts} switched shunts watching a VSC converter (MODSW 4) written as fixed (MODSW 0): VSC DC lines are not written"
+        ));
+    }
+    if frozen_facts_shunts > 0 {
+        notes.add(format!(
+            "{frozen_facts_shunts} switched shunts watching a FACTS device (MODSW 6) written as fixed (MODSW 0): FACTS devices are not written"
         ));
     }
 

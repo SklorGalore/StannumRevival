@@ -4,6 +4,7 @@ import { useShownReport, useWorkspace, type ShownResult } from "../../store/work
 import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   AreaRow,
+  FactsRow,
   InterchangeChoice,
   DcLineKind,
   DcGridsSummary,
@@ -64,6 +65,7 @@ type Tab =
   | "dc"
   | "dcnet"
   | "areas"
+  | "facts"
   | "vsc"
   | "sensitivities"
   | "contingencies"
@@ -469,6 +471,84 @@ function AreasTab({ report }: { report: SolveReport }) {
         }
       >
         <DataTable rows={report.areas} columns={areaColumns} rowKey={(a) => a.number} />
+      </Panel>
+    </div>
+  );
+}
+
+const factsColumns: Column<FactsRow>[] = [
+  { key: "name", header: "Device", value: (f) => f.name },
+  { key: "bus", header: "Bus", value: (f) => f.bus, align: "right" },
+  { key: "bus_name", header: "Name", value: (f) => f.bus_name },
+  {
+    key: "kind",
+    header: "Kind",
+    title: "STATCOM: shunt element only. UPFC: a series element to a terminal-end bus as well.",
+    value: (f) => (f.terminal_bus == null ? "STATCOM" : `UPFC to ${f.terminal_bus}`),
+  },
+  { key: "held_bus", header: "Holds bus", value: (f) => f.regulated_bus, align: "right" },
+  { key: "vset", header: "VSET (pu)", value: (f) => f.vset, render: (f) => fixed(f.vset, 4), align: "right" },
+  {
+    key: "vm",
+    header: "V (pu)",
+    title: "Solved voltage at the held bus; highlighted when it misses VSET",
+    value: (f) => f.vm,
+    render: (f) =>
+      Math.abs(f.vm - f.vset) > 1e-4 ? <span className="text-amber-700 font-medium">{fixed(f.vm, 4)}</span> : fixed(f.vm, 4),
+    align: "right",
+  },
+  {
+    key: "shunt",
+    header: "Shunt (Mvar)",
+    title: "Reactive power the shunt element injects; negative absorbs",
+    value: (f) => f.shunt_mvar,
+    render: (f) => fixed(f.shunt_mvar),
+    align: "right",
+  },
+  {
+    key: "range",
+    header: "Range (Mvar)",
+    title: "SHMX at the voltage setpoint, either way",
+    value: (f) => f.shunt_max_mvar,
+    render: (f) => `±${fixed(f.shunt_max_mvar, 1)}`,
+    align: "right",
+  },
+  {
+    key: "state",
+    header: "Shunt state",
+    value: (f) => (f.held ? "Held at 0" : f.at_limit ? "At limit" : "Holding"),
+    render: (f) =>
+      f.held ? "Held at 0" : f.at_limit ? <span className="text-amber-700 font-medium">At limit</span> : "Holding",
+  },
+  {
+    key: "series_mw",
+    header: "Series (MW)",
+    title: "Active power the series element sends to the terminal-end bus",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mw),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mw)),
+    align: "right",
+  },
+  {
+    key: "series_mvar",
+    header: "Series (Mvar)",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mvar),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mvar)),
+    align: "right",
+  },
+];
+
+/** Each FACTS device's shunt and series output. */
+function FactsTab({ report }: { report: SolveReport }) {
+  const facts = report.facts ?? [];
+  const atLimit = facts.filter((f) => f.at_limit).length;
+  const held = facts.filter((f) => f.held).length;
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="facts-tab">
+      <Panel
+        title="FACTS devices"
+        eyebrow={`${count(facts.length)} in service · ${atLimit} at a limit${held ? ` · ${held} held` : ""}`}
+      >
+        <DataTable rows={facts} columns={factsColumns} rowKey={(f) => `${f.name}-${f.bus}`} />
       </Panel>
     </div>
   );
@@ -1348,6 +1428,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...((report?.areas?.length ?? 0) > 1
         ? [{ id: "areas" as const, label: "Areas", count: report!.areas.length, disabled: false }]
         : []),
+      ...(report?.facts?.length
+        ? [{ id: "facts" as const, label: "FACTS", count: report.facts.length, disabled: false }]
+        : []),
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
@@ -1586,6 +1669,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
               {tab === "areas" && report && <AreasTab report={report} />}
+              {tab === "facts" && report && <FactsTab report={report} />}
               {tab === "vsc" && (
                 <VscGridsTab file={dcGrids} report={report} busy={!!busy} onLoad={attachDcGrids} onClear={detachDcGrids} />
               )}

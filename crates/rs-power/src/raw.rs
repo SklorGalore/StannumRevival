@@ -1,9 +1,9 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
-    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, Error, FlowControls, Generator,
-    LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink, MtdcSystem,
-    PhaseShifter, ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl,
+    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, Error, FactsDevice, FlowControls,
+    Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink,
+    MtdcSystem, PhaseShifter, ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl,
     VscConverter, VscDcControl, VscLine,
 };
 use std::{
@@ -735,12 +735,6 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         let modsw = r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)?;
         if let Some(shunt) = control {
             pending_shunts.push(shunt);
-        } else if modsw == 6.0 {
-            ctx.warn(
-                r.line,
-                true,
-                "switched shunt frozen at BINIT; MODSW 6 watches a FACTS device, and FACTS devices are not modelled",
-            )?;
         } else if modsw != 0.0 {
             ctx.warn(
                 r.line,
@@ -943,11 +937,17 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
+    for r in section("FACTS control device") {
+        if let Some(device) = facts_device(rev, r, &indices, &case, &mut ctx)? {
+            voltage_controls.facts.push(device);
+        }
+    }
     voltage_controls.switched_shunts = resolve_switched_shunts(
         pending_shunts,
         &case,
         &dc_line_names,
         &dc_line_kinds,
+        &voltage_controls.facts,
         &mut ctx,
     )?;
     if options.lcc_absorbs_reactive
@@ -999,6 +999,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 | "transformer"
                 | "two-terminal DC"
                 | "area"
+                | "FACTS control device"
         ) && !(options.all_dc_lines
             && matches!(name, "voltage source converter" | "multi-terminal DC"))
             && let Some(r) = rows.first()
@@ -1243,6 +1244,9 @@ enum Watches {
     Converter { name: String, bus: u32 },
     /// A switched shunt at `bus`, the one with ID `id` when given (MODSW 5).
     Shunt { bus: u32, id: Option<String> },
+    /// The FACTS device named `name`, at sending-end bus `bus` when given
+    /// (MODSW 6).
+    Facts { name: String, bus: Option<u32> },
 }
 
 /// The control of a switched shunt record (revision 30 or later), if it has
@@ -1261,7 +1265,7 @@ fn switched_shunt(
         _ => [1, usize::MAX, 2, 3, 4, 6, 7, 8],
     };
     let modsw = r.optional(modsw, 0.0)?;
-    if !matches!(modsw, 1.0..=5.0) || modsw.fract() != 0.0 {
+    if !matches!(modsw, 1.0..=6.0) || modsw.fract() != 0.0 {
         return Ok(None);
     }
     if stat != usize::MAX && !r.status(stat)? {
@@ -1334,6 +1338,16 @@ fn switched_shunt(
             // The row is filled in once the VSC lines are read.
             (ShuntMode::ConverterReactive { row: 0, bus }, None)
         }
+        6 => {
+            // The device is found by name once the FACTS data is read;
+            // SWREM, when given, is its sending-end bus.
+            let Some(name) = name else { return Ok(None) };
+            watches = Watches::Facts {
+                name,
+                bus: (remote != 0.0).then_some(named).flatten(),
+            };
+            (ShuntMode::FactsReactive { device: 0 }, None)
+        }
         _ => {
             let Some(bus) = named else { return Ok(None) };
             // Revision 35 allows several shunts at a bus; RMIDNT, when
@@ -1365,17 +1379,35 @@ fn switched_shunt(
     }))
 }
 
-/// Find the VSC converter or switched shunt each MODSW 4 or 5 shunt watches.
-/// Shunts whose device is missing stay frozen at BINIT, with a warning.
+/// Find the VSC converter, switched shunt or FACTS device each MODSW 4, 5
+/// or 6 shunt watches. Shunts whose device is missing stay frozen at BINIT,
+/// with a warning.
 fn resolve_switched_shunts(
     pending: Vec<PendingShunt>,
     case: &Case,
     dc_line_names: &[String],
     dc_line_kinds: &[DcLineKind],
+    facts: &[FactsDevice],
     ctx: &mut Context<'_>,
 ) -> Result<Vec<SwitchedShunt>, Error> {
     let mut kept = Vec::with_capacity(pending.len());
     for mut p in pending {
+        if let Watches::Facts { name, bus } = &p.watches {
+            let device = facts
+                .iter()
+                .position(|d| d.name == *name && bus.is_none_or(|b| d.bus == b));
+            let Some(device) = device else {
+                ctx.warn(
+                    p.shunt.line,
+                    true,
+                    format!(
+                        "switched shunt frozen at BINIT; it watches FACTS device {name}, which is not in the case or not in service"
+                    ),
+                )?;
+                continue;
+            };
+            p.shunt.mode = ShuntMode::FactsReactive { device };
+        }
         if let Watches::Converter { name, bus } = &p.watches {
             let row = (case.dcline.iter().flatten().enumerate()).position(|(r, line)| {
                 dc_line_kinds.get(r) == Some(&DcLineKind::VoltageSourceConverter)
@@ -1445,6 +1477,132 @@ fn resolve_switched_shunts(
         }
     }
     Ok(shunts)
+}
+
+/// The FACTS device of a FACTS control device record, if it is in service
+/// and in a mode the solver models: normal mode (1), or the series link
+/// bypassed (2), which keeps only the shunt element.
+fn facts_device(
+    rev: u32,
+    r: &Record,
+    indices: &HashMap<u32, usize>,
+    case: &Case,
+    ctx: &mut Context<'_>,
+) -> Result<Option<FactsDevice>, Error> {
+    // NAME (N before revision 33), I, J, MODE, PDES, QDES, VSET, SHMX, TRMX,
+    // VTMN, VTMX, VSMX, IMX, LINX, RMPCT, OWNER, SET1, SET2, VSREF, then
+    // REMOT (FCREG in revision 35) from revision 31, and MNAME.
+    let name = r
+        .fields
+        .first()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let label = if name.is_empty() {
+        "FACTS device".to_string()
+    } else {
+        format!("FACTS device {name}")
+    };
+    let mode = r.optional(3, 1.0)?;
+    if mode == 0.0 {
+        return Ok(None);
+    }
+    let bus = r.id(1)?;
+    let terminal = r.optional(2, 0.0)?.abs();
+    if !indices.contains_key(&bus) {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; its sending-end bus {bus} is not in the case"),
+        )?;
+        return Ok(None);
+    }
+    let terminal_bus = if terminal == 0.0 {
+        None
+    } else if let Some(&j) = indices.get(&(terminal as u32)) {
+        Some(case.buses[j].id)
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; its terminal-end bus {terminal} is not in the case"),
+        )?;
+        return Ok(None);
+    };
+    let series = if mode == 1.0 {
+        terminal_bus.is_some()
+    } else if mode == 2.0 && terminal_bus.is_some() {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label} has its series link bypassed (MODE 2), which is not modelled; only its shunt element is kept"
+            ),
+        )?;
+        false
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label} skipped; MODE {mode} is not modelled (normal mode 1 and bypassed series link 2 are)"
+            ),
+        )?;
+        return Ok(None);
+    };
+    if series {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label}: series element sends PDES and QDES to its terminal end without its voltage and current limits (VSMX, IMX, TRMX) or impedance (LINX)"
+            ),
+        )?;
+    }
+    // REMOT may be missing or, in files that leave it out, hold MNAME.
+    let remote = if rev >= 31 && !r.quoted.contains(&19) {
+        r.fields
+            .get(19)
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .unwrap_or(0.0)
+            .abs()
+    } else {
+        0.0
+    };
+    let regulated_bus = if remote == 0.0 || remote == f64::from(bus) {
+        None
+    } else if let Some(&k) = indices.get(&(remote as u32)) {
+        Some(case.buses[k].id)
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} holds its own bus; its remote bus {remote} is not in the case"),
+        )?;
+        None
+    };
+    let vset = r.optional(6, 1.0)?;
+    let shunt_max = r.optional(7, 9999.0)?;
+    if vset <= 0.0 || shunt_max < 0.0 {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; VSET or SHMX is not valid"),
+        )?;
+        return Ok(None);
+    }
+    Ok(Some(FactsDevice {
+        name,
+        bus,
+        terminal_bus: terminal_bus.filter(|_| series),
+        regulated_bus,
+        vset,
+        shunt_max,
+        p_desired: if series { r.optional(4, 0.0)? } else { 0.0 },
+        q_desired: if series { r.optional(5, 0.0)? } else { 0.0 },
+        reactive_share: r.optional(14, 100.0)?,
+        initial_mvar: 0.0,
+        line: r.line,
+    }))
 }
 
 /// The voltage-control tap of a transformer winding record (COD 1), if any.
