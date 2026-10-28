@@ -178,4 +178,3 @@ fn psse_case3_inverters_hold_their_taps_and_move_transformers() {
     // give above TMXI: they stay at the limit.
     assert_eq!(result.dc_line_tap_ratios, [1.1, 1.1]);
 }
-
