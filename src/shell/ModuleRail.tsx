@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import logoUrl from "../assets/stannum-logo.svg";
 import logoSmallUrl from "../assets/stannum-logo-small.svg";
 import { dragRegion } from "./WindowControls";
+import { useUpdate } from "../store/updateStore";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
@@ -52,10 +53,28 @@ export function ModuleRail() {
         </button>
       ))}
       <ThemeButton />
-      <div className="text-center text-[9px] text-teal-100/40" title={`Stannum ${__APP_VERSION__}`}>
-        v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
-      </div>
+      <VersionButton />
     </nav>
+  );
+}
+
+/** The version, at the foot of the rail. Click to check for updates; a dot means one is waiting. */
+function VersionButton() {
+  const update = useUpdate((s) => s.update);
+  const check = useUpdate((s) => s.check);
+  const waiting = !!update && update.version !== __APP_VERSION__;
+  return (
+    <button
+      type="button"
+      onClick={() => void check()}
+      className="relative mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/40 hover:bg-white/5 hover:text-teal-50"
+      title={waiting ? `Stannum ${__APP_VERSION__}. Stannum ${update.version} is available: click to see it.` : `Stannum ${__APP_VERSION__}. Click to check for updates.`}
+      aria-label={waiting ? `Stannum ${__APP_VERSION__}, update ${update.version} available` : `Stannum ${__APP_VERSION__}, check for updates`}
+      data-testid="version-button"
+    >
+      v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
+      {waiting && <span className="absolute -right-0.5 top-0 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
+    </button>
   );
 }
 

@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Updates in the app.** A little after it starts, Stannum checks GitHub
+  for a newer release and offers to install it and restart; click the
+  version at the foot of the module rail (or **Check for updates** in
+  **Ctrl+K**) to check by hand. Updates are signed, and Stannum only
+  installs one signed with the project's key. Turn the startup check off in
+  **Ctrl+K**. Takes effect from the first release after this one.
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
