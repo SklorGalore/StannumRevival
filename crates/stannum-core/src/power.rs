@@ -31,6 +31,9 @@ pub struct PowerCase {
     /// Substations with their places and buses, from RAW revision 34-35
     /// substation data; empty otherwise.
     pub substations: Vec<rs_power::RawSubstation>,
+    /// RAW revision 34-35 system switching devices, each also a branch of
+    /// `case`; empty otherwise.
+    pub switching_devices: Vec<rs_power::SwitchingDevice>,
     /// The RAW revision the file was read as; None for MATPOWER.
     pub revision: Option<u32>,
 }
@@ -68,6 +71,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             voltage_controls: rs_power::VoltageControls::default(),
             mtdc: Vec::new(),
             substations: Vec::new(),
+            switching_devices: Vec::new(),
             revision: None,
         })
     } else {
@@ -111,6 +115,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             voltage_controls: import.voltage_controls,
             mtdc: import.mtdc,
             substations: import.substations,
+            switching_devices: import.switching_devices,
             revision: Some(import.revision),
             case: import.case,
             warnings: import

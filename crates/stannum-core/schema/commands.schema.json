@@ -3425,6 +3425,17 @@
           "format": "double",
           "type": "number"
         },
+        "switching": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkSwitch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when the branch is a RAW system switching device."
+        },
         "tap": {
           "description": "Off-nominal turns ratio (1.0 when unity) and phase shift in degrees.",
           "format": "double",
@@ -3614,6 +3625,34 @@
         "bus",
         "online",
         "pmax"
+      ],
+      "type": "object"
+    },
+    "NetworkSwitch": {
+      "description": "A system switching device drawn on a one-line.",
+      "properties": {
+        "kind": {
+          "description": "\"breaker\", \"disconnector\" or \"connector\" (PSS/E's generic type).",
+          "enum": [
+            "breaker",
+            "disconnector",
+            "connector"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "The device's name; may be empty.",
+          "type": "string"
+        },
+        "normally_open": {
+          "description": "Its normal status is open.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "normally_open"
       ],
       "type": "object"
     },
@@ -6468,15 +6507,15 @@
     {
       "buses": 2,
       "format": "<bus>:<bus>:<circuit>",
-      "inspector": "topology",
+      "inspector": "model",
       "kind": "switch",
       "label": "Switch",
       "matpower_table": null,
-      "outage": false,
+      "outage": true,
       "raw_sections": [
         "SYSTEM SWITCHING DEVICE"
       ],
-      "solved": false
+      "solved": true
     },
     {
       "buses": 1,
