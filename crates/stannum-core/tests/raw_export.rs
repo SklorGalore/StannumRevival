@@ -633,3 +633,21 @@ fn case_diff_compares_records_that_repeat_a_key() {
     let only = found.iter().next().unwrap();
     assert!(only.contains("'#2'") || only.contains("#2"), "{only}");
 }
+
+/// SyntheticUSA ends with Q where INDUCTION MACHINE would start. PSS/E reads
+/// the missing sections as empty, and so does Case diff; Q partway through a
+/// section is still refused.
+#[test]
+fn case_diff_reads_a_file_that_stops_before_its_last_section() {
+    let text = std::fs::read_to_string(fixture("five_bus.raw")).unwrap();
+    let short = text.replace("0 / END OF INDUCTION MACHINE DATA\r\n", "");
+    assert_ne!(short, text);
+    let full = parse_bytes("full", text.as_bytes()).unwrap();
+    let short = parse_bytes("short", short.as_bytes()).unwrap();
+    assert!(changes(full, short).is_empty());
+
+    let at = text.find("0 / END OF BUS DATA").unwrap();
+    let cut = format!("{}Q\n", &text[..at]);
+    let error = parse_bytes("cut", cut.as_bytes()).unwrap_err().to_string();
+    assert!(error.contains("Early Q"), "{error}");
+}

@@ -432,8 +432,13 @@ impl<'a> Parser<'a> {
                 evidence,
                 "records_verified" | "two_winding_records_verified" | "manual_layout"
             );
+            let mut opened = None;
             loop {
                 position = self.skip_headers(position);
+                // Q where a section would start ends the file: PSS/E reads the
+                // sections after it as empty (SyntheticUSA stops before
+                // INDUCTION MACHINE).
+                let at_start = *opened.get_or_insert(position) == position;
                 if position >= self.lines.len() {
                     return self.fail(
                         section,
@@ -452,6 +457,10 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 if structural.eq_ignore_ascii_case("q") {
+                    if at_start && !self.lenient {
+                        ended = true;
+                        break;
+                    }
                     if self.lenient {
                         self.diagnostics.push(Diagnostic {
                             section: section.clone(),
