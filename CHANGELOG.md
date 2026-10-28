@@ -10,6 +10,9 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
+  `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
+  `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
 - **Area interchange** control in AC solves: each area's slack generation
   moves until its net interchange is within `PTOL` of the RAW area data's
   `PDES`, counting tie lines, or tie lines and loads that belong to another
@@ -22,7 +25,6 @@ section into the next version's when a release is cut (see
   position) and flow. Double-click one to open or close it in the study.
   The inspector shows their type, state, normal state and flow, and its
   study action reads **Open** / **Close** for them.
-
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton

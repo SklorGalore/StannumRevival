@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2024"
 description = "Synthetic power system cases built and validated with the structural criteria of Birchfield et al. (2017)"
 publish = false
+license.workspace = true
 
 [dependencies]
 rs-power = { path = "../rs-power" }

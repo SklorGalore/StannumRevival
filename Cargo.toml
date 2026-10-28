@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/stannum-core", "crates/stannum-cli", "crates/stannum-synth", "crates/stannum-py", "crates/rs-power", "crates/nodal", "src-tauri"]
+
+# Every crate here is BSD-3-Clause; see LICENSE and THIRD-PARTY-NOTICES.md.
+[workspace.package]
+license = "BSD-3-Clause"

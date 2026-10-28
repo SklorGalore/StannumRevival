@@ -7,6 +7,9 @@ name = "stannum"
 description = "Power flow, contingencies, topology and case comparison from Python, with Stannum's analysis core"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "BSD-3-Clause"
+# Copied from the repository root by scripts/ci/test-python.ps1 before a build.
+license-files = ["LICENSE", "THIRD-PARTY-*"]
 dependencies = ["numpy>=1.22"]
 classifiers = [
     "Programming Language :: Python :: 3",
