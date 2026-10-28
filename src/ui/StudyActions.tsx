@@ -12,7 +12,10 @@ import { inputClass } from "./primitives";
 export function describeEdit(entry: StudyEntry): string {
   const e = entry.edit;
   const was = entry.was ? ` (was ${entry.was})` : "";
-  if (e.kind === "status") return `${elementLabel(e.element)} ${e.online ? "in service" : "out of service"}`;
+  if (e.kind === "status") {
+    const state = parseElement(e.element)?.kind === "switch" ? (e.online ? "closed" : "open") : e.online ? "in service" : "out of service";
+    return `${elementLabel(e.element)} ${state}`;
+  }
   if (e.kind === "generation") return `${elementLabel(e.element)} set to ${fixed(e.mw, 1)} MW${was}`;
   return `Bus ${e.bus} load ${fixed(e.mw, 1)} MW, ${fixed(e.mvar, 1)} Mvar${was}`;
 }
@@ -25,12 +28,14 @@ function useInService(element: string): boolean {
   if (edit && edit.edit.kind === "status") return edit.edit.online;
   const kind = parseElement(element)?.kind;
   if (kind === "generator") return report?.generators.find((g) => g.element === element)?.online ?? true;
-  if (kind === "line" || kind === "transformer") return report?.branches.find((b) => b.element === element)?.online ?? true;
+  if (kind === "line" || kind === "transformer" || kind === "switch") return report?.branches.find((b) => b.element === element)?.online ?? true;
   return true;
 }
 
 function OutageButton({ element }: { element: string }) {
   const online = useInService(element);
+  // A switching device is opened and closed rather than taken out.
+  const sw = parseElement(element)?.kind === "switch";
   const add = useStudy((s) => s.add);
   const busy = useStudy((s) => s.busy);
   return (
@@ -44,10 +49,16 @@ function OutageButton({ element }: { element: string }) {
         e.stopPropagation();
         void add({ edit: { kind: "status", element, online: !online } });
       }}
-      title={online ? `Take ${elementLabel(element)} out of service in this study` : `Put ${elementLabel(element)} back in service`}
+      title={
+        sw
+          ? `${online ? "Open" : "Close"} ${elementLabel(element)} in this study`
+          : online
+            ? `Take ${elementLabel(element)} out of service in this study`
+            : `Put ${elementLabel(element)} back in service`
+      }
     >
       <Power size={12} />
-      {online ? "Take out" : "Put back"}
+      {sw ? (online ? "Open" : "Close") : online ? "Take out" : "Put back"}
     </button>
   );
 }
@@ -131,7 +142,7 @@ export function StudyActions({ element }: { element: string }) {
   const canSolve = useWorkspace((s) => !!s.caseSummary?.power.available);
   const kind = parseElement(element)?.kind;
   if (!canSolve || !kind) return null;
-  const outage = kind === "line" || kind === "transformer" || kind === "generator";
+  const outage = kind === "line" || kind === "transformer" || kind === "switch" || kind === "generator";
   const value = kind === "generator" || kind === "bus" || kind === "load";
   if (!outage && !value) return null;
   return (

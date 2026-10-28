@@ -113,10 +113,12 @@ export function elementResults(report: SolveReport, element: string): ElementRes
       };
     }
     case "line":
-    case "transformer": {
+    case "transformer":
+    case "switch": {
       const rows = report.branches.filter((x) => x.element === element);
       if (!rows.length) return null;
-      if (rows.every((r) => !r.online)) return { headline: "Out of service", tone: "ok", loading: null, groups: [], offline: true };
+      if (rows.every((r) => !r.online))
+        return { headline: e.kind === "switch" ? "Open" : "Out of service", tone: "ok", loading: null, groups: [], offline: true };
       const loading = rows.reduce<number | null>((m, r) => (r.loading_pct === null ? m : Math.max(m ?? 0, r.loading_pct)), null);
       const tone = loadingTone(loading);
       const groups = rows.map((r) => {
