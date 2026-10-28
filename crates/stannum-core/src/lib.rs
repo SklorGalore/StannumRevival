@@ -15,11 +15,13 @@
 //! - [`elements`]: one id per bus, branch and generator, shared by all modules.
 //! - [`record_edit`]: edits from the Records module, written into the case.
 //! - [`records`]: the open case's records as tables, one per record type.
+//! - [`raw_export`]: the open case written as a complete RAW 33 or 35 file.
 //! - [`schema`]: checks values against the command schemas and writes them as TypeScript.
 //! - [`run_file`]: run files, commands one per line, run in order.
 //! - [`results`]: names for every solution the open case can show.
 //! - [`topology_wire`]: the topology snapshot as compact columns for the app.
 //! - [`logbook`]: the application log shown in the log panel.
+//! - [`paging`]: tables read a page at a time, sorted and filtered in the core.
 
 pub mod attach;
 pub mod commands;
@@ -33,7 +35,9 @@ pub mod error;
 pub mod geo;
 pub mod inspect;
 pub mod logbook;
+pub mod paging;
 pub mod power;
+pub mod raw_export;
 pub mod record_edit;
 pub mod records;
 pub mod results;

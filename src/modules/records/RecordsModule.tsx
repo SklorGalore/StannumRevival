@@ -9,17 +9,18 @@ import { useWorkspace } from "../../store/workspaceStore";
 import { api, saveTextExport } from "../../lib/analysis/api";
 import type { CaseRecord, RecordBook, RecordColumnKind, RecordEdit, RecordTable } from "../../lib/analysis/types";
 import { count, toCsv } from "../../lib/analysis/format";
-import type { FilterRule } from "../../lib/filters";
+import type { FieldDefinition, FilterRule } from "../../lib/filters";
 import { elementLabel } from "../../lib/elements";
 import { Button, EmptyState, ErrorBanner, Notice, SearchBox, inputClass } from "../../ui/primitives";
-import { DataTable, filterRows, type Column } from "../../ui/DataTable";
+import { DataTable, type Column } from "../../ui/DataTable";
+import { allRows, type RowSource } from "../../ui/usePagedRows";
 import { FilterChips } from "../../ui/FilterChips";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import { DrawAroundButton } from "../../ui/DrawAround";
 import { useWidth } from "../../ui/useWidth";
 import { useStudyFile } from "../../store/studyFileStore";
 import { RecentFiles } from "../../ui/RecentFiles";
-import { cellProblem, columnOptions, csvRows, passes, recordFields, sectionFor } from "./records";
+import { cellProblem, csvRows, sectionFor } from "./records";
 
 /** Below this width the record types fold into a menu. */
 const LIST_MIN = 720;
@@ -88,18 +89,32 @@ function CellEditor({
   );
 }
 
+/** A record type's columns and counts. Its rows are read a page at a time. */
+interface TableInfo {
+  id: string;
+  label: string;
+  columns: RecordTable["columns"];
+  skipped: number;
+  note: string | null;
+  total: number;
+  fields: FieldDefinition[];
+}
+
+/** A record with its position in the whole table, which edits refer to. */
+type PagedRecord = CaseRecord & { position: number };
+
 interface EditState {
   editable: boolean;
   section: string;
-  rowIndex: (r: CaseRecord) => number;
+  rowIndex: (r: PagedRecord) => number;
   pending: Record<string, string>;
   editing: CellRef | null;
   start: (cell: CellRef) => void;
   finish: (cell: CellRef, value: string | null, next?: boolean) => void;
 }
 
-function columnsFor(table: RecordTable, raw: boolean, edit: EditState): Column<CaseRecord>[] {
-  const cols: Column<CaseRecord>[] = table.columns.map((c, i) => {
+function columnsFor(table: TableInfo, raw: boolean, edit: EditState): Column<PagedRecord>[] {
+  const cols: Column<PagedRecord>[] = table.columns.map((c, i) => {
     const align = c.kind === "text" ? "left" : "right";
     const canEdit = edit.editable && c.editable;
     return {
@@ -198,14 +213,14 @@ export function RecordsModule({ active }: { active: boolean }) {
   const saveCaseAs = useWorkspace((s) => s.saveCaseAs);
 
   const [book, setBook] = useState<RecordBook | null>(null);
-  const [tables, setTables] = useState<Record<string, RecordTable>>({});
+  const [tables, setTables] = useState<Record<string, TableInfo>>({});
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [rulesBy, setRulesBy] = useState<Record<string, FilterRule[]>>({});
   // Picked here; while linked (or after a search), the shared selection wins.
   const [picked, setPicked] = useState<string | null>(null);
-  const [pickedRow, setPickedRow] = useState<CaseRecord | null>(null);
+  const [pickedRow, setPickedRow] = useState<PagedRecord | null>(null);
   // Typed values not yet applied to the case, by section, row and column.
   const [pending, setPending] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<CellRef | null>(null);
@@ -255,21 +270,25 @@ export function RecordsModule({ active }: { active: boolean }) {
       .catch((e: Error) => version === useWorkspace.getState().caseVersion && setError(e.message));
   }, [active, readable, book, error, caseVersion]);
 
-  // Each table's rows, read when first shown.
+  // Each table's columns and filter fields, read when first shown. Its
+  // rows are read a page at a time, as they scroll into view.
   const table = section ? tables[section] : undefined;
   useEffect(() => {
     if (!active || !section || table) return;
     const version = caseVersion;
-    api
-      .recordTable(section)
-      .then((t) => version === useWorkspace.getState().caseVersion && setTables((all) => ({ ...all, [t.id]: t })))
+    Promise.all([api.recordPage(section, { limit: 0 }), api.recordFields(section)])
+      .then(([t, types]) => {
+        if (version !== useWorkspace.getState().caseVersion) return;
+        const fields = t.columns.map((c, i) => ({ key: String(i), label: c.name, type: types[i] ?? "text" }));
+        const info = { id: t.id, label: t.label, columns: t.columns, skipped: t.skipped, note: t.note, total: t.page.total, fields };
+        setTables((all) => ({ ...all, [t.id]: info }));
+      })
       .catch((e: Error) => version === useWorkspace.getState().caseVersion && setError(e.message));
   }, [active, section, table, caseVersion]);
 
   // Follow a selection made elsewhere to the table that lists it.
   useEffect(() => {
     if (!book || !selection || selection.from === "records") return;
-    if (table?.rows.some((r) => r.element === selection.element)) return;
     const next = sectionFor(book, selection.element);
     if (next && next !== section) {
       setSection(next);
@@ -279,11 +298,12 @@ export function RecordsModule({ active }: { active: boolean }) {
   }, [selection, book]);
 
   const raw = book?.source === "raw";
-  const keys = useMemo(() => new Map(table?.rows.map((r, i) => [r, i]) ?? []), [table]);
+  // Rows read so far, by position, for the edits made on them.
+  const loaded = useRef(new Map<number, PagedRecord>());
   const editState: EditState = {
     editable: !!book?.editable,
     section: section ?? "",
-    rowIndex: (r) => keys.get(r) ?? -1,
+    rowIndex: (r) => r.position,
     pending,
     editing,
     start: (cell) => {
@@ -300,7 +320,7 @@ export function RecordsModule({ active }: { active: boolean }) {
       setEditing(null);
       if (value !== null && table && section) {
         const key = editKey(section, cell.row, cell.column);
-        const original = shownValue(table.rows[cell.row]?.cells[cell.column] ?? null);
+        const original = shownValue(loaded.current.get(cell.row)?.cells[cell.column] ?? null);
         setPending((all) => {
           const copy = { ...all };
           // Typing the value back drops the edit.
@@ -319,15 +339,48 @@ export function RecordsModule({ active }: { active: boolean }) {
   const columns = useMemo(
     () => (table ? columnsFor(table, raw, editState) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [table, raw, pending, editing, book?.editable, keys]
+    [table, raw, pending, editing, book?.editable]
   );
-  const fields = useMemo(() => (table ? recordFields(table) : []), [table]);
+  const fields = table?.fields ?? [];
   const rules = (section && rulesBy[section]) || [];
   // The picked record stays listed even when a filter would hide it.
-  const shown = useMemo(
-    () => (table ? (rules.length ? table.rows.filter((r) => passes(r, rules) || (selected !== null && r.element === selected)) : table.rows) : []),
-    [table, rules, selected]
+  // The core filters, sorts and searches; the picked record stays listed
+  // even when a filter would hide it.
+  const pageRules = useMemo(
+    () => rules.map((r) => ({ field: r.field, operator: r.operator, value: r.value, upper: r.upper ?? null })),
+    [rules]
   );
+  const source = useMemo<RowSource<PagedRecord> | undefined>(() => {
+    if (!section || !table) return undefined;
+    const keep = pageRules.length ? selected : null;
+    return {
+      key: `${caseVersion}\u0000${editedVersion}\u0000${section}\u0000${JSON.stringify(pageRules)}\u0000${keep}`,
+      fetch: async (r) => {
+        const { page } = await api.recordPage(section, { ...r, rules: pageRules, keep });
+        const rows = page.rows.map((row, i) => ({ ...row, position: page.positions[i] }));
+        for (const row of rows) loaded.current.set(row.position, row);
+        return { ...page, rows };
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, table, caseVersion, editedVersion, pageRules, pageRules.length ? selected : null]);
+  // How many pass the filters, for the note under them.
+  const [matched, setMatched] = useState<number | null>(null);
+  useEffect(() => {
+    setMatched(null);
+    if (!source || !pageRules.length) return;
+    let live = true;
+    source
+      .fetch({ offset: 0, limit: 0, sort: null, search: "", find: null })
+      .then((p) => live && setMatched(p.matched))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [source, pageRules]);
+  useEffect(() => {
+    loaded.current = new Map();
+  }, [section, caseVersion, editedVersion]);
 
   const pendingList: RecordEdit[] = Object.entries(pending).map(([key, value]) => {
     const [sec, row, column] = key.split("\u0000");
@@ -347,7 +400,7 @@ export function RecordsModule({ active }: { active: boolean }) {
   };
   const unsaved = summary?.record_edits ?? 0;
 
-  const pick = (row: CaseRecord) => {
+  const pick = (row: PagedRecord) => {
     setPickedRow(row);
     if (row.element) {
       setPicked(row.element);
@@ -388,8 +441,8 @@ export function RecordsModule({ active }: { active: boolean }) {
   }
 
   const exportCsv = async () => {
-    if (!table) return;
-    const rows = filterRows(shown, columns, search);
+    if (!table || !source) return;
+    const rows = await allRows(source, null, search.trim());
     await saveTextExport(`${summary.name.replace(/\.(raw|m)$/i, "")}-${table.label.toLowerCase().replace(/\s+/g, "-")}.csv`, toCsv(csvRows(table, rows)), {
       name: "CSV",
       extensions: ["csv"],
@@ -443,10 +496,12 @@ export function RecordsModule({ active }: { active: boolean }) {
         </div>
         <FilterChips
           fields={fields}
-          options={(key) => columnOptions(table, key)}
+          options={(key) => api.recordValues(table.id, key)}
           rules={rules}
           onRules={(next) => setRulesBy((all) => ({ ...all, [section]: next }))}
-          note={filtered ? `${count(shown.length)} of ${count(table.rows.length)} ${table.label.toLowerCase()}` : "Filter on any field"}
+          note={
+            filtered ? `${matched === null ? "…" : count(matched)} of ${count(table.total)} ${table.label.toLowerCase()}` : "Filter on any field"
+          }
         />
         {(pendingList.length > 0 || unsaved > 0 || editError) && (
           <div
@@ -514,14 +569,15 @@ export function RecordsModule({ active }: { active: boolean }) {
         >
           <DataTable
             key={section}
-            rows={shown}
+            source={source}
+            find={selected}
             columns={columns}
-            rowKey={(r) => keys.get(r) ?? r.line}
+            rowKey={(r) => r.position}
             search={search}
             onRowClick={pick}
-            isSelected={(r) => (selected !== null && r.element === selected) || r === pickedRow}
+            isSelected={(r) => (selected !== null && r.element === selected) || r.position === pickedRow?.position}
             rowClassName={(r) => (r.element ? "" : "text-slate-600")}
-            empty={table.rows.length ? "No records match." : `The case has no ${table.label.toLowerCase()}.`}
+            empty={table.total ? "No records match." : `The case has no ${table.label.toLowerCase()}.`}
           />
         </div>
       </>

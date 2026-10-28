@@ -2,7 +2,7 @@
 // saved solves, solve and contingency settings, drawing and layout, kept
 // beside a reference to the case file. See lib/study/studyFile.ts.
 import { create } from "zustand";
-import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, toStannumError } from "../lib/analysis/api";
 import { addRecent, fileName } from "../lib/study/recent";
 import {
   compareToFile,
@@ -49,6 +49,11 @@ interface StudyFileState {
   open: (path?: string, opts?: { confirmed?: boolean }) => Promise<boolean>;
   /** Open a case or a study, asking for either when no path is given. */
   openFile: (path?: string) => Promise<boolean>;
+  /**
+   * Write the case, with its Records and study edits, as a PSS/E RAW file of
+   * `revision` (asking where), then say what the file couldn't keep.
+   */
+  exportRaw: (revision: 33 | 35) => Promise<boolean>;
 }
 
 /** Whether there is anything worth keeping: edits, saved solves or a drawing. */
@@ -140,6 +145,30 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
   error: null,
   notice: null,
   dismissNotice: () => set({ notice: null }),
+
+  async exportRaw(revision) {
+    const summary = useWorkspace.getState().caseSummary;
+    if (!summary) return false;
+    const base = summary.name.replace(/\.(raw|m)$/i, "");
+    const path = await pickSavePath(`${base}_v${revision}.raw`, RAW_FILTERS);
+    if (!path) return false;
+    try {
+      const done = await api.exportRaw(path, revision);
+      set({
+        error: null,
+        notice: {
+          // Notes say what the file couldn't keep, or that it came from the power flow model.
+          tone: done.notes.length ? "warning" : "info",
+          title: `Exported ${fileName(path)} as PSS/E RAW ${revision}: ${done.records.toLocaleString()} records`,
+          lines: done.notes.length ? done.notes : ["Every record of the case is in the file."],
+        },
+      });
+      return true;
+    } catch (e) {
+      set({ notice: null, error: `Couldn't export ${fileName(path)}: ${toStannumError(e).message}` });
+      return false;
+    }
+  },
 
   async save(opts) {
     const w = useWorkspace.getState();

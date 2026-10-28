@@ -314,6 +314,22 @@
           },
           "type": "array"
         },
+        "shift_deg": {
+          "items": {
+            "description": "Phase shift angle in degrees, as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "tap": {
+          "items": {
+            "description": "Off-nominal tap ratio (1 for lines), as solved.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
         "to": {
           "items": {
             "format": "uint32",
@@ -348,6 +364,8 @@
         "qf",
         "qt",
         "rate_a",
+        "shift_deg",
+        "tap",
         "to",
         "winding"
       ],
@@ -1418,6 +1436,7 @@
           "$ref": "#/$defs/SolveSettings",
           "default": {
             "adjust_dc_taps": true,
+            "adjust_phase_shifters": true,
             "adjust_transformer_taps": true,
             "area_interchange": "off",
             "dc_model": "detailed",
@@ -2861,6 +2880,15 @@
       ],
       "type": "object"
     },
+    "FieldType": {
+      "description": "How a Records column filters: by number, by text, or by picking one of\na few values.",
+      "enum": [
+        "number",
+        "text",
+        "category"
+      ],
+      "type": "string"
+    },
     "FieldValue": {
       "anyOf": [
         {
@@ -3889,6 +3917,21 @@
       ],
       "type": "object"
     },
+    "Operator": {
+      "enum": [
+        "eq",
+        "neq",
+        "contains",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+        "missing",
+        "present"
+      ],
+      "type": "string"
+    },
     "Overload": {
       "description": "A branch over its limit after an outage.",
       "properties": {
@@ -3933,6 +3976,343 @@
         "mw",
         "base_mw"
       ],
+      "type": "object"
+    },
+    "PageOfBranchRow": {
+      "description": "One page of a table.",
+      "properties": {
+        "found": {
+          "description": "Where `find` is among the matched rows, if it is there.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "matched": {
+          "description": "Rows passing the search and rules (and the kept row).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Where this page starts among the matched rows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positions": {
+          "description": "Each row's position in the whole table, in the order sent.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "#/$defs/BranchRowColumns"
+        },
+        "total": {
+          "description": "Rows in the whole table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "matched",
+        "offset",
+        "positions",
+        "rows",
+        "found"
+      ],
+      "type": "object"
+    },
+    "PageOfBusRow": {
+      "description": "One page of a table.",
+      "properties": {
+        "found": {
+          "description": "Where `find` is among the matched rows, if it is there.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "matched": {
+          "description": "Rows passing the search and rules (and the kept row).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Where this page starts among the matched rows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positions": {
+          "description": "Each row's position in the whole table, in the order sent.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "#/$defs/BusRowColumns"
+        },
+        "total": {
+          "description": "Rows in the whole table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "matched",
+        "offset",
+        "positions",
+        "rows",
+        "found"
+      ],
+      "type": "object"
+    },
+    "PageOfContingencyRow": {
+      "description": "One page of a table.",
+      "properties": {
+        "found": {
+          "description": "Where `find` is among the matched rows, if it is there.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "matched": {
+          "description": "Rows passing the search and rules (and the kept row).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Where this page starts among the matched rows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positions": {
+          "description": "Each row's position in the whole table, in the order sent.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "#/$defs/ContingencyRowColumns"
+        },
+        "total": {
+          "description": "Rows in the whole table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "matched",
+        "offset",
+        "positions",
+        "rows",
+        "found"
+      ],
+      "type": "object"
+    },
+    "PageOfGeneratorRow": {
+      "description": "One page of a table.",
+      "properties": {
+        "found": {
+          "description": "Where `find` is among the matched rows, if it is there.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "matched": {
+          "description": "Rows passing the search and rules (and the kept row).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Where this page starts among the matched rows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positions": {
+          "description": "Each row's position in the whole table, in the order sent.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "#/$defs/GeneratorRowColumns"
+        },
+        "total": {
+          "description": "Rows in the whole table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "matched",
+        "offset",
+        "positions",
+        "rows",
+        "found"
+      ],
+      "type": "object"
+    },
+    "PageOfRecordRow": {
+      "description": "One page of a table.",
+      "properties": {
+        "found": {
+          "description": "Where `find` is among the matched rows, if it is there.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "matched": {
+          "description": "Rows passing the search and rules (and the kept row).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Where this page starts among the matched rows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positions": {
+          "description": "Each row's position in the whole table, in the order sent.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "$ref": "#/$defs/RecordRowColumns"
+        },
+        "total": {
+          "description": "Rows in the whole table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "matched",
+        "offset",
+        "positions",
+        "rows",
+        "found"
+      ],
+      "type": "object"
+    },
+    "PageQuery": {
+      "description": "Which rows of a table to send, in what order.",
+      "properties": {
+        "any": {
+          "default": [],
+          "description": "And, when there are any, passing at least one of these.",
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        },
+        "find": {
+          "default": null,
+          "description": "An element id whose position in the sorted, filtered rows is sent\nback as `found`, so the app can scroll to it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keep": {
+          "default": null,
+          "description": "An element id listed even when the search or rules would hide it, so\nthe picked row stays in view.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "Rows to send: 200 when left out, at most 5,000.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip in the sorted, filtered order.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rules": {
+          "default": [],
+          "description": "Keep rows passing every rule.",
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": "array"
+        },
+        "search": {
+          "default": "",
+          "description": "Keep rows where any field's text contains this, ignoring case.",
+          "type": "string"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sort by one field. Left out, rows keep the table's own order."
+        }
+      },
       "type": "object"
     },
     "Path": {
@@ -4068,6 +4448,45 @@
       ],
       "type": "object"
     },
+    "RawExport": {
+      "description": "What an export wrote, and what it couldn't keep.",
+      "properties": {
+        "notes": {
+          "description": "What changed on the way, such as fields the revision has no place\nfor. Empty when the file holds everything the case had.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "description": "Records written, in every section.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "description": "The RAW revision written: 33 or 35.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "description": "\"records\" when the file's own records were written, \"model\" when the\npower flow model was (MATPOWER cases, other RAW revisions).",
+          "enum": [
+            "records",
+            "model"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "source",
+        "records",
+        "notes"
+      ],
+      "type": "object"
+    },
     "RecordBook": {
       "properties": {
         "editable": {
@@ -4156,6 +4575,46 @@
         "row",
         "column",
         "value"
+      ],
+      "type": "object"
+    },
+    "RecordPage": {
+      "description": "A page of one record type: its columns, and the rows asked for.",
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/RecordColumn"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page": {
+          "$ref": "#/$defs/PageOfRecordRow"
+        },
+        "skipped": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "columns",
+        "skipped",
+        "note",
+        "page"
       ],
       "type": "object"
     },
@@ -4318,6 +4777,33 @@
         "units",
         "title",
         "rows"
+      ],
+      "type": "object"
+    },
+    "Rule": {
+      "description": "One filter rule: a field compared with a value. The same rules as the\napp's filter chips (`src/lib/filters.ts`).",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "operator": {
+          "$ref": "#/$defs/Operator"
+        },
+        "upper": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "operator"
       ],
       "type": "object"
     },
@@ -4519,6 +5005,13 @@
           },
           "type": "array"
         },
+        "flow_control_passes": {
+          "default": 0,
+          "description": "Passes that moved phase shifters.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "generators": {
           "$ref": "#/$defs/GeneratorRowColumns"
         },
@@ -4546,6 +5039,25 @@
         },
         "newton_fallbacks": {
           "description": "Passes in which the automatic method finished with Newton.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters": {
+          "default": 0,
+          "description": "Phase shifters in active power flow control in the case.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase_shifters_locked": {
+          "default": false,
+          "description": "Whether the solve locked the phase shifters at their angles (AC only).",
+          "type": "boolean"
+        },
+        "phase_shifters_moved": {
+          "default": 0,
+          "description": "Phase shifters that ended away from their starting angle.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -4637,6 +5149,10 @@
         "taps_moved",
         "shunts_locked",
         "taps_locked",
+        "phase_shifters",
+        "phase_shifters_moved",
+        "flow_control_passes",
+        "phase_shifters_locked",
         "residual_pu",
         "residual_mva",
         "elapsed_ms",
@@ -4663,6 +5179,11 @@
         "adjust_dc_taps": {
           "default": true,
           "description": "Step DC converter taps (detailed model only).",
+          "type": "boolean"
+        },
+        "adjust_phase_shifters": {
+          "default": true,
+          "description": "Move phase shifters in active power flow control (AC only). When\nfalse they are locked, like taps.",
           "type": "boolean"
         },
         "adjust_transformer_taps": {
@@ -4722,6 +5243,21 @@
           "type": "number"
         }
       },
+      "type": "object"
+    },
+    "Sort": {
+      "properties": {
+        "descending": {
+          "default": false,
+          "type": "boolean"
+        },
+        "field": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "field"
+      ],
       "type": "object"
     },
     "Source": {
@@ -5702,6 +6238,40 @@
       },
       "takes_case": true
     },
+    "contingency_page": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageQuery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "A page of the last run's results, sorted, searched and filtered in\nthe core. Left unsorted, the rows keep their rank order.",
+      "result": {
+        "$ref": "#/$defs/PageOfContingencyRow"
+      },
+      "takes_case": true
+    },
     "contingency_progress": {
       "action": false,
       "args": {
@@ -5990,6 +6560,42 @@
       },
       "takes_case": true
     },
+    "export_raw": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the case, with its Records and study edits, as a complete PSS/E\nRAW file of revision 33 or 35. The answer lists anything the file\ncouldn't keep.",
+      "result": {
+        "$ref": "#/$defs/RawExport"
+      },
+      "takes_case": true
+    },
     "file_fingerprint": {
       "action": false,
       "args": {
@@ -6127,6 +6733,79 @@
       },
       "takes_case": false
     },
+    "record_fields": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "type": "object"
+      },
+      "doc": "How each column of one record type filters: by number, by text, or\nby picking one of its few values.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/FieldType"
+        },
+        "type": "array"
+      },
+      "takes_case": true
+    },
+    "record_page": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageQuery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "type": "object"
+      },
+      "doc": "A page of one record type, sorted, searched and filtered in the core\n(fields are column positions, \"line\" and \"element\").",
+      "result": {
+        "$ref": "#/$defs/RecordPage"
+      },
+      "takes_case": true
+    },
     "record_table": {
       "action": false,
       "args": {
@@ -6154,6 +6833,239 @@
       "doc": "Every record of one type, with every field.",
       "result": {
         "$ref": "#/$defs/RecordTable"
+      },
+      "takes_case": true
+    },
+    "record_values": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "limit": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "field"
+        ],
+        "type": "object"
+      },
+      "doc": "The distinct values of one column of a record type, sorted, missing\nlast: the choices its filter offers. At most `limit` (500 when left out).",
+      "result": {
+        "items": true,
+        "type": "array"
+      },
+      "takes_case": true
+    },
+    "result_branches": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "busRules": {
+            "items": {
+              "$ref": "#/$defs/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageQuery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "doc": "A page of a result's branches. `busRules` keep the branches with an\nend at a bus passing every rule.",
+      "result": {
+        "$ref": "#/$defs/PageOfBranchRow"
+      },
+      "takes_case": true
+    },
+    "result_bus_values": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "limit": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "field"
+        ],
+        "type": "object"
+      },
+      "doc": "The distinct values of a bus filter field in a result, sorted,\nmissing last. At most `limit` (500 when left out).",
+      "result": {
+        "items": true,
+        "type": "array"
+      },
+      "takes_case": true
+    },
+    "result_buses": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "busRules": {
+            "items": {
+              "$ref": "#/$defs/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageQuery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "doc": "A page of a result's buses, sorted, searched and filtered in the\ncore. `name` is a result name, or \"latest\" for the latest solve. `busRules` keep the buses passing every rule (the Power flow\nfilter chips: area, base_kv, kind, number, name, vm).",
+      "result": {
+        "$ref": "#/$defs/PageOfBusRow"
+      },
+      "takes_case": true
+    },
+    "result_generators": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "busRules": {
+            "items": {
+              "$ref": "#/$defs/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PageQuery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "doc": "A page of a result's generators. `busRules` keep the generators at a\nbus passing every rule.",
+      "result": {
+        "$ref": "#/$defs/PageOfGeneratorRow"
       },
       "takes_case": true
     },

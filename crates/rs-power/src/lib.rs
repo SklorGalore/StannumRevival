@@ -3,6 +3,7 @@ mod case;
 mod controls;
 mod dc;
 mod facts;
+mod flow_controls;
 mod input;
 mod interchange;
 mod mtdc;
@@ -19,6 +20,7 @@ pub use case::{Branch, Bus, BusType, Case, Generator};
 pub use controls::{ShuntMode, SwitchedShunt, TapControl, VoltageControls};
 pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
 pub use facts::{FactsDevice, FactsSolution};
+pub use flow_controls::{Asymmetric, FlowControls, PhaseShifter};
 pub use input::{load_matpower, parse_matpower};
 pub use interchange::{Area, AreaInterchange, AreaLoad, AreaSolution, InterchangeMode};
 pub use mtdc::{

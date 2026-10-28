@@ -51,8 +51,10 @@ import { useContingencies } from "../../store/contingencyStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
+import type { Page, PageQuery, PageRule } from "../../lib/analysis/types";
+import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
 import { tolerancePu } from "../../lib/analysis/tolerance";
-import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, flowControlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -120,6 +122,7 @@ const loadPartColumns: Column<BusRow>[] = (["p", "q"] as const).flatMap((side) =
     const value = (r: BusRow) => (r.load_parts ? r.load_parts[side][k] : k === 0 ? r[side === "p" ? "pd" : "qd"] : 0);
     return {
       key: `load_${side}_${short}`,
+      sortField: `load_parts.${side}.${k}`,
       header: `${side === "p" ? "Pd" : "Qd"} ${short} (${side === "p" ? "MW" : "MVAr"})`,
       title: `${side === "p" ? "Active" : "Reactive"} load drawn as ${LOAD_PART_NAMES[k]} at the solved voltage`,
       value,
@@ -175,25 +178,26 @@ const generatorColumns: Column<GeneratorRow>[] = [
 const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "from", header: "From", value: (r) => r.from, align: "right" },
-  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "" }] : []),
+  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "", sortField: null }] : []),
   { key: "to", header: "To", value: (r) => r.to, align: "right" },
-  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "" }] : []),
+  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "", sortField: null }] : []),
   {
     key: "circuit",
     header: "Circuit",
     value: (r) => r.circuit,
     render: (r) => (r.winding ? `${r.circuit} · W${r.winding}` : r.circuit),
   },
-  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line") },
+  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line"), sortField: "is_transformer" },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
   { key: "pf", header: "PF (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "qf", header: "QF (MVAr)", value: (r) => r.qf, render: (r) => fixed(r.qf), align: "right" },
   { key: "pt", header: "PT (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
   { key: "qt", header: "QT (MVAr)", value: (r) => r.qt, render: (r) => fixed(r.qt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   { key: "rate_a", header: "Rate A (MVA)", value: (r) => r.rate_a, render: (r) => (r.rate_a > 0 ? fixed(r.rate_a, 1) : "—"), align: "right" },
   {
     key: "loading",
+    sortField: "loading_pct",
     header: "Loading (%)",
     value: (r) => r.loading_pct,
     render: (r) =>
@@ -206,6 +210,19 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
           </span>
         </LoadingBar>
       ),
+    align: "right",
+  },  {
+    key: "tap",
+    header: "Tap",
+    value: (r) => r.tap,
+    render: (r) => (r.is_transformer ? fixed(r.tap, 4) : ""),
+    align: "right",
+  },
+  {
+    key: "shift",
+    header: "Shift (°)",
+    value: (r) => r.shift_deg,
+    render: (r) => (r.shift_deg ? fixed(r.shift_deg, 2) : ""),
     align: "right",
   },
 ];
@@ -315,7 +332,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
   { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => dcTap(r, false), render: (r) => num(dcTap(r, false), 5), align: "right" },
   { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   {
     key: "qf",
     header: "QF (MVAr)",
@@ -595,6 +612,7 @@ function SolvePanel({
   const ac = settings.model === "ac";
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
+  const exportRaw = useStudyFile((s) => s.exportRaw);
   return (
     <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -727,6 +745,19 @@ function SolvePanel({
         />
         Move transformer taps
       </label>
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Phase shifters", "angle")}
+      >
+        <input
+          type="checkbox"
+          checked={settings.adjust_phase_shifters !== false && ac}
+          disabled={!ac}
+          data-testid="adjust-phase-shifters"
+          onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
+        />
+        Move phase shifters
+      </label>
       <Field label="Area interchange">
         <select
           className={inputClass}
@@ -783,6 +814,19 @@ function SolvePanel({
         <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
           <Download size={13} /> Solved case…
         </Button>
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export PSS/E RAW</p>
+        {([35, 33] as const).map((revision) => (
+          <Button
+            key={revision}
+            variant="ghost"
+            className="justify-start"
+            onClick={() => void exportRaw(revision)}
+            disabled={!!busy}
+            title="The case with its Records edits and study edits, every record included"
+          >
+            <Download size={13} /> Revision {revision}…
+          </Button>
+        ))}
       </div>
     </aside>
   );
@@ -874,6 +918,13 @@ function Overview({
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
           detail={controlsDetail(report)}
         />
+        {(report.phase_shifters ?? 0) > 0 && (
+          <Metric
+            label="Phase shifters"
+            value={`${report.phase_shifters_moved ?? 0} of ${report.phase_shifters} moved`}
+            detail={flowControlsDetail(report)}
+          />
+        )}
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />
@@ -966,6 +1017,10 @@ function Overview({
 
 function TableTab<T>({
   rows,
+  page,
+  sourceKey,
+  find = null,
+  filtering = false,
   columns,
   rowKey,
   placeholder,
@@ -979,7 +1034,16 @@ function TableTab<T>({
   initialProblemsOnly = false,
   inspector = false,
 }: {
-  rows: T[];
+  /** Every row, for small tables kept in the app (DC lines). */
+  rows?: T[];
+  /** Or a page of rows from the core, sorted and filtered there. */
+  page?: (query: PageQuery) => Promise<Page<T>>;
+  /** Changes whenever the rows behind `page` do (a new result, other filter chips). */
+  sourceKey?: string;
+  /** With `page`: the table's element for the selection (a load's bus), scrolled to. */
+  find?: string | null;
+  /** With `page`: the filter chips narrow the rows, so the selection is kept listed. */
+  filtering?: boolean;
   columns: Column<T>[];
   rowKey: (r: T) => number;
   placeholder: string;
@@ -992,31 +1056,55 @@ function TableTab<T>({
   /** The element picked here or, while linked, anywhere. */
   selected: string | null;
   onPick: (element: string) => void;
-  /** Rows outside their limits, with the column that measures how far, worst first. */
-  problem?: { test: (r: T) => boolean; sortKey: string; label: string };
+  /** Rows outside their limits (rules the core applies), with the column that measures how far, worst first. */
+  problem?: { rules: PageRule[]; sortKey: string; label: string };
   initialProblemsOnly?: boolean;
   /** The element inspector is open beside the table, so the actions live there. */
   inspector?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
-  const problemCount = useMemo(() => (problem ? rows.filter(problem.test).length : 0), [rows, problem]);
-  const shown = useMemo(
-    () => (problem && problemsOnly ? rows.filter(problem.test) : rows),
-    [rows, problem, problemsOnly]
-  );
   const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
-  const selectedRow = selected === null ? undefined : rows.find(isSelected);
+  // From the core: the picked row stays listed whatever the filters.
+  const source = useMemo<RowSource<T> | undefined>(() => {
+    if (!page) return undefined;
+    const rules = problem && problemsOnly ? problem.rules : [];
+    const keep = filtering ? find : null;
+    return {
+      key: `${sourceKey}\u0000${problemsOnly}\u0000${keep}`,
+      fetch: (r) => page({ offset: r.offset, limit: r.limit, sort: r.sort, search: r.search, find: r.find, keep, rules }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, problemsOnly, filtering ? find : null]);
+  const [problemCount, setProblemCount] = useState(0);
+  useEffect(() => {
+    if (!page || !problem) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules })
+      .then((p) => live && setProblemCount(p.matched))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
   // An element picked elsewhere stays visible: drop the problems filter that would hide it.
   useEffect(() => {
-    if (problem && problemsOnly && selectedRow && !problem.test(selectedRow)) setProblemsOnly(false);
+    if (!page || !problem || !problemsOnly || find === null) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules, find })
+      .then((p) => live && p.found === null && setProblemsOnly(false))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
+  const selectedRow = selected === null || !rows ? undefined : rows.find(isSelected);
+  const selectedElement = source ? find : selectedRow ? element(selectedRow) : null;
   async function exportCsv() {
-    const filtered = filterRows(shown, columns, search);
-    const csv = toCsv(
-      filtered.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)])))
-    );
+    const all = source ? await allRows(source, null, search.trim()) : filterRows(rows ?? [], columns, search);
+    const csv = toCsv(all.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)]))));
     await saveTextExport(exportName, csv, { name: "CSV", extensions: ["csv"] });
   }
   return (
@@ -1035,13 +1123,13 @@ function TableTab<T>({
           </label>
         )}
         <div className="ml-auto flex items-center gap-2 min-w-0">
-          {selectedRow && selected && (
+          {selectedElement && selected && (
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
               {!inspector && (
                 <>
-                  <DrawAroundButton element={element(selectedRow)} from="power" />
-                  <StudyActions element={element(selectedRow)} />
+                  <DrawAroundButton element={selectedElement} from="power" />
+                  <StudyActions element={selectedElement} />
                 </>
               )}
             </span>
@@ -1053,7 +1141,9 @@ function TableTab<T>({
       </div>
       <div className="flex-1 min-h-0 bg-white">
         <DataTable
-          rows={shown}
+          rows={rows}
+          source={source}
+          find={find}
           columns={columns}
           rowKey={rowKey}
           search={search}
@@ -1067,17 +1157,23 @@ function TableTab<T>({
   );
 }
 
-const BUS_PROBLEM = { test: (r: BusRow) => r.violation > 0, sortKey: "violation", label: "Voltage violations" };
+const rule = (field: string, operator: PageRule["operator"], value = ""): PageRule => ({ field, operator, value, upper: null });
+const BUS_PROBLEM = { rules: [rule("violation", "gt", "0")], sortKey: "violation", label: "Voltage violations" };
 const GENERATOR_PROBLEM = {
-  test: (r: GeneratorRow) => r.online && r.q_violation > 0,
+  rules: [rule("online", "eq", "true"), rule("q_violation", "gt", "0")],
   sortKey: "q_violation",
   label: "Q limit violations",
 };
 const BRANCH_PROBLEM = {
-  test: (r: BranchRow) => r.online && (r.loading_pct ?? 0) > 100,
+  rules: [rule("online", "eq", "true"), rule("loading_pct", "gt", "100")],
   sortKey: "loading",
   label: "Overloads",
 };
+
+/** A filter chip's rule as the core reads it. */
+function pageRule(r: FilterRule): PageRule {
+  return { field: r.field, operator: r.operator, value: r.value, upper: r.upper ?? null };
+}
 
 /** The table that lists an element. */
 function tabFor(element: string): Tab | null {
@@ -1186,6 +1282,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       branches: report.branches.filter((b) => passing.has(b.from) || passing.has(b.to) || b.element === selected),
     };
   }, [report, passing, selected, selectedBus]);
+
+  // The Power flow tables read pages of the shown result from the core.
+  const resultName = shown?.report ? shown.name : "latest";
+  const busRules = useMemo(() => rules.map(pageRule), [rules]);
+  const pageKey = report ? `${objectKey(report)}\u0000${JSON.stringify(busRules)}` : "";
 
   // A new case invalidates every result.
   useEffect(() => {
@@ -1499,7 +1600,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.buses ?? report.buses}
+                  page={(q) => api.resultBuses(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selectedBus === null ? null : busElement(selectedBus)}
                   columns={busCols}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
@@ -1517,7 +1621,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.generators ?? report.generators}
+                  page={(q) => api.resultGenerators(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "generators" ? selected : null}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
@@ -1534,7 +1641,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.branches ?? report.branches}
+                  page={(q) => api.resultBranches(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "branches" ? selected : null}
                   columns={branchCols}
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"

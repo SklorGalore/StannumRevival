@@ -295,11 +295,12 @@ class Case:
         "flat" or "case"), ``tolerance_mva`` (2 by default),
         ``max_iterations`` (Newton, 10), ``decoupled_iterations`` (30),
         ``enforce_q_limits``, ``dc_model`` ("detailed" or "simplified"),
-        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``.
-        Setting one of the last three to False locks those controls where
-        they are instead of moving them. ``area_interchange`` ("off", the
-        default, "tie_lines" or "tie_lines_and_loads") holds each area's
-        net interchange at its RAW ``PDES`` with the area slack generation.
+        ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
+        ``adjust_phase_shifters``. Setting one of the last four to False
+        locks those controls where they are instead of moving them.
+        ``area_interchange`` ("off", the default, "tie_lines" or
+        "tie_lines_and_loads") holds each area's net interchange at its RAW
+        ``PDES`` with the area slack generation.
         """
         return self.call("solve_power_flow", settings=_settings(settings, options))
 
@@ -427,6 +428,12 @@ class Case:
     def export_matpower(self, path: PathLike, solved: bool = True) -> None:
         """Write the case as a MATPOWER file, solved or as filed."""
         self.call("export_matpower", path=Path(path).resolve(), solved=solved)
+
+    def export_raw(self, path: PathLike, revision: int = 35) -> Answer:
+        """Write the case, with its record and study edits, as a complete
+        PSS/E RAW file of revision 33 or 35. ``notes`` in the answer lists
+        anything the file couldn't keep."""
+        return self.call("export_raw", path=Path(path).resolve(), revision=revision)
 
     def save_as(self, path: PathLike) -> Answer:
         """Save the case, with its record edits, to a new file."""

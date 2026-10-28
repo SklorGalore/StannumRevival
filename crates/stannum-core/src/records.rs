@@ -71,6 +71,17 @@ pub struct RecordTable {
     pub layouts: Vec<Vec<usize>>,
 }
 
+/// A page of one record type: its columns, and the rows asked for.
+#[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
+pub struct RecordPage {
+    pub id: String,
+    pub label: String,
+    pub columns: Vec<RecordColumn>,
+    pub skipped: usize,
+    pub note: Option<String>,
+    pub page: crate::paging::Page<RecordRow>,
+}
+
 /// One record type in the list, without its rows.
 #[derive(Serialize, Debug, Clone, schemars::JsonSchema)]
 pub struct SectionInfo {

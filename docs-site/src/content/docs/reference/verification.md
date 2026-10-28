@@ -72,8 +72,9 @@ checks their hashes.
 
 Every pull request builds a 12,000-bus [synthetic case](/manual/synthetic-cases/)
 and works through it with the commands the app sends: open, attach
-coordinates, solve, the diagram, the map, topology, Records and an N-1
-contingency run. Each command has a budget for how long it takes and how much
+coordinates, solve, the diagram, the map, topology, Records, pages of the
+Power flow, Records and contingency tables sorted, searched and filtered in
+the core, and an N-1 contingency run. Each command has a budget for how long it takes and how much
 it sends back, and the test fails when one goes over, so a change that makes
 large cases several times slower is caught before it merges. It also checks
 that the app keeps answering while a solve runs. The run's summary on GitHub
@@ -83,7 +84,10 @@ shows the table.
 cargo test --release -p stannum-core --test budgets -- --ignored --nocapture
 ```
 
-`STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion.
+`STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion
+(an N-1 run, which solves an outage per branch and generator, by the size
+to the power 1.5). A weekly workflow, also run on request, works through an
+80,000-bus case the same way.
 The same seed always builds the same case, so `STANNUM_BUDGET_CACHE` can name
 a folder to keep it in and reuse; CI keeps one until the generator or the
 solver changes.

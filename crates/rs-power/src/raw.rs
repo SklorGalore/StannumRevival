@@ -1,9 +1,10 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
-    Area, AreaLoad, Branch, Bus, BusType, Case, Error, FactsDevice, Generator, LccControl,
-    LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, ShuntMode,
-    SwitchedShunt, TapControl, VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
+    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, Error, FactsDevice, FlowControls,
+    Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink,
+    MtdcSystem, PhaseShifter, ShuntMode, SwitchedShunt, TapControl, VoltageControls, VscAcControl,
+    VscConverter, VscDcControl, VscLine,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -80,6 +81,11 @@ pub struct RawImport {
     /// Revisions 30 and later; MATPOWER freezes both, as the import still
     /// does in `case`.
     pub voltage_controls: VoltageControls,
+    /// Transformer windings with phase shifters in active power flow
+    /// control (COD 3, symmetric, and COD 5, asymmetric), for
+    /// [`crate::PowerFlowOptions::flow_controls`]. Revisions 30 and later;
+    /// `case` keeps every angle as the file gives it.
+    pub flow_controls: FlowControls,
     /// Every multi-terminal DC system with its full RAW data, for the
     /// detailed DC model. Each converter names its `case.dcline` row. Only
     /// filled when [`RawOptions::all_dc_lines`] imports multi-terminal rows.
@@ -714,6 +720,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         }
     }
     let mut voltage_controls = VoltageControls::default();
+    let mut flow_controls = FlowControls::default();
     // Switched shunts whose watched VSC converter or switched shunt is
     // found once every record has been read.
     let mut pending_shunts = Vec::new();
@@ -876,6 +883,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
         &mut voltage_controls.taps,
+        &mut flow_controls.phase_shifters,
     )?;
     // After the transformers, so branch rows of files that have none keep
     // the numbers they had before switching devices were read.
@@ -1055,6 +1063,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         lcc_lines,
         vsc_lines,
         voltage_controls,
+        flow_controls,
         mtdc,
         substations,
         areas,
@@ -1651,6 +1660,74 @@ fn tap_control(
     }))
 }
 
+/// The phase shifter of a transformer winding record in active power flow
+/// control (COD 3 or 5), if any. `controls` holds the record's COD, TAB and
+/// CNXA fields; `tap` is the winding's branch tap.
+fn phase_shifter(
+    rev: u32,
+    w: &Record,
+    controls: [usize; 3],
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+) -> Result<Option<PhaseShifter>, Error> {
+    let cod = controls[0];
+    let mode = w.optional(cod, 0.0)?;
+    if rev < 30 || !(mode == 3.0 || mode == 5.0) {
+        return Ok(None);
+    }
+    // CONT, (NODE in revision 35), RMA, RMI, VMA, VMI.
+    let skip = usize::from(rev >= 35);
+    let [rma, rmi, vma, vmi] = [2, 3, 4, 5].map(|k| cod + skip + k);
+    let (angle_max, angle_min) = (w.optional(rma, 0.0)?, w.optional(rmi, 0.0)?);
+    let (mw_max, mw_min) = (w.optional(vma, 0.0)?, w.optional(vmi, 0.0)?);
+    let angle = w.num(2)?;
+    if angle_max == angle_min {
+        ctx.warn(
+            w.line,
+            true,
+            "phase shifter with no angle range (RMA = RMI) held at its angle",
+        )?;
+        return Ok(None);
+    }
+    if mw_max < mw_min {
+        ctx.warn(
+            w.line,
+            false,
+            "phase shifter flow limits given high-to-low (VMA < VMI); using them as a band",
+        )?;
+    }
+    let asymmetric = if mode == 5.0 {
+        // CNXA is normalized into -90..=90.
+        let mut alpha = w.optional(controls[2], 0.0)?;
+        alpha = (alpha + 90.0).rem_euclid(180.0) - 90.0;
+        if alpha.abs() < 1.0 || tap <= 0.0 {
+            ctx.warn(
+                w.line,
+                true,
+                "asymmetric phase shifter with a connection angle of zero cannot shift; held at its angle",
+            )?;
+            return Ok(None);
+        }
+        Some(Asymmetric {
+            connection_angle: if alpha == -90.0 { 90.0 } else { alpha },
+            tap,
+        })
+    } else {
+        None
+    };
+    Ok(Some(PhaseShifter {
+        branch,
+        mw_max,
+        mw_min,
+        angle_max,
+        angle_min,
+        angle,
+        asymmetric,
+        line: w.line,
+    }))
+}
+
 fn impedance(
     z: &Record,
     offset: usize,
@@ -1731,6 +1808,7 @@ fn transformer_branch(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn convert_transformers(
     rev: u32,
     rows: &[Record],
@@ -1739,6 +1817,7 @@ fn convert_transformers(
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
     taps: &mut Vec<TapControl>,
+    shifters: &mut Vec<PhaseShifter>,
 ) -> Result<(), Error> {
     let mut groups = [vec![], vec![]];
     let mut pos = 0;
@@ -1793,8 +1872,12 @@ fn convert_transformers(
             for w in ws.iter().take(if kind == 0 { 1 } else { 3 }) {
                 for i in controls {
                     let value = w.optional(i, 0.0)?;
-                    // Voltage control (COD ±1) goes to `voltage_controls`.
-                    if value != 0.0 && !(i == controls[0] && value.abs() == 1.0) {
+                    // Voltage control (COD ±1) goes to `voltage_controls`
+                    // and phase shifters (COD ±3, ±5) to `flow_controls`,
+                    // which also read the connection angle (CNXA).
+                    let modelled = (i == controls[0] && [1.0, 3.0, 5.0].contains(&value.abs()))
+                        || (i == controls[2] && w.optional(controls[0], 0.0)?.abs() == 5.0);
+                    if value != 0.0 && !modelled {
                         ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
                         break;
                     }
@@ -1847,6 +1930,11 @@ fn convert_transformers(
                     )?
                 {
                     taps.push(control);
+                }
+                if let Some(shifter) =
+                    phase_shifter(rev, &ws[0], controls, case.branches.len(), tap, ctx)?
+                {
+                    shifters.push(shifter);
                 }
                 let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
                 case.branches.push(transformer_branch(
@@ -1904,6 +1992,11 @@ fn convert_transformers(
                         )?
                     {
                         taps.push(control);
+                    }
+                    if let Some(shifter) =
+                        phase_shifter(rev, &ws[i], controls, case.branches.len(), tap, ctx)?
+                    {
+                        shifters.push(shifter);
                     }
                     let b = &case.buses[buses[i]];
                     case.branches.push(transformer_branch(

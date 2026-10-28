@@ -20,11 +20,34 @@ section into the next version's when a release is cut (see
   settings, or with `area_interchange` in run files and Python. A new
   **Areas** tab lists every area's interchange, desired value and slack
   movement, also with control off.
+- **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
+  and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
+  run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
+  record by record, keeping every record and converting between the two
+  revisions; MATPOWER and older RAW revisions are written from the power flow
+  model. Anything the file can't keep is listed after the export.
+- Large tables read a page at a time. Power flow's bus, generator and
+  branch tables, Records, and contingency results are now sorted, searched
+  and filtered in the core, and the window reads only the rows in view as
+  you scroll. On an 80,000-bus case a Records table no longer copies 19 MB
+  into the window, and every contingency result can be sorted and scrolled
+  without **Load all**. Under a filtered table the count reads "69 rows of
+  80,000". Scripts get the same pages with `result_buses`,
+  `result_generators`, `result_branches`, `record_page` and
+  `contingency_page` (plus `result_bus_values`, `record_fields` and
+  `record_values` for filter choices).
 - Generated one-lines draw RAW switching devices: breakers and disconnectors
   with their name, open or closed state (flagged when not in their normal
   position) and flow. Double-click one to open or close it in the study.
   The inspector shows their type, state, normal state and flow, and its
   study action reads **Open** / **Close** for them.
+- **Phase shifters**: transformer windings in active power flow control in
+  RAW files (`COD` 3, and asymmetric `COD` 5) now move their angles in AC
+  solves to hold their MW band. The moves are solved together through the
+  network, so parallel shifters share the correction. **Move phase shifters**
+  in the solve settings (`adjust_phase_shifters` in run files and Python)
+  locks them when off. The overview counts the shifters that moved, and the
+  Branches table shows each transformer's tap and phase shift.
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton

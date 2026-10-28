@@ -116,6 +116,7 @@ case.records()                       # record types and counts
 buses = case.records("BUS")          # every bus record, one column per field
 case.edit_records([{"section": "BUS", "row": 0, "column": "NAME", "value": "NORTH"}])
 case.save_as("edited.raw")
+case.export_raw("case_v33.raw", revision=33)   # any case, as RAW 33 or 35
 
 case.element("bus:5")                # data and limits, as the inspector shows them
 case.topology()                      # islands, bridges, articulation buses

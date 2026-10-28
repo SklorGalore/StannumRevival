@@ -26,6 +26,8 @@ pub struct PowerCase {
     pub vsc_lines: Vec<rs_power::VscLine>,
     /// Switched shunts and transformer taps in voltage control (RAW only).
     pub voltage_controls: rs_power::VoltageControls,
+    /// Phase shifters in active power flow control (RAW only).
+    pub flow_controls: rs_power::FlowControls,
     /// Full data of the multi-terminal DC systems for the detailed model.
     pub mtdc: Vec<rs_power::MtdcSystem>,
     /// Substations with their places and buses, from RAW revision 34-35
@@ -73,6 +75,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             lcc_lines: Vec::new(),
             vsc_lines: Vec::new(),
             voltage_controls: rs_power::VoltageControls::default(),
+            flow_controls: rs_power::FlowControls::default(),
             mtdc: Vec::new(),
             substations: Vec::new(),
             switching_devices: Vec::new(),
@@ -119,6 +122,7 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             lcc_lines: import.lcc_lines,
             vsc_lines: import.vsc_lines,
             voltage_controls: import.voltage_controls,
+            flow_controls: import.flow_controls,
             mtdc: import.mtdc,
             substations: import.substations,
             switching_devices: import.switching_devices,
@@ -281,6 +285,10 @@ pub struct SolveSettings {
     /// are locked, like shunts.
     #[serde(default = "yes")]
     pub adjust_transformer_taps: bool,
+    /// Move phase shifters in active power flow control (AC only). When
+    /// false they are locked, like taps.
+    #[serde(default = "yes")]
+    pub adjust_phase_shifters: bool,
     /// Hold each area's net interchange at its desired value with the
     /// area slack generation (AC only; RAW area data). Off by default.
     #[serde(default)]
@@ -307,6 +315,7 @@ impl Default for SolveSettings {
             adjust_dc_taps: true,
             switch_shunts: true,
             adjust_transformer_taps: true,
+            adjust_phase_shifters: true,
             area_interchange: InterchangeChoice::Off,
         }
     }
@@ -337,6 +346,8 @@ impl SolveSettings {
             // solution starts them where it left them and holds them there.
             options.lock_switched_shunts = !self.switch_shunts;
             options.lock_taps = !self.adjust_transformer_taps;
+            options.flow_controls = power.flow_controls.clone();
+            options.lock_phase_shifters = !self.adjust_phase_shifters;
             options.interchange = rs_power::AreaInterchange {
                 mode: self.area_interchange.into(),
                 areas: power.areas.clone(),
@@ -379,8 +390,8 @@ pub fn tolerance_pu(mva: f64, base_mva: f64) -> f64 {
 /// ended, with `options` changed to match.
 ///
 /// Bus voltages and generator and FACTS shunt reactive outputs come from
-/// `last`. Switched
-/// shunts, transformer taps and DC converter taps that `options` lists
+/// `last`. Switched shunts, transformer taps, phase shifters and DC
+/// converter taps that `options` lists
 /// start at their final settings, also when `options` locks them there. Everything else, such as dispatch, loads
 /// and statuses, stays as in `case`. Generators `last` held at a reactive
 /// limit start there, also after study edits: on SyntheticUSA an outage then
@@ -432,6 +443,20 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
             if ratio.is_finite() && tap.branch < warm.branches.len() {
                 tap.ratio = ratio;
                 warm.branches[tap.branch].tap = tap.tap_per_ratio * ratio;
+            }
+        }
+    }
+    let shifters = &mut options.flow_controls.phase_shifters;
+    if shifters.len() == last.phase_shift_angles.len() {
+        for (p, &angle) in shifters.iter_mut().zip(&last.phase_shift_angles) {
+            if angle.is_finite() && p.branch < warm.branches.len() {
+                let branch = &mut warm.branches[p.branch];
+                branch.tap = p.tap_at(angle, branch.tap);
+                branch.shift = angle;
+                if let Some(a) = &mut p.asymmetric {
+                    a.tap = branch.tap;
+                }
+                p.angle = angle;
             }
         }
     }
@@ -567,6 +592,10 @@ pub struct BranchRow {
     /// Highest end MVA as a percent of rate A; `None` when unrated or offline.
     #[serde(serialize_with = "table::pct")]
     pub loading_pct: Option<f64>,
+    /// Off-nominal tap ratio (1 for lines), as solved.
+    pub tap: f64,
+    /// Phase shift angle in degrees, as solved.
+    pub shift_deg: f64,
 }
 
 /// A solved DC line row, from its sending (rectifier) bus to its receiving
@@ -804,6 +833,18 @@ pub struct SolveReport {
     /// taps, where they were instead of moving them (AC only).
     pub shunts_locked: bool,
     pub taps_locked: bool,
+    /// Phase shifters in active power flow control in the case.
+    #[serde(default)]
+    pub phase_shifters: usize,
+    /// Phase shifters that ended away from their starting angle.
+    #[serde(default)]
+    pub phase_shifters_moved: usize,
+    /// Passes that moved phase shifters.
+    #[serde(default)]
+    pub flow_control_passes: usize,
+    /// Whether the solve locked the phase shifters at their angles (AC only).
+    #[serde(default)]
+    pub phase_shifters_locked: bool,
     pub residual_pu: f64,
     pub residual_mva: f64,
     pub elapsed_ms: f64,
@@ -936,6 +977,7 @@ pub fn report(
     elements: &Elements,
     dc_kinds: &[&'static str],
     controls: &rs_power::VoltageControls,
+    flow: &rs_power::FlowControls,
     settings: &SolveSettings,
     elapsed_ms: f64,
 ) -> SolveReport {
@@ -1059,6 +1101,8 @@ pub fn report(
                 loss_mw: f[0] + f[2],
                 rate_a: br.rate_a,
                 loading_pct,
+                tap: if br.tap == 0.0 { 1.0 } else { br.tap },
+                shift_deg: br.shift,
             }
         })
         .collect();
@@ -1213,6 +1257,12 @@ pub fn report(
         taps_moved: moved(&result.tap_ratios, &controls.taps, |t| t.ratio),
         shunts_locked: ac && !settings.switch_shunts,
         taps_locked: ac && !settings.adjust_transformer_taps,
+        phase_shifters: if ac { flow.phase_shifters.len() } else { 0 },
+        phase_shifters_moved: moved(&result.phase_shift_angles, &flow.phase_shifters, |p| {
+            p.angle
+        }),
+        flow_control_passes: result.flow_control_passes,
+        phase_shifters_locked: ac && !settings.adjust_phase_shifters,
         residual_pu: result.residual,
         residual_mva: result.residual * case.base_mva,
         elapsed_ms,

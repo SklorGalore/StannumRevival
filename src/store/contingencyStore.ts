@@ -13,8 +13,8 @@ import type {
   SolveSettings,
 } from "../lib/analysis/types";
 
-/** Rows fetched at first; the rest load on request. */
-export const FIRST_PAGE = 2000;
+/** Rows kept here: the worst outages, to open the first. The table reads pages from the core. */
+export const FIRST_PAGE = 100;
 
 export interface ContingencyChoice {
   branches: boolean;
@@ -51,7 +51,6 @@ interface ContingencyState {
   trip: (element: string) => Promise<ContingencyDetail>;
   run: (solve: SolveSettings, elements: string[] | null) => Promise<boolean>;
   cancel: () => void;
-  loadMore: () => Promise<void>;
   openRow: (rank: number | null) => Promise<void>;
   setOnDiagram: (on: boolean) => void;
   clear: () => void;
@@ -120,16 +119,6 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   },
   cancel() {
     void api.cancelContingencies();
-  },
-  async loadMore() {
-    const { rows, summary } = get();
-    if (!summary || rows.length >= summary.total) return;
-    try {
-      const more = await api.contingencyRows(rows.length, summary.total - rows.length);
-      set({ rows: [...rows, ...more] });
-    } catch (e) {
-      set({ error: (e as Error).message });
-    }
   },
   async openRow(rank) {
     set({ open: rank, detail: rank === null ? null : get().detail?.row.rank === rank ? get().detail : null });

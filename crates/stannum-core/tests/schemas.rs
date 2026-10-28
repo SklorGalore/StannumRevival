@@ -165,6 +165,27 @@ fn answers_fit_their_schemas() {
     );
     assert_eq!(report["converged"], true);
     c.ok("result_report", json!({ "name": "base" }));
+    let page = c.ok(
+        "result_buses",
+        json!({
+            "name": "base",
+            "query": { "limit": 2, "sort": { "field": "vm", "descending": true }, "find": "bus:3" },
+            "busRules": [{ "field": "area", "operator": "present" }],
+        }),
+    );
+    assert_eq!(page["total"], 5);
+    assert_eq!(page["rows"]["count"], 2);
+    let vm = page["rows"]["vm"].as_array().unwrap();
+    assert!(vm[0].as_f64() >= vm[1].as_f64(), "sorted highest first");
+    c.ok(
+        "result_generators",
+        json!({ "name": "base", "query": { "search": "1" } }),
+    );
+    c.ok("result_branches", json!({ "name": "base" }));
+    c.ok(
+        "result_bus_values",
+        json!({ "name": "base", "field": "kind" }),
+    );
     c.ok("diagram_network", json!({}));
     let network = c.ok("diagram_network", json!({ "case": case }));
     let bus = network["buses"][0]["id"].as_u64().unwrap();
@@ -194,6 +215,13 @@ fn answers_fit_their_schemas() {
     let book = c.ok("case_records", json!({}));
     let section = book["sections"][0]["id"].as_str().unwrap().to_string();
     c.ok("record_table", json!({ "section": section }));
+    let page = c.ok(
+        "record_page",
+        json!({ "section": section, "query": { "limit": 3 } }),
+    );
+    assert_eq!(page["page"]["rows"]["count"], 3);
+    c.ok("record_fields", json!({ "section": section }));
+    c.ok("record_values", json!({ "section": section, "field": "0" }));
     let topology = c.ok("topology_snapshot", json!({}));
     let to = topology["analysis"]["articulation_buses"]
         .as_array()
@@ -227,6 +255,10 @@ fn answers_fit_their_schemas() {
     assert!(run["total"].as_u64().unwrap_or(1) > 0);
     c.ok("contingency_summary", json!({}));
     c.ok("contingency_rows", json!({ "offset": 0, "limit": 10 }));
+    c.ok(
+        "contingency_page",
+        json!({ "query": { "sort": { "field": "worst.loading_pct", "descending": true } } }),
+    );
     c.ok("contingency_detail", json!({ "rank": 1 }));
     c.ok("result_report", json!({ "name": "contingency 1" }));
     c.ok(
@@ -264,6 +296,11 @@ fn answers_fit_their_schemas() {
         "export_matpower",
         json!({ "path": dir.join("five_bus.m"), "solved": true }),
     );
+    let exported = c.ok(
+        "export_raw",
+        json!({ "path": dir.join("five_bus_v33.raw"), "revision": 33 }),
+    );
+    assert_eq!(exported["source"], "records");
     c.ok("apply_record_edits", json!({ "edits": [] }));
     c.ok(
         "save_case_as",

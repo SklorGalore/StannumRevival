@@ -47,6 +47,8 @@ const row = (from: number, to: number, pf: number, online = true, loading_pct: n
   to,
   online,
   is_transformer: false,
+  tap: 1,
+  shift_deg: 0,
   pf,
   qf: 0,
   pt: -pf,
