@@ -35,7 +35,10 @@ The wheels go on the release page only; they are not published to PyPI.
    `src-tauri/tauri.conf.json`, the `Cargo.toml` of the app, `stannum-cli`
    and the Python package (`crates/stannum-py`), and `Cargo.lock`, and
    runs the same check the workflow runs.
-3. Open a pull request with those changes and merge it.
+3. Open a pull request with those changes and merge it. Push them on a
+   branch whose name doesn't start with `release/` (for example
+   `bump/v0.4.0`): the `release branches` ruleset protects `release/**` for
+   hotfixes and refuses direct pushes to it.
 4. Tag the merge commit on `main` and push the tag. Tags matching `v*` are
    protected by the `release tags` ruleset, so only admins can create them.
 
