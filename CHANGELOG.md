@@ -10,6 +10,13 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Area interchange** control in AC solves: each area's slack generation
+  moves until its net interchange is within `PTOL` of the RAW area data's
+  `PDES`, counting tie lines, or tie lines and loads that belong to another
+  area. Off by default; choose it under **Area interchange** in the solve
+  settings, or with `area_interchange` in run files and Python. A new
+  **Areas** tab lists every area's interchange, desired value and slack
+  movement, also with control off.
 - Generated one-lines draw RAW switching devices: breakers and disconnectors
   with their name, open or closed state (flagged when not in their normal
   position) and flow. Double-click one to open or close it in the study.

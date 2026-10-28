@@ -36,6 +36,7 @@ including its approximations, with the extensions marked below.
 | Loads | Summed per bus. Constant-current (`IP`, `IQ`) and constant-admittance (`YP`, `YQ`) parts are kept, and the solve varies them with voltage. MATPOWER freezes them as constant power at the file's voltage. *Extension.* |
 | Fixed shunts | Summed into the bus shunt. |
 | Switched shunts | `BINIT` goes into the bus shunt, including offline records, as in MATPOWER. Those in voltage control (MODSW 1, 2) are also kept for [voltage control](/StannumRevival/manual/voltage-controls/). *Extension.* |
+| Areas | `I`, `ISW`, `PDES`, `PTOL`, `ARNAME` kept for [area interchange control](/StannumRevival/manual/area-interchange/), with loads whose `AREA` differs from their bus's. *Extension.* |
 | Generators | One generator per record. `IREG` and `RMPCT` kept for [remote regulation](/StannumRevival/manual/remote-regulation/). *Extension.* |
 | Lines | π model; negative metered-end IDs normalized. Unknown endpoints kept with a warning. |
 | Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers). *Extension.* |

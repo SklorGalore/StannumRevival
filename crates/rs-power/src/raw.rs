@@ -1,8 +1,8 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
-    Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
-    MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, ShuntMode, SwitchedShunt, TapControl,
+    Area, AreaLoad, Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd,
+    LccLine, MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, ShuntMode, SwitchedShunt, TapControl,
     VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
 };
 use std::{
@@ -87,6 +87,14 @@ pub struct RawImport {
     /// latitude and longitude and the buses their nodes sit at, in file
     /// order. Empty for earlier revisions and files without that data.
     pub substations: Vec<RawSubstation>,
+    /// The area data records, in file order, for
+    /// [`crate::AreaInterchange::areas`]. An `ISW` naming no bus leaves the
+    /// area without a slack bus.
+    pub areas: Vec<Area>,
+    /// In-service loads whose `AREA` differs from their bus's area, for
+    /// [`crate::AreaInterchange::loads`]. Their power is already in the
+    /// bus's load in `case`.
+    pub area_loads: Vec<AreaLoad>,
     /// Revision 34-35 system switching devices, in file order. Each also
     /// solves as a branch of `case`.
     pub switching_devices: Vec<SwitchingDevice>,
@@ -646,6 +654,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             .copied()
             .ok_or_else(|| r.error("unknown bus reference"))
     };
+    let mut area_loads = Vec::new();
     for r in section("load") {
         let b = &mut case.buses[bus_index(r, 0)?];
         if r.status(2)? {
@@ -653,6 +662,27 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             let iq = r.optional(8, 0.0)?;
             let yp = r.optional(9, 0.0)?;
             let yq = r.optional(10, 0.0)?;
+            let area = r.optional(3, b.area as f64)?;
+            if area > 0.0 && area.fract() == 0.0 && area as u32 != b.area {
+                let pl = r.num(5)?;
+                area_loads.push(if options.zip_loads {
+                    AreaLoad {
+                        bus: b.id,
+                        area: area as u32,
+                        p: pl,
+                        p_i: ip,
+                        p_z: yp,
+                    }
+                } else {
+                    AreaLoad {
+                        bus: b.id,
+                        area: area as u32,
+                        p: pl + ip * b.vm + yp * b.vm * b.vm,
+                        p_i: 0.0,
+                        p_z: 0.0,
+                    }
+                });
+            }
             b.pd += r.num(5)?;
             b.qd += r.num(6)?;
             if options.zip_loads {
@@ -906,6 +936,29 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
+    let mut areas = Vec::new();
+    for r in section("area") {
+        let isw = r.optional(1, 0.0)?;
+        let slack_bus = if isw == 0.0 {
+            None
+        } else if let Some(&i) = indices.get(&r.id(1)?) {
+            Some(case.buses[i].id)
+        } else {
+            ctx.warn(
+                r.line,
+                false,
+                "area slack bus (ISW) is not a bus in the case; the area holds no interchange",
+            )?;
+            None
+        };
+        areas.push(Area {
+            number: r.id(0)?,
+            slack_bus,
+            desired_mw: r.optional(2, 0.0)?,
+            tolerance_mw: r.optional(3, 10.0)?,
+            name: r.fields.get(4).map_or("", |s| s.trim()).to_string(),
+        });
+    }
     for (i, rows) in sections.iter().enumerate().take(names.len()) {
         let name = names[i];
         if !matches!(
@@ -985,6 +1038,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         voltage_controls,
         mtdc,
         substations,
+        areas,
+        area_loads,
         switching_devices,
     })
 }
