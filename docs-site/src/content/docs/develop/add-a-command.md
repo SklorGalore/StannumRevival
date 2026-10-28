@@ -139,8 +139,9 @@ bus_voltage bus=101
 ```
 
 works in Python, in a run file and in `stannum-cli`. Add a method to `Case`
-in `crates/stannum-py/python/stannum/__init__.py` (and a test in
+in `crates/stannum-py/python/stannum/_api.py` (and a test in
 `crates/stannum-py/tests/`) only if it's something scripts will use often.
+A new method is public API: add it to `tests/test_public_api.py` too.
 
 ## 7. Document it
 
@@ -156,7 +157,8 @@ new method, and the technical manual for new analysis. Add a line under
 - [ ] In `ACTIONS` if it changes the case or writes a file.
 - [ ] Called in `tests/schemas.rs`.
 - [ ] `pwsh scripts/update-schemas.ps1`, both files committed.
-- [ ] `API_VERSION` bumped if an existing command's arguments or result
-      changed incompatibly.
+- [ ] No existing command's arguments or result changed incompatibly. From
+      1.0 that waits for a major release, with `API_VERSION` bumped; see
+      [Versions and compatibility](/StannumRevival/reference/versioning/).
 - [ ] Interface wrapper and log label, if the app uses it.
 - [ ] Docs and changelog.

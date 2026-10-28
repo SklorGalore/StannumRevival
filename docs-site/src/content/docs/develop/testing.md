@@ -74,8 +74,12 @@ and checks the result, not only that it renders.
 | **Python package** (Linux, Windows, macOS) | Builds the abi3 wheel, installs it in a fresh venv, runs its tests, uploads the wheel | No |
 
 `.github/workflows/docs.yml` builds this site on pull requests that touch
-`docs-site/` and publishes it to GitHub Pages from `main`. It isn't
-required, but a broken docs build shouldn't be merged.
+`docs-site/` and publishes it to GitHub Pages from `main`. The build checks
+every internal link and heading anchor
+([starlight-links-validator](https://github.com/HiDeoo/starlight-links-validator))
+and fails on one that goes nowhere, including a link written without the
+`/StannumRevival/` base. It isn't required, but a broken docs build shouldn't
+be merged.
 
 The required check names are in `.github/rulesets/`. If you rename a job,
 change them there in the same pull request, or every PR will wait for a
