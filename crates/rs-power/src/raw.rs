@@ -1,10 +1,10 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
-    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, Error, FactsDevice, FlowControls,
-    Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter, MtdcLink,
-    MtdcSystem, PhaseShifter, ReactiveTap, ShuntMode, SwitchedShunt, TapControl, VoltageControls,
-    VscAcControl, VscConverter, VscDcControl, VscLine,
+    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, DcLineTap, Error, FactsDevice,
+    FlowControls, Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter,
+    MtdcLink, MtdcSystem, PhaseShifter, ReactiveTap, ShuntMode, SwitchedShunt, TapControl,
+    VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -895,11 +895,18 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
     )?;
-    let (mut dc_line_names, lcc_lines) = convert_dc(
+    let (mut dc_line_names, lcc_lines, lcc_sources) = convert_dc(
         rev,
         section("two-terminal DC"),
         &mut case,
         &indices,
+        &mut ctx,
+    )?;
+    link_dc_line_taps(
+        &mut flow_controls,
+        &lcc_lines,
+        &lcc_sources,
+        &branch_sources,
         &mut ctx,
     )?;
     let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
@@ -1949,8 +1956,11 @@ fn convert_transformers(
                     // Voltage control (COD ±1) goes to `voltage_controls`
                     // and phase shifters (COD ±3, ±5) to `flow_controls`,
                     // which also read the connection angle (CNXA).
+                    // DC line control (COD ±4) of a two-winding transformer
+                    // goes there too, once a DC line names it.
                     let modelled = (i == controls[0]
-                        && [1.0, 2.0, 3.0, 5.0].contains(&value.abs()))
+                        && ([1.0, 2.0, 3.0, 5.0].contains(&value.abs())
+                            || (value.abs() == 4.0 && kind == 0)))
                         || (i == controls[2] && w.optional(controls[0], 0.0)?.abs() == 5.0);
                     if value != 0.0 && !modelled {
                         ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
@@ -2007,6 +2017,18 @@ fn convert_transformers(
                     taps.push(control);
                 }
                 flow_control(rev, &ws[0], controls, case.branches.len(), tap, ctx, flow)?;
+                let cod = ws[0].optional(controls[0], 0.0)?;
+                if cod.abs() == 4.0 {
+                    // Linked to its converter after the DC lines are read.
+                    flow.dc_line_taps.push(DcLineTap {
+                        branch: case.branches.len(),
+                        dc_line: usize::MAX,
+                        end: LccEnd::Rectifier,
+                        ratio: tap,
+                        enabled: cod > 0.0,
+                        line: ws[0].line,
+                    });
+                }
                 let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
                 case.branches.push(transformer_branch(
                     r,
@@ -2117,13 +2139,14 @@ fn convert_dc(
     case: &mut Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<(Vec<String>, Vec<LccLine>), Error> {
+) -> Result<TwoTerminalDc, Error> {
     if rows.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
     let mut dc = vec![];
     let mut names = vec![];
     let mut lcc = vec![];
+    let mut sources = vec![];
     for group in rows.chunks(3) {
         let r = &group[0];
         if group.len() != 3 {
@@ -2173,9 +2196,6 @@ fn convert_dc(
             if c.commutating_bus != 0 && !ignored.contains(&"IC") {
                 ignored.push("IC");
             }
-            if c.transformer.is_some() && !ignored.contains(&"IF/IT/ID") {
-                ignored.push("IF/IT/ID");
-            }
         }
         if !ignored.is_empty() {
             ctx.warn(
@@ -2191,6 +2211,7 @@ fn convert_dc(
         dc.push(line);
         names.push(identifier(r, 0));
         lcc.push(detail);
+        sources.push(r.line);
     }
     ctx.warn(
         rows[0].line,
@@ -2198,8 +2219,70 @@ fn convert_dc(
         "in the simplified DC model, two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
     )?;
     case.dcline = Some(dc);
-    Ok((names, lcc))
+    Ok((names, lcc, sources))
 }
+
+/// Link each COD 4 transformer to the two-terminal DC line converter that
+/// names it, dropping those no converter names. A converter that names a
+/// transformer without COD 4 moves its own tap, as when it names none.
+fn link_dc_line_taps(
+    flow: &mut FlowControls,
+    lines: &[LccLine],
+    records: &[usize],
+    sources: &[BranchSource],
+    ctx: &mut Context<'_>,
+) -> Result<(), Error> {
+    for (line, &record) in lines.iter().zip(records) {
+        for (end, c) in [
+            (LccEnd::Rectifier, &line.rectifier),
+            (LccEnd::Inverter, &line.inverter),
+        ] {
+            let Some((from, to, circuit)) = &c.transformer else {
+                continue;
+            };
+            let found = flow.dc_line_taps.iter_mut().find(|t| {
+                let s = &sources[t.branch];
+                t.dc_line == usize::MAX
+                    && s.winding == 0
+                    && s.circuit == *circuit
+                    && (s.buses[..] == [*from, *to] || s.buses[..] == [*to, *from])
+            });
+            match found {
+                Some(t) => {
+                    t.dc_line = line.row;
+                    t.end = end;
+                }
+                None => ctx.warn(
+                    record,
+                    false,
+                    format!(
+                        "DC line {} names transformer {from}-{to} circuit {circuit}, which is not a two-winding transformer with COD 4; the converter tap moves instead",
+                        line.name.trim()
+                    ),
+                )?,
+            }
+        }
+    }
+    let mut unused = Vec::new();
+    flow.dc_line_taps.retain(|t| {
+        if t.dc_line == usize::MAX {
+            unused.push(t.line);
+        }
+        t.dc_line != usize::MAX
+    });
+    for line in unused {
+        ctx.warn(
+            line,
+            false,
+            "transformer COD 4 is not named by a two-terminal DC line converter; tap held",
+        )?;
+    }
+    Ok(())
+}
+
+/// Two-terminal DC line names, their detailed data and the source line of
+/// each detailed line's first record.
+type TwoTerminalDc = (Vec<String>, Vec<LccLine>, Vec<usize>);
 
 /// Full RAW data of one two-terminal DC line, which becomes `case.dcline` row `row`.
 fn lcc_line(

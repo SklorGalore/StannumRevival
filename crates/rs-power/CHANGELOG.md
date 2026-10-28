@@ -16,6 +16,15 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- DC line transformer taps: `FlowControls::dc_line_taps` (`DcLineTap`)
+  keeps two-winding transformers with COD 4 that a two-terminal DC line
+  converter names (IFR/ITR/IDR, IFI/ITI/IDI). With the detailed DC model's
+  `adjust_taps`, the branch tap steps in place of the converter tap, within
+  its TMX/TMN and by its STP; COD -4 holds both.
+  `PowerFlowResult::dc_line_tap_ratios` gives their final taps. Import no
+  longer warns that IF/IT/ID is ignored, and warns instead when a converter
+  names a transformer without COD 4 (its own tap moves) or a COD 4
+  transformer is named by no converter.
 - Reactive flow taps: `FlowControls::reactive_taps` (`ReactiveTap`) keeps
   transformer windings in reactive power flow control (COD 2). They step in
   whole positions with the phase shifters, from the same joint Jacobian

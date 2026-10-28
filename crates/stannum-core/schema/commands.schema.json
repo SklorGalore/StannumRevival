@@ -5092,7 +5092,7 @@
           "type": "boolean"
         },
         "taps_moved": {
-          "description": "Transformer taps that ended away from their starting ratio, in\nvoltage control (COD 1) or reactive flow control (COD 2).",
+          "description": "Transformer taps that ended away from their starting ratio, in\nvoltage control (COD 1), reactive flow control (COD 2) or moved by a\nDC line converter (COD 4, with the DC converter taps).",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -5178,7 +5178,7 @@
       "properties": {
         "adjust_dc_taps": {
           "default": true,
-          "description": "Step DC converter taps (detailed model only).",
+          "description": "Step DC converter taps, and the transformers that some converters\nstep instead (COD 4); detailed model only.",
           "type": "boolean"
         },
         "adjust_phase_shifters": {

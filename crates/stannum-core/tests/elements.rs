@@ -296,6 +296,9 @@ fn solve_settings_switch_voltage_controls() {
                 enforce_q_limits: true,
                 switch_shunts,
                 adjust_transformer_taps,
+                // The inverter transformers (COD 4) lock with them: a shunt
+                // holds bus 3021, so they only move once it is locked.
+                adjust_dc_taps: adjust_transformer_taps,
                 ..Default::default()
             })
             .unwrap()
@@ -501,4 +504,44 @@ fn transformer_tap_setting_moves_or_locks_reactive_flow_taps() {
     let kept = solve(false, Last);
     assert_eq!(kept.flow_control_passes, 0);
     assert!((flow(&kept).1 - tap).abs() < 1e-12);
+}
+
+#[test]
+fn dc_converter_tap_setting_moves_or_locks_cod_4_transformers() {
+    // The rectifier of the five-bus DC line sits behind the 1-6
+    // transformer (COD 4), which steps in place of the converter tap.
+    let mut ws = open(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../rs-power/tests/fixtures/dc_line_taps/five_bus_dc_transformer.raw"),
+    );
+    let mut solve = |adjust_dc_taps: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_dc_taps,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let tap = |r: &stannum_core::power::SolveReport| {
+        r.branches
+            .iter()
+            .find(|b| b.from == 1 && b.to == 6)
+            .unwrap()
+            .tap
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!((locked.taps_moved, tap(&locked)), (0, 1.0));
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.taps_moved, 1);
+    assert!(moved.dc_tap_passes > 0);
+    let ratio = tap(&moved);
+    assert!(ratio > 1.0, "{ratio}");
+    // A solve from the last solution keeps the transformer where it ended.
+    let kept = solve(false, Last);
+    assert!((tap(&kept) - ratio).abs() < 1e-12);
 }

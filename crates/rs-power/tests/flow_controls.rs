@@ -359,6 +359,7 @@ fn a_shifter_and_a_reactive_flow_tap_move_together() {
         flow_controls: FlowControls {
             phase_shifters: vec![shifter((p0 + 20.0, p0 + 24.0), None)],
             reactive_taps: vec![reactive_tap((q0 - 15.0, q0 - 10.0))],
+            ..Default::default()
         },
         ..Default::default()
     };

@@ -35,7 +35,7 @@ shifters** (`adjust_phase_shifters`) locks
 | Transformer winding, voltage control | `COD` = 1 | Yes |
 | Transformer winding, reactive power flow | `COD` = 2 | Yes, see [below](#reactive-flow-taps) |
 | Transformer winding, active power flow (phase shifter) | `COD` = 3, 5 (symmetric, asymmetric) | Yes, see [Phase shifters](/StannumRevival/manual/phase-shifters/) |
-| Transformer winding, DC line control | `COD` = 4 | No |
+| Transformer winding, DC line control | `COD` = 4 | Yes, with the DC converter taps; see [LCC DC lines](/StannumRevival/manual/hvdc/lcc/#ac-transformer-taps-cod-4) |
 
 ## When they move
 
