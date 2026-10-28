@@ -15,5 +15,5 @@ problem, and what you expected to happen. You should hear back within a week.
 
 ## Supported versions
 
-Fixes go into `main` and the next release. Older releases get a fix on a
-`release/x.y` branch only when the problem is serious.
+Fixes go into `development` and the next release. A serious problem in the
+latest release gets a `hotfix/vX.Y.Z` branch from `main` and a patch release.
