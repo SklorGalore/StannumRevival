@@ -2726,6 +2726,91 @@
         }
       ]
     },
+    "FactsRow": {
+      "description": "One FACTS device after a solve.",
+      "properties": {
+        "at_limit": {
+          "description": "The shunt element ended at an end of its range.",
+          "type": "boolean"
+        },
+        "bus": {
+          "description": "Sending-end bus, where the shunt element connects.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bus_name": {
+          "type": "string"
+        },
+        "held": {
+          "description": "The shunt element was held at zero (a generator holds its bus, or\nthe solve was DC).",
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "regulated_bus": {
+          "description": "Bus whose voltage the shunt element holds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "series_mvar": {
+          "format": "double",
+          "type": "number"
+        },
+        "series_mw": {
+          "description": "Power the series element sends to the terminal-end bus.",
+          "format": "double",
+          "type": "number"
+        },
+        "shunt_max_mvar": {
+          "description": "Largest shunt output at the setpoint (SHMX × VSET), in Mvar.",
+          "format": "double",
+          "type": "number"
+        },
+        "shunt_mvar": {
+          "description": "Reactive power the shunt element injects, in Mvar.",
+          "format": "double",
+          "type": "number"
+        },
+        "terminal_bus": {
+          "description": "Terminal-end bus of the series element; none for a STATCOM.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "vm": {
+          "description": "Solved voltage at the regulated bus, in per unit.",
+          "format": "double",
+          "type": "number"
+        },
+        "vset": {
+          "description": "Voltage setpoint in per unit.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "bus",
+        "bus_name",
+        "terminal_bus",
+        "regulated_bus",
+        "vset",
+        "vm",
+        "shunt_mvar",
+        "shunt_max_mvar",
+        "at_limit",
+        "held",
+        "series_mw",
+        "series_mvar"
+      ],
+      "type": "object"
+    },
     "Field": {
       "properties": {
         "label": {
@@ -4427,6 +4512,13 @@
           "format": "double",
           "type": "number"
         },
+        "facts": {
+          "description": "FACTS devices in service, in file order (RAW only).",
+          "items": {
+            "$ref": "#/$defs/FactsRow"
+          },
+          "type": "array"
+        },
         "generators": {
           "$ref": "#/$defs/GeneratorRowColumns"
         },
@@ -4560,7 +4652,8 @@
         "vsc_grids",
         "areas",
         "interchange_passes",
-        "area_interchange"
+        "area_interchange",
+        "facts"
       ],
       "type": "object"
     },

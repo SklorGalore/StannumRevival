@@ -1,5 +1,6 @@
 //! Voltage controls applied between Newton solves: switched shunts and
-//! transformer tap changers (PSS/E switched shunt MODSW 1–5, winding COD 1).
+//! transformer tap changers (PSS/E switched shunt MODSW 1–6, winding COD 1),
+//! and the FACTS devices that hold bus voltages during each solve.
 
 /// Voltage controls to apply during an AC solve, usually from
 /// [`crate::RawImport::voltage_controls`]. Empty by default.
@@ -9,12 +10,15 @@ pub struct VoltageControls {
     pub switched_shunts: Vec<SwitchedShunt>,
     /// Transformer windings whose taps hold a bus voltage.
     pub taps: Vec<TapControl>,
+    /// FACTS devices in service. Their shunt elements hold bus voltages in
+    /// AC solves; their series elements also move active power in DC solves.
+    pub facts: Vec<FactsDevice>,
 }
 
 impl VoltageControls {
     /// True when there is nothing to control.
     pub fn is_empty(&self) -> bool {
-        self.switched_shunts.is_empty() && self.taps.is_empty()
+        self.switched_shunts.is_empty() && self.taps.is_empty() && self.facts.is_empty()
     }
 }
 
@@ -50,6 +54,13 @@ pub enum ShuntMode {
     ShuntSetting {
         /// Index of the other shunt in [`VoltageControls::switched_shunts`].
         shunt: usize,
+    },
+    /// Whole blocks switch to keep the reactive output of a FACTS device's
+    /// shunt element within the band (PSS/E MODSW 6), in fractions of its
+    /// range, -SHMX to +SHMX at its voltage setpoint.
+    FactsReactive {
+        /// Index of the device in [`VoltageControls::facts`].
+        device: usize,
     },
 }
 
@@ -149,7 +160,9 @@ impl TapControl {
 // ---------------------------------------------------------------------------
 // Solver side.
 
-use crate::{BusType, Case, Error, Generator, network::Network, solver::DcLineGenerators};
+use crate::{
+    BusType, Case, Error, Generator, facts::FactsDevice, network::Network, solver::DcLineGenerators,
+};
 use num_complex::Complex64 as C;
 
 /// What a discrete shunt watches, resolved against the working case.
@@ -185,9 +198,15 @@ pub(crate) struct Setup<'a> {
     pub continuous: Vec<(usize, &'a SwitchedShunt, usize)>,
     /// Tap controls, with their index in [`VoltageControls::taps`].
     pub taps: Vec<(usize, &'a TapControl)>,
-    /// Generators from this index on are continuous-shunt helpers, which
-    /// always keep to their reactive limits.
+    /// Generators from this index on are FACTS and continuous-shunt
+    /// helpers, which always keep to their reactive limits.
     pub limited_from: usize,
+    /// Generators from this index on are continuous-shunt helpers; those
+    /// from `limited_from` up to here stand in for FACTS shunt elements.
+    pub continuous_from: usize,
+    /// The FACTS shunt elements in control, as (device index, helper
+    /// generator).
+    pub facts: Vec<(usize, usize)>,
     /// Number of listed shunts and taps.
     pub counts: [usize; 2],
 }
@@ -199,6 +218,8 @@ impl Setup<'_> {
             continuous: Vec::new(),
             taps: Vec::new(),
             limited_from: case.generators.len(),
+            continuous_from: case.generators.len(),
+            facts: Vec::new(),
             counts: [0, 0],
         }
     }
@@ -213,12 +234,15 @@ impl Setup<'_> {
 /// `case.generators[..plants]` are the case's own generators, which make up
 /// the plants that MODSW 3 shunts watch; `dc` maps DC line rows to the
 /// terminal generators that stand in for their converters (MODSW 4).
+/// `facts` holds the helper generator of each FACTS device's shunt element
+/// (MODSW 6), all added just before this call, from `facts_from` on.
 pub(crate) fn setup<'a>(
     case: &mut Case,
     controls: &'a VoltageControls,
     [lock_shunts, lock_taps]: [bool; 2],
     plants: usize,
     dc: &[DcLineGenerators],
+    (facts, facts_from): (&[Option<usize>], usize),
 ) -> Result<Setup<'a>, Error> {
     let index: std::collections::HashMap<u32, usize> = case
         .buses
@@ -238,12 +262,15 @@ pub(crate) fn setup<'a>(
             generated[i] = true;
         }
     }
-    let limited_from = case.generators.len();
     let mut setup = Setup {
         discrete: Vec::new(),
         continuous: Vec::new(),
         taps: Vec::new(),
-        limited_from,
+        limited_from: facts_from.min(case.generators.len()),
+        continuous_from: case.generators.len(),
+        facts: (facts.iter().enumerate())
+            .filter_map(|(k, g)| Some((k, (*g)?)))
+            .collect(),
         counts: [controls.switched_shunts.len(), controls.taps.len()],
     };
     for (k, shunt) in controls.switched_shunts.iter().enumerate() {
@@ -318,6 +345,29 @@ pub(crate) fn setup<'a>(
                     gens: vec![g],
                     band: band((lo, hi)),
                     what: format!("VSC converter at bus {bus}"),
+                })
+            }
+            ShuntMode::FactsReactive { device } => {
+                let Some(fd) = controls.facts.get(device) else {
+                    return Err(Error::InvalidCase(format!(
+                        "switched shunt at bus {} watches a missing FACTS device {device}",
+                        shunt.bus
+                    )));
+                };
+                let Some(g) = facts.get(device).copied().flatten() else {
+                    if !lock_shunts {
+                        log::info!(
+                            "  switched shunt at bus {} watches FACTS device {}, whose shunt element is held; holding it",
+                            shunt.bus,
+                            fd.name
+                        );
+                    }
+                    continue;
+                };
+                Some(Watch::Reactive {
+                    gens: vec![g],
+                    band: band(range(&[g])),
+                    what: format!("FACTS device {}", fd.name),
                 })
             }
             ShuntMode::ShuntSetting { shunt: other } => {

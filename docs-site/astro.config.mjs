@@ -62,6 +62,7 @@ export default defineConfig({
             { label: "Generator reactive limits", slug: "manual/reactive-limits" },
             { label: "Remote voltage regulation", slug: "manual/remote-regulation" },
             { label: "Switched shunts and taps", slug: "manual/voltage-controls" },
+            { label: "FACTS devices", slug: "manual/facts" },
             { label: "Area interchange control", slug: "manual/area-interchange" },
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
             { label: "Contingency analysis", slug: "manual/contingencies" },

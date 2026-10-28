@@ -34,8 +34,16 @@ section into the next version's when a release is cut (see
   `decoupled_iterations` sets the decoupled iteration limit.
 - Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
   reactive output, a VSC converter's, or another switched shunt's setting
-  within their band, as PSS/E does. Mode 6 (FACTS) stays frozen at `BINIT`
-  with a warning, as FACTS devices are not modelled.
+  within their band, as PSS/E does. Mode 6 keeps a FACTS device's shunt
+  element within its band.
+- **FACTS devices** from RAW FACTS control device data: the shunt element
+  holds its bus (or `REMOT`) at `VSET` within `SHMX`, like a STATCOM, and a
+  series element in normal mode sends `PDES` and `QDES` to its terminal-end
+  bus, like a UPFC (also in DC solves). A new **FACTS** tab in Power flow
+  lists each device's output. On the PSS/E sample case the largest angle
+  error against its saved solution drops from 10.8° to 0.9°.
+- Continuous switched shunts wait for generators and FACTS devices to settle
+  their reactive limits before they are fixed at the end of their range.
 - **Move switched shunts** and **Move transformer taps** (and **Adjust DC
   converter taps**) now lock those devices when turned off: they stay where
   the last solve left them, instead of going back to their case values.

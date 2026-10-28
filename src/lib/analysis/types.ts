@@ -66,6 +66,8 @@ export type DcSystemReport = G.DcSystemReport;
 
 export type AreaRow = G.AreaRow;
 
+export type FactsRow = G.FactsRow;
+
 export type InterchangeChoice = G.InterchangeChoice;
 
 export type DcConverterRow = G.DcConverterRow;
