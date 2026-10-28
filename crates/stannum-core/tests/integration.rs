@@ -557,10 +557,11 @@ fn dc_grid_file_attaches_to_a_case_and_solves() {
     assert_eq!(three.converters[1].ac_control, "voltage");
     assert!((three.converters[2].ps_mw + 150.0).abs() < 1e-6);
     assert!(four.converters.iter().all(|c| c.q_max_mvar.is_some()));
-    // Losses: generation covers load, AC losses and the DC grids' losses
-    // (to the 2 MVA tolerance at each bus).
+    // Losses: generation covers load, AC losses and the DC grids' losses,
+    // to the solve's mismatch at each bus.
     let gap = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
-    assert!(gap.abs() < 0.5, "{gap}");
+    let allowed = report.buses.len() as f64 * report.residual_mva;
+    assert!(gap.abs() <= allowed, "{gap} MW, allowed {allowed}");
 
     // A DC solve leaves the grids out; detaching them returns to plain AC.
     let dc = SolveSettings {

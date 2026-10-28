@@ -178,7 +178,7 @@ mod tests {
         let mut ws = crate::Workspace::default();
         ws.open(&case).unwrap();
         let settings: crate::power::SolveSettings = serde_json::from_value(serde_json::json!({
-            "model": "ac", "start": "case", "tolerance_mva": 1e-6, "max_iterations": 20,
+            "model": "ac", "method": "newton", "start": "case", "tolerance_mva": 1e-6, "max_iterations": 20,
             "enforce_q_limits": true, "dc_model": "detailed", "adjust_dc_taps": true,
             "switch_shunts": true, "adjust_transformer_taps": true
         }))

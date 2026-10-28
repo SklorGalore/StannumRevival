@@ -336,3 +336,61 @@ fn psse_case3_zero_width_band_shunt_keeps_its_starting_block() {
         result.voltage_control_passes
     );
 }
+
+#[test]
+fn locked_shunts_and_taps_stay_at_their_starting_values() {
+    let case = case9();
+    let mut shunt = shunt(5, ShuntMode::Discrete, (1.03, 1.04), vec![(8, 10.0)]);
+    shunt.initial = 20.0;
+    let tap = TapControl {
+        branch: 0,
+        regulated_bus: 4,
+        raises_voltage: false,
+        vmax: 1.045,
+        vmin: 1.035,
+        ratio: 1.0125,
+        ratio_max: 1.1,
+        ratio_min: 0.9,
+        positions: 33,
+        tap_per_ratio: 1.0,
+        line: 0,
+    };
+    let mut started = case.clone();
+    started.branches[0].tap = tap.ratio;
+    started.buses[4].bs += shunt.initial;
+    let controls = VoltageControls {
+        switched_shunts: vec![shunt.clone()],
+        taps: vec![tap.clone()],
+    };
+    let free = solve(&started, &with(controls.clone())).unwrap();
+    assert!(free.voltage_control_passes > 0);
+    assert_ne!(free.switched_shunts[0], shunt.initial);
+    assert_ne!(free.tap_ratios[0], tap.ratio);
+    let locked = solve(
+        &started,
+        &PowerFlowOptions {
+            lock_switched_shunts: true,
+            lock_taps: true,
+            ..with(controls.clone())
+        },
+    )
+    .unwrap();
+    assert_eq!(locked.status, SolveStatus::Converged);
+    assert_eq!(locked.voltage_control_passes, 0);
+    // Still listed, at their starting values, as in the solved case.
+    assert_eq!(locked.switched_shunts, [shunt.initial]);
+    assert_eq!(locked.tap_ratios, [tap.ratio]);
+    assert_eq!(locked.case.branches[0].tap, tap.ratio);
+    assert_eq!(locked.case.buses[4].bs, started.buses[4].bs);
+    // Locking one leaves the other free.
+    let taps_only = solve(
+        &started,
+        &PowerFlowOptions {
+            lock_taps: true,
+            ..with(controls)
+        },
+    )
+    .unwrap();
+    assert_eq!(taps_only.tap_ratios, [tap.ratio]);
+    assert_ne!(taps_only.switched_shunts[0], shunt.initial);
+}

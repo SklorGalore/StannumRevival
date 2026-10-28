@@ -12,15 +12,17 @@ holds:
 
 | Setting | Meaning | Default |
 | --- | --- | --- |
-| **Model** | **AC** Newton–Raphson, or **DC** linear flow | AC |
+| **Model** | **AC** power flow, or **DC** linear flow | AC |
+| **AC method** | **Auto**, **Full Newton**, **Fixed-slope decoupled (FDNS)**, **Fast decoupled (XB)** or **Fast decoupled (BX)**. Every method stops at the same mismatch tolerance; see [AC solution methods](/StannumRevival/manual/ac-methods/) | Auto |
 | **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2, on any case's base |
-| **Newton iterations per pass** | Newton steps allowed in each pass | 10 |
+| **Newton iterations per pass** | Newton steps allowed in each pass (Auto and Full Newton) | 10 |
+| **Decoupled iterations per pass** | Decoupled iterations allowed in each pass (every method but Full Newton) | 30 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |
 | **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | Off |
-| **Switch shunts** | Let switched shunts in voltage control move (RAW only) | On |
-| **Adjust transformer taps** | Let tap changers in voltage control move (RAW only) | On |
+| **Move switched shunts** | Let switched shunts in voltage control move (RAW only). Off locks them where they are: where the last solve left them, or at their case values with Flat start | On |
+| **Move transformer taps** | Let tap changers in voltage control move (RAW only). Off locks them like shunts | On |
 | **DC line model** | **Detailed converters** or the simplified generator pair | Detailed |
-| **Adjust DC converter taps** | Let converter taps step to hold scheduled DC voltage and firing angles | On |
+| **Adjust DC converter taps** | Let converter taps step to hold scheduled DC voltage and firing angles. Off locks them like shunts | On |
 
 **Solve** runs the power flow. You can also solve from the palette or the
 diagram toolbar. The [technical manual](/StannumRevival/manual/ac-power-flow/)
@@ -38,7 +40,8 @@ iterate and see where the mismatch is.
 
 ## Overview
 
-The overview shows convergence, the residual (MVA and p.u.), iterations, how
+The overview shows convergence, the residual (MVA and p.u.), iterations
+(with the method, and for Auto how many were decoupled and how many Newton), how
 many shunts and taps moved, and totals for generation, load and losses. Below
 it:
 

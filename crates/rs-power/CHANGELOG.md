@@ -16,6 +16,13 @@ All notable changes to this project will be documented here. This project uses
 
 ### Added
 
+- `PowerFlowOptions::method` (`AcMethod`): fixed-slope decoupled Newton,
+  fast decoupled XB and BX, and `Auto` alongside full Newton (the default),
+  with `decoupled_iterations` as their iteration limit and
+  `PowerFlowResult::decoupled_iterations` and `newton_fallbacks` to report
+  them.
+- `PowerFlowOptions::lock_switched_shunts` and `lock_taps` hold listed
+  voltage controls at their starting values.
 - Voltage-dependent (ZIP) loads. `Bus` gains constant-current (`pd_i`,
   `qd_i`) and constant-impedance (`pd_z`, `qd_z`) parts, drawn in
   proportion to |V| and |V|²; AC power flow, its Jacobian and sensitivities

@@ -10,6 +10,19 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- AC solution methods: **Auto** (the new default), **Full Newton**,
+  **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
+  starts each pass with cheap decoupled iterations and finishes with Newton
+  when they slow down or fail, so it solves the 70,000–82,000-bus synthetic
+  cases about twice as fast as Newton (1.1 to 4 times), and still converges in
+  the stressed cases where the decoupled methods alone do not.
+  Every method stops at the same mismatch tolerance. Choose it under **AC
+  method** in the solve settings, or with `method` in run files and Python;
+  `decoupled_iterations` sets the decoupled iteration limit.
+- **Move switched shunts** and **Move transformer taps** (and **Adjust DC
+  converter taps**) now lock those devices when turned off: they stay where
+  the last solve left them, instead of going back to their case values.
+
 - Run files (`.stnrun`): Stannum commands written one per line, run in
   order. **Ctrl+K → Record a run file** keeps what you do (opening, solving,
   study edits, contingencies, exports) and saves it as one; **Run a run

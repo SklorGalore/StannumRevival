@@ -57,6 +57,7 @@ export default defineConfig({
             { label: "Architecture", slug: "manual/architecture" },
             { label: "Network model", slug: "manual/network-model" },
             { label: "AC Newton power flow", slug: "manual/ac-power-flow" },
+            { label: "AC solution methods", slug: "manual/ac-methods" },
             { label: "DC (linear) power flow", slug: "manual/dc-power-flow" },
             { label: "Generator reactive limits", slug: "manual/reactive-limits" },
             { label: "Remote voltage regulation", slug: "manual/remote-regulation" },

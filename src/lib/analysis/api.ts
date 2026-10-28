@@ -163,10 +163,12 @@ function shell<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 
 export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   model: "ac",
+  method: "auto",
   start: "last",
   // The same MW and Mvar on every case, whatever its base.
   tolerance_mva: 2,
   max_iterations: 10,
+  decoupled_iterations: 30,
   enforce_q_limits: false,
   dc_model: "detailed",
   adjust_dc_taps: true,

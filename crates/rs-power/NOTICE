@@ -3,7 +3,7 @@ rs-power adapts power-flow formulations and result allocation from MATPOWER
 https://github.com/MATPOWER/matpower/tree/8.1
 
 Relevant upstream routines include makeYbus, makeBdc, makeSbus, newtonpf,
-dSbus_dV, pfsoln, bustypes, ext2int, int2ext, runpf, psse_read, psse_parse,
+dSbus_dV, makeB (the fast decoupled B' and B'' simplifications), pfsoln, bustypes, ext2int, int2ext, runpf, psse_read, psse_parse,
 psse_parse_line, psse_convert, psse_convert_xfmr and psse_convert_hvdc.
 RAW conversions derive from work by Yujia Zhu and Ray Zimmerman,
 Copyright (c) 2014-2024, Power Systems Engineering Research Center (PSERC).

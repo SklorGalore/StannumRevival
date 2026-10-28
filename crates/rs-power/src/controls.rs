@@ -149,10 +149,12 @@ impl Setup<'_> {
 /// Validate `controls` against `case` and add a helper generator for every
 /// continuous shunt, which holds its voltage within the shunt's range like a
 /// static var compensator. Shunts at buses that already have an online
-/// generator, or that are offline, stay at their starting value.
+/// generator, or that are offline, stay at their starting value, as do
+/// every shunt and every tap when `[lock_shunts, lock_taps]` says so.
 pub(crate) fn setup<'a>(
     case: &mut Case,
     controls: &'a VoltageControls,
+    [lock_shunts, lock_taps]: [bool; 2],
 ) -> Result<Setup<'a>, Error> {
     let index: std::collections::HashMap<u32, usize> = case
         .buses
@@ -192,6 +194,9 @@ pub(crate) fn setup<'a>(
                 "switched shunt at bus {} has an invalid band or block",
                 shunt.bus
             )));
+        }
+        if lock_shunts {
+            continue;
         }
         match shunt.mode {
             ShuntMode::Discrete => setup.discrete.push((k, shunt)),
@@ -237,7 +242,9 @@ pub(crate) fn setup<'a>(
                 tap.branch
             )));
         }
-        setup.taps.push((k, tap));
+        if !lock_taps {
+            setup.taps.push((k, tap));
+        }
     }
     Ok(setup)
 }
