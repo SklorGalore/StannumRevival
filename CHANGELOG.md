@@ -157,6 +157,9 @@ section into the next version's when a release is cut (see
   column at once, over 13 GB at 82,000 buses, and the app was shut down by
   the system; now the case is factored once and the picked column is solved
   when asked (about 3 s and 0.5 GB for SyntheticUSA).
+- A solve that starts from the last solution and doesn't converge tries
+  again from the case voltages. Ticking **Enforce generator Q limits** after
+  a solve without them used to stop at the iteration limit on SyntheticUSA.
 - A three-winding transformer's winding loading is measured at its own bus,
   not at the internal star bus, in results, checks and contingencies.
 - RAW transformers with a 1.0 ratio and no phase shift show as transformers

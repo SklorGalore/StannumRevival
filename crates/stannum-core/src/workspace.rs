@@ -1483,45 +1483,57 @@ impl SolveJob {
             }
             _ => None,
         };
-        let input = warm.as_ref().unwrap_or(&power.case);
         let grids = dc_grids
             .as_deref()
             .filter(|_| settings.model == power::ModelChoice::Ac);
         if dc_grids.is_some() && grids.is_none() {
             log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
         }
-        let (result, vsc) = match grids {
-            Some(file) => {
-                let acdc = rs_power::solve_dc_grids(
-                    input,
-                    &options,
-                    &file.grids,
-                    &rs_power::DcGridSettings::default(),
-                )
-                .map_err(failed)?;
-                let names = power::bus_names(&power.case);
-                let index: std::collections::HashMap<u32, usize> = power
-                    .case
-                    .buses
-                    .iter()
-                    .enumerate()
-                    .map(|(i, b)| (b.id, i))
-                    .collect();
-                let vsc = dc_grids::report(file, &acdc, |bus| {
-                    index
-                        .get(&bus)
-                        .and_then(|&i| names.get(i))
-                        .cloned()
-                        .unwrap_or_default()
-                });
-                let mut ac = acdc.ac;
-                // The AC/DC iteration's outcome, not only the last AC solve's.
-                ac.status = acdc.status;
-                ac.iterations = acdc.ac_iterations;
-                (ac, Some(vsc))
-            }
-            None => (rs_power::solve(input, &options).map_err(failed)?, None),
+        let run = |input: &rs_power::Case, options: &rs_power::PowerFlowOptions| {
+            Ok::<_, Error>(match grids {
+                Some(file) => {
+                    let acdc = rs_power::solve_dc_grids(
+                        input,
+                        options,
+                        &file.grids,
+                        &rs_power::DcGridSettings::default(),
+                    )
+                    .map_err(failed)?;
+                    let names = power::bus_names(&power.case);
+                    let index: std::collections::HashMap<u32, usize> = power
+                        .case
+                        .buses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, b)| (b.id, i))
+                        .collect();
+                    let vsc = dc_grids::report(file, &acdc, |bus| {
+                        index
+                            .get(&bus)
+                            .and_then(|&i| names.get(i))
+                            .cloned()
+                            .unwrap_or_default()
+                    });
+                    let mut ac = acdc.ac;
+                    // The AC/DC iteration's outcome, not only the last AC solve's.
+                    ac.status = acdc.status;
+                    ac.iterations = acdc.ac_iterations;
+                    (ac, Some(vsc))
+                }
+                None => (rs_power::solve(input, options).map_err(failed)?, None),
+            })
         };
+        let (mut result, mut vsc) = run(warm.as_ref().unwrap_or(&power.case), &options)?;
+        if warm.is_some() && result.status != rs_power::SolveStatus::Converged {
+            // The last solution can be a poor start for different settings,
+            // such as the first solve with Q limits after one without them.
+            log::warn!(
+                "The solve from the last solution did not converge; solving again from the case voltages"
+            );
+            let mut retry = cold.clone();
+            retry.cancel = options.cancel.clone();
+            (result, vsc) = run(&power.case, &retry)?;
+        }
         let solved_ms = elapsed_ms(start);
         let mut report = power::report(
             &result,
