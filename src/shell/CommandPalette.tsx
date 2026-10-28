@@ -93,7 +93,7 @@ export function paletteCommands(): Command[] {
         id: `export-raw-${revision}`,
         title: `Export case as PSS/E RAW ${revision}…`,
         icon: <Download size={14} />,
-        keywords: "file save write psse raw convert revision version",
+        keywords: "export raw file save write psse convert revision version",
         run: () => void studyFile.exportRaw(revision),
       });
   }

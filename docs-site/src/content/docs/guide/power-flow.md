@@ -143,3 +143,13 @@ common warning, not a line per record.
 **Input case…** writes the case as loaded (with study edits applied);
 **Solved case…** writes the latest solved case. Both are MATPOWER version 2
 files that MATPOWER's `loadcase` reads.
+
+## Export PSS/E RAW
+
+**Revision 35…** and **Revision 33…** under **Export PSS/E RAW** (also
+**Ctrl+K → Export case as PSS/E RAW 35…/33…**) write the open case as a
+complete RAW file, with its Records edits and study edits written in. A bar
+under the case bar then says how many records were written and lists
+anything the file couldn't keep, such as fields revision 33 has no place
+for. See [Writing RAW](/StannumRevival/reference/psse-raw/#writing-raw) for
+what each conversion does.

@@ -10,6 +10,13 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
+  and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
+  run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
+  record by record, keeping every record and converting between the two
+  revisions; MATPOWER and older RAW revisions are written from the power flow
+  model. Anything the file can't keep is listed after the export.
+
 - AC solution methods: **Auto** (the new default), **Full Newton**,
   **Fixed-slope decoupled (FDNS)**, and **Fast decoupled** XB and BX. Auto
   starts each pass with cheap decoupled iterations and finishes with Newton
