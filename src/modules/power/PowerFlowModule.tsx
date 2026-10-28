@@ -42,6 +42,7 @@ import { TopBranches, VoltageProfile } from "./OverviewCharts";
 import { useWidth } from "../../ui/useWidth";
 import { useStudyFile } from "../../store/studyFileStore";
 import { RecentFiles } from "../../ui/RecentFiles";
+import { SampleCases } from "../../ui/SampleCases";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
@@ -1450,7 +1451,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <FolderOpen size={14} /> Open case…
           </Button>
         }
-        footer={<RecentFiles />}
+        footer={
+          <>
+            <RecentFiles />
+            <SampleCases />
+          </>
+        }
       >
         Open a MATPOWER (.m) or PSS/E RAW (revisions 23–35) case to run AC or DC power flow, check operating limits and
         calculate sensitivities. Powered by rs-power.

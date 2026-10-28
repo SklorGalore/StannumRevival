@@ -705,6 +705,15 @@ commands! {
     /// Open a case file (PSS/E RAW or MATPOWER). It replaces the open case.
     open_case { path: PathBuf } -> crate::CaseSummary => |s, a| s.workspace()?.open(&a.path);
 
+    /// The small cases built into Stannum, to open with `open_sample`.
+    sample_cases {} -> Vec<crate::samples::SampleCase> => |_, _| Ok(crate::samples::list());
+
+    /// Write a built-in sample case (and its bus coordinates, if it has
+    /// any) into `dir`, or a `stannum-samples` folder in the temp folder,
+    /// and open it. It replaces the open case.
+    open_sample { id: String, dir: Option<PathBuf> } -> crate::CaseSummary =>
+        |s, a| crate::samples::open(&mut *s.workspace()?, &a.id, a.dir.as_deref());
+
     /// Close the case.
     close_case { case: Option<CaseId> } -> () => |s, a| {
         let mut ws = s.workspace()?;

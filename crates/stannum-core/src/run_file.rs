@@ -39,6 +39,7 @@ pub const EXTENSION: &str = "stnrun";
 /// a run file and leaves out the rest, which only read.
 const ACTIONS: &[&str] = &[
     "open_case",
+    "open_sample",
     "close_case",
     "solve_power_flow",
     "load_dc_grids",

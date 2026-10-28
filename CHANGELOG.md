@@ -10,6 +10,11 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Sample cases** to try on first run: with no case open, Power flow and
+  Records offer MATPOWER's nine-bus case, two five-bus RAW cases and a
+  synthetic 200-bus grid, the last three with bus coordinates for the map.
+  Also in **Ctrl+K** ("Open sample"), and as `sample_cases` and
+  `open_sample` in run files and scripts.
 - Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
   `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
   `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.

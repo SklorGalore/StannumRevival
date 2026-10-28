@@ -27,6 +27,7 @@ import {
   Wand2,
   X,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
@@ -37,6 +38,7 @@ import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
+import { knownSampleCases } from "../ui/SampleCases";
 
 export interface Command {
   id: string;
@@ -82,6 +84,13 @@ export function paletteCommands(): Command[] {
   const list: Command[] = [
     { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
     { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
+    ...knownSampleCases().map((c) => ({
+      id: `open-sample-${c.id}`,
+      title: `Open sample: ${c.title}`,
+      icon: <Sparkles size={14} />,
+      keywords: "sample example demo try first built-in tutorial",
+      run: () => void w.openSample(c.id),
+    })),
   ];
   if (summary) {
     const studyFile = useStudyFile.getState();

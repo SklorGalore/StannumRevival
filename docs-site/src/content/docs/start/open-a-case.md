@@ -7,6 +7,29 @@ Open a case with **Open case…** in the top bar, from the
 [palette](/StannumRevival/guide/command-palette/) (<kbd>Ctrl</kbd>+<kbd>K</kbd>,
 then "Open"), or by dropping a `.raw` or `.m` file anywhere on the window.
 
+## Sample cases
+
+With no case open, Power flow and Records list a few small cases built into
+Stannum under **Try a sample case**. They are also in the palette as "Open
+sample: …".
+
+| Sample | Format | Buses | Map |
+| --- | --- | --- | --- |
+| Nine-bus case | MATPOWER (`case9` from MATPOWER 8.1) | 9 | No |
+| Five-bus case | PSS/E RAW 35 | 5 | Yes |
+| Five-bus case with devices | PSS/E RAW 35, with a three-winding transformer, a breaker and switched shunts | 7 (with the transformer's star bus) | Yes |
+| Synthetic 200-bus grid | MATPOWER, from the [synthetic case generator](/StannumRevival/manual/synthetic-cases/) | 201 | Yes |
+
+Opening a sample writes a fresh copy into a `samples` folder in Stannum's
+local data folder and opens that copy, with its bus coordinates attached when
+it has some. Edit it as much as you like: the next time you open the sample
+it starts from the original again, so use **Save case as…** to keep changes.
+Scripts open them with the `sample_cases` and `open_sample` commands.
+
+The five-bus places are made up, and the synthetic grid describes no real
+system. `case9` is MATPOWER's case data, which keeps its own provenance (see
+`THIRD-PARTY-NOTICES.md`).
+
 ## What each module can use
 
 | Format | Power flow | Diagram | Topology (network, layers, tables) | Case diff |
