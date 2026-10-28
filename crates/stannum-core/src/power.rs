@@ -33,8 +33,15 @@ pub struct PowerCase {
     /// Substations with their places and buses, from RAW revision 34-35
     /// substation data; empty otherwise.
     pub substations: Vec<rs_power::RawSubstation>,
+    /// RAW revision 34-35 system switching devices, each also a branch of
+    /// `case`; empty otherwise.
+    pub switching_devices: Vec<rs_power::SwitchingDevice>,
     /// The RAW revision the file was read as; None for MATPOWER.
     pub revision: Option<u32>,
+    /// Control areas from RAW area data, for area interchange control.
+    pub areas: Vec<rs_power::Area>,
+    /// RAW loads assigned to another area than their bus's.
+    pub area_loads: Vec<rs_power::AreaLoad>,
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -71,7 +78,10 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             flow_controls: rs_power::FlowControls::default(),
             mtdc: Vec::new(),
             substations: Vec::new(),
+            switching_devices: Vec::new(),
             revision: None,
+            areas: Vec::new(),
+            area_loads: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -115,7 +125,10 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             flow_controls: import.flow_controls,
             mtdc: import.mtdc,
             substations: import.substations,
+            switching_devices: import.switching_devices,
             revision: Some(import.revision),
+            areas: import.areas,
+            area_loads: import.area_loads,
             case: import.case,
             warnings: import
                 .warnings
@@ -202,6 +215,32 @@ impl From<MethodChoice> for rs_power::AcMethod {
     }
 }
 
+/// Area interchange control: what counts as an area's net export when its
+/// slack generation holds it at the desired value.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum InterchangeChoice {
+    /// No control; the report still lists each area's interchange.
+    #[default]
+    Off,
+    /// Flows on tie lines between areas.
+    TieLines,
+    /// Tie lines plus loads that belong to another area than their bus.
+    TieLinesAndLoads,
+}
+
+impl From<InterchangeChoice> for rs_power::InterchangeMode {
+    fn from(c: InterchangeChoice) -> Self {
+        match c {
+            InterchangeChoice::Off => Self::Off,
+            InterchangeChoice::TieLines => Self::TieLines,
+            InterchangeChoice::TieLinesAndLoads => Self::TieLinesAndLoads,
+        }
+    }
+}
+
 fn yes() -> bool {
     true
 }
@@ -250,6 +289,10 @@ pub struct SolveSettings {
     /// false they are locked, like taps.
     #[serde(default = "yes")]
     pub adjust_phase_shifters: bool,
+    /// Hold each area's net interchange at its desired value with the
+    /// area slack generation (AC only; RAW area data). Off by default.
+    #[serde(default)]
+    pub area_interchange: InterchangeChoice,
 }
 
 /// Default mismatch tolerance: 2 MVA on any system base. Looser than the
@@ -273,6 +316,7 @@ impl Default for SolveSettings {
             switch_shunts: true,
             adjust_transformer_taps: true,
             adjust_phase_shifters: true,
+            area_interchange: InterchangeChoice::Off,
         }
     }
 }
@@ -302,6 +346,11 @@ impl SolveSettings {
             options.lock_taps = !self.adjust_transformer_taps;
             options.flow_controls = power.flow_controls.clone();
             options.lock_phase_shifters = !self.adjust_phase_shifters;
+            options.interchange = rs_power::AreaInterchange {
+                mode: self.area_interchange.into(),
+                areas: power.areas.clone(),
+                loads: power.area_loads.clone(),
+            };
         }
         options
     }
@@ -803,6 +852,36 @@ pub struct SolveReport {
     /// VSC DC grids from an attached DC grid file, solved in sequence with
     /// the AC network.
     pub vsc_grids: Option<crate::dc_grids::VscGridsReport>,
+    /// Every area's net interchange (AC only): areas from the case's area
+    /// data first, then the others found on buses.
+    pub areas: Vec<AreaRow>,
+    /// Passes that moved area slack generation.
+    pub interchange_passes: usize,
+    /// The area interchange control the solve used (off for DC).
+    pub area_interchange: InterchangeChoice,
+}
+
+/// One area's net interchange after a solve.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct AreaRow {
+    pub number: u32,
+    pub name: String,
+    /// Net export in MW (negative is import).
+    #[serde(serialize_with = "table::mw")]
+    pub interchange_mw: f64,
+    /// Desired net export in MW, when the case's area data gives one.
+    pub desired_mw: Option<f64>,
+    #[serde(serialize_with = "table::mw")]
+    pub tolerance_mw: f64,
+    /// Interchange minus desired, in MW, when there is a desired value.
+    pub error_mw: Option<f64>,
+    pub slack_bus: Option<u32>,
+    pub slack_bus_name: String,
+    /// Whether the solve held this area's interchange.
+    pub controlled: bool,
+    /// How far the solve moved the area slack generation, in MW.
+    #[serde(serialize_with = "table::mw")]
+    pub slack_change_mw: f64,
 }
 
 pub fn bus_names(case: &Case) -> Vec<String> {
@@ -1150,6 +1229,28 @@ pub fn report(
         dc_lines,
         dc_systems,
         vsc_grids: None,
+        areas: result
+            .areas
+            .iter()
+            .map(|a| AreaRow {
+                number: a.number,
+                name: a.name.clone(),
+                interchange_mw: a.interchange_mw,
+                desired_mw: a.desired_mw,
+                tolerance_mw: a.tolerance_mw,
+                error_mw: a.desired_mw.map(|d| a.interchange_mw - d),
+                slack_bus: a.slack_bus,
+                slack_bus_name: a.slack_bus.map(name_of).unwrap_or_default(),
+                controlled: a.controlled,
+                slack_change_mw: a.slack_change_mw,
+            })
+            .collect(),
+        interchange_passes: result.interchange_passes,
+        area_interchange: if ac {
+            settings.area_interchange
+        } else {
+            InterchangeChoice::Off
+        },
     }
 }
 

@@ -3,10 +3,12 @@
 # New releases wait a few days before Dependabot proposes them, which keeps
 # us clear of most hijacked or quickly-yanked package versions.
 # Security updates are separate and are not delayed.
+# Version updates target development, like every other PR (see CONTRIBUTING.md).
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
+    target-branch: development
     schedule:
       interval: weekly
       day: monday
@@ -20,6 +22,7 @@ updates:
 
   - package-ecosystem: npm
     directory: /
+    target-branch: development
     schedule:
       interval: weekly
       day: monday
@@ -33,6 +36,7 @@ updates:
 
   - package-ecosystem: npm
     directory: /docs-site
+    target-branch: development
     schedule:
       interval: weekly
       day: monday
@@ -46,6 +50,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: development
     schedule:
       interval: weekly
       day: monday

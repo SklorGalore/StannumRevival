@@ -298,6 +298,9 @@ class Case:
         ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
         ``adjust_phase_shifters``. Setting one of the last four to False
         locks those controls where they are instead of moving them.
+        ``area_interchange`` ("off", the default, "tie_lines" or
+        "tie_lines_and_loads") holds each area's net interchange at its RAW
+        ``PDES`` with the area slack generation.
         """
         return self.call("solve_power_flow", settings=_settings(settings, options))
 

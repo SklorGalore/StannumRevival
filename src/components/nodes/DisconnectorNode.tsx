@@ -3,6 +3,7 @@ import type { DisconnectorNode as DSNodeType } from "../../store/types";
 import { useDiagramStore } from "../../store/diagramStore";
 import { useInk, STROKE } from "../../lib/diagram/ink";
 import { SymbolFrame, type Terminal } from "./shared/SymbolFrame";
+import { SwitchLabel, useCaseSwitch } from "./shared/caseSwitch";
 
 const W = 40;
 const H = 60;
@@ -14,24 +15,28 @@ const TERMINALS: Terminal[] = [
   { id: "ds-bottom", type: "source", x: CX, y: H, side: "bottom" },
 ];
 
-/** Disconnect switch: a blade hinged at the bottom. Double-click to operate. */
+/** Disconnect switch: a blade hinged at the bottom. Double-click to operate;
+ *  one of the case's is operated in the study. */
 export function DisconnectorNode({ id, data, selected }: NodeProps<DSNodeType>) {
   const updateNodeData = useDiagramStore((s) => s.updateNodeData);
   const ink = useInk();
+  const sw = useCaseSwitch(data);
   const blade = selected ? ink.selected : ink.line;
-  const closed = data.state === "closed";
+  const closed = sw.closed;
   // Open: the blade swings 30° away from the upper contact.
   const end = closed ? { x: CX, y: TOP } : { x: CX + 12, y: TOP + 3 };
 
   return (
     <SymbolFrame
+      element={data.caseRef?.element}
+      focus={data.focus}
       w={W}
       h={H}
       rotation={data.rotation}
       labelOffset={data.labelOffset}
       terminals={TERMINALS}
-      title={`Double-click to ${closed ? "open" : "close"}`}
-      onDoubleClick={() => updateNodeData(id, { state: closed ? "open" : "closed" })}
+      title={sw.title}
+      onDoubleClick={() => sw.operate(() => updateNodeData(id, { state: data.state === "closed" ? "open" : "closed" }))}
       graphic={
         <>
           <line x1={CX} y1={0} x2={CX} y2={TOP} stroke={ink.line} strokeWidth={STROKE} />
@@ -42,11 +47,7 @@ export function DisconnectorNode({ id, data, selected }: NodeProps<DSNodeType>) 
         </>
       }
       labelTop={H / 2 - 6}
-      label={
-        <text y={H / 2 + 3} fontSize={10} fill={ink.text}>
-          {data.label}
-        </text>
-      }
+      label={<SwitchLabel data={data} sw={sw} y={H / 2 + 3} />}
     />
   );
 }
