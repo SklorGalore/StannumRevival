@@ -145,5 +145,6 @@ while the work runs. `tests/lock_free_work.rs` checks this.
 `API_VERSION` goes up when a command is removed, or an argument or result
 changes in a way existing callers would notice. Adding a command or an
 optional argument doesn't need a bump. `list_commands` reports it, and
-`stannum.attach()` refuses to drive an app whose version differs from the
-package's.
+`stannum.attach()` refuses to drive an app whose `API_VERSION` differs
+from the package's. From 1.0 it only goes up in a major release; see
+[Versions and compatibility](/StannumRevival/reference/versioning/).
