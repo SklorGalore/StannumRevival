@@ -410,8 +410,6 @@ fn matpower_cases_are_written_from_the_model() {
 #[test]
 fn other_raw_revisions_are_written_from_the_model() {
     let dir = out_dir("older");
-    // DC lines are left out of model exports, so dc_modes.raw would solve
-    // differently.
     for rev in 23..=32 {
         let path = rs_power_fixture(&format!("raw/revision_{rev}.raw"));
         for revision in [33, 35] {
@@ -491,6 +489,108 @@ fn large_synthetic_cases_round_trip() {
             lost.len(),
             &lost[..lost.len().min(20)]
         );
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// The PSS/E sample case (revision 30, so written from the model) with a
+/// shunt watching a FACTS device (MODSW 6), beside its shunt watching a VSC
+/// converter (MODSW 4), phase shifters, area targets and both kinds of DC
+/// line. Multi-terminal DC is left out so that the solutions can match.
+fn psse_sample_case() -> String {
+    let text = std::fs::read_to_string(rs_power_fixture("raw/t_psse_case3.raw"))
+        .unwrap()
+        .replace(
+            " 93002,1,0.99628,0.99628,     0,  100.00,'            ',",
+            " 93002,6,0.80000,0.20000,   153,  100.00,'1           ',",
+        );
+    let start = text.find("BEGIN MULTI-TERMINAL DC DATA").unwrap();
+    let start = text[start..].find('\n').unwrap() + start + 1;
+    let end = text.find(" 0 / END OF MULTI-TERMINAL DC DATA").unwrap();
+    format!("{}{}", &text[..start], &text[end..])
+}
+
+/// A PowerCase's controls and DC lines, without source line numbers.
+fn controls(power: &stannum_core::power::PowerCase) -> String {
+    let mut v = power.voltage_controls.clone();
+    v.switched_shunts.iter_mut().for_each(|s| s.line = 0);
+    v.taps.iter_mut().for_each(|t| t.line = 0);
+    v.facts.iter_mut().for_each(|d| d.line = 0);
+    let mut f = power.flow_controls.clone();
+    f.phase_shifters.iter_mut().for_each(|p| p.line = 0);
+    format!(
+        "{v:#?}\n{f:#?}\n{:#?}\n{:#?}\n{:#?}",
+        power.areas, power.lcc_lines, power.vsc_lines
+    )
+}
+
+#[test]
+fn model_exports_keep_dc_lines_facts_and_every_control() {
+    let dir = out_dir("controls");
+    let original = dir.join("psse_sample.raw");
+    std::fs::write(&original, psse_sample_case()).unwrap();
+    let power = stannum_core::power::load(&psse_sample_case(), false).unwrap();
+    let v = &power.voltage_controls;
+    // The case has everything this test is about.
+    assert!(
+        v.switched_shunts
+            .iter()
+            .any(|s| matches!(s.mode, rs_power::ShuntMode::ConverterReactive { .. }))
+    );
+    assert!(
+        v.switched_shunts
+            .iter()
+            .any(|s| matches!(s.mode, rs_power::ShuntMode::FactsReactive { .. }))
+    );
+    assert_eq!(v.facts.len(), 2);
+    assert!(!power.flow_controls.phase_shifters.is_empty());
+    assert!(!power.lcc_lines.is_empty() && !power.vsc_lines.is_empty());
+    assert!(power.areas.iter().any(|a| a.desired_mw != 0.0));
+
+    for revision in [33, 35] {
+        let (out, report) = export(&original, revision, &dir);
+        assert_eq!(report.source, "model");
+        assert!(
+            !report
+                .notes
+                .iter()
+                .any(|n| n.contains("DC line") || n.contains("MODSW")),
+            "{:?}",
+            report.notes
+        );
+        read(&out);
+        let text = encoding_rs::WINDOWS_1252
+            .decode(&std::fs::read(&out).unwrap())
+            .0
+            .into_owned();
+        let back = stannum_core::power::load(&text, false).unwrap();
+        assert_eq!(controls(&power), controls(&back), "revision {revision}");
+
+        let mut ws = Workspace::default();
+        ws.open(&original).unwrap();
+        let settings = SolveSettings {
+            tolerance_mva: 1e-6,
+            area_interchange: stannum_core::power::InterchangeChoice::TieLines,
+            ..Default::default()
+        };
+        let a = ws.current_mut().unwrap().solve(settings.clone()).unwrap();
+        ws.open(&out).unwrap();
+        let b = ws.current_mut().unwrap().solve(settings).unwrap();
+        assert!(a.converged && b.converged);
+        let mut x: Vec<_> = a.buses.iter().map(|b| (b.id, b.vm, b.va)).collect();
+        let mut y: Vec<_> = b.buses.iter().map(|b| (b.id, b.vm, b.va)).collect();
+        x.sort_by_key(|b| b.0);
+        y.sort_by_key(|b| b.0);
+        assert_eq!(x.len(), y.len());
+        for (p, q) in x.iter().zip(&y) {
+            assert!(
+                (p.1 - q.1).abs() < 1e-6 && (p.2 - q.2).abs() < 1e-4,
+                "revision {revision} bus {}: {:?} then {:?}",
+                p.0,
+                (p.1, p.2),
+                (q.1, q.2)
+            );
+        }
     }
     std::fs::remove_dir_all(dir).ok();
 }

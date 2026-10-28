@@ -25,7 +25,9 @@ section into the next version's when a release is cut (see
   run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
   record by record, keeping every record and converting between the two
   revisions; MATPOWER and older RAW revisions are written from the power flow
-  model. Anything the file can't keep is listed after the export.
+  model, with its two-terminal and VSC DC lines, FACTS devices, phase
+  shifters, area interchange targets and every switched shunt mode.
+  Anything the file can't keep is listed after the export.
 - Large tables read a page at a time. Power flow's bus, generator and
   branch tables, Records, and contingency results are now sorted, searched
   and filtered in the core, and the window reads only the rows in view as

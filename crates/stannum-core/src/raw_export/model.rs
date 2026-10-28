@@ -3,9 +3,10 @@
 //!
 //! Written: buses, loads (one per bus), fixed shunts, generators, lines,
 //! two-winding transformers (on the system base, ratio in per unit of the
-//! bus base), switched shunts and tap changers in voltage control, areas,
-//! zones and one owner. DC lines and anything the model doesn't hold are
-//! left out, with a note.
+//! bus base), switched shunts, tap changers and phase shifters in control,
+//! two-terminal and VSC DC lines with their full data, FACTS devices, areas
+//! with their interchange targets, zones and one owner. Multi-terminal DC
+//! and anything else the model doesn't hold are left out, with a note.
 
 use super::{Doc, Fields, Item, Notes, Rec, int, num, text};
 use crate::power::PowerCase;
@@ -201,6 +202,12 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         .iter()
         .map(|t| (t.branch, t))
         .collect();
+    let shifters: HashMap<usize, &rs_power::PhaseShifter> = power
+        .flow_controls
+        .phase_shifters
+        .iter()
+        .map(|p| (p.branch, p))
+        .collect();
     let mut circuits: HashSet<(u32, u32, String)> = HashSet::new();
     let mut three_winding = 0;
     let mut charging_ids: HashMap<u32, u32> = HashMap::new();
@@ -325,8 +332,24 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
                     i64::from(t.positions),
                 )
             }
-            None => (0, 0, 1.1, 0.9, 1.1, 0.9, 33),
+            // A phase shifter: RMA/RMI are angles, VMA/VMI the MW band.
+            None => match shifters.get(&k) {
+                Some(ps) => (
+                    if ps.asymmetric.is_some() { 5 } else { 3 },
+                    0,
+                    ps.angle_max,
+                    ps.angle_min,
+                    ps.mw_max,
+                    ps.mw_min,
+                    33,
+                ),
+                None => (0, 0, 1.1, 0.9, 1.1, 0.9, 33),
+            },
         };
+        let cnxa = shifters
+            .get(&k)
+            .and_then(|ps| ps.asymmetric)
+            .map_or(0.0, |a| a.connection_angle);
         fields.extend([
             ("COD1", int(cod)),
             ("CONT1", int(cont)),
@@ -339,7 +362,7 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             ("TAB1", int(0)),
             ("CR1", num(0.0)),
             ("CX1", num(0.0)),
-            ("CNXA1", num(0.0)),
+            ("CNXA1", num(cnxa)),
             ("WINDV2", num(1.0)),
             ("NOMV2", num(0.0)),
         ]);
@@ -350,6 +373,10 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             "Three-winding transformers written as {three_winding} two-winding transformers to their star buses"
         ));
     }
+
+    // DC lines whose full data the model holds, and FACTS devices.
+    let vsc_names = dc_lines(power, &mut push, notes);
+    let facts_names = facts(power, &mut push, notes);
 
     // Switched shunts in voltage or reactive control, numbered per bus.
     let mut shunt_ids: HashMap<u32, usize> = HashMap::new();
@@ -362,24 +389,30 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         })
         .collect();
     let mut frozen_converter_shunts = 0;
-    let mut frozen_facts_shunts = 0;
     for (s, id) in shunts.iter().zip(&ids) {
         // MODSW, the bus it watches (SWREG) and the device there (RMIDNT).
         let (modsw, swreg, rmidnt) = match s.mode {
             rs_power::ShuntMode::Discrete => (1, s.regulated_bus.unwrap_or(0), String::new()),
             rs_power::ShuntMode::Continuous => (2, s.regulated_bus.unwrap_or(0), String::new()),
             rs_power::ShuntMode::PlantReactive { bus } => (3, bus, String::new()),
-            // VSC DC lines are not written here, so there is no converter
-            // to watch: the shunt stays at its setting.
-            rs_power::ShuntMode::ConverterReactive { .. } => {
-                frozen_converter_shunts += 1;
-                (0, 0, String::new())
-            }
-            // Nor are FACTS devices (MODSW 6).
-            rs_power::ShuntMode::FactsReactive { .. } => {
-                frozen_facts_shunts += 1;
-                (0, 0, String::new())
-            }
+            // The converter's VSC line is written only with its full data;
+            // without it the shunt stays at its setting.
+            rs_power::ShuntMode::ConverterReactive { row, bus } => match vsc_names.get(&row) {
+                Some(line) => (4, bus, line.clone()),
+                None => {
+                    frozen_converter_shunts += 1;
+                    (0, 0, String::new())
+                }
+            },
+            rs_power::ShuntMode::FactsReactive { device } => (
+                6,
+                power
+                    .voltage_controls
+                    .facts
+                    .get(device)
+                    .map_or(0, |d| d.bus),
+                facts_names.get(device).cloned().unwrap_or_default(),
+            ),
             rs_power::ShuntMode::ShuntSetting { shunt } => (
                 5,
                 shunts.get(shunt).map_or(0, |o| o.bus),
@@ -413,12 +446,7 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
     }
     if frozen_converter_shunts > 0 {
         notes.add(format!(
-            "{frozen_converter_shunts} switched shunts watching a VSC converter (MODSW 4) written as fixed (MODSW 0): VSC DC lines are not written"
-        ));
-    }
-    if frozen_facts_shunts > 0 {
-        notes.add(format!(
-            "{frozen_facts_shunts} switched shunts watching a FACTS device (MODSW 6) written as fixed (MODSW 0): FACTS devices are not written"
+            "{frozen_converter_shunts} switched shunts watching a VSC converter (MODSW 4) written as fixed (MODSW 0): their VSC DC lines aren't in the model in full"
         ));
     }
 
@@ -430,17 +458,38 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             *swing = b.id;
         }
     }
+    // Control areas from the file keep their slack bus, target and name.
+    let listed: HashMap<u32, &rs_power::Area> =
+        power.areas.iter().rev().map(|a| (a.number, a)).collect();
+    for a in &power.areas {
+        areas.entry(a.number).or_insert(0);
+    }
     for (area, swing) in &areas {
+        let (swing, pdes, ptol, arname) = match listed.get(area) {
+            Some(a) => (
+                a.slack_bus.unwrap_or(0),
+                a.desired_mw,
+                a.tolerance_mw,
+                a.name.as_str(),
+            ),
+            None => (*swing, 0.0, 10.0, ""),
+        };
         push(
             "AREA",
             rec(vec![
                 ("I", int(i64::from(*area))),
-                ("ISW", int(i64::from(*swing))),
-                ("PDES", num(0.0)),
-                ("PTOL", num(10.0)),
-                ("ARNAME", text(&name("", 12))),
+                ("ISW", int(i64::from(swing))),
+                ("PDES", num(pdes)),
+                ("PTOL", num(ptol)),
+                ("ARNAME", text(&name(arname, 12))),
             ]),
         );
+    }
+    if !power.area_loads.is_empty() {
+        notes.add(format!(
+            "{} loads assigned to another area than their bus's written in their bus's area: the model keeps one load per bus",
+            power.area_loads.len()
+        ));
     }
     let zones: std::collections::BTreeSet<u32> = case.buses.iter().map(|b| b.zone).collect();
     for zone in zones {
@@ -457,13 +506,6 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         rec(vec![("I", int(1)), ("OWNAME", text(&name("1", 12)))]),
     );
 
-    let dc = case.dcline.as_ref().map_or(0, Vec::len);
-    if dc > 0 {
-        notes.add(format!(
-            "{dc} DC line{} left out: Stannum doesn't write DC lines from the power flow model",
-            if dc == 1 { "" } else { "s" }
-        ));
-    }
     if case
         .generators
         .iter()
@@ -497,4 +539,233 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         sections,
         tail: vec![],
     }
+}
+
+/// One record of several lines, written as given: the VSC and FACTS
+/// sections have no layout in revision 33, so they are copied as lines
+/// between revisions, like the records read from a file.
+fn lines_rec(lines: Vec<Vec<super::Value>>) -> Item {
+    let lines = lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|v| match v {
+                    super::Value::Text(_) => super::token(v, "string"),
+                    super::Value::Number(_) => super::token(v, "number"),
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect();
+    Item::Rec(Rec {
+        fields: Fields::new(),
+        lines: Some(lines),
+    })
+}
+
+/// A name for each device that is unique, not empty and fits `width`,
+/// keeping the case's own where it can.
+fn unique_names<'a>(
+    wanted: impl Iterator<Item = &'a str>,
+    prefix: &str,
+    width: usize,
+) -> Vec<String> {
+    let mut used: HashSet<String> = HashSet::new();
+    wanted
+        .enumerate()
+        .map(|(k, w)| {
+            let w: String = name(w.trim(), width).trim_end().to_string();
+            let n = std::iter::once(w)
+                .chain((k + 1..).map(|n| format!("{prefix}{n}")))
+                .find(|n| !n.is_empty() && !used.contains(&n.to_uppercase()))
+                .unwrap();
+            used.insert(n.to_uppercase());
+            n
+        })
+        .collect()
+}
+
+/// Two-terminal and VSC DC lines with their full data. Returns the name
+/// written for each VSC line, by its `case.dcline` row.
+fn dc_lines(
+    power: &PowerCase,
+    push: &mut impl FnMut(&str, Item),
+    notes: &mut Notes,
+) -> HashMap<usize, String> {
+    let lcc_names = unique_names(power.lcc_lines.iter().map(|l| l.name.as_str()), "DC", 12);
+    for (l, line_name) in power.lcc_lines.iter().zip(&lcc_names) {
+        let converter = |c: &rs_power::LccConverter| {
+            let (from, to, ckt) = c.transformer.clone().unwrap_or((0, 0, "1".to_string()));
+            vec![
+                int(i64::from(c.bus)),
+                int(i64::from(c.bridges)),
+                num(c.angle_max),
+                num(c.angle_min),
+                num(c.resistance),
+                num(c.reactance),
+                num(c.base_kv),
+                num(c.ratio),
+                num(c.tap),
+                num(c.tap_max),
+                num(c.tap_min),
+                num(c.tap_step),
+                int(i64::from(c.commutating_bus)),
+                int(0),
+                int(i64::from(from)),
+                int(i64::from(to)),
+                text(&name(&ckt, 2)),
+                num(c.capacitor),
+            ]
+        };
+        let names = [
+            "IPR", "NBR", "ANMXR", "ANMNR", "RCR", "XCR", "EBASR", "TRR", "TAPR", "TMXR", "TMNR",
+            "STPR", "ICR", "NDR", "IFR", "ITR", "IDR", "XCAPR",
+        ];
+        let mut fields: Fields = [
+            ("NAME", text(line_name)),
+            (
+                "MDC",
+                int(match l.control {
+                    rs_power::LccControl::Blocked => 0,
+                    rs_power::LccControl::Power => 1,
+                    rs_power::LccControl::Current => 2,
+                }),
+            ),
+            ("RDC", num(l.resistance)),
+            ("SETVL", num(l.setpoint)),
+            ("VSCHD", num(l.scheduled_kv)),
+            ("VCMOD", num(l.mode_switch_kv)),
+            ("RCOMP", num(l.compounding_resistance)),
+            ("DELTI", num(l.current_margin)),
+            (
+                "METER",
+                text(match l.metered_end {
+                    rs_power::LccEnd::Rectifier => "R",
+                    rs_power::LccEnd::Inverter => "I",
+                }),
+            ),
+            ("DCVMIN", num(l.min_compounded_kv)),
+            ("CCCITMX", int(i64::from(l.ccc_iterations))),
+            ("CCCACC", num(l.ccc_acceleration)),
+        ]
+        .into_iter()
+        .map(|(n, v)| (n.to_string(), v))
+        .collect();
+        for (end, c) in [("R", &l.rectifier), ("I", &l.inverter)] {
+            for (n, v) in names.iter().zip(converter(c)) {
+                fields.push((format!("{}{end}", &n[..n.len() - 1]), v));
+            }
+        }
+        push("TWO-TERMINAL DC", Item::Rec(Rec::new(fields)));
+    }
+
+    let vsc_names = unique_names(power.vsc_lines.iter().map(|l| l.name.as_str()), "VSC", 12);
+    let mut by_row = HashMap::new();
+    for (l, line_name) in power.vsc_lines.iter().zip(&vsc_names) {
+        let mut lines = vec![vec![
+            text(line_name),
+            int(i64::from(l.in_service)),
+            num(l.resistance),
+            int(1),
+            num(1.0),
+            int(0),
+            num(1.0),
+            int(0),
+            num(1.0),
+            int(0),
+            num(1.0),
+        ]];
+        for c in &l.converters {
+            lines.push(vec![
+                int(i64::from(c.bus)),
+                int(match c.dc_control {
+                    rs_power::VscDcControl::OutOfService => 0,
+                    rs_power::VscDcControl::DcVoltage => 1,
+                    rs_power::VscDcControl::Power => 2,
+                }),
+                int(match c.ac_control {
+                    rs_power::VscAcControl::Voltage => 1,
+                    rs_power::VscAcControl::PowerFactor => 2,
+                }),
+                num(c.dc_setpoint),
+                num(c.ac_setpoint),
+                num(c.loss_kw),
+                num(c.loss_kw_per_amp),
+                num(c.min_loss_kw),
+                num(c.smax_mva),
+                num(c.imax_amps),
+                num(c.power_weighting),
+                num(limit(c.qmax)),
+                num(limit(c.qmin)),
+                int(i64::from(c.remote_bus)),
+                num(c.remote_percent),
+            ]);
+        }
+        push("VSC DC LINE", lines_rec(lines));
+        by_row.insert(l.row, line_name.clone());
+    }
+
+    if !power.mtdc.is_empty() {
+        let n = power.mtdc.len();
+        notes.add(format!(
+            "{n} multi-terminal DC system{} left out: Stannum doesn't write them from the power flow model",
+            if n == 1 { "" } else { "s" }
+        ));
+    }
+    // Rows without full data: MATPOWER's, and VSC lines the reader keeps
+    // only as a lossless row.
+    let rows = power.case.dcline.as_ref().map_or(0, Vec::len);
+    let multi = power
+        .dc_line_kinds
+        .iter()
+        .filter(|k| **k == "multi_terminal")
+        .count();
+    let left = rows.saturating_sub(power.lcc_lines.len() + power.vsc_lines.len() + multi);
+    if left > 0 {
+        notes.add(format!(
+            "{left} DC line{} left out: the model holds only a lossless approximation of {}",
+            if left == 1 { "" } else { "s" },
+            if left == 1 { "it" } else { "them" }
+        ));
+    }
+    by_row
+}
+
+/// FACTS devices in service, in normal mode. Returns the name written for
+/// each, in device order.
+fn facts(power: &PowerCase, push: &mut impl FnMut(&str, Item), notes: &mut Notes) -> Vec<String> {
+    let devices = &power.voltage_controls.facts;
+    let names = unique_names(devices.iter().map(|d| d.name.as_str()), "FACTS", 12);
+    for (d, device_name) in devices.iter().zip(&names) {
+        push(
+            "FACTS DEVICE",
+            lines_rec(vec![vec![
+                text(device_name),
+                int(i64::from(d.bus)),
+                int(i64::from(d.terminal_bus.unwrap_or(0))),
+                int(1),
+                num(d.p_desired),
+                num(d.q_desired),
+                num(d.vset),
+                num(d.shunt_max),
+                num(9999.0),
+                num(0.9),
+                num(1.1),
+                num(1.0),
+                num(0.0),
+                num(0.05),
+                num(d.reactive_share),
+                int(1),
+                num(0.0),
+                num(0.0),
+                int(0),
+                int(i64::from(d.regulated_bus.unwrap_or(0))),
+                text(""),
+            ]]),
+        );
+    }
+    if devices.iter().any(|d| d.terminal_bus.is_some()) {
+        notes.add("FACTS series elements written without their limits (TRMX, VTMN, VTMX, VSMX, IMX) or impedance (LINX), which the model doesn't hold: PSS/E defaults used");
+    }
+    names
 }
