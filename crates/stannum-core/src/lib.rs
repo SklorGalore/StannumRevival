@@ -32,6 +32,7 @@ pub mod diagram;
 pub mod diff;
 pub mod elements;
 pub mod error;
+pub mod file_version;
 pub mod geo;
 pub mod inspect;
 pub mod logbook;

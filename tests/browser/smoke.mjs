@@ -1350,6 +1350,7 @@ await shot("diff-working");
   await page.getByTestId("save-recording").click();
   await bar.waitFor({ state: "detached" });
   const recorded = readFileSync(runFile, "utf8");
+  assert.match(recorded, /^# stannum-run-file version 1\n/, recorded);
   assert.match(recorded, /^open_case path=case9\.m$/m, recorded);
   assert.match(recorded, /^set_study_edits edits=\[\{"element": "line:4:5:1", "kind": "status", "online": false\}\]$/m, recorded);
   // The app's solve settings are the defaults, so the solves read plainly.

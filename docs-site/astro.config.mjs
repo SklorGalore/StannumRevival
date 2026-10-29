@@ -105,8 +105,10 @@ export default defineConfig({
             { label: "PSS/E RAW", slug: "reference/psse-raw" },
             { label: "MATPOWER", slug: "reference/matpower" },
             { label: "Stannum DC grid file", slug: "reference/dc-grid-file" },
+            { label: "Study file (.stannum)", slug: "reference/study-file" },
+            { label: "Diagram file (.sld)", slug: "reference/diagram-file" },
+            { label: "Run file (.stnrun)", slug: "reference/run-file" },
             { label: "Bus coordinates file", slug: "reference/coordinates-file" },
-            { label: "Run file format", slug: "reference/run-file" },
           ],
         },
         {

@@ -1,0 +1,47 @@
+[package]
+name = "stannum-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "BSD-3-Clause"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+stannum-core = { path = "../crates/stannum-core" }
+
+# Kept out of the main workspace: cargo-fuzz needs nightly and sanitizers.
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "raw"
+path = "fuzz_targets/raw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "matpower"
+path = "fuzz_targets/matpower.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "run_file"
+path = "fuzz_targets/run_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "coordinates"
+path = "fuzz_targets/coordinates.rs"
+test = false
+doc = false
+bench = false
