@@ -89,10 +89,21 @@ difference.
 ## Permissions
 
 `capabilities/default.json` grants the main window the window controls the
-title bar needs, open and save dialogs, and file reads and writes in the
-Documents, Downloads and Desktop folders. A new plugin or a new kind of
+title bar needs, open and save dialogs, file reads and writes in the
+Documents, Downloads and Desktop folders, opening web links, and the updater
+with the restart it needs. A new plugin or a new kind of
 file access needs a line there, or the call fails at run time with a
 permission error rather than at build time.
+
+## Updater
+
+`tauri-plugin-updater` is only registered when the Tauri config has
+`plugins.updater`, which release builds get from an overlay
+(`scripts/release/updater-config.ps1`, passed with `--config`). Other builds
+have no updater, and the `updates_enabled` command tells the frontend so.
+`src/store/updateStore.ts` checks, downloads and restarts (with
+`tauri-plugin-process`); `src/shell/UpdateBar.tsx` shows it. How releases are
+signed and where `latest.json` comes from is in `docs/releasing.md`.
 
 ## Building on Linux
 

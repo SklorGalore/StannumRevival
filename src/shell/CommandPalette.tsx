@@ -3,6 +3,8 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  ArrowDownCircle,
+  BellOff,
   Circle,
   Columns2,
   CornerDownLeft,
@@ -34,6 +36,7 @@ import { useLog } from "../store/logStore";
 import { useStudyFile } from "../store/studyFileStore";
 import { useRunFile } from "../store/runFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
+import { useUpdate } from "../store/updateStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
@@ -65,8 +68,10 @@ function useCommands(): Command[] {
   const logOpen = useLog((s) => s.open);
   const studyPath = useStudyFile((s) => s.path);
   const recording = useRunFile((s) => s.recording);
+  const autoCheck = useUpdate((s) => s.autoCheck);
+  const updatePhase = useUpdate((s) => s.phase);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording]);
+  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording, autoCheck, updatePhase]);
 }
 
 /**
@@ -194,6 +199,29 @@ export function paletteCommands(): Command[] {
     icon: <Terminal size={14} />,
     keywords: "console output messages progress errors warnings",
     run: () => useLog.getState().setOpen(!logOpen),
+  });
+  const updates = useUpdate.getState();
+  if (updates.phase === "available" && updates.update)
+    list.push({
+      id: "install-update",
+      title: `Install Stannum ${updates.update.version} and restart`,
+      icon: <ArrowDownCircle size={14} />,
+      keywords: "update upgrade new version release download install",
+      run: () => void updates.install(),
+    });
+  list.push({
+    id: "check-updates",
+    title: "Check for updates",
+    icon: <ArrowDownCircle size={14} />,
+    keywords: "update upgrade new version release download install about",
+    run: () => void updates.check(),
+  });
+  list.push({
+    id: "auto-update-check",
+    title: updates.autoCheck ? "Stop checking for updates at startup" : "Check for updates at startup",
+    icon: updates.autoCheck ? <BellOff size={14} /> : <ArrowDownCircle size={14} />,
+    keywords: "update upgrade automatic startup notify version",
+    run: () => updates.setAutoCheck(!updates.autoCheck),
   });
   return list;
 }

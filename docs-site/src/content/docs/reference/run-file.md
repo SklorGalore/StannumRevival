@@ -12,6 +12,7 @@ arguments.
 ## Example
 
 ```text
+# stannum-run-file version 1
 # Solve case9 as filed, then with generator 2 backed down to 120 MW,
 # and write the solved study case out as MATPOWER.
 open_case path=../case9.m
@@ -90,3 +91,35 @@ argument, or a value that isn't closed stops the file with its line number,
 and nothing runs. While running, the first command that fails stops the
 run; the rest are reported as not run. `stannum-cli run --keep-going` runs
 them anyway.
+
+## Versions
+
+A run file may start with a comment line that says which version of the
+format it follows:
+
+```text
+# stannum-run-file version 1
+```
+
+It must come before the first command, among any other comment lines at the
+top. Files that Stannum writes (**Stop recording and save run file**) start
+with it from 0.5; a file without it is version 1, so run files written by
+hand or by 0.4 run as before.
+
+- The version goes up only when a run file that worked would run
+  differently or stop working: a command or argument is removed or renamed,
+  or a value is read differently. New commands, arguments and settings don't
+  change it; a run file that uses them fails on an older Stannum with the
+  usual "no command" or "no argument" line error, before anything runs.
+- A Stannum refuses a run file with a higher version than it reads, before
+  any line runs: "Line 1: this run file is version 2, from a newer Stannum."
+- Because the line is a comment, a Stannum from before 0.5 ignores it.
+
+| Version | Read by | Changes |
+| --- | --- | --- |
+| 1 | 0.4 and later | The first version. |
+
+Throughout 1.x, Stannum keeps running every run file a 1.x release wrote or
+accepted. Run files from 0.4.1 are kept in the repository under
+[`tests/compat`](https://github.com/SklorGalore/StannumRevival/tree/development/tests/compat)
+and run by the tests on every change.

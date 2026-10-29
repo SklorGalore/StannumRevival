@@ -10,6 +10,22 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Updates in the app.** A little after it starts, Stannum checks GitHub
+  for a newer release and offers to install it and restart; click the
+  version at the foot of the module rail (or **Check for updates** in
+  **Ctrl+K**) to check by hand. Updates are signed, and Stannum only
+  installs one signed with the project's key. Turn the startup check off in
+  **Ctrl+K**. Takes effect from the first release after this one.
+- Reference pages for every Stannum file format: study files (`.stannum`),
+  diagrams (`.sld`), run files (`.stnrun`) and bus coordinates, each with
+  how its version number works. Studies, diagrams, run files and coordinates
+  saved by 0.3.0 and 0.4.1 are kept in `tests/compat`, and the tests open
+  them on every change.
+- Run files and bus coordinates files can say which version of their format
+  they follow with a first comment line (`# stannum-run-file version 1`,
+  `# stannum-coordinates version 1`). Saved run files start with it. A file
+  from a newer Stannum is refused with a message saying so, instead of being
+  read wrongly; so is a diagram with a newer major `schemaVersion`.
 - **Sample cases** to try on first run: with no case open, Power flow and
   Records offer MATPOWER's nine-bus case, two five-bus RAW cases and a
   synthetic 200-bus grid, the last three with bus coordinates for the map.

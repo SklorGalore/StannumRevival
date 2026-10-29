@@ -4,6 +4,7 @@
 // SHA-256, so opening the study can tell when the case file has changed.
 import type { ModuleId } from "../../store/workspaceStore";
 import type { SLDDiagram } from "../../store/types";
+import { checkDiagram } from "../serialization/deserialize";
 import type { FileFingerprint, SolveReport, SolveSettings, StudyEdit } from "../analysis/types";
 
 export const STUDY_FORMAT = "stannum-study";
@@ -64,7 +65,13 @@ export async function parseStudyFile(text: string): Promise<StudyFile> {
     const issue = parsed.error.issues[0];
     throw new Error(`The study file is damaged: ${issue.path.join(".") || "file"}: ${issue.message}`);
   }
-  return parsed.data as unknown as StudyFile;
+  const study = parsed.data as unknown as StudyFile;
+  try {
+    if (study.diagram) study.diagram = checkDiagram(study.diagram);
+  } catch (e) {
+    throw new Error(`The study's diagram can't be opened: ${(e as Error).message}`);
+  }
+  return study;
 }
 
 export function serializeStudyFile(file: StudyFile): string {
