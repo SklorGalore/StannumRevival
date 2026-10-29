@@ -1441,7 +1441,7 @@
             "area_interchange": "off",
             "dc_model": "detailed",
             "decoupled_iterations": 30,
-            "enforce_q_limits": false,
+            "enforce_q_limits": true,
             "max_iterations": 10,
             "method": "auto",
             "model": "ac",
@@ -5208,7 +5208,8 @@
           "type": "integer"
         },
         "enforce_q_limits": {
-          "default": false,
+          "default": true,
+          "description": "Hold generators at their reactive limits (and regulate remote buses).\nOn by default, as real cases are solved in PSS/E and PowerWorld.",
           "type": "boolean"
         },
         "max_iterations": {

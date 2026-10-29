@@ -18,7 +18,7 @@ holds:
 | **Newton iterations per pass** | Newton steps allowed in each pass (Auto and Full Newton) | 10 |
 | **Decoupled iterations per pass** | Decoupled iterations allowed in each pass (every method but Full Newton) | 30 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |
-| **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | Off |
+| **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | On |
 | **Move switched shunts** | Let switched shunts in voltage control move (RAW only). Off locks them where they are: where the last solve left them, or at their case values with Flat start | On |
 | **Move transformer taps** | Let tap changers in voltage control move (RAW only). Off locks them like shunts | On |
 | **DC line model** | **Detailed converters** or the simplified generator pair | Detailed |

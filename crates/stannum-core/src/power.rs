@@ -270,6 +270,8 @@ pub struct SolveSettings {
     /// the decoupled stage of the automatic method).
     #[serde(default = "decoupled_iterations")]
     pub decoupled_iterations: usize,
+    /// Hold generators at their reactive limits (and regulate remote buses).
+    /// On by default, as real cases are solved in PSS/E and PowerWorld.
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
@@ -311,7 +313,7 @@ impl Default for SolveSettings {
             tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
             decoupled_iterations: d.decoupled_iterations,
-            enforce_q_limits: false,
+            enforce_q_limits: true,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
             switch_shunts: true,

@@ -781,11 +781,11 @@ if (STANNUM_RAW_DC) {
   await page.waitForTimeout(400);
   await shot("diagram-three-winding");
 
-  // Power flow lists every DC line; with Q limits on, the case converges and
+  // Power flow lists every DC line; with Q limits on (the default), the case converges and
   // the line-commutated converters absorb reactive power. Two-terminal lines
   // use the detailed converter model: the rectifier holds the order.
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
-  await page.getByLabel("Enforce generator Q limits").check();
+  assert.equal(await page.getByLabel("Enforce generator Q limits").isChecked(), true, "Q limits on by default");
   await page.getByRole("button", { name: "Solve", exact: true }).click();
   await page.getByText("Converged").first().waitFor();
   await page.getByRole("tab", { name: /DC lines/ }).click();
@@ -806,7 +806,6 @@ if (STANNUM_RAW_DC) {
   await network.getByText("Holds DC voltage").waitFor();
   assert.match(await network.innerText(), /DC5[\s\S]*517\.\d/, "star bus DC5 solved near 517 kV");
   await shot("power-dc-network");
-  await page.getByLabel("Enforce generator Q limits").uncheck();
 }
 
 // A DC line picked on the diagram is found in Case diff, and back again.
