@@ -260,10 +260,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const summary = get().caseSummary;
     if (!summary) return false;
     const matpower = summary.format === "matpower";
-    const base = summary.name.replace(/\.(raw|m)$/i, "");
-    const path = await pickSavePath(`${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : "raw"}`, [
-      matpower ? { name: "MATPOWER", extensions: ["m"] } : { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
-    ]);
+    const stn = summary.format === "stn";
+    const base = summary.name.replace(/\.(raw|m|stn)$/i, "");
+    // RAW and Stannum cases save as either; the extension picks the format.
+    const raw = { name: "PSS/E RAW", extensions: ["raw", "RAW"] };
+    const stnFilter = { name: "Stannum case (preview)", extensions: ["stn"] };
+    const path = await pickSavePath(
+      `${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : stn ? "stn" : "raw"}`,
+      matpower ? [{ name: "MATPOWER", extensions: ["m"] }] : stn ? [stnFilter, raw] : [raw, stnFilter]
+    );
     if (!path) return false;
     const saved = await api.saveCaseAs(path);
     set({ caseSummary: saved });

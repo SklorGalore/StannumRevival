@@ -810,6 +810,12 @@ commands! {
     diagram_network { case: Option<CaseId> } -> crate::diagram::CaseNetwork =>
         |s, a| s.workspace()?.case(a.case)?.diagram_network();
 
+    /// Write the case, with its Records and study edits, as a Stannum case
+    /// file (.stn, format preview). The answer lists anything converted or
+    /// kept as RAW lines.
+    export_stn { case: Option<CaseId>, path: PathBuf } -> crate::stn::StnExport =>
+        |s, a| s.workspace()?.case_mut(a.case)?.export_stn(&a.path);
+
     /// One element's data and limits from the file.
     element_detail { case: Option<CaseId>, element: String } -> crate::inspect::ElementDetail => |s, a| {
         // Shunts, FACTS devices and the like are read from their records.

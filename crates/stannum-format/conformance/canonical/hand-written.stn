@@ -1,0 +1,19 @@
+stannum-case 0.1
+# Written by hand: tables out of order, fields in any order, defaults
+# written out, extra spaces and comments. The canonical form sorts all of
+# it and leaves the defaults off.
+
+# bus
+bus 1 number=1 name="North \"A\"" kv=138 type=ref vm_pu=1.04
+bus 2 number=2 name="Central 138" kv=138
+
+# load
+load 2:1 bus=2 p_mw=60
+
+# generator
+# Loads and generation.
+generator 1:1 bus=1 p_mw=60.5 vset_pu=1.04
+
+# line
+# in service
+line 1:2:1 from=1 to=2 r_pu=0.01 x_pu=0.06

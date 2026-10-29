@@ -4102,8 +4102,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "stannum-format",
  "stannum-synth",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "stannum-format"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "toml 0.8.2",
 ]
 
 [[package]]

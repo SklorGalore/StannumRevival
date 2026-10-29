@@ -5,6 +5,7 @@
 //! stannum-cli run study.stnrun [--keep-going] [--json] [--verbose]
 //! stannum-cli check study.stnrun
 //! stannum-cli commands
+//! stannum-cli convert case.raw case.stn
 //! ```
 //!
 //! Exit codes: 0 when every line ran, 1 when a line failed or the run was
@@ -25,6 +26,9 @@ Usage:
       Read the file and list its steps without running them.
   stannum-cli commands
       List the commands a run file can use.
+  stannum-cli convert <from> <to>
+      Convert a case: RAW, MATPOWER or Stannum (.stn) in; a Stannum case
+      (.stn, format preview) or PSS/E RAW 35 (.raw) out.
 
 A run file holds one command per line, then its arguments as name=value:
   open_case path=case30.m
@@ -35,6 +39,7 @@ A run file holds one command per line, then its arguments as name=value:
 struct Args {
     command: String,
     file: Option<PathBuf>,
+    to: Option<PathBuf>,
     keep_going: bool,
     json: bool,
     verbose: bool,
@@ -44,6 +49,7 @@ fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         command: String::new(),
         file: None,
+        to: None,
         keep_going: false,
         json: false,
         verbose: false,
@@ -58,6 +64,7 @@ fn parse_args() -> Result<Args, String> {
             flag if flag.starts_with('-') => return Err(format!("Unknown option {flag}.")),
             _ if args.command.is_empty() => args.command = arg,
             _ if args.file.is_none() => args.file = Some(arg.into()),
+            _ if args.command == "convert" && args.to.is_none() => args.to = Some(arg.into()),
             extra => return Err(format!("Unexpected argument {extra}.")),
         }
     }
@@ -81,6 +88,12 @@ fn main() -> ExitCode {
     let result = match args.command.as_str() {
         "run" => file(&args).and_then(|f| run(&f, &args)),
         "check" => file(&args).and_then(|f| check(&f)),
+        "convert" => match (&args.file, &args.to) {
+            (Some(from), Some(to)) => convert(from, to),
+            _ => Err(format!(
+                "convert needs a case to read and a file to write.\n\n{USAGE}"
+            )),
+        },
         "commands" => {
             commands();
             Ok(true)
@@ -103,6 +116,40 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Read a case and write it as a Stannum case or RAW 35, by the
+/// extension of `to`.
+fn convert(from: &std::path::Path, to: &std::path::Path) -> Result<bool, String> {
+    let mut ws = stannum_core::Workspace::default();
+    ws.open(from).map_err(|e| e.message)?;
+    let case = ws.current_mut().map_err(|e| e.message)?;
+    let ext = to
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let (records, notes) = match ext.as_str() {
+        "stn" => {
+            let done = case.export_stn(to).map_err(|e| e.message)?;
+            (done.records, done.notes)
+        }
+        "raw" => {
+            let done = case.export_raw(to, 35).map_err(|e| e.message)?;
+            (done.records, done.notes)
+        }
+        _ => {
+            return Err(format!(
+                "convert writes .stn or .raw files, not {}.",
+                to.display()
+            ));
+        }
+    };
+    for note in &notes {
+        eprintln!("  {note}");
+    }
+    eprintln!("Wrote {} ({records} records).", to.display());
+    Ok(true)
 }
 
 fn read(path: &std::path::Path) -> Result<Vec<run_file::Step>, String> {

@@ -1,0 +1,14 @@
+stannum-case 0.1
+
+# bus
+bus 4 number=4 kv=69
+bus 5 number=5 kv=69 x.planning.note="added 2027"
+
+# transformer
+transformer 4:5:1 from=4 to=5 x_pu=0.1 w1_kv=69 w2_kv=69 owners=[[1, 0.5], [2, 0.5]]
+
+# switched_shunt
+switched_shunt 5:1 bus=5 reg_bus=5 blocks=[[2, 10], [1, -15.5]]
+
+# x.planning.project
+x.planning.project P-17 buses=[4, 5] name="Spur upgrade"

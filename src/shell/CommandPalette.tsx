@@ -114,6 +114,13 @@ export function paletteCommands(): Command[] {
         keywords: "export raw file save write psse convert revision version",
         run: () => void studyFile.exportRaw(revision),
       });
+    list.push({
+      id: "export-stn",
+      title: "Export case as Stannum case (.stn, preview)…",
+      icon: <Download size={14} />,
+      keywords: "export stn stannum open format file save write convert",
+      run: () => void studyFile.exportStn(),
+    });
   }
   if (summary?.power.available)
     list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });

@@ -1,0 +1,4 @@
+stannum-lists 0.1
+monitor m element=line-1-2
+contingency c events=[[trip, line:1:2:1]]
+contingency_set s kind=n_1_branches subsystem=nowhere

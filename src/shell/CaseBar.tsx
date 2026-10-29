@@ -45,7 +45,11 @@ export function CaseBar() {
             {summary.name}
           </span>
           <span className="min-w-0 text-[11px] text-slate-500 truncate">
-            {summary.format === "matpower" ? "MATPOWER" : `PSS/E RAW${revision ? ` v${revision}` : ""}`}
+            {summary.format === "matpower"
+              ? "MATPOWER"
+              : summary.format === "stn"
+                ? "Stannum case (preview)"
+                : `PSS/E RAW${revision ? ` v${revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(
                 counts.branches

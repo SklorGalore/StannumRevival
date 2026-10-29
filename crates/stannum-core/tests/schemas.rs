@@ -302,6 +302,8 @@ fn answers_fit_their_schemas() {
         json!({ "path": dir.join("five_bus_v33.raw"), "revision": 33 }),
     );
     assert_eq!(exported["source"], "records");
+    let stn = c.ok("export_stn", json!({ "path": dir.join("five_bus.stn") }));
+    assert!(stn["records"].as_u64().unwrap() > 0);
     c.ok("apply_record_edits", json!({ "edits": [] }));
     c.ok(
         "save_case_as",

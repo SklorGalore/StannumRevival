@@ -60,6 +60,7 @@ const ACTIONS: &[&str] = &[
     "calculate_sensitivities",
     "export_matpower",
     "export_raw",
+    "export_stn",
     "apply_record_edits",
     "save_case_as",
     "topology_set_merge",

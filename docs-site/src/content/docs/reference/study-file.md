@@ -73,7 +73,7 @@ Shortened: the saved solve's report and the drawing are cut down.
 - `relative`: the same file from the study's folder, with `/` separators, or
   `null` when there's no such path (another drive on Windows);
 - `name`: the file name;
-- `format`: `"matpower"` or `"raw"`;
+- `format`: `"matpower"`, `"raw"` or `"stn"` (a [Stannum case](/StannumRevival/reference/case-file/));
 - `fingerprint`: `size` in bytes, `sha256` (lowercase hex) of the file's
   bytes, and `modified_ms` (milliseconds since 1970, or `null`).
 
