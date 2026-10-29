@@ -6,6 +6,7 @@ import logoUrl from "../assets/stannum-logo.svg";
 import logoSmallUrl from "../assets/stannum-logo-small.svg";
 import { dragRegion } from "./WindowControls";
 import { useUpdate } from "../store/updateStore";
+import { shortVersion } from "../lib/version/shortVersion";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
@@ -76,7 +77,7 @@ function VersionButton() {
       aria-label={waiting ? `Stannum ${__APP_VERSION__}, update ${update.version} available` : `Stannum ${__APP_VERSION__}, check for updates`}
       data-testid="version-button"
     >
-      v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
+      {shortVersion(__APP_VERSION__)}
       {waiting && <span className="absolute -right-0.5 top-0 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
     </button>
   );

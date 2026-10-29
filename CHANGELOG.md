@@ -19,6 +19,8 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- The version at the foot of the module rail keeps a pre-release suffix
+  (v1.0-rc.1), so a release candidate never passes for the release.
 - Sensitivities work on 80,000-bus cases. They used to hold every injection
   column at once, over 13 GB at 82,000 buses, and the app was shut down by
   the system; now the case is factored once and the picked column is solved
