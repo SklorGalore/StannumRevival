@@ -16,6 +16,9 @@ Pick the file for your computer from the **Assets** list:
 | Fedora, RHEL, openSUSE | `Stannum-<version>-1.x86_64.rpm` | `sudo dnf install ./Stannum-<version>-1.x86_64.rpm` |
 | Any other Linux | `Stannum_<version>_amd64.AppImage` | `chmod +x` it, then run it. |
 
+Pre-releases such as `1.0.0-rc.1` come without the `.rpm`, as RPM versions
+can't contain a hyphen. On Fedora, RHEL or openSUSE, run the AppImage.
+
 The same page has the [Python package](/StannumRevival/guide/python/) and
 `stannum-cli`, which [runs run files](/StannumRevival/guide/run-files/#running-without-the-app)
 without the app:
