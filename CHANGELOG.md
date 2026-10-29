@@ -10,6 +10,17 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **NERC TPL-001 planning events.** Contingencies can run the planning events
+  Stannum generates from the case instead of every branch and generator: the
+  base case (P0), each generator, line, transformer, shunt and DC line pole
+  (P1.1 to P1.5), each section of a multi-section line (P2.1) and each
+  bipolar DC line (P7.2), at or above a voltage (100 kV by default). Choose
+  **NERC TPL-001 planning events** under **Outages** in the Contingencies
+  tab; results show each event's category, with counts and a filter per
+  category. Scripts pass `planning` in the contingency settings, and
+  `planning_event_counts` says how many events each category gives.
+  Multi-section line groupings in RAW files are now read, so a planning event
+  takes a multi-section line out whole.
 - **Binary Stannum case files (`.stnb`, preview).** The same case as a
   `.stn` file, in columns (Apache Arrow tables in a ZIP archive): about a
   quarter of the size, and readable with pyarrow, pandas or polars with no

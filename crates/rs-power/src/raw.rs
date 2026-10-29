@@ -106,6 +106,54 @@ pub struct RawImport {
     /// Revision 34-35 system switching devices, in file order. Each also
     /// solves as a branch of `case`.
     pub switching_devices: Vec<SwitchingDevice>,
+    /// Every fixed and switched shunt record, in file order, with what it
+    /// added to its bus's `gs` and `bs`. Lets a contingency take one out.
+    pub shunts: Vec<ShuntSource>,
+    /// Multi-section line groupings whose sections were all found, in file
+    /// order.
+    pub multi_section_lines: Vec<MultiSectionLine>,
+}
+
+/// Which RAW section a shunt record came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShuntKind {
+    Fixed,
+    Switched,
+}
+
+/// A fixed or switched shunt record and what the import added to its bus.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShuntSource {
+    pub kind: ShuntKind,
+    pub bus: u32,
+    /// Shunt identifier, trimmed; `"1"` when blank or, for switched shunts
+    /// before revision 35, absent.
+    pub id: String,
+    /// Status in the file (STATUS or STAT); true when the record has none.
+    pub online: bool,
+    /// MW at 1 p.u. voltage added to the bus's `gs`.
+    pub g: f64,
+    /// MVAr at 1 p.u. voltage added to the bus's `bs` (BINIT for a
+    /// switched shunt, which the import adds whatever its status).
+    pub b: f64,
+    /// One-based source line.
+    pub line: usize,
+}
+
+/// A multi-section line grouping: one line made of sections in series
+/// through dummy buses, which goes in and out of service as one.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MultiSectionLine {
+    /// The grouping's end buses (I, J) and identifier, such as `&1`.
+    pub from: u32,
+    pub to: u32,
+    pub id: String,
+    /// I, the dummy buses in order, then J.
+    pub buses: Vec<u32>,
+    /// The `case.branches` row of each section, in order from I.
+    pub branches: Vec<usize>,
+    /// One-based source line.
+    pub line: usize,
 }
 
 /// A substation record of revision 34-35 RAW data.
@@ -847,12 +895,26 @@ fn convert(
             }
         }
     }
+    let mut shunts = Vec::new();
     for r in section("fixed shunt") {
         let b = &mut case.buses[bus_index(r, 0)?];
-        if r.status(2)? {
-            b.gs += r.num(3)?;
-            b.bs += r.num(4)?;
-        }
+        let online = r.status(2)?;
+        let (g, bs) = if online {
+            (r.num(3)?, r.num(4)?)
+        } else {
+            (0.0, 0.0)
+        };
+        b.gs += g;
+        b.bs += bs;
+        shunts.push(ShuntSource {
+            kind: ShuntKind::Fixed,
+            bus: b.id,
+            id: identifier(r, 1),
+            online,
+            g,
+            b: bs,
+            line: r.line,
+        });
     }
     let mut voltage_controls = VoltageControls::default();
     let mut flow_controls = FlowControls::default();
@@ -895,7 +957,26 @@ fn convert(
         } else {
             9
         };
-        b.bs += r.num(col)?;
+        let binit = r.num(col)?;
+        b.bs += binit;
+        let online = if rev >= 32 {
+            r.status(if rev >= 35 { 4 } else { 3 })?
+        } else {
+            true
+        };
+        shunts.push(ShuntSource {
+            kind: ShuntKind::Switched,
+            bus: b.id,
+            id: if rev >= 35 {
+                identifier(r, 1)
+            } else {
+                "1".to_string()
+            },
+            online,
+            g: 0.0,
+            b: binit,
+            line: r.line,
+        });
     }
     for r in section("generator") {
         bus_index(r, 0)?;
@@ -1105,6 +1186,13 @@ fn convert(
             }
         }
     }
+    let multi_section_lines = convert_multi_section_lines(
+        rev,
+        section("multi-section line"),
+        &branch_sources,
+        &indices,
+        &mut ctx,
+    )?;
     let mut areas = Vec::new();
     for r in section("area") {
         let isw = r.optional(1, 0.0)?;
@@ -1143,6 +1231,7 @@ fn convert(
                 | "two-terminal DC"
                 | "area"
                 | "FACTS control device"
+                | "multi-section line"
         ) && !(options.all_dc_lines
             && matches!(name, "voltage source converter" | "multi-terminal DC"))
             && let Some(r) = rows.first()
@@ -1212,7 +1301,89 @@ fn convert(
         areas,
         area_loads,
         switching_devices,
+        shunts,
+        multi_section_lines,
     })
+}
+
+/// Multi-section line groupings: `I, J, 'ID', MET, DUM1, ..., DUM9` (no MET
+/// before revision 31). Each section is the line between two consecutive
+/// buses of I, the dummies and J; a grouping whose sections aren't all
+/// there is skipped with a warning.
+fn convert_multi_section_lines(
+    rev: u32,
+    rows: &[Record],
+    branch_sources: &[BranchSource],
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context,
+) -> Result<Vec<MultiSectionLine>, Error> {
+    let mut lines: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+    for (row, source) in branch_sources.iter().enumerate() {
+        if source.kind == BranchKind::Line && source.buses.len() == 2 {
+            let (a, b) = (source.buses[0], source.buses[1]);
+            lines.entry((a.min(b), a.max(b))).or_default().push(row);
+        }
+    }
+    let mut claimed = vec![false; branch_sources.len()];
+    let first_dummy = if rev >= 31 { 4 } else { 3 };
+    let mut groups = Vec::new();
+    'rows: for r in rows {
+        let from = r.integer(0, true)?;
+        let to = r.integer(1, true)?;
+        let id = identifier(r, 2);
+        let mut buses = vec![from];
+        for i in first_dummy..r.fields.len() {
+            if r.blank(i) {
+                continue;
+            }
+            buses.push(r.integer(i, true)?);
+        }
+        buses.push(to);
+        if let Some(missing) = buses.iter().find(|b| !indices.contains_key(b)) {
+            ctx.warn(
+                r.line,
+                false,
+                format!("multi-section line {from}-{to} {id} names unknown bus {missing}; grouping skipped"),
+            )?;
+            continue;
+        }
+        let mut sections = Vec::with_capacity(buses.len() - 1);
+        for pair in buses.windows(2) {
+            let key = (pair[0].min(pair[1]), pair[0].max(pair[1]));
+            let found = lines
+                .get(&key)
+                .and_then(|rows| rows.iter().copied().find(|&row| !claimed[row]));
+            match found {
+                Some(row) => {
+                    claimed[row] = true;
+                    sections.push(row);
+                }
+                None => {
+                    for &row in &sections {
+                        claimed[row] = false;
+                    }
+                    ctx.warn(
+                        r.line,
+                        false,
+                        format!(
+                            "multi-section line {from}-{to} {id} has no line between buses {} and {}; grouping skipped",
+                            pair[0], pair[1]
+                        ),
+                    )?;
+                    continue 'rows;
+                }
+            }
+        }
+        groups.push(MultiSectionLine {
+            from,
+            to,
+            id,
+            buses,
+            branches: sections,
+            line: r.line,
+        });
+    }
+    Ok(groups)
 }
 
 /// PSS/E's default switching device reactance, in per unit.

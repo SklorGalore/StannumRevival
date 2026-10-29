@@ -69,6 +69,7 @@ fn contingencies_that_finish_after_an_edit_are_set_aside() {
         ac_count: 0,
         limit_pct: 100.0,
         solve: SolveSettings::default(),
+        planning: None,
     };
     let version = case.version;
     let job = case.contingency_job(settings.clone()).unwrap();

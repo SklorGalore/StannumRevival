@@ -45,6 +45,15 @@ part carry nothing.
 its island: $\Delta F = -\text{PTDF}_{\cdot,i}\, P_g$, from one solve
 $B\,\theta = e_i$.
 
+**Shunt and DC line outages** (planning events only) are injection changes
+in the same way. A shunt gives back its conductance, $G\,V^2$ MW at the base
+voltage $V$; its reactive power doesn't move MW in the linear model. A DC
+line keeping a share $k$ of its scheduled flow $P$ (0 when it goes out, 0.5
+for one pole) moves its sending bus by $(1-k)P$ and its receiving bus by the
+change in what arrives, $P_r(kP) - P_r(P)$ with
+$P_r(p) = p - L_0 - L_1 p$ and the line's loss terms $L_0$, $L_1$. The
+base solution's DC flow is used.
+
 ## AC check
 
 The worst screened outages (or all of them) are solved with the full AC
@@ -53,12 +62,45 @@ base solution, as in [Starting
 point](/StannumRevival/manual/ac-power-flow/#starting-point), with the outage applied:
 
 - tripped branches and generators out of service;
+- a tripped shunt's conductance and susceptance taken off its bus; a
+  switched shunt in voltage control comes off at the step the base solution
+  left it on, with no blocks left to switch;
+- a tripped DC line out of service, or for one pole its scheduled power (or
+  the detailed model's power or current order) halved;
 - split-off buses made isolated, with their generators out;
 - a new reference bus, the bus of the largest remaining generator, when the
   old one was split off or lost its last generator.
 
 When a solve with generator Q limits doesn't converge, it runs again without
 them, to say whether reactive limits are the cause.
+
+## Planning events
+
+`crates/stannum-core/src/planning.rs` generates NERC TPL-001 Table 1 events
+from the case. The elements are those already listed above, so each event is
+one outage of the run:
+
+- **P0**: no outage. It is ranked like the others, but judged against the
+  limits instead of against itself: every branch over the limit and every
+  bus outside its limits counts.
+- **P1.1 to P1.3**: each in-service generator, line and transformer. Lines
+  in a RAW multi-section line grouping (`I, J, 'ID', MET, DUM1, ...`) are
+  left out on their own and taken out together as `line:<I>:<J>:<ID>`, as
+  the breakers at its two ends would take it out.
+- **P1.4**: each in-service fixed shunt with a nonzero G or B, and each
+  in-service switched shunt with a nonzero BINIT or in voltage control. A
+  MATPOWER bus's GS and BS count as one fixed shunt.
+- **P1.5**: each in-service two-terminal (line-commutated) DC line with half
+  its schedule. RAW has one record for both poles of a bipole, so this
+  assumes two equal poles. VSC lines get no P1.5 event.
+- **P2.1**: each section of a multi-section line on its own, as opening it
+  without a fault would.
+- **P7.2**: each in-service two-terminal and VSC DC line. Multi-terminal
+  systems are left out.
+
+Filters: a branch, shunt or DC line counts when any terminal bus is at or
+above the voltage (buses with no base voltage count), and when any terminal
+bus is in the chosen areas. Generators only take the area filter.
 
 ## Ranking
 
@@ -77,10 +119,18 @@ then the linear-only ones.
 
 The screen chooses which outages get an AC solve by the same severity, from
 the linear results, so it checks the outages that cause new overloads first.
+In a planning event run, P0 is always solved, and shunt outages, which the
+screen can't judge, get a separate budget of the same size, largest shunt
+(by $\sqrt{G^2 + B^2}$) first.
 Voltage problems and reactive limits are only found by the AC solves.
 
 ## Checks
 
+`crates/stannum-core/tests/planning_events.rs` checks each category's
+events on a five-bus case with shunts, a DC line and a multi-section line;
+shunt and DC line events against solving a case without the shunt, with the
+DC schedule halved or with the DC line blocked; the linear screen of a DC
+line outage against its AC solve; and P0's base-case overloads.
 `crates/stannum-core/tests/contingency.rs` checks the linear trip of every
 meshed branch of case30 against a DC power flow without it, each AC row
 against solving the same outage as a study edit, islanding on case30, and

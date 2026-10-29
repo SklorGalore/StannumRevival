@@ -262,6 +262,16 @@ fn answers_fit_their_schemas() {
     );
     c.ok("contingency_detail", json!({ "rank": 1 }));
     c.ok("result_report", json!({ "name": "contingency 1" }));
+    let counts = c.ok(
+        "planning_event_counts",
+        json!({ "settings": { "categories": ["P0", "P1"], "kv_min": 0.0 } }),
+    );
+    assert!(counts.as_array().is_some_and(|c| c.len() == 6), "{counts}");
+    let planned = c.ok(
+        "run_contingencies",
+        json!({ "settings": { "method": "ac", "solve": solve, "planning": { "categories": ["P0", "P1.2"] } } }),
+    );
+    assert_eq!(planned["categories"][0]["category"], "P0");
     c.ok(
         "trip_and_compare",
         json!({ "element": branch, "limitPct": 100.0 }),

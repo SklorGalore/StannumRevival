@@ -1,13 +1,14 @@
 // N-1 contingency analysis: take each branch or generator out on its own,
 // rank the outages by what they overload, and open any of them on the
-// diagram. The run itself is stannum-core's (contingency.rs).
+// diagram. Or run the NERC TPL-001 planning events the core generates from
+// the case (planning.rs). The run itself is stannum-core's (contingency.rs).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download, Network, Play, ShieldAlert, Square, X } from "lucide-react";
-import { useContingencies } from "../../store/contingencyStore";
+import { PLANNING_CATEGORIES, useContingencies } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
 import { api, saveTextExport } from "../../lib/analysis/api";
-import type { ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
+import type { CategoryCount, ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
 import { Button, EmptyState, ErrorBanner, Metric, Notice, SearchBox, inputClass } from "../../ui/primitives";
@@ -31,6 +32,19 @@ const PROBLEM_RULES: PageRule[] = [
   { field: "lost_load_mw", operator: "gt", value: "0.05", upper: null },
 ];
 
+/** The outage in words: "Base case" for P0, otherwise the element. */
+export function outageLabel(r: ContingencyRow): string {
+  return r.kind === "base" ? "Base case" : elementLabel(r.element);
+}
+
+function CategoryBadge({ category }: { category: string }) {
+  return (
+    <span className="rounded bg-indigo-50 px-1.5 py-px text-[10px] font-semibold text-indigo-800 tabular-nums" data-testid="category-badge">
+      {category}
+    </span>
+  );
+}
+
 function ms(v: number): string {
   return v >= 1000 ? `${fixed(v / 1000, 1)} s` : `${fixed(v, 0)} ms`;
 }
@@ -44,14 +58,31 @@ export function outcome(r: ContingencyRow): string {
   return "No new problems";
 }
 
-function columns(limit: number): Column<ContingencyRow>[] {
+function columns(limit: number, planning: boolean): Column<ContingencyRow>[] {
+  const category: Column<ContingencyRow>[] = planning
+    ? [
+        {
+          key: "category",
+          header: "Event",
+          title: "NERC TPL-001 planning event category",
+          value: (r) => r.category,
+          render: (r) => (r.category ? <CategoryBadge category={r.category} /> : ""),
+        },
+      ]
+    : [];
   return [
     { key: "rank", header: "#", value: (r) => r.rank, align: "right" },
+    ...category,
     {
       key: "element",
       header: "Outage",
-      value: (r) => elementLabel(r.element),
-      render: (r) => <span className="font-medium text-slate-800">{elementLabel(r.element)}</span>,
+      value: (r) => outageLabel(r),
+      render: (r) => (
+        <span className="flex flex-col">
+          <span className="font-medium text-slate-800">{outageLabel(r)}</span>
+          {r.description && r.kind !== "base" && <span className="text-[10px] text-slate-500">{r.description}</span>}
+        </span>
+      ),
     },
     {
       key: "checked",
@@ -199,8 +230,12 @@ function OutagePanel({
     <aside aria-label="Outage detail" className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0" data-testid="contingency-detail">
       <header className="flex items-start gap-2 px-3 py-2 border-b border-slate-200">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Outage #{row.rank}</p>
-          <h2 className="text-sm font-semibold text-slate-800">{elementLabel(row.element)}</h2>
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">
+            Outage #{row.rank}
+            {row.category && <CategoryBadge category={row.category} />}
+          </p>
+          <h2 className="text-sm font-semibold text-slate-800">{outageLabel(row)}</h2>
+          {row.description && row.kind !== "base" && <p className="text-[11px] text-slate-600">{row.description}</p>}
           <p className="text-[11px] text-slate-500">
             {row.checked === "ac"
               ? row.converged
@@ -213,12 +248,18 @@ function OutagePanel({
           <X size={14} />
         </button>
       </header>
-      <div className="flex flex-wrap items-center gap-1 px-3 py-2">
-        <Button variant={onDiagram ? "secondary" : "primary"} onClick={show} data-testid="show-on-diagram">
-          <Network size={13} /> Show on diagram
-        </Button>
-        <StudyActions element={row.element} />
-      </div>
+      {row.kind === "base" ? (
+        <p className="px-3 py-2 text-[11px] text-slate-600">
+          The case as it stands, checked against the limits: every overload and voltage problem counts, not only new ones.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1 px-3 py-2">
+          <Button variant={onDiagram ? "secondary" : "primary"} onClick={show} data-testid="show-on-diagram">
+            <Network size={13} /> Show on diagram
+          </Button>
+          {(row.kind === "branch" || row.kind === "generator") && !row.element.includes("&") && <StudyActions element={row.element} />}
+        </div>
+      )}
       <div className="flex-1 min-h-0 overflow-auto text-xs">
         {row.note && (
           <div className="px-3 pb-2">
@@ -303,6 +344,39 @@ function OutagePanel({
   );
 }
 
+/** The planning event categories, each with how many events it gives on the case. */
+function PlanningCategories({
+  counts,
+  chosen,
+  onChange,
+}: {
+  counts: CategoryCount[] | null;
+  chosen: string[];
+  onChange: (categories: string[]) => void;
+}) {
+  const label = (c: string) => counts?.find((k) => k.category === c);
+  const toggle = (c: string, on: boolean) =>
+    onChange(PLANNING_CATEGORIES.filter((k) => (k === c ? on : chosen.includes(k))));
+  return (
+    <fieldset className="flex flex-col gap-1" data-testid="planning-categories">
+      <legend className="text-[11px] font-medium text-slate-600 mb-1">Planning events</legend>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-0.5">
+        {PLANNING_CATEGORIES.map((c) => {
+          const info = label(c);
+          return (
+            <label key={c} className="flex items-center gap-1.5 whitespace-nowrap" title={info?.label}>
+              <input type="checkbox" checked={chosen.includes(c)} onChange={(e) => toggle(c, e.target.checked)} />
+              <span className="font-semibold tabular-nums">{c}</span>
+              <span className="text-slate-600">{info?.label ?? ""}</span>
+              {info && <span className="tabular-nums text-slate-400">{count(info.count)}</span>}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 export function ContingencyTab({
   report,
   settings,
@@ -318,16 +392,30 @@ export function ContingencyTab({
   const s = useContingencies();
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(false);
-  const cols = useMemo(() => columns(s.summary?.limit_pct ?? s.choice.limitPct), [s.summary, s.choice.limitPct]);
+  const [category, setCategory] = useState("");
+  const planned = !!s.summary && s.summary.categories.length > 0;
+  const cols = useMemo(() => columns(s.summary?.limit_pct ?? s.choice.limitPct, planned), [s.summary, s.choice.limitPct, planned]);
+  const planning = s.choice.source === "planning";
+  // Planning event counts, for the categories to pick from.
+  const loadCounts = s.loadCounts;
+  useEffect(() => {
+    if (planning) void loadCounts();
+  }, [planning, report, s.choice.kvMin, loadCounts]);
+  useEffect(() => setCategory(""), [s.summary]);
   // The ranked rows are read from the core a page at a time.
   const [clicked, setClicked] = useState<ContingencyRow | null>(null);
   const runId = useMemo(() => ({}), [s.summary]);
   const source = useMemo<RowSource<ContingencyRow>>(
     () => ({
-      key: `${objectKey(runId)}\u0000${problemsOnly}`,
-      fetch: (r) => api.contingencyPage({ ...r, any: problemsOnly ? PROBLEM_RULES : [] }),
+      key: `${objectKey(runId)}\u0000${problemsOnly}\u0000${category}`,
+      fetch: (r) =>
+        api.contingencyPage({
+          ...r,
+          rules: category ? [{ field: "category", operator: "eq" as const, value: category, upper: null }] : [],
+          any: problemsOnly ? PROBLEM_RULES : [],
+        }),
     }),
-    [runId, problemsOnly]
+    [runId, problemsOnly, category]
   );
   const [problemCount, setProblemCount] = useState<number | null>(null);
   useEffect(() => {
@@ -356,12 +444,16 @@ export function ContingencyTab({
 
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
+  const chosenCount = (s.counts ?? []).filter((c) => s.choice.categories.includes(c.category)).reduce((n, c) => n + c.count, 0);
+  const nothingChosen = planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !scope;
   async function exportCsv() {
     const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
       rows.map((r) => ({
         rank: r.rank,
-        outage: r.element,
+        category: r.category ?? "",
+        outage: r.kind === "base" ? "base case" : r.element,
+        description: r.description ?? "",
         solved: r.checked === "ac" ? (r.converged ? "ac" : "ac_not_converged") : "linear",
         worst_branch: r.worst?.element ?? "",
         loading_pct: r.worst?.pct ?? "",
@@ -389,19 +481,55 @@ export function ContingencyTab({
           run();
         }}
       >
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-[11px] font-medium text-slate-600 mb-1">Take out, one at a time</legend>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={s.choice.branches} onChange={(e) => s.setChoice({ branches: e.target.checked })} />
-              Branches
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
+          Outages
+          <select
+            className={inputClass}
+            value={s.choice.source}
+            onChange={(e) => s.setChoice({ source: e.target.value as "n1" | "planning" })}
+            aria-label="Outages"
+            data-testid="contingency-source"
+          >
+            <option value="n1">N-1: each element on its own</option>
+            <option value="planning">NERC TPL-001 planning events</option>
+          </select>
+        </label>
+        {planning ? (
+          <>
+            <PlanningCategories
+              counts={s.counts}
+              chosen={s.choice.categories}
+              onChange={(categories) => s.setChoice({ categories })}
+            />
+            <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
+              At or above (kV)
+              <input
+                className={`${inputClass} w-20`}
+                type="number"
+                min={0}
+                step="any"
+                value={s.choice.kvMin}
+                onChange={(e) => s.setChoice({ kvMin: Math.max(0, Number(e.target.value) || 0) })}
+                aria-label="Lowest voltage"
+                title="Branches, shunts and DC lines with a terminal at or above this voltage. Generators are not filtered by voltage."
+              />
             </label>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={s.choice.generators} onChange={(e) => s.setChoice({ generators: e.target.checked })} />
-              Generators
-            </label>
-          </div>
-        </fieldset>
+          </>
+        ) : (
+          <fieldset className="flex flex-col gap-1">
+            <legend className="text-[11px] font-medium text-slate-600 mb-1">Take out, one at a time</legend>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={s.choice.branches} onChange={(e) => s.setChoice({ branches: e.target.checked })} />
+                Branches
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={s.choice.generators} onChange={(e) => s.setChoice({ generators: e.target.checked })} />
+                Generators
+              </label>
+            </div>
+          </fieldset>
+        )}
         <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
           Method
           <select
@@ -459,7 +587,7 @@ export function ContingencyTab({
             <Button
               type="submit"
               variant="primary"
-              disabled={!acReady || (!s.choice.branches && !s.choice.generators && !scope)}
+              disabled={!acReady || nothingChosen}
               title={acReady ? undefined : "Solve the case with the AC model first"}
               data-testid="run-contingencies"
             >
@@ -467,7 +595,12 @@ export function ContingencyTab({
             </Button>
           )}
         </div>
-        {scope && (
+        {planning && s.counts && (
+          <p className="basis-full text-[11px] text-slate-500" data-testid="planning-total">
+            {count(chosenCount)} event{chosenCount === 1 ? "" : "s"} in the categories chosen. The base case is always solved in AC; so are the largest shunt outages, as many as are checked in AC, since the screen can't see what a shunt does.
+          </p>
+        )}
+        {scope && !planning && (
           <p className="basis-full text-[11px] text-slate-500">
             The bus filters above narrow the outages to {count(scope.elements.length)} branches and generators touching{" "}
             {count(scope.buses)} matching buses.
@@ -481,7 +614,12 @@ export function ContingencyTab({
       )}
       {!summary ? (
         <EmptyState icon={<ShieldAlert size={22} />} title="What if it trips?">
-          {acReady ? (
+          {acReady && planning ? (
+            <>
+              Runs the NERC TPL-001 planning events Stannum generates from the case: the base case (P0), each single element (P1), each section of a
+              multi-section line (P2.1) and each bipolar DC line (P7.2). Events that need breakers, two stages or tower data are not generated yet.
+            </>
+          ) : acReady ? (
             <>
               Takes each {s.choice.branches && s.choice.generators ? "branch and generator" : s.choice.branches ? "branch" : "generator"} out on its own,
               screens every outage with linear outage factors, then solves the worst {s.choice.acCount} in AC from this solution. Outages
@@ -519,6 +657,33 @@ export function ContingencyTab({
               detail={`Screen ${ms(summary.screen_ms)}, AC ${ms(summary.ac_ms)}`}
             />
           </div>
+          {summary.categories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pb-2" data-testid="category-summary">
+              {summary.categories.map((c) => {
+                const problems = c.with_overloads + c.with_voltage_problems + c.not_converged;
+                return (
+                  <button
+                    key={c.category}
+                    type="button"
+                    onClick={() => setCategory(category === c.category ? "" : c.category)}
+                    aria-pressed={category === c.category}
+                    className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] ${
+                      category === c.category ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                    title={`${c.total} events; ${c.with_overloads} with overloads, ${c.with_voltage_problems} with voltage problems, ${c.not_converged} not converged`}
+                  >
+                    <span className="font-semibold text-slate-700">{c.category}</span>
+                    <span className="tabular-nums text-slate-500">{count(c.total)}</span>
+                    {problems > 0 ? (
+                      <span className="tabular-nums font-semibold text-red-700">{count(problems)} with problems</span>
+                    ) : (
+                      <span className="text-teal-700">clear</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {summary.cancelled && (
             <div className="px-3 pb-2">
               <Notice>Cancelled before the end. Outages not reached in AC keep their linear screen result.</Notice>
@@ -528,6 +693,16 @@ export function ContingencyTab({
             <div className="flex-1 min-w-0 flex flex-col">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 border-b border-slate-200 bg-white">
                 <SearchBox value={search} onChange={setSearch} placeholder="Search outages…" />
+                {planned && (
+                  <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category">
+                    <option value="">All categories</option>
+                    {summary.categories.map((c) => (
+                      <option key={c.category} value={c.category}>
+                        {c.category}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-slate-700">
                   <input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)} />
                   Problems only{problemCount === null ? "" : ` (${count(problemCount)})`}

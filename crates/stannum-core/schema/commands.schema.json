@@ -976,6 +976,71 @@
       ],
       "type": "object"
     },
+    "CategoryCount": {
+      "description": "How many events a category gives, for showing before a run.",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "label": {
+          "description": "What it takes out, such as \"Transformer\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "label",
+        "count"
+      ],
+      "type": "object"
+    },
+    "CategorySummary": {
+      "description": "One planning event category's share of a run.",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "islanding": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "not_converged": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_overloads": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_voltage_problems": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "category",
+        "total",
+        "with_overloads",
+        "with_voltage_problems",
+        "not_converged",
+        "islanding"
+      ],
+      "type": "object"
+    },
     "ColumnKind": {
       "enum": [
         "integer",
@@ -1087,6 +1152,13 @@
     "ContingencyRow": {
       "description": "One outage's outcome, as a row of the ranked results.",
       "properties": {
+        "category": {
+          "description": "The planning event category, such as \"P1.2\"; none in an N-1 run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "checked": {
           "description": "\"ac\" when solved in AC, \"linear\" when only screened.",
           "enum": [
@@ -1108,8 +1180,15 @@
           "minimum": 0,
           "type": "integer"
         },
+        "description": {
+          "description": "What the event is, in words, when the element alone doesn't say.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "element": {
-          "description": "The element taken out.",
+          "description": "The element taken out; empty for the base case (P0).",
           "type": "string"
         },
         "iterations": {
@@ -1121,10 +1200,13 @@
           ]
         },
         "kind": {
-          "description": "\"branch\" or \"generator\".",
+          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
           "enum": [
             "branch",
-            "generator"
+            "generator",
+            "shunt",
+            "dc_line",
+            "base"
           ],
           "type": "string"
         },
@@ -1200,6 +1282,8 @@
         "rank",
         "element",
         "kind",
+        "category",
+        "description",
         "checked",
         "converged",
         "iterations",
@@ -1219,6 +1303,16 @@
     "ContingencyRowColumns": {
       "description": "ContingencyRow rows as columns: one array per field, each `count` long.",
       "properties": {
+        "category": {
+          "items": {
+            "description": "The planning event category, such as \"P1.2\"; none in an N-1 run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
         "checked": {
           "items": {
             "description": "\"ac\" when solved in AC, \"linear\" when only screened.",
@@ -1254,9 +1348,19 @@
           },
           "type": "array"
         },
+        "description": {
+          "items": {
+            "description": "What the event is, in words, when the element alone doesn't say.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
         "element": {
           "items": {
-            "description": "The element taken out.",
+            "description": "The element taken out; empty for the base case (P0).",
             "type": "string"
           },
           "type": "array"
@@ -1274,10 +1378,13 @@
         },
         "kind": {
           "items": {
-            "description": "\"branch\" or \"generator\".",
+            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
             "enum": [
               "branch",
-              "generator"
+              "generator",
+              "shunt",
+              "dc_line",
+              "base"
             ],
             "type": "string"
           },
@@ -1382,10 +1489,12 @@
         }
       },
       "required": [
+        "category",
         "checked",
         "converged",
         "count",
         "cut_off_buses",
+        "description",
         "element",
         "iterations",
         "kind",
@@ -1441,6 +1550,18 @@
           "$ref": "#/$defs/Method",
           "default": "screen"
         },
+        "planning": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run these NERC TPL-001 planning events instead of every branch and\ngenerator; `elements`, `branches` and `generators` are then unused."
+        },
         "solve": {
           "$ref": "#/$defs/SolveSettings",
           "default": {
@@ -1481,6 +1602,13 @@
         "cancelled": {
           "description": "Stopped early: outages after the stop keep their screened result.",
           "type": "boolean"
+        },
+        "categories": {
+          "description": "Planning event runs: outages and problems in each category, in\ncategory order. Empty in an N-1 run.",
+          "items": {
+            "$ref": "#/$defs/CategorySummary"
+          },
+          "type": "array"
         },
         "elapsed_ms": {
           "format": "double",
@@ -1555,7 +1683,8 @@
         "ac_ms",
         "elapsed_ms",
         "cancelled",
-        "worst"
+        "worst",
+        "categories"
       ],
       "type": "object"
     },
@@ -4425,6 +4554,45 @@
       ],
       "type": "object"
     },
+    "PlanningSettings": {
+      "description": "Which planning events to generate.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "description": "Only elements with a terminal bus in one of these areas; every area\nwhen empty.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "categories": {
+          "default": [
+            "P0",
+            "P1.1",
+            "P1.2",
+            "P1.3",
+            "P1.4",
+            "P1.5",
+            "P2.1",
+            "P7.2"
+          ],
+          "description": "Categories or groups of them, such as \"P1\" (every P1 event) or\n\"P1.4\". Every category Stannum generates when absent.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kv_min": {
+          "default": 100.0,
+          "description": "Only branches, shunts and DC lines with a terminal bus at or above\nthis voltage, kV. A bus with no base voltage counts as above.\nGenerators are not filtered by voltage: most connect below it\nthrough a step-up transformer.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "PowerInfo": {
       "properties": {
         "counts": {
@@ -6936,6 +7104,43 @@
       },
       "takes_case": false
     },
+    "planning_event_counts": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PlanningSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "How many NERC TPL-001 planning events each category gives on the\nopen case, before running them with `run_contingencies`. Settings\nleft out take their defaults: every category Stannum generates, at\n100 kV and above.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/CategoryCount"
+        },
+        "type": "array"
+      },
+      "takes_case": true
+    },
     "record_fields": {
       "action": false,
       "args": {
@@ -7330,7 +7535,7 @@
         },
         "type": "object"
       },
-      "doc": "Run N-1 contingencies. `cancel_contingencies` stops the run and\n`contingency_progress` follows it. Settings left out take their\ndefaults: every branch and generator, screened, then the worst in AC.",
+      "doc": "Run N-1 contingencies, or with `settings.planning` the NERC TPL-001\nplanning events. `cancel_contingencies` stops the run and\n`contingency_progress` follows it. Settings left out take their\ndefaults: every branch and generator, screened, then the worst in AC.",
       "result": {
         "$ref": "#/$defs/ContingencySummary"
       },
