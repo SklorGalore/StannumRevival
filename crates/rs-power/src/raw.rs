@@ -793,7 +793,8 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         } else {
             100.0
         };
-        if r.optional(26 + shift, 0.0)? != 0.0 {
+        // WMOD: after F4, which revision 35 moves two places (NREG, BASLOD).
+        if r.optional(26 + 2 * shift, 0.0)? != 0.0 {
             ctx.warn(
                 r.line,
                 true,

@@ -170,7 +170,17 @@ fn memphis_revision_35_real_world_case() {
     assert_eq!(imported.case.labels["bus_name"].len(), 993);
     // The 61 switched shunts in voltage control go to `voltage_controls`
     // without a warning.
-    assert_eq!(imported.warnings.len(), 374);
+    // 26 generators are wind machines (WMOD 1); the other 162 used to be
+    // reported too, from F4 read in WMOD's place.
+    assert_eq!(imported.warnings.len(), 212);
+    assert_eq!(
+        imported
+            .warnings
+            .iter()
+            .filter(|w| w.message.contains("wind-machine"))
+            .count(),
+        26
+    );
     assert_eq!(imported.voltage_controls.switched_shunts.len(), 61);
     for message in [
         "remote generator regulation ignored",

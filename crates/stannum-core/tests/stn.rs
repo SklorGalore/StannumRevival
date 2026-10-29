@@ -295,16 +295,16 @@ fn stn_files_open_edit_and_save() {
     let mut ws = Workspace::default();
     ws.open(&everything).unwrap();
     let warnings = &ws.current().unwrap().power.as_ref().unwrap().warnings;
-    let generator = warnings
+    let star = warnings
         .iter()
-        .find(|w| w.element.as_deref() == Some("generator:1:1"))
+        .find(|w| w.element.as_deref() == Some("transformer:2:4:6:2"))
         .unwrap();
     assert!(
         stn_text
             .lines()
-            .nth(generator.line - 1)
+            .nth(star.line - 1)
             .unwrap()
-            .starts_with("generator 1:1 ")
+            .starts_with("transformer3 2:4:6:2 ")
     );
     assert!(
         warnings

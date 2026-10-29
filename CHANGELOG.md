@@ -41,6 +41,8 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- RAW revision 35 cases no longer warn that ordinary generators are wind
+  machines: the wind-machine flag was read two columns early (from F4).
 - The version at the foot of the module rail keeps a pre-release suffix
   (v1.0-rc.1), so a release candidate never passes for the release.
 - Sensitivities work on 80,000-bus cases. They used to hold every injection
