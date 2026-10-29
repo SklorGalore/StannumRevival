@@ -36,3 +36,4 @@ __pycache__/
 # beside pyproject.toml for the wheel
 crates/stannum-py/LICENSE
 crates/stannum-py/THIRD-PARTY-*
+src-tauri/tauri.updater.conf.json

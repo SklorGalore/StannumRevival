@@ -37,6 +37,18 @@ fn show_snap_layouts(window: tauri::Window) {
     let _ = window;
 }
 
+/// Whether this build checks for updates. Only release builds made with the
+/// updater signing key carry the updater settings (`plugins.updater` in the
+/// Tauri config); development and test builds don't.
+#[tauri::command]
+fn updates_enabled(app: tauri::AppHandle) -> bool {
+    has_updater_config(&app)
+}
+
+fn has_updater_config(app: &tauri::AppHandle) -> bool {
+    app.config().plugins.0.contains_key("updater")
+}
+
 #[cfg(windows)]
 mod snap {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
@@ -84,6 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .manage(analysis::SharedSession::default())
         .manage(splash::Splash::default())
         .setup(|app| {
@@ -93,6 +106,12 @@ pub fn run() {
             let attach = attach::start(app.handle(), session);
             app.manage(std::sync::Mutex::new(attach));
             splash::start(app.handle());
+            // The updater plugin fails to start without its settings, so a
+            // build without them simply has no updater.
+            if has_updater_config(app.handle()) {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
             Ok(())
         })
         .on_page_load(|webview, payload| {
@@ -116,6 +135,7 @@ pub fn run() {
             save_binary,
             splash::app_ready,
             show_snap_layouts,
+            updates_enabled,
             analysis::stannum_command,
             attach::attach_ui_reply,
             attach::attach_status,
