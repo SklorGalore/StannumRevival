@@ -23,7 +23,7 @@ encoding_rs = "0.8"
 thiserror = "2"
 schemars = "1"
 log = "0.4"
-sha2 = "0.10"
+sha2 = "0.11"
 getrandom = "0.4"
 
 [dev-dependencies]
