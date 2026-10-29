@@ -34,6 +34,7 @@ The same box runs commands. Type a few letters of any of these:
 - **Link selection** / **Unlink selection** and **Clear selection**
 - **Switch to dark theme** (or light, or the system theme)
 - **Show log** / **Hide log**
+- **Check for updates**, and **Stop checking for updates at startup** (or turn it back on); see [Updates](/StannumRevival/start/download/#updates)
 
 Commands match on related words too: "load flow" finds **Solve power flow**,
 "split" finds the side by side commands.
