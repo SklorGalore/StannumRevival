@@ -7,6 +7,7 @@ import {
 import { serialize } from "../serialization/serialize";
 import { deserialize } from "../serialization/deserialize";
 import { useDiagramStore } from "../../store/diagramStore";
+import { useLog } from "../../store/logStore";
 
 export async function saveDiagram(): Promise<void> {
   const store = useDiagramStore.getState();
@@ -42,8 +43,16 @@ export async function openDiagram(): Promise<void> {
   }
   const path = await showOpenDialog();
   if (!path) return;
-  const content = await loadDiagramFile(path);
-  const diagram = deserialize(content);
+  let diagram;
+  try {
+    diagram = deserialize(await loadDiagramFile(path));
+  } catch (e) {
+    // A damaged file, or one from a newer Stannum: say so rather than fail silently.
+    const message = `Couldn't open ${path.split(/[\\/]/).pop()}: ${(e as { message?: string } | null)?.message ?? String(e)}`;
+    useLog.getState().add("error", message);
+    window.alert(message);
+    return;
+  }
   store.loadDiagramFromJSON(diagram);
   store.setFilePath(path);
 }

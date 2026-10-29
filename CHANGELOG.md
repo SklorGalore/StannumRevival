@@ -16,6 +16,16 @@ section into the next version's when a release is cut (see
   **Ctrl+K**) to check by hand. Updates are signed, and Stannum only
   installs one signed with the project's key. Turn the startup check off in
   **Ctrl+K**. Takes effect from the first release after this one.
+- Reference pages for every Stannum file format: study files (`.stannum`),
+  diagrams (`.sld`), run files (`.stnrun`) and bus coordinates, each with
+  how its version number works. Studies, diagrams, run files and coordinates
+  saved by 0.3.0 and 0.4.1 are kept in `tests/compat`, and the tests open
+  them on every change.
+- Run files and bus coordinates files can say which version of their format
+  they follow with a first comment line (`# stannum-run-file version 1`,
+  `# stannum-coordinates version 1`). Saved run files start with it. A file
+  from a newer Stannum is refused with a message saying so, instead of being
+  read wrongly; so is a diagram with a newer major `schemaVersion`.
 - **Versions and compatibility** page in the docs: what a version number
   promises from 1.0 on for Stannum's files, the Python package,
   `stannum-cli`, run-file commands and attach, and how anything is
