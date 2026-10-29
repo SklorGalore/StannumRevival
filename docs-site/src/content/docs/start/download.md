@@ -64,11 +64,23 @@ release. It never sends your cases or files anywhere.
 
 ## The first time you open it
 
-The installers aren't code-signed yet, so your system warns about them once:
+The installers aren't signed by an identified developer yet, so your system
+warns about them once:
 
-- **macOS** says Apple can't check Stannum for malicious software. In
-  Applications, right-click Stannum, choose **Open**, then **Open** again.
-  After that it opens normally.
+- **macOS 15 (Sequoia) and later** says Apple could not verify Stannum is free
+  of malware. Choose **Done**, then open **System Settings > Privacy &
+  Security**, scroll to **Security**, choose **Open Anyway** next to Stannum,
+  and confirm. After that it opens normally.
+- **macOS 14 and earlier** says Apple can't check Stannum for malicious
+  software. In Applications, right-click Stannum, choose **Open**, then
+  **Open** again.
+- If macOS says **"Stannum.app is damaged and can't be opened"** (versions
+  0.4.1 and older), move the app to Applications and run this in Terminal,
+  then open it again:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Stannum.app
+  ```
 - **Windows** SmartScreen says "Windows protected your PC". Choose **More
   info**, then **Run anyway**.
 

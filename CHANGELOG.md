@@ -130,6 +130,10 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- The macOS app is signed ad hoc, so a downloaded copy no longer says
+  "Stannum.app is damaged and can't be opened". macOS still asks once
+  before the first launch; [Download](https://sklorgalore.github.io/StannumRevival/start/download/)
+  has the steps, and the Terminal command that opens older builds.
 - Power flow reads RAW revision 34 and 35 system switching devices instead
   of skipping them, so buses joined only by a breaker or disconnector are no
   longer split apart. Each solves as a lossless branch of the device's
