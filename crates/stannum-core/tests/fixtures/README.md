@@ -28,3 +28,8 @@
   closed), disconnector "Central D1" (6-7, closed) and breaker "Central BC"
   (2-7, open and normally open). The line to East leaves from bus 6, and bus
   7 has a 15 MW load, so power flows through both closed devices.
+- `five_bus_planning.raw` is `five_bus_devices.raw` (a fixed shunt at bus 4,
+  a switched shunt in voltage control at bus 5 and a STATCOM at bus 3) with
+  `five_bus_dc.raw`'s "East link" DC line, and line 1-3 split into a
+  multi-section line `&1` through dummy bus 6 (Mid, 138 kV), for the planning
+  event tests.

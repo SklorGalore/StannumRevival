@@ -604,6 +604,15 @@ impl OpenCase {
         Ok(job)
     }
 
+    /// How many planning events each category asked for gives on the case
+    /// as the study has it, before running them.
+    pub fn planning_event_counts(
+        &self,
+        settings: &crate::planning::PlanningSettings,
+    ) -> Result<Vec<crate::planning::CategoryCount>, Error> {
+        Ok(crate::planning::counts(self.power_case()?, settings)?)
+    }
+
     /// Keep a run finished without the workspace, unless the case changed
     /// while it ran (`version` is the case's when the job was taken).
     pub fn keep_contingencies(
@@ -693,6 +702,7 @@ impl OpenCase {
             ac_count: 1,
             limit_pct,
             solve: solve.clone(),
+            planning: None,
         };
         let job = ContingencyJob::new(power, base, settings).map_err(|e| {
             if e.starts_with("Nothing to take out") {

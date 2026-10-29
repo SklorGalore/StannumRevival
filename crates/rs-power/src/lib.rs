@@ -33,9 +33,9 @@ pub use mtdc::{
 pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
-    BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawSubstation,
-    RawWarning, SwitchType, SwitchingDevice, load_raw, load_raw_with_options, parse_raw,
-    parse_raw_with_options,
+    BranchKind, BranchSource, DcLineKind, GeneratorSource, MultiSectionLine, RawImport, RawOptions,
+    RawSubstation, RawWarning, ShuntKind, ShuntSource, SwitchType, SwitchingDevice, load_raw,
+    load_raw_with_options, parse_raw, parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,
