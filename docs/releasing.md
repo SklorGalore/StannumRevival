@@ -81,7 +81,9 @@ when a release or hotfix merges.
    try an installer or two (and `pip install` a wheel), then press **Publish release**. The docs site's
    Download page links to the latest published release, and the docs site
    itself is published from `main`, so it always describes the released
-   version.
+   version. Publishing is also what offers the update to installed copies:
+   the app reads `latest.json` from the latest *published* release, so a
+   draft or a pre-release is never offered.
 
 ### Hotfixes
 
@@ -97,6 +99,100 @@ same command again on that branch to set the version, push and open the
 pull request into `main`, then carry on from step 4.
 
 A version with a suffix (`0.3.0-beta.1`) is published as a pre-release.
+
+## Updates
+
+Installed copies of Stannum update themselves with the
+[Tauri updater](https://v2.tauri.app/plugin/updater/). A little after
+startup the app downloads `latest.json` from
+`https://github.com/SklorGalore/StannumRevival/releases/latest/download/`,
+and when its `version` is newer, offers to install it. The user can also
+check from the version button at the foot of the module rail or **Check for
+updates** in **Ctrl+K**.
+
+Every update is signed with the project's updater key, a minisign key that
+has nothing to do with Apple or Windows code signing. The public half is
+built into the app, which refuses an update whose signature doesn't match.
+The signature also carries the version it was signed for
+(`requireSignedVersion`), so an old installer can't be passed off as a new
+one.
+
+How a release gets its updates:
+
+1. **Build installers** (`scripts/release/build-installers.ps1`) writes a
+   Tauri config overlay (`scripts/release/updater-config.ps1`) with the
+   public key, the `latest.json` address and `createUpdaterArtifacts`, and
+   builds with it. Tauri then signs each installer with
+   `TAURI_SIGNING_PRIVATE_KEY` and writes a `.sig` beside it; on macOS it
+   also makes `Stannum.app.tar.gz`, the app the updater installs.
+2. **Updater manifest** (`scripts/release/updater-manifest.ps1`) gathers the
+   `.sig` files into `latest.json`, with the release notes and a download
+   address on the release for each platform and installer kind
+   (`windows-x86_64-nsis`, `-msi`, `darwin-aarch64`, `linux-x86_64-appimage`,
+   `-deb`, `-rpm`).
+3. **Draft GitHub release** attaches `latest.json` with the installers.
+
+Builds that aren't tag pushes (pull requests, release branches, runs by
+hand) sign with the real key when it is set, and otherwise with a throwaway
+key made in the job, so every platform's updater build and the manifest are
+proven before a tag. Throwaway-signed installers can't install real updates.
+A tag push without the key builds without the updater and warns.
+
+### The key
+
+The public key is committed as `src-tauri/updater-key.pub` (key id
+`AD2CD0DAC66B8C16`); it isn't secret. The private key lives only with the
+maintainer and in two repository secrets:
+
+| Secret | Holds |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | The private key file's contents. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password, if it has one. |
+
+To set them, from the repository with `gh` logged in as an admin:
+
+```powershell
+pwsh scripts/release/setup-updater-key.ps1 -KeyPath ~/.tauri/stannum.key
+```
+
+It checks that the key's `.pub` matches `src-tauri/updater-key.pub`, checks
+the password by signing a scratch file, and sets both secrets. By hand: in
+**Settings → Secrets and variables → Actions → New repository secret**, paste
+the key file's contents as `TAURI_SIGNING_PRIVATE_KEY` and the password as
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+Each build checks that its signatures were made with the private half of
+`updater-key.pub` and fails if not, so a wrong secret can't ship unusable
+updates.
+
+**Back up the key file and its password** (a password manager is a good
+place). Copies of Stannum only accept updates signed with this key. If it is
+lost, make a new one (`npx tauri signer generate -w <file>`), commit its
+`.pub` as `src-tauri/updater-key.pub`, update the secrets, and tell users to
+install the next release by hand once. Never commit the private key.
+
+The first release built with the key is the first one installed copies can
+update *from*; copies installed before it update by hand once.
+
+### Trying an update before release
+
+`npm run tauri dev` and builds without the overlay have no updater (the
+version button says so). To try one, build an old and a new version with an
+overlay whose endpoint points at a local server:
+
+```powershell
+npx tauri signer generate --ci -p test -w test.key
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content test.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = 'test'
+pwsh scripts/release/updater-config.ps1 -PubKey (Get-Content test.key.pub -Raw) -Out updater.json
+# Edit updater.json: endpoints -> http://127.0.0.1:8765/latest.json, and add
+# "dangerousInsecureTransportProtocol": true for plain http.
+npm run tauri -- build --bundles appimage --config updater.json
+```
+
+Install that build, raise the version, build again, write a `latest.json`
+for the new build with `updater-manifest.ps1` (or by hand), serve the folder
+(`npx http-server -p 8765`) and choose **Check for updates** in the old one.
 
 ## Licence files
 
