@@ -2,6 +2,8 @@
 //
 //   cargo run --release -p stannum-core --example dev_bridge &   # :1421
 //   npx vite --port 1420 &
+//   (for the crash test: build the bridge with --features fault-injection, run
+//   it with STANNUM_FAULT_COMMAND=fault_test, and set STANNUM_CRASH_TEST=1)
 //   NODE_PATH=$(npm root -g) STANNUM_MATPOWER=case9.m STANNUM_RAW=a.raw STANNUM_RAW_B=b.raw node tests/browser/smoke.mjs
 //
 // Tauri's IPC is replaced by a shim that forwards commands to the bridge and
@@ -11,6 +13,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
+const { STANNUM_CRASH_TEST } = process.env;
 const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_VSC_CASE, STANNUM_VSC_GRIDS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
@@ -34,6 +37,12 @@ const shim = () => {
       if (cmd === "save_binary") return void (window.__files[args.path] = atob(args.dataB64));
       if (cmd === "load_diagram") return window.__files[args.path];
       if (cmd.startsWith("plugin:event|")) return 0;
+      // The crash test sends the next call of this command to the bridge's
+      // fault_test command, which panics (STANNUM_FAULT_COMMAND=fault_test).
+      if (cmd === "stannum_command" && args?.command === window.__faultNext) {
+        window.__faultNext = null;
+        args = { ...args, command: "fault_test" };
+      }
       const r = await fetch(`http://127.0.0.1:1421/invoke/${cmd}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1384,6 +1393,49 @@ await shot("diff-working");
   await notice.getByText("The run file didn't run.").waitFor();
   await notice.getByText(/Line 2: Stannum has no command called solve_powerflow\./).waitFor();
   await notice.getByRole("button", { name: "Dismiss" }).click();
+}
+
+// A bug in the core: the command that hit it fails with a notice, the log
+// has the details, and the window carries on. Save diagnostics writes the
+// log and versions, without the case.
+if (STANNUM_CRASH_TEST) {
+  // case9.m is still open from the run file above.
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.evaluate(() => (window.__faultNext = "solve_power_flow"));
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  const crash = page.getByTestId("crash-notice");
+  await crash.getByText("Something went wrong inside Stannum: solving power flow stopped.").waitFor();
+  await crash.getByText("Internal error in fault_test: fault injected into fault_test for testing. This is a bug in Stannum; please report it.").waitFor();
+  await shot("crash-notice");
+
+  // Still usable: the same solve works, and so do the other modules.
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await page.getByRole("button", { name: "Records", exact: true }).click();
+  await page.getByTestId("records-table").locator("tbody tr:not([data-spacer])").first().waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+
+  await crash.getByRole("button", { name: "Show log" }).click();
+  const lines = page.getByRole("log", { name: "Log lines" });
+  await lines.getByText(/Internal error.* at .*crash\.rs:\d+: fault injected into fault_test for testing/).first().waitFor();
+  await shot("crash-log");
+
+  const saved = "/tmp/stannum-diagnostics.txt";
+  await queue(saved);
+  await crash.getByRole("button", { name: "Save diagnostics…" }).click();
+  await lines.getByText("Saved diagnostics. Attach the file when you report the problem.").waitFor();
+  const report = await page.evaluate((p) => window.__files[p], saved);
+  assert.match(report, /^Stannum diagnostics\n/, report);
+  assert.match(report, /Core: +stannum-core \d+\.\d+\.\d+, command API \d+/, report);
+  assert.match(report, /Solvers: +rs-power \S+, nodal \S+/, report);
+  assert.match(report, /Internal errors in the core: +[1-9]/, report);
+  assert.match(report, /ERROR \[core\] Internal error.*: fault injected into fault_test for testing/, report);
+  assert.match(report, /ERROR \[app\] Solving power flow failed after .*: Internal error in fault_test/, report);
+  // The log, not the case: none of the case file's data rows are in it.
+  assert.doesNotMatch(report, /mpc\.(bus|gen|branch) = \[/, report);
+  await crash.getByRole("button", { name: "Dismiss" }).click();
+  await crash.waitFor({ state: "detached" });
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

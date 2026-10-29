@@ -43,3 +43,19 @@ what the passes are.
   or a study record.
 
 The log keeps the latest 5,000 lines.
+
+## When something goes wrong inside Stannum
+
+A bug in Stannum stops only the step that hit it. A red notice under the case
+bar names the step, and the log has the details as an error line. The rest of
+the window keeps working: you can try the step again, move on, or save your
+study. If one view fails while drawing, that view shows what happened and a
+**Draw it again** button, and the other views carry on.
+
+To report the problem, click **Save diagnostics…** on the notice, in the log
+toolbar or in the command palette (<kbd>Ctrl</kbd>+<kbd>K</kbd>). It saves a
+text file with Stannum's version, the versions of its solvers, your operating
+system and the whole log. It does not include the case file or its data, and
+paths in your home folder are shortened to `~`. Log lines can still mention
+bus numbers and file names, so read the file before you send it if that
+matters.

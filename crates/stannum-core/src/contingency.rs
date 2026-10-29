@@ -551,9 +551,11 @@ fn parallel<T: Send>(
                 })
             })
             .collect();
+        // A worker that panicked takes the run down with it, so the command
+        // fails as an internal error instead of reporting a partial run.
         handles
             .into_iter()
-            .map(|h| h.join().unwrap_or_default())
+            .map(|h| h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)))
             .collect()
     });
     for (i, value) in results.into_iter().flatten() {

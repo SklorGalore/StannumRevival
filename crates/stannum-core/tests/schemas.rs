@@ -144,6 +144,7 @@ fn answers_fit_their_schemas() {
     assert!(c.ok("case_summary", json!({})).is_null());
     c.ok("contingency_progress", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
+    c.ok("diagnostics", json!({}));
 
     // A RAW case: every module works on it.
     let raw = fixture("five_bus.raw");

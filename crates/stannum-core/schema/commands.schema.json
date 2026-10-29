@@ -2159,6 +2159,65 @@
       ],
       "type": "object"
     },
+    "Diagnostics": {
+      "description": "Versions and platform for a problem report. It holds nothing from the\ncase: no file names, element names or values.",
+      "properties": {
+        "api_version": {
+          "description": "The command set's version (API_VERSION in the core).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arch": {
+          "description": "The processor (\"x86_64\", \"aarch64\").",
+          "type": "string"
+        },
+        "core": {
+          "description": "stannum-core's version.",
+          "type": "string"
+        },
+        "debug_build": {
+          "description": "Whether this is a debug build.",
+          "type": "boolean"
+        },
+        "internal_errors": {
+          "description": "Internal errors (panics) since the program started.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodal": {
+          "description": "nodal's version (topology).",
+          "type": "string"
+        },
+        "os": {
+          "description": "The operating system (\"windows\", \"macos\", \"linux\").",
+          "type": "string"
+        },
+        "rs_power": {
+          "description": "rs-power's version (power flow).",
+          "type": "string"
+        },
+        "threads": {
+          "description": "Processor threads available to solves.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "core",
+        "api_version",
+        "rs_power",
+        "nodal",
+        "os",
+        "arch",
+        "debug_build",
+        "threads",
+        "internal_errors"
+      ],
+      "type": "object"
+    },
     "DiffRecordDetail": {
       "properties": {
         "after_lines": {
@@ -6395,6 +6454,18 @@
         ]
       },
       "takes_case": true
+    },
+    "diagnostics": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Versions and platform for a problem report, and how many internal\nerrors there have been. Nothing from the case.",
+      "result": {
+        "$ref": "#/$defs/Diagnostics"
+      },
+      "takes_case": false
     },
     "diagram_network": {
       "action": false,
