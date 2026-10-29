@@ -37,3 +37,10 @@ __pycache__/
 crates/stannum-py/LICENSE
 crates/stannum-py/THIRD-PARTY-*
 src-tauri/tauri.updater.conf.json
+
+# cargo-fuzz (fuzz/README.md): build output, grown corpora, crash inputs
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/seeds/
+/fuzz/artifacts/
+/fuzz/coverage/
