@@ -175,7 +175,7 @@ export function TopBranches({
               >
                 <span className="truncate text-slate-700">
                   {end(b.from)} → {end(b.to)}
-                  {b.circuit !== "1" && <span className="text-slate-400"> ({b.circuit})</span>}
+                  {b.circuit !== "1" && <span className="text-slate-500"> ({b.circuit})</span>}
                 </span>
                 <span className="relative h-2.5 rounded-sm bg-slate-100">
                   <span className={`absolute inset-y-0 left-0 rounded-sm ${tone}`} style={{ width: `${Math.min(100, (v / scale) * 100)}%` }} />

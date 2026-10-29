@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { usePagedRows, type RowSource } from "./usePagedRows";
 
@@ -38,6 +38,10 @@ interface DataTableProps<T> {
   empty?: ReactNode;
   /** Keep the incoming order until the user sorts. */
   initialSort?: { key: string; dir: "asc" | "desc" } | null;
+  /** What the table lists, for screen readers ("Buses"). */
+  label?: string;
+  /** Keys pressed on the keyboard row (after the table's own); true when handled. */
+  onRowKeyDown?: (row: T, e: KeyboardEvent<HTMLTableElement>) => boolean;
 }
 
 function compare(a: unknown, b: unknown): number {
@@ -70,7 +74,10 @@ export function DataTable<T>({
   rowClassName,
   empty = "No rows.",
   initialSort = null,
+  label,
+  onRowKeyDown,
 }: DataTableProps<T>) {
+  const id = useId();
   const [sort, setSort] = useState(initialSort);
   const remote = !!source;
 
@@ -151,6 +158,52 @@ export function DataTable<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey]);
 
+  // The keyboard row: arrows move it, Enter or Space opens it like a click.
+  // Moving it doesn't select, so stepping past rows stays cheap.
+  const [cursor, setCursor] = useState<number | null>(null);
+  const cursorAt = cursor === null ? null : Math.min(cursor, length - 1);
+  const rowAt = (i: number) => (remote ? paged.rowAt(i) : sorted[i]);
+  function moveTo(i: number) {
+    const el = scrollRef.current;
+    const to = Math.max(0, Math.min(length - 1, i));
+    setCursor(to);
+    if (!el) return;
+    const top = to * ROW_HEIGHT;
+    const bodyHeight = el.clientHeight - HEADER_HEIGHT;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_HEIGHT > el.scrollTop + bodyHeight) el.scrollTop = top + ROW_HEIGHT - bodyHeight;
+  }
+  /** Where the keyboard row starts: the selected row, or the top one in view. */
+  const startRow = () => (revealAt >= 0 ? revealAt : Math.min(length - 1, Math.ceil(view.top / ROW_HEIGHT)));
+  function onKeyDown(e: KeyboardEvent<HTMLTableElement>) {
+    if (e.target !== e.currentTarget || !length) return;
+    const page = Math.max(1, Math.floor(((scrollRef.current?.clientHeight ?? 600) - HEADER_HEIGHT) / ROW_HEIGHT) - 1);
+    const from = cursorAt ?? startRow();
+    const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    if (e.key === "ArrowUp" && cursorAt === 0) {
+      // Up from the first row: into the headers, to sort.
+      e.preventDefault();
+      const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>("thead button");
+      const on = e.currentTarget.querySelector<HTMLButtonElement>("th[aria-sort] button");
+      return (on ?? buttons[0])?.focus();
+    }
+    if (e.key in step) {
+      e.preventDefault();
+      return moveTo(from + step[e.key]);
+    }
+    if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      return moveTo(e.key === "Home" ? 0 : length - 1);
+    }
+    const row = cursorAt === null ? undefined : rowAt(cursorAt);
+    if (row === undefined) return;
+    if (onRowKeyDown?.(row, e)) return e.preventDefault();
+    if ((e.key === "Enter" || e.key === " ") && onRowClick) {
+      e.preventDefault();
+      onRowClick(row);
+    }
+  }
+
   function toggleSort(key: string) {
     if (remote && columns.find((c) => c.key === key)?.sortField === null) return;
     setSort((s) =>
@@ -168,26 +221,67 @@ export function DataTable<T>({
           setView({ top: el.scrollTop, height: el.clientHeight || 600 });
         }}
       >
-        <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
+        <table
+          role="grid"
+          aria-label={label}
+          aria-rowcount={length + 1}
+          aria-readonly={onRowKeyDown ? undefined : true}
+          aria-activedescendant={cursorAt !== null && cursorAt >= first && cursorAt < last ? `${id}-r${cursorAt}` : undefined}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onFocus={(e) => {
+            if (e.target === e.currentTarget && cursorAt === null && length) setCursor(startRow());
+          }}
+          className="group w-full text-xs tabular-nums border-separate border-spacing-0 focus:outline-none"
+        >
           <thead className="sticky top-0 z-10 bg-slate-50">
-            <tr>
-              {columns.map((c) => (
-                <th
-                  key={c.key}
-                  scope="col"
-                  title={c.title}
-                  onClick={() => toggleSort(c.key)}
-                  className={`px-2.5 py-2 font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 ${
-                    c.align === "right" ? "text-right" : "text-left"
-                  }`}
-                >
+            <tr aria-rowindex={1}>
+              {columns.map((c) => {
+                const sortable = !(remote && c.sortField === null);
+                const dir = sort?.key === c.key ? sort.dir : null;
+                const content = (
                   <span className="inline-flex items-center gap-0.5">
                     {c.header}
-                    {sort?.key === c.key &&
-                      (sort.dir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                    {dir && (dir === "asc" ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />)}
                   </span>
-                </th>
-              ))}
+                );
+                return (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    title={c.title}
+                    aria-sort={dir ? (dir === "asc" ? "ascending" : "descending") : undefined}
+                    className={`p-0 font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap select-none ${
+                      c.align === "right" ? "text-right" : "text-left"
+                    }`}
+                  >
+                    {sortable ? (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => toggleSort(c.key)}
+                        onKeyDown={(e) => {
+                          const all = [...(e.currentTarget.closest("thead")?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+                          const at = all.indexOf(e.currentTarget);
+                          const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: all.length - 1 }[e.key];
+                          if (to !== undefined) {
+                            e.preventDefault();
+                            all[Math.max(0, Math.min(all.length - 1, to))]?.focus();
+                          } else if (e.key === "ArrowDown" || e.key === "Escape") {
+                            e.preventDefault();
+                            e.currentTarget.closest("table")?.focus();
+                          }
+                        }}
+                        className={`w-full px-2.5 py-2 font-semibold hover:bg-slate-100 focus:outline-none focus-visible:bg-slate-100 ${c.align === "right" ? "text-right" : "text-left"}`}
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      <span className="block px-2.5 py-2">{content}</span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -199,7 +293,7 @@ export function DataTable<T>({
             {visible.map(({ row, i }) => {
               if (row === undefined)
                 return (
-                  <tr key={`loading-${i}`} aria-busy="true" style={{ height: ROW_HEIGHT }} data-loading>
+                  <tr key={`loading-${i}`} id={`${id}-r${i}`} aria-rowindex={i + 2} aria-busy="true" style={{ height: ROW_HEIGHT }} data-loading>
                     <td colSpan={columns.length} className="px-2.5 py-0 border-b border-slate-100 text-slate-300">
                       …
                     </td>
@@ -210,12 +304,18 @@ export function DataTable<T>({
               return (
                 <tr
                   key={key}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  id={`${id}-r${i}`}
+                  aria-rowindex={i + 2}
+                  onClick={() => {
+                    setCursor(i);
+                    onRowClick?.(row);
+                  }}
                   aria-selected={selected}
+                  data-cursor={cursorAt === i ? "" : undefined}
                   style={{ height: ROW_HEIGHT }}
                   className={`${onRowClick ? "cursor-pointer" : ""} ${
                     selected ? "bg-teal-50 outline outline-1 -outline-offset-1 outline-teal-400" : "hover:bg-slate-50"
-                  } ${rowClassName?.(row) ?? ""}`}
+                  } ${cursorAt === i ? "group-focus-visible:outline-2 group-focus-visible:-outline-offset-2 group-focus-visible:outline group-focus-visible:outline-teal-600" : ""} ${rowClassName?.(row) ?? ""}`}
                 >
                   {columns.map((c) => (
                     <td

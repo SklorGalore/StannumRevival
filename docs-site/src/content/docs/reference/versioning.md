@@ -28,7 +28,9 @@ any release.
 
 ### Files Stannum writes
 
-The **study** (`.stannum`), **diagram** (`.sld`), **run file** (`.stnrun`),
+The [study](/StannumRevival/reference/study-file/) (`.stannum`),
+[diagram](/StannumRevival/reference/diagram-file/) (`.sld`),
+[run file](/StannumRevival/reference/run-file/) (`.stnrun`),
 [DC grid file](/StannumRevival/reference/dc-grid-file/) and
 [bus coordinates file](/StannumRevival/reference/coordinates-file/):
 
@@ -37,13 +39,18 @@ The **study** (`.stannum`), **diagram** (`.sld`), **run file** (`.stnrun`),
 - A minor release may add **optional** fields and new choices. A file
   without them reads as it always did.
 - The promise runs forwards only: an older release isn't guaranteed to open
-  a file a newer one saved. The study and DC grid files carry a `version`
-  number, and a release refuses a file whose number is newer than it reads,
-  saying to update Stannum, instead of reading it wrong. The DC grid file
+  a file a newer one saved. Each file carries a version: `version` in study
+  and DC grid files, `metadata.schemaVersion` in diagrams, and a first
+  comment line such as `# stannum-run-file version 1` in run files and
+  coordinates files. A release refuses a file whose version is newer than it
+  reads, saying to update Stannum, instead of reading it wrong. Each format's
+  page has its version history. The DC grid file
   also refuses fields it doesn't know, to catch typos. Share files with
   colleagues on the same or a newer release.
-- A file's `version` only goes up when an older release couldn't read the
+- A file's version only goes up when an older release couldn't read the
   new file correctly.
+- Files saved by earlier releases are kept in the repository's
+  `tests/compat` folder, and the tests open them on every change.
 
 ### Files Stannum reads from other tools
 

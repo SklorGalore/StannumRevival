@@ -1,6 +1,6 @@
 // Actions that reach back into the open case from a generated drawing:
 // bring in more buses, re-centre on a bus, change how many hops are drawn.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { Crosshair, Minus, Plus, Network } from "lucide-react";
 import { useDiagramStore } from "../../store/diagramStore";
@@ -91,6 +91,13 @@ export function NodeMenu({ menu, onClose }: { menu: Menu; onClose: () => void })
   const depth = useDiagramStore((s) => s.metadata.around?.depth ?? 2);
   const [neighbours, setNeighbours] = useState<number | null>(null);
   const [names, setNames] = useState<Map<number, string>>(new Map());
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Focus the first item so the arrows work, whether the menu came from the mouse or the keyboard.
+  useEffect(() => {
+    if (!menu) return;
+    const id = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [menu]);
 
   const node = menu?.node;
   const nodes = useDiagramStore.getState().nodes;
@@ -143,7 +150,14 @@ export function NodeMenu({ menu, onClose }: { menu: Menu; onClose: () => void })
         onClose();
         onClick();
       }}
-      className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+      // Enter or Space on a focused item (a pointer acted on pointer down already).
+      onClick={(e) => {
+        if (e.detail !== 0 || disabled) return;
+        onClose();
+        onClick();
+      }}
+      tabIndex={-1}
+      className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {icon}
       {label}
@@ -152,10 +166,24 @@ export function NodeMenu({ menu, onClose }: { menu: Menu; onClose: () => void })
   const farName = far != null ? (names.get(far) ?? `Bus ${far}`) : "";
   return (
     <div
+      ref={menuRef}
       role="menu"
+      aria-label="Case actions"
       className="fixed z-50 min-w-52 py-1 rounded-md border border-slate-200 bg-white shadow-lg"
       style={{ left: menu.x, top: menu.y }}
       onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)")];
+        const at = items.indexOf(document.activeElement as HTMLButtonElement);
+        const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[e.key];
+        if (to !== undefined && items.length) {
+          e.preventDefault();
+          items[(to + items.length) % items.length].focus();
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          onClose();
+        }
+      }}
     >
       {far != null && item(`Bring in ${farName}`, () => expand(bus, [far]), false, <Plus size={13} />)}
       {farBuses.length > 1 && (
@@ -164,7 +192,7 @@ export function NodeMenu({ menu, onClose }: { menu: Menu; onClose: () => void })
           {farBuses.slice(0, 8).map((b) => (
             <div key={b}>{item(`Bring in ${names.get(b) ?? `Bus ${b}`}`, () => expand(bus, [b]), false, <span className="w-[13px]" />)}</div>
           ))}
-          {farBuses.length > 8 && <div className="px-3 py-1 text-[11px] text-slate-400">and {farBuses.length - 8} more</div>}
+          {farBuses.length > 8 && <div className="px-3 py-1 text-[11px] text-slate-500">and {farBuses.length - 8} more</div>}
           <div className="my-1 border-t border-slate-100" />
         </>
       )}

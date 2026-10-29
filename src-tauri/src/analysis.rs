@@ -22,9 +22,15 @@ pub async fn stannum_command(
     args: Option<serde_json::Value>,
 ) -> Result<Response, Error> {
     let session = state.0.clone();
+    // Panics are caught inside invoke; this only names a worker that died.
+    let command_name = command.clone();
     tauri::async_runtime::spawn_blocking(move || session.invoke(&command, args.unwrap_or_default()))
         .await
-        .map_err(|e| Error::internal(e.to_string()))?
+        .map_err(|e| {
+            Error::internal(format!(
+                "Stannum hit an internal error in {command_name}: {e}"
+            ))
+        })?
         .map(Response::new)
 }
 

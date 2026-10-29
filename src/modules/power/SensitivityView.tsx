@@ -162,7 +162,7 @@ export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
             rows={rows}
             rowKey={(r) => r.index}
             search={filter}
-            rowClassName={(r) => (r.offline ? "text-slate-400" : "")}
+            rowClassName={(r) => (r.offline ? "text-slate-500" : "")}
             columns={[
               { key: "label", header: table.title, value: (r) => r.label + (r.offline ? " [offline]" : "") },
               {

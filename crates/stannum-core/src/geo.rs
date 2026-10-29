@@ -12,6 +12,10 @@
 //! 5,29.7604,-95.3698,Houston
 //! ```
 //!
+//! A first comment line `# stannum-coordinates version 1` may say which
+//! version of the format the file follows; a file without one is version 1,
+//! and a newer version than [`VERSION`] is refused.
+//!
 //! Columns are found by their header name, in any order and any case, and
 //! extra columns are ignored. Rows that can't be read are skipped and
 //! reported with their line number; the rest of the file still attaches.
@@ -36,6 +40,12 @@ const BUS: &[&str] = &["bus", "busnumber", "busnum", "number", "busid", "i"];
 const LAT: &[&str] = &["latitude", "lat"];
 const LON: &[&str] = &["longitude", "lon", "long", "lng"];
 const SUBSTATION: &[&str] = &["substation", "substationname", "sub", "subname", "site"];
+
+/// The newest coordinates file version this Stannum reads.
+pub const VERSION: u32 = 1;
+
+/// The tag of the comment line that declares a coordinates file's version.
+pub const VERSION_TAG: &str = "stannum-coordinates";
 
 /// How many problem lines a summary lists by name; the rest are counted.
 const LISTED_PROBLEMS: usize = 20;
@@ -97,6 +107,7 @@ fn split(line: &str) -> Vec<String> {
 /// Read a coordinates CSV. Fails only when the header can't be used; bad
 /// rows are listed in [`CoordinateFile::problems`].
 pub fn parse(text: &str) -> Result<CoordinateFile, String> {
+    crate::file_version::check(text, VERSION_TAG, VERSION, "coordinates file")?;
     let mut lines = text
         .lines()
         .enumerate()
@@ -443,6 +454,14 @@ mod tests {
         let lines: Vec<usize> = f.problems.iter().map(|p| p.line).collect();
         assert_eq!(lines, [3, 4, 5]);
         assert!(f.problems[1].message.contains("outside ±90"));
+    }
+
+    #[test]
+    fn a_version_line_is_read_and_a_newer_one_refused() {
+        let f = parse("# stannum-coordinates version 1\nbus,lat,lon\n1,30,-97\n").unwrap();
+        assert_eq!(f.places.len(), 1);
+        let e = parse("# stannum-coordinates version 2\nbus,lat,lon\n").unwrap_err();
+        assert!(e.contains("version 2, from a newer Stannum"), "{e}");
     }
 
     #[test]

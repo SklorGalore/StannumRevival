@@ -96,7 +96,7 @@ export function CompareSolves({ current, onShow }: { current: SolveReport | null
       actions={
         <span className="flex flex-wrap items-center gap-2">
           <SidePicker label="Before" value={compare.a} onChange={(v) => setCompare({ ...compare, a: v })} current={!!current} />
-          <ArrowRight size={13} className="text-slate-400" />
+          <ArrowRight size={13} className="text-slate-500" />
           <SidePicker label="After" value={compare.b} onChange={(v) => setCompare({ ...compare, b: v })} current={!!current} />
         </span>
       }
@@ -112,11 +112,11 @@ export function CompareSolves({ current, onShow }: { current: SolveReport | null
               const d = t.b - t.a;
               return (
                 <div key={t.label} className="rounded-md border border-slate-200 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t.label}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t.label}</p>
                   <p className="text-sm font-semibold text-slate-800 tabular-nums">
                     {t.unit ? fixed(t.b, 1) : count(t.b)} {t.unit}
                   </p>
-                  <p className={`text-[11px] tabular-nums ${d === 0 ? "text-slate-400" : "text-slate-600"}`}>
+                  <p className={`text-[11px] tabular-nums ${d === 0 ? "text-slate-500" : "text-slate-600"}`}>
                     {d === 0 ? "No change" : `${signed(d, t.unit ? 2 : 0)} ${t.unit} from ${t.unit ? fixed(t.a, 1) : count(t.a)}`}
                   </p>
                 </div>

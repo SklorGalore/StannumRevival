@@ -2,6 +2,8 @@
 //
 //   cargo run --release -p stannum-core --example dev_bridge &   # :1421
 //   npx vite --port 1420 &
+//   (for the crash test: build the bridge with --features fault-injection, run
+//   it with STANNUM_FAULT_COMMAND=fault_test, and set STANNUM_CRASH_TEST=1)
 //   NODE_PATH=$(npm root -g) STANNUM_MATPOWER=case9.m STANNUM_RAW=a.raw STANNUM_RAW_B=b.raw node tests/browser/smoke.mjs
 //
 // Tauri's IPC is replaced by a shim that forwards commands to the bridge and
@@ -11,6 +13,7 @@ import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 import assert from "node:assert/strict";
 
+const { STANNUM_CRASH_TEST } = process.env;
 const { STANNUM_MATPOWER, STANNUM_RAW, STANNUM_RAW_B, STANNUM_RAW_DC, STANNUM_DC_A, STANNUM_DC_B, STANNUM_VIOLATIONS, STANNUM_VSC_CASE, STANNUM_VSC_GRIDS, STANNUM_SHOTS } = process.env;
 const APP = process.env.STANNUM_URL ?? "http://localhost:1420";
 assert(STANNUM_MATPOWER && STANNUM_RAW && STANNUM_RAW_B, "set STANNUM_MATPOWER, STANNUM_RAW and STANNUM_RAW_B");
@@ -34,6 +37,12 @@ const shim = () => {
       if (cmd === "save_binary") return void (window.__files[args.path] = atob(args.dataB64));
       if (cmd === "load_diagram") return window.__files[args.path];
       if (cmd.startsWith("plugin:event|")) return 0;
+      // The crash test sends the next call of this command to the bridge's
+      // fault_test command, which panics (STANNUM_FAULT_COMMAND=fault_test).
+      if (cmd === "stannum_command" && args?.command === window.__faultNext) {
+        window.__faultNext = null;
+        args = { ...args, command: "fault_test" };
+      }
       const r = await fetch(`http://127.0.0.1:1421/invoke/${cmd}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -871,9 +880,9 @@ if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
   const tab = page.getByTestId("vsc-grids");
   await tab.getByText("AC/DC iterations").waitFor();
   assert.equal(await tab.getByTestId("vsc-grid").count(), 2, "both DC grids reported");
-  await tab.getByRole("cell", { name: "Offshore", exact: true }).first().waitFor();
-  await tab.getByRole("cell", { name: "DC slack" }).waitFor();
-  await tab.getByRole("cell", { name: "Droop" }).first().waitFor();
+  await tab.getByRole("gridcell", { name: "Offshore", exact: true }).first().waitFor();
+  await tab.getByRole("gridcell", { name: "DC slack" }).waitFor();
+  await tab.getByRole("gridcell", { name: "Droop" }).first().waitFor();
   await shot("vsc-grids");
   await tab.getByTestId("vsc-grid").nth(1).scrollIntoViewIfNeeded();
   await shot("vsc-grids-droop");
@@ -1351,6 +1360,7 @@ await shot("diff-working");
   await page.getByTestId("save-recording").click();
   await bar.waitFor({ state: "detached" });
   const recorded = readFileSync(runFile, "utf8");
+  assert.match(recorded, /^# stannum-run-file version 1\n/, recorded);
   assert.match(recorded, /^open_case path=case9\.m$/m, recorded);
   assert.match(recorded, /^set_study_edits edits=\[\{"element": "line:4:5:1", "kind": "status", "online": false\}\]$/m, recorded);
   // The app's solve settings are the defaults, so the solves read plainly.
@@ -1383,6 +1393,116 @@ await shot("diff-working");
   await notice.getByText("The run file didn't run.").waitFor();
   await notice.getByText(/Line 2: Stannum has no command called solve_powerflow\./).waitFor();
   await notice.getByRole("button", { name: "Dismiss" }).click();
+}
+
+// A bug in the core: the command that hit it fails with a notice, the log
+// has the details, and the window carries on. Save diagnostics writes the
+// log and versions, without the case.
+if (STANNUM_CRASH_TEST) {
+  // case9.m is still open from the run file above.
+  await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+  await page.evaluate(() => (window.__faultNext = "solve_power_flow"));
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  const crash = page.getByTestId("crash-notice");
+  await crash.getByText("Something went wrong inside Stannum: solving power flow stopped.").waitFor();
+  await crash.getByText("Internal error in fault_test: fault injected into fault_test for testing. This is a bug in Stannum; please report it.").waitFor();
+  await shot("crash-notice");
+
+  // Still usable: the same solve works, and so do the other modules.
+  await page.getByRole("button", { name: "Solve", exact: true }).click();
+  await page.locator("text=Converged >> visible=true").first().waitFor();
+  await page.getByRole("button", { name: "Records", exact: true }).click();
+  await page.getByTestId("records-table").locator("tbody tr:not([data-spacer])").first().waitFor();
+  await page.getByRole("button", { name: "Power flow", exact: true }).click();
+
+  await crash.getByRole("button", { name: "Show log" }).click();
+  const lines = page.getByRole("log", { name: "Log lines" });
+  await lines.getByText(/Internal error.* at .*crash\.rs:\d+: fault injected into fault_test for testing/).first().waitFor();
+  await shot("crash-log");
+
+  const saved = "/tmp/stannum-diagnostics.txt";
+  await queue(saved);
+  await crash.getByRole("button", { name: "Save diagnostics…" }).click();
+  await lines.getByText("Saved diagnostics. Attach the file when you report the problem.").waitFor();
+  const report = await page.evaluate((p) => window.__files[p], saved);
+  assert.match(report, /^Stannum diagnostics\n/, report);
+  assert.match(report, /Core: +stannum-core \d+\.\d+\.\d+, command API \d+/, report);
+  assert.match(report, /Solvers: +rs-power \S+, nodal \S+/, report);
+  assert.match(report, /Internal errors in the core: +[1-9]/, report);
+  assert.match(report, /ERROR \[core\] Internal error.*: fault injected into fault_test for testing/, report);
+  assert.match(report, /ERROR \[app\] Solving power flow failed after .*: Internal error in fault_test/, report);
+  // The log, not the case: none of the case file's data rows are in it.
+  assert.doesNotMatch(report, /mpc\.(bus|gen|branch) = \[/, report);
+  await crash.getByRole("button", { name: "Dismiss" }).click();
+  await crash.waitFor({ state: "detached" });
+}
+
+// Keyboard: modules by Ctrl+number, tables by arrows, tabs by arrows, the
+// shortcut list, and focus going back where it was after the palette.
+{
+  await queue(STANNUM_RAW);
+  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.locator("[data-case-summary]").getByText("five_bus.raw").waitFor();
+  await page.keyboard.press("Control+3");
+  const recordsPane = page.locator('[data-module="records"]');
+  await recordsPane.getByTestId("record-types").getByRole("button", { name: /^Buses/ }).click();
+  const grid = recordsPane.getByRole("grid");
+  await grid.locator("tbody tr:not([data-spacer])").first().waitFor();
+  await grid.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  const cursorRow = grid.locator("tr[data-cursor]");
+  assert.equal(await cursorRow.getAttribute("aria-rowindex"), "4", "two rows down from the first");
+  assert.equal(await grid.getAttribute("aria-activedescendant"), await cursorRow.getAttribute("id"));
+  await page.keyboard.press("Enter");
+  await page.getByTestId("records-inspector").getByTestId("inspector-title").filter({ hasText: /^Bus / }).waitFor();
+  await shot("keyboard-records-row");
+  // F2 edits the row's first editable field; Escape gives the keyboard back to the table.
+  await grid.focus();
+  await page.keyboard.press("F2");
+  const editor = grid.getByRole("textbox", { name: "Cell value" });
+  await editor.waitFor();
+  await page.keyboard.press("Escape");
+  await editor.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "grid");
+  // Up from the first row reaches the headers; Enter sorts.
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  await grid.locator('th[aria-sort="ascending"]').waitFor();
+  await page.keyboard.press("ArrowDown");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "grid");
+
+  // Power flow tabs: one Tab stop, arrows switch.
+  await page.keyboard.press("Control+2");
+  const powerPane = page.locator('[data-module="power"]');
+  await powerPane.getByRole("button", { name: "Solve", exact: true }).click();
+  await powerPane.locator("text=Converged >> visible=true").first().waitFor();
+  const results = powerPane.getByRole("tablist", { name: "Power flow results" });
+  await results.getByRole("tab", { selected: true }).focus();
+  const before = await results.getByRole("tab", { selected: true }).textContent();
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(
+    (was) => document.activeElement?.getAttribute("role") === "tab" && document.activeElement.getAttribute("aria-selected") === "true" && document.activeElement.textContent !== was,
+    before
+  );
+  assert.equal(await results.locator('[role="tab"][tabindex="0"]').count(), 1, "one tab in the Tab order");
+  await shot("keyboard-tabs");
+
+  // "?" lists the shortcuts; Escape closes it and focus comes back.
+  await page.keyboard.press("?");
+  const shortcuts = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await shortcuts.getByText("Move between rows").waitFor();
+  await shot("keyboard-shortcuts");
+  await page.keyboard.press("Escape");
+  await shortcuts.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("dialog", { name: "Search and commands" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
 }
 
 assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);

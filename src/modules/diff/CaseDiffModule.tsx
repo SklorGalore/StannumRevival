@@ -21,7 +21,7 @@ function FilePicker({ label, path, onPick }: { label: string; path: string; onPi
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <span className="text-[11px] font-medium text-slate-600 w-20 shrink-0">{label}</span>
       <div className={`${inputClass} flex-1 min-w-0 truncate`} title={path}>
-        {path ? baseName(path) : <span className="text-slate-400">No file chosen</span>}
+        {path ? baseName(path) : <span className="text-slate-500">No file chosen</span>}
       </div>
       <Button
         onClick={async () => {
@@ -394,8 +394,8 @@ export function CaseDiffModule({ active }: { active: boolean }) {
                       rowClassName={(f) => rowTone[f.status]}
                       columns={[
                         { key: "name", header: "Field", value: (f) => f.name },
-                        { key: "before", header: "Baseline", value: (f) => f.before, render: (f) => <span className="font-mono">{f.before ?? <em className="text-slate-400">Absent</em>}</span> },
-                        { key: "after", header: "Comparison", value: (f) => f.after, render: (f) => <span className="font-mono">{f.after ?? <em className="text-slate-400">Absent</em>}</span> },
+                        { key: "before", header: "Baseline", value: (f) => f.before, render: (f) => <span className="font-mono">{f.before ?? <em className="text-slate-500">Absent</em>}</span> },
+                        { key: "after", header: "Comparison", value: (f) => f.after, render: (f) => <span className="font-mono">{f.after ?? <em className="text-slate-500">Absent</em>}</span> },
                         { key: "status", header: "Status", value: (f) => f.status, render: (f) => <StatusPill status={f.status} /> },
                       ]}
                     />
