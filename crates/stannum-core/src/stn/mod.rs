@@ -25,7 +25,7 @@ mod transformer;
 
 use crate::diff::tokenizer::tokenize;
 use crate::diff::value::{Number, Value as RawValue};
-use crate::raw_export::{self, Doc, Fields, Item, Rec, int, layout, num, value_f64};
+use crate::raw_export::{self, Doc, Fields, Item, Name, Rec, int, layout, num, value_f64};
 pub(crate) use crate::raw_export::{int as raw_int, num as raw_num, text as raw_text};
 use stannum_format::{Document, Record, Value};
 use std::collections::HashMap;
@@ -107,7 +107,7 @@ pub fn read(text: &str) -> Result<Document, ReadError> {
 
 /// A Stannum case as RAW revision 35 text.
 pub fn to_raw(doc: &Document, source_name: &str) -> Result<String, String> {
-    let raw = to_doc(doc)?;
+    let (raw, _) = to_doc(doc)?;
     raw_export::write_doc(&raw, source_name)
 }
 
@@ -115,34 +115,6 @@ pub fn to_raw(doc: &Document, source_name: &str) -> Result<String, String> {
 /// rest of Stannum opens.
 pub fn raw_text_of(name: &str, bytes: &[u8]) -> Result<String, String> {
     to_raw(&read_file(name, bytes)?, name)
-}
-
-/// Read a `.stn` or `.stnb` file to open it: the file, its RAW 35 text, and the line
-/// of each record by typed reference (`generator:101:1`), to point
-/// warnings at.
-#[allow(clippy::type_complexity)]
-pub fn open(
-    name: &str,
-    bytes: &[u8],
-) -> Result<(Document, String, HashMap<String, usize>), String> {
-    let doc = read_file(name, bytes)?;
-    let mut lines = HashMap::new();
-    // A .stnb file has rows, not lines: its warnings point at no line.
-    let tables = if stannum_format::is_binary(bytes) {
-        &[][..]
-    } else {
-        &doc.tables[..]
-    };
-    for table in tables {
-        let Some(def) = doc.schema.table(&table.name) else {
-            continue;
-        };
-        for r in &table.records {
-            lines.insert(format!("{}:{}", def.kind, r.id), r.line);
-        }
-    }
-    let raw = to_raw(&doc, name)?;
-    Ok((doc, raw, lines))
 }
 
 /// A case file's bytes as RAW text: a Stannum case converted, anything
@@ -272,7 +244,7 @@ fn decode(section: &str, lines: &[String]) -> Option<Fields> {
                 name.clone()
             };
             if let Some(v) = raw_value(t, kind) {
-                out.push((name, v));
+                out.push((name.into(), v));
             } else if !t.trim().is_empty() {
                 return None;
             }
@@ -451,12 +423,37 @@ fn impedance_tables(item: &Item) -> Option<Vec<Record>> {
 // ---------------------------------------------------------------------------
 // Stannum → RAW 35.
 
+/// FNV-1a, for maps looked up for every record of a case: keys are short
+/// and come from the case, not from anyone choosing them to collide.
+#[derive(Default)]
+pub(crate) struct Fnv(u64);
+
+impl std::hash::Hasher for Fnv {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        let mut h = if self.0 == 0 {
+            0xcbf29ce484222325
+        } else {
+            self.0
+        };
+        for b in bytes {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        self.0 = h;
+    }
+}
+
+pub(crate) type FastMap<K, V> = HashMap<K, V, std::hash::BuildHasherDefault<Fnv>>;
+
 pub(crate) struct ExCtx<'a> {
     pub doc: &'a Document,
     /// Bus id → number.
-    pub numbers: HashMap<&'a str, i64>,
+    pub numbers: FastMap<&'a str, i64>,
     /// Bus number → (area, zone, owner, base kV).
-    pub buses: HashMap<i64, (i64, i64, i64, f64)>,
+    pub buses: FastMap<i64, (i64, i64, i64, f64)>,
     pub sbase: f64,
 }
 
@@ -487,7 +484,11 @@ impl ExCtx<'_> {
     }
 }
 
-fn to_doc(doc: &Document) -> Result<Doc, String> {
+/// Where each RAW item came from: the line of its record in the `.stn`
+/// file (0 for a `.stnb` file), by section, in item order.
+type Origins = HashMap<&'static str, Vec<usize>>;
+
+fn to_doc(doc: &Document) -> Result<(Doc, Origins), String> {
     let case = doc.records("case").first();
     let get = |field: &str| {
         case.and_then(|c| doc.value("case", c, field)).or_else(|| {
@@ -513,8 +514,8 @@ fn to_doc(doc: &Document) -> Result<Doc, String> {
         ("BASFRQ".into(), num(freq)),
     ];
     let title = |field: &str| get(field).and_then(Value::as_str).unwrap_or("").to_string();
-    let mut numbers = HashMap::new();
-    let mut buses = HashMap::new();
+    let mut numbers = FastMap::default();
+    let mut buses = FastMap::default();
     for r in doc.records("bus") {
         let n = r
             .int("number")
@@ -549,38 +550,296 @@ fn to_doc(doc: &Document) -> Result<Doc, String> {
         sections: HashMap::new(),
         tail: Vec::new(),
     };
-    for table in &doc.tables {
-        for r in &table.records {
-            let (section, item) = match table.name.as_str() {
-                "transformer" | "transformer3" => {
-                    ("TRANSFORMER", transformer::export(&ctx, &table.name, r)?)
+    // Records are converted in chunks side by side, then placed in order.
+    let chunks: Vec<(&stannum_format::Table, &[Record])> = doc
+        .tables
+        .iter()
+        .flat_map(|t| t.records.chunks(CHUNK).map(move |c| (t, c)))
+        .collect();
+    let per_table: Vec<Result<Vec<(Placed, usize)>, String>> = in_parallel(
+        &chunks,
+        |(_, records)| records.len(),
+        |(table, records)| table_items(&ctx, &table.name, records),
+    );
+    let mut origins = Origins::new();
+    for placed in per_table {
+        for (placed, line) in placed? {
+            match placed {
+                Placed::Item(section, item) => {
+                    raw.items_mut(section).push(item);
+                    origins.entry(section).or_default().push(line);
                 }
-                "impedance_table" => ("IMPEDANCE CORRECTION", impedance_lines(r)),
-                "x.psse.lines" => {
-                    let section = r.str("section").unwrap_or_default().to_string();
-                    let lines: Vec<String> = r
-                        .get("text")
-                        .and_then(Value::as_list)
-                        .unwrap_or_default()
-                        .iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect();
-                    if section == "SUBSTATION" {
-                        raw.tail = lines;
-                    } else {
-                        raw.items_mut(&section).push(Item::Lines(lines));
-                    }
-                    continue;
+                Placed::Other(section, item) => raw.items_mut(&section).push(item),
+                Placed::Tail(lines) => {
+                    raw.tail = lines;
+                    origins.insert("SUBSTATION", vec![line]);
                 }
-                name => match maps::section_of(name) {
-                    Some(section) => (section, maps::export(&ctx, name, r)?),
-                    None => continue,
-                },
-            };
-            raw.items_mut(section).push(item);
+            }
         }
     }
-    Ok(raw)
+    Ok((raw, origins))
+}
+
+/// Where a converted record goes.
+enum Placed {
+    Item(&'static str, Item),
+    /// RAW lines kept for a section this Stannum doesn't know.
+    Other(String, Item),
+    /// Substation data, after the last section.
+    Tail(Vec<String>),
+}
+
+/// A table's records as RAW items, each with its record's line.
+fn table_items(
+    ctx: &ExCtx,
+    table: &str,
+    records: &[Record],
+) -> Result<Vec<(Placed, usize)>, String> {
+    let mut out = Vec::with_capacity(records.len());
+    for r in records {
+        let placed = match table {
+            "transformer" | "transformer3" => {
+                Placed::Item("TRANSFORMER", transformer::export(ctx, table, r)?)
+            }
+            "impedance_table" => Placed::Item("IMPEDANCE CORRECTION", impedance_lines(r)),
+            "x.psse.lines" => {
+                let section = r.str("section").unwrap_or_default().to_string();
+                let lines: Vec<String> = r
+                    .get("text")
+                    .and_then(Value::as_list)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                if section == "SUBSTATION" {
+                    Placed::Tail(lines)
+                } else if let Some(name) = section_name(&section) {
+                    Placed::Item(name, Item::Lines(lines))
+                } else {
+                    Placed::Other(section, Item::Lines(lines))
+                }
+            }
+            name => match maps::section_of(name) {
+                Some(section) => Placed::Item(section, maps::export(ctx, name, r)?),
+                None => continue,
+            },
+        };
+        out.push((placed, r.line));
+    }
+    Ok(out)
+}
+
+/// Records converted on one thread at a time, when opening a case.
+const CHUNK: usize = 3000;
+
+/// `f` of every item, in order; items `size` puts at a thousand or more
+/// get a thread each.
+fn in_parallel<T: Sync, R: Send>(
+    items: &[T],
+    size: impl Fn(&T) -> usize,
+    f: impl Fn(&T) -> R + Sync,
+) -> Vec<R> {
+    std::thread::scope(|s| {
+        let f = &f;
+        let tasks: Vec<_> = items
+            .iter()
+            .map(|t| {
+                if size(t) < 1000 {
+                    Err(f(t))
+                } else {
+                    Ok(s.spawn(move || f(t)))
+                }
+            })
+            .collect();
+        tasks
+            .into_iter()
+            .map(|task| match task {
+                Err(done) => done,
+                Ok(handle) => handle
+                    .join()
+                    .unwrap_or_else(|e| std::panic::resume_unwind(e)),
+            })
+            .collect()
+    })
+}
+
+fn text_records(
+    lines: &[String],
+    stn_line: usize,
+    stn_lines: &mut Vec<usize>,
+    out: &mut Vec<rs_power::RawRecord>,
+) -> Result<(), String> {
+    for text in lines {
+        if text.trim().is_empty() || text.trim_start().starts_with("@!") {
+            continue;
+        }
+        let at = stn_lines.len();
+        stn_lines.push(stn_line);
+        match rs_power::RawRecord::parse(at, text) {
+            Ok(r) if !r.fields.is_empty() => out.push(r),
+            Ok(_) => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
+/// Records of a section, numbered from 0, and the `.stn` line of each.
+type SectionPart = (Vec<rs_power::RawRecord>, Vec<usize>);
+
+/// A section's items from `start` (a chunk of them) as RAW records,
+/// numbered from 0, with the `.stn` line each came from.
+fn section_records(
+    raw: &Doc,
+    origins: &Origins,
+    section: &str,
+    start: usize,
+) -> Result<SectionPart, String> {
+    use rs_power::{RawField, RawRecord};
+    let mut records = Vec::new();
+    let mut stn_lines = Vec::new();
+    let mut layouts = [None, None];
+    let lines_of = origins.get(section);
+    let items = raw.items(section);
+    let end = items.len().min(start + CHUNK);
+    for (k, item) in items.iter().enumerate().take(end).skip(start) {
+        let stn_line = lines_of.and_then(|l| l.get(k)).copied().unwrap_or(0);
+        match item {
+            Item::Rec(Rec {
+                lines: Some(lines), ..
+            })
+            | Item::Lines(lines) => text_records(lines, stn_line, &mut stn_lines, &mut records)?,
+            Item::Rec(rec) => {
+                raw_export::rec_lines(section, 35, rec, &mut layouts, |fields| {
+                    let mut quoted = Vec::new();
+                    let fields = fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (value, kind))| match (&**value, *kind) {
+                            (RawValue::Text(t), kind) => {
+                                if kind == "string" {
+                                    quoted.push(i);
+                                }
+                                RawField::Text(t.clone())
+                            }
+                            (RawValue::Number(n), "string") => {
+                                quoted.push(i);
+                                RawField::Text(n.to_string())
+                            }
+                            (RawValue::Number(n), _) => RawField::Number(n.to_f64()),
+                        })
+                        .collect();
+                    let mut r = RawRecord::new(stn_lines.len(), fields);
+                    r.quoted = quoted;
+                    stn_lines.push(stn_line);
+                    records.push(r);
+                })?;
+            }
+        }
+    }
+    Ok((records, stn_lines))
+}
+
+/// RAW revision 35's sections, in file order.
+const SECTIONS_35: &[&str] = &[
+    "SYSTEM-WIDE",
+    "BUS",
+    "LOAD",
+    "FIXED SHUNT",
+    "GENERATOR",
+    "BRANCH",
+    "SYSTEM SWITCHING DEVICE",
+    "TRANSFORMER",
+    "AREA",
+    "TWO-TERMINAL DC",
+    "VSC DC LINE",
+    "IMPEDANCE CORRECTION",
+    "MULTI-TERMINAL DC",
+    "MULTI-SECTION LINE",
+    "ZONE",
+    "INTER-AREA TRANSFER",
+    "OWNER",
+    "FACTS DEVICE",
+    "SWITCHED SHUNT",
+    "GEN DEVICE",
+    "INDUCTION MACHINE",
+];
+
+fn section_name(name: &str) -> Option<&'static str> {
+    SECTIONS_35.iter().copied().find(|s| *s == name)
+}
+
+/// A Stannum case as RAW revision 35 records, ready for power flow without
+/// being written as text and read back: opening a case this way is several
+/// times faster. Each record's `line` is its place in the list returned
+/// with it, which gives the line of the `.stn` record it came from (0 when
+/// there is none, as in `.stnb` files).
+pub fn raw_sections(doc: &Document) -> Result<(rs_power::RawSections, Vec<usize>), String> {
+    use rs_power::RawRecord;
+    let (raw, origins) = to_doc(doc)?;
+    let ident = |name: &str| {
+        raw.ident
+            .iter()
+            .find(|(n, _)| n == name)
+            .map_or(0.0, |(_, v)| value_f64(v))
+    };
+    // Index 0 stands for no line.
+    let mut stn_lines = vec![0];
+    // Each section's records in chunks side by side, numbered from 0, then
+    // in order.
+    let chunks: Vec<(usize, &str, usize)> = SECTIONS_35[1..]
+        .iter()
+        .enumerate()
+        .flat_map(|(i, section)| {
+            let n = raw.items(section).len();
+            (0..n.div_ceil(CHUNK).max(1)).map(move |c| (i, *section, c * CHUNK))
+        })
+        .collect();
+    let converted: Vec<Result<SectionPart, String>> = in_parallel(
+        &chunks,
+        |(_, section, start)| raw.items(section).len().saturating_sub(*start).min(CHUNK),
+        |(_, section, start)| section_records(&raw, &origins, section, *start),
+    );
+    let mut sections: Vec<Vec<RawRecord>> = vec![Vec::new(); SECTIONS_35.len() - 1];
+    for ((i, _, _), result) in chunks.iter().zip(converted) {
+        let (mut records, lines) = result?;
+        let base = stn_lines.len();
+        for r in &mut records {
+            r.line += base;
+        }
+        stn_lines.extend(lines);
+        sections[*i].append(&mut records);
+    }
+    // Substation data: sections of their own, each ended by a 0.
+    let tail_line = origins
+        .get("SUBSTATION")
+        .and_then(|l| l.first())
+        .copied()
+        .unwrap_or(0);
+    let mut tail = Vec::new();
+    text_records(&raw.tail, tail_line, &mut stn_lines, &mut tail)?;
+    let mut current = Vec::new();
+    for r in tail {
+        if r.is_end() {
+            sections.push(std::mem::take(&mut current));
+        } else {
+            current.push(r);
+        }
+    }
+    if !current.is_empty() {
+        sections.push(current);
+    }
+    let sections = rs_power::RawSections {
+        revision: 35,
+        base_mva: ident("SBASE"),
+        ic: ident("IC"),
+        sections,
+    };
+    // Freeing a large case's records takes a while too; nothing waits on it.
+    if raw.sections.values().map(Vec::len).sum::<usize>() >= CHUNK {
+        std::thread::spawn(move || drop(raw));
+    }
+    Ok((sections, stn_lines))
 }
 
 fn impedance_lines(r: &Record) -> Item {

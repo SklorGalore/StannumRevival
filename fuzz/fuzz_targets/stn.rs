@@ -1,7 +1,8 @@
 //! A Stannum case (.stn or .stnb) or lists (.stnl) file: read against its
 //! schema, written in canonical form, and that form must read back to
 //! itself; a case read from either form must also survive the other. A
-//! case is then opened the way Stannum opens one (converted to RAW 35).
+//! case is then opened the way Stannum opens one (its records read straight
+//! into the power flow model), and its RAW 35 text read for Records.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;

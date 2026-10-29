@@ -615,9 +615,8 @@ pub fn read_binary(bytes: &[u8], schema: &'static Schema) -> Result<Document, Bi
     doc.version = version;
     doc.preamble = manifest.preamble.clone();
     let mut problems = Vec::new();
-    // Rows get line numbers in file order, so the shared checks can say
-    // which row they mean.
-    let mut rows: Vec<(String, usize)> = vec![(String::new(), 0)];
+    // Every entry's bytes first; then the tables are decoded side by side.
+    let mut entries = Vec::new();
     for t in &manifest.tables {
         let def = schema.table(&t.name);
         if def.is_none() && strict && !kept_table(&t.name) {
@@ -640,8 +639,40 @@ pub fn read_binary(bytes: &[u8], schema: &'static Schema) -> Result<Document, Bi
                 continue;
             }
         }
-        match read_table(&buf, &t.name, def, strict, &mut rows) {
-            Ok(records) => {
+        entries.push((t, def, buf));
+    }
+    let decoded: Vec<Result<Vec<Record>, Vec<String>>> = std::thread::scope(|s| {
+        let tasks: Vec<_> = entries
+            .iter()
+            .map(|(t, def, buf)| {
+                // Small tables aren't worth a thread.
+                if buf.len() < 16 * 1024 {
+                    Err(read_table(buf, &t.name, *def, strict))
+                } else {
+                    Ok(s.spawn(move || read_table(buf, &t.name, *def, strict)))
+                }
+            })
+            .collect();
+        tasks
+            .into_iter()
+            .map(|task| match task {
+                Err(done) => done,
+                Ok(handle) => handle
+                    .join()
+                    .unwrap_or_else(|e| std::panic::resume_unwind(e)),
+            })
+            .collect()
+    });
+    // Rows get line numbers in file order, so the shared checks can say
+    // which row they mean: (table name, row) by line.
+    let mut rows: Vec<(&str, usize)> = vec![("", 0)];
+    for ((t, _, _), result) in entries.iter().zip(decoded) {
+        match result {
+            Ok(mut records) => {
+                for (row, r) in records.iter_mut().enumerate() {
+                    r.line = rows.len();
+                    rows.push((&t.name, row + 1));
+                }
                 if records.len() != t.rows {
                     problems.push(format!(
                         "{}: the manifest says {} rows, the table has {}",
@@ -687,68 +718,35 @@ pub fn read_binary(bytes: &[u8], schema: &'static Schema) -> Result<Document, Bi
     }
 }
 
+/// Rows made into records on one thread at a time.
+const ROWS: usize = 4096;
+
+enum Col<'a> {
+    Field(&'a FieldDef),
+    Comment,
+    Text,
+    Skip,
+}
+
+/// Records from rows `first_row..` of a table: `cols` holds those rows of
+/// every column.
 // Rows index into every column at once.
 #[allow(clippy::needless_range_loop)]
-fn read_table(
-    buf: &[u8],
+fn build_rows(
     name: &str,
-    def: Option<&TableDef>,
-    strict: bool,
-    rows: &mut Vec<(String, usize)>,
-) -> Result<Vec<Record>, Vec<String>> {
-    let reader =
-        FileReader::try_new(Cursor::new(buf), None).map_err(|e| vec![format!("{name}: {e}")])?;
-    let arrow_schema = reader.schema();
-    let mut columns: Vec<Vec<Option<Value>>> =
-        arrow_schema.fields().iter().map(|_| Vec::new()).collect();
-    for batch in reader {
-        let batch = batch.map_err(|e| vec![format!("{name}: {e}")])?;
-        for (i, c) in batch.columns().iter().enumerate() {
-            let mut v = values_of(c.as_ref())
-                .map_err(|e| vec![format!("{name}.{}: {e}", arrow_schema.field(i).name())])?;
-            columns[i].append(&mut v);
-        }
-    }
-    let names: Vec<&str> = arrow_schema
-        .fields()
-        .iter()
-        .map(|f| f.name().as_str())
-        .collect();
-    let Some(id_col) = names.iter().position(|n| *n == "id") else {
-        return Err(vec![format!("{name}: no `id` column")]);
-    };
-    let n = columns[id_col].len();
-    let mut problems = Vec::new();
-    enum Col<'a> {
-        Field(&'a FieldDef),
-        Comment,
-        Text,
-        Skip,
-    }
-    let kinds: Vec<Col> = names
-        .iter()
-        .enumerate()
-        .map(|(i, c)| match def.and_then(|d| d.field(c)) {
-            _ if i == id_col => Col::Skip,
-            Some(f) => Col::Field(f),
-            None if *c == "_comment" => Col::Comment,
-            None => {
-                if def.is_some() && strict && !c.starts_with("x.") {
-                    problems.push(format!("`{name}` has no field `{c}`"));
-                }
-                Col::Text
-            }
-        })
-        .collect();
-    if !problems.is_empty() {
-        return Err(problems);
-    }
+    kinds: &[Col],
+    names: &[&str],
+    id_col: usize,
+    mut cols: Vec<&mut [Option<Value>]>,
+    first_row: usize,
+) -> (Vec<Record>, Vec<String>) {
+    let n = cols.first().map_or(0, |c| c.len());
     let mut records = Vec::with_capacity(n);
-    for row in 0..n {
-        let line = rows.len();
-        rows.push((name.to_string(), row + 1));
+    let mut problems = Vec::new();
+    for i in 0..n {
+        let row = first_row + i;
         let at = |c: &str| format!("{name} row {}: {c}", row + 1);
-        let id = match &columns[id_col][row] {
+        let id = match &cols[id_col][i] {
             Some(Value::Str(s)) if !s.is_empty() => s.clone(),
             _ => {
                 problems.push(at("no id"));
@@ -756,9 +754,8 @@ fn read_table(
             }
         };
         let mut r = Record::new(id);
-        r.line = line;
         for (c, kind) in kinds.iter().enumerate() {
-            let Some(v) = columns[c][row].take() else {
+            let Some(v) = cols[c][i].take() else {
                 continue;
             };
             match kind {
@@ -785,6 +782,107 @@ fn read_table(
             }
         }
         records.push(r);
+    }
+    (records, problems)
+}
+
+fn read_table(
+    buf: &[u8],
+    name: &str,
+    def: Option<&TableDef>,
+    strict: bool,
+) -> Result<Vec<Record>, Vec<String>> {
+    let reader =
+        FileReader::try_new(Cursor::new(buf), None).map_err(|e| vec![format!("{name}: {e}")])?;
+    let arrow_schema = reader.schema();
+    let mut columns: Vec<Vec<Option<Value>>> =
+        arrow_schema.fields().iter().map(|_| Vec::new()).collect();
+    for batch in reader {
+        let batch = batch.map_err(|e| vec![format!("{name}: {e}")])?;
+        // Large tables' columns are converted side by side.
+        let threads = batch.num_rows() >= ROWS;
+        let converted: Vec<Result<Vec<Option<Value>>, String>> = std::thread::scope(|s| {
+            let tasks: Vec<_> = batch
+                .columns()
+                .iter()
+                .map(|c| {
+                    if threads {
+                        Ok(s.spawn(move || values_of(c.as_ref())))
+                    } else {
+                        Err(values_of(c.as_ref()))
+                    }
+                })
+                .collect();
+            tasks
+                .into_iter()
+                .map(|t| match t {
+                    Err(done) => done,
+                    Ok(h) => h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)),
+                })
+                .collect()
+        });
+        for (i, v) in converted.into_iter().enumerate() {
+            let mut v =
+                v.map_err(|e| vec![format!("{name}.{}: {e}", arrow_schema.field(i).name())])?;
+            columns[i].append(&mut v);
+        }
+    }
+    let names: Vec<&str> = arrow_schema
+        .fields()
+        .iter()
+        .map(|f| f.name().as_str())
+        .collect();
+    let Some(id_col) = names.iter().position(|n| *n == "id") else {
+        return Err(vec![format!("{name}: no `id` column")]);
+    };
+    let n = columns[id_col].len();
+    let mut problems = Vec::new();
+    let kinds: Vec<Col> = names
+        .iter()
+        .enumerate()
+        .map(|(i, c)| match def.and_then(|d| d.field(c)) {
+            _ if i == id_col => Col::Skip,
+            Some(f) => Col::Field(f),
+            None if *c == "_comment" => Col::Comment,
+            None => {
+                if def.is_some() && strict && !c.starts_with("x.") {
+                    problems.push(format!("`{name}` has no field `{c}`"));
+                }
+                Col::Text
+            }
+        })
+        .collect();
+    if !problems.is_empty() {
+        return Err(problems);
+    }
+    if columns.iter().any(|c| c.len() != n) {
+        return Err(vec![format!("{name}: columns of different lengths")]);
+    }
+    // Rows are made into records in chunks, side by side.
+    let mut chunks: Vec<std::slice::ChunksMut<Option<Value>>> =
+        columns.iter_mut().map(|c| c.chunks_mut(ROWS)).collect();
+    let parts: Vec<Vec<&mut [Option<Value>]>> = (0..n.div_ceil(ROWS))
+        .map(|_| chunks.iter_mut().filter_map(Iterator::next).collect())
+        .collect();
+    let built: Vec<(Vec<Record>, Vec<String>)> = std::thread::scope(|s| {
+        let kinds = &kinds;
+        let names = &names;
+        let tasks: Vec<_> = parts
+            .into_iter()
+            .enumerate()
+            .map(|(k, cols)| {
+                s.spawn(move || build_rows(name, kinds, names, id_col, cols, k * ROWS))
+            })
+            .collect();
+        tasks
+            .into_iter()
+            .map(|t| t.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+            .collect()
+    });
+    let mut records = Vec::with_capacity(n);
+    for (mut part, mut p) in built {
+        records.append(&mut part);
+        problems.append(&mut p);
     }
     if problems.is_empty() {
         Ok(records)

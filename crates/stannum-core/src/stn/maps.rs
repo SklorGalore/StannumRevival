@@ -607,15 +607,9 @@ fn import_blocks(f: &Fields) -> Value {
 // ---------------------------------------------------------------------------
 // Stannum → RAW.
 
-fn export_one(
-    ctx: &ExCtx,
-    table: &str,
-    r: &Record,
-    stn: &str,
-    c: C,
-    bus: i64,
-) -> Result<RawValue, String> {
-    let v = ctx.doc.value(table, r, stn);
+/// One RAW field from the Stannum field's value (`v`, its default when the
+/// record leaves it out).
+fn export_one(ctx: &ExCtx, v: Option<&Value>, c: C, bus: i64) -> Result<RawValue, String> {
     let s = || v.and_then(Value::as_str).unwrap_or("");
     Ok(match c {
         C::F(_) => num(v.and_then(Value::as_f64).unwrap_or(0.0)),
@@ -663,13 +657,20 @@ fn export_maps(
         _ => 0,
     };
     out.reserve(maps.len());
+    // The table's schema once, for the defaults of the fields left out.
+    let def = ctx.doc.schema.table(table);
     for M(raw, stn, c) in maps {
-        let name = if raw_suffix.is_empty() {
-            raw.to_string()
+        let name: super::Name = if raw_suffix.is_empty() {
+            (*raw).into()
         } else {
-            format!("{raw}{raw_suffix}")
+            format!("{raw}{raw_suffix}").into()
         };
-        out.push((name, export_one(ctx, table, r, &stn_name(stn), *c, bus)?));
+        let stn = stn_name(stn);
+        let v = r.get(&stn).or_else(|| {
+            def.and_then(|d| d.field(&stn))
+                .and_then(|f| f.default.as_ref())
+        });
+        out.push((name, export_one(ctx, v, *c, bus)?));
     }
     Ok(())
 }
@@ -690,10 +691,13 @@ fn export_owners(ctx: &ExCtx, table: &str, r: &Record, default: i64, out: &mut F
     if list.is_empty() {
         list.push((default, 1.0));
     }
-    for k in 0..4 {
+    for (k, (on, fn_)) in [("O1", "F1"), ("O2", "F2"), ("O3", "F3"), ("O4", "F4")]
+        .into_iter()
+        .enumerate()
+    {
         let (o, f) = list.get(k).copied().unwrap_or((0, 1.0));
-        out.push((format!("O{}", k + 1), int(o)));
-        out.push((format!("F{}", k + 1), num(f)));
+        out.push((on.into(), int(o)));
+        out.push((fn_.into(), num(f)));
     }
 }
 
@@ -725,7 +729,7 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
                 fields
                     .iter()
                     .map(|(n, v)| {
-                        let kind = if matches!(n.as_str(), "NAME") {
+                        let kind = if matches!(n.as_ref(), "NAME") {
                             "string"
                         } else {
                             raw_kind(v)
@@ -780,13 +784,13 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
         for (g, b) in blocks.iter().take(8).enumerate() {
             let b = b.as_list().unwrap_or_default();
             let on = b.get(2).and_then(Value::as_str) != Some("off");
-            out.push((format!("S{}", g + 1), int(i64::from(on))));
+            out.push((format!("S{}", g + 1).into(), int(i64::from(on))));
             out.push((
-                format!("N{}", g + 1),
+                format!("N{}", g + 1).into(),
                 int(b.first().and_then(Value::as_i64).unwrap_or(0)),
             ));
             out.push((
-                format!("B{}", g + 1),
+                format!("B{}", g + 1).into(),
                 num(b.get(1).and_then(Value::as_f64).unwrap_or(0.0)),
             ));
         }

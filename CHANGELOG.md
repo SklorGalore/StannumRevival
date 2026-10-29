@@ -15,8 +15,13 @@ section into the next version's when a release is cut (see
   quarter of the size, and readable with pyarrow, pandas or polars with no
   Stannum code. Open one like any case; **Save case as** and **Export
   Stannum case** write one when the name ends in `.stnb`, as do
-  `stannum-cli convert` and `export_stn`. Opening Stannum cases still goes
-  through RAW text, so it is slower than opening RAW for now.
+  `stannum-cli convert` and `export_stn`.
+- **Stannum cases open faster than RAW.** A `.stn` or `.stnb` case is read
+  straight into the power flow model, with large tables split across
+  processor cores: at 12,000 buses, about 0.11 s for `.stnb` and 0.12 s for
+  `.stn`, against 0.14 s for the same case as RAW.
+  Warnings about a record point at its line in a `.stn` file, also for
+  records that aren't equipment.
 - **Stannum case files (`.stn`, preview).** An open text format for whole
   cases: one record per line with named fields, stable ids beside bus
   numbers, units in the field names, comments, and a fixed order so version

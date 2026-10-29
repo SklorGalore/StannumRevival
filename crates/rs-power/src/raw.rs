@@ -203,8 +203,8 @@ pub struct GeneratorSource {
 
 /// A RAW identifier field: trimmed, with PSS/E's default of "1" when blank.
 fn identifier(r: &Record, i: usize) -> String {
-    match r.fields.get(i).map(|s| s.trim()) {
-        Some(s) if !s.is_empty() => s.to_string(),
+    match r.field_text(i) {
+        Some(s) if !s.is_empty() => s,
         _ => "1".to_string(),
     }
 }
@@ -228,14 +228,78 @@ impl Context<'_> {
     }
 }
 
-struct Record {
-    line: usize,
-    fields: Vec<String>,
+/// One field of a RAW record: text as written in a file, or a number
+/// already read (records built in memory, see [`convert_raw_records`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum RawField {
+    Text(String),
+    Number(f64),
+}
+
+impl RawField {
+    /// The field as text: a number in its plain form.
+    pub fn text(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Self::Text(s) => s.into(),
+            Self::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => (*n as i64).to_string().into(),
+            Self::Number(n) => n.to_string().into(),
+        }
+    }
+
+    fn is_blank(&self) -> bool {
+        match self {
+            Self::Text(s) => s.trim().is_empty(),
+            Self::Number(_) => false,
+        }
+    }
+}
+
+/// One line of a RAW file, split into fields.
+#[derive(Clone, Debug)]
+pub struct RawRecord {
+    /// The line it stands for, which warnings name.
+    pub line: usize,
+    pub fields: Vec<RawField>,
     /// Indexes of the fields written in quotes.
-    quoted: Vec<usize>,
+    pub quoted: Vec<usize>,
     comment: String,
 }
-impl Record {
+type Record = RawRecord;
+
+impl RawRecord {
+    /// A record from fields already read.
+    pub fn new(line: usize, fields: Vec<RawField>) -> Self {
+        Self {
+            line,
+            fields,
+            quoted: Vec::new(),
+            comment: String::new(),
+        }
+    }
+
+    /// A line of RAW text as a record.
+    pub fn parse(line: usize, text: &str) -> Result<Self, Error> {
+        record(line, text)
+    }
+
+    /// Field `i` as trimmed text, when the record has it.
+    fn field_text(&self, i: usize) -> Option<String> {
+        self.fields.get(i).map(|f| f.text().trim().to_string())
+    }
+
+    fn blank(&self, i: usize) -> bool {
+        self.fields.get(i).is_none_or(RawField::is_blank)
+    }
+
+    /// A record holding just `0`: the end of a section.
+    pub fn is_end(&self) -> bool {
+        self.fields.len() == 1
+            && match &self.fields[0] {
+                RawField::Text(s) => s == "0",
+                RawField::Number(n) => *n == 0.0,
+            }
+    }
+
     fn error(&self, message: impl Into<String>) -> Error {
         Error::Parse {
             line: self.line,
@@ -243,26 +307,35 @@ impl Record {
             message: message.into(),
         }
     }
-    fn text(&self, i: usize) -> Result<&str, Error> {
+    fn text(&self, i: usize) -> Result<std::borrow::Cow<'_, str>, Error> {
         self.fields
             .get(i)
-            .map(String::as_str)
+            .map(RawField::text)
             .ok_or_else(|| self.error(format!("missing RAW field {}", i + 1)))
     }
     fn num(&self, i: usize) -> Result<f64, Error> {
-        let n = self
-            .text(i)?
-            .trim()
-            .replace(['d', 'D'], "E")
-            .parse::<f64>()
-            .map_err(|_| self.error(format!("invalid number in RAW field {}", i + 1)))?;
+        let bad = || self.error(format!("invalid number in RAW field {}", i + 1));
+        let n = match self.fields.get(i) {
+            Some(RawField::Number(n)) => *n,
+            Some(RawField::Text(t)) => {
+                let t = t.trim();
+                // Fortran writes exponents with D.
+                if t.contains(['d', 'D']) {
+                    t.replace(['d', 'D'], "E").parse::<f64>()
+                } else {
+                    t.parse::<f64>()
+                }
+                .map_err(|_| bad())?
+            }
+            None => return Err(self.error(format!("missing RAW field {}", i + 1))),
+        };
         if !n.is_finite() {
             return Err(self.error("RAW numbers must be finite"));
         }
         Ok(n)
     }
     fn optional(&self, i: usize, default: f64) -> Result<f64, Error> {
-        if self.fields.get(i).is_none_or(|s| s.trim().is_empty()) {
+        if self.blank(i) {
             Ok(default)
         } else {
             self.num(i)
@@ -317,7 +390,7 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
         }
         if c == ',' {
             if after_comma {
-                r.fields.push(String::new());
+                r.fields.push(RawField::Text(String::new()));
             }
             chars.next();
             after_comma = true;
@@ -363,11 +436,11 @@ fn record(line: usize, input: &str) -> Result<Record, Error> {
                 field.push(ch);
             }
         }
-        r.fields.push(field);
+        r.fields.push(RawField::Text(field));
         after_comma = false;
     }
     if after_comma && !r.fields.is_empty() {
-        r.fields.push(String::new());
+        r.fields.push(RawField::Text(String::new()));
     }
     Ok(r)
 }
@@ -488,7 +561,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             "IC is nonzero: change cases are not applied as incremental updates",
         )?;
     }
-    let detected = if header.fields.get(2).is_some_and(|s| !s.is_empty()) {
+    let detected = if header.fields.get(2).is_some_and(|s| !s.text().is_empty()) {
         Some(header.id(2)?)
     } else {
         ["PSS/E-", "PSS(tm)E-"].iter().find_map(|marker| {
@@ -529,7 +602,6 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             .next()
             .ok_or_else(|| header.error("missing RAW title records"))?;
     }
-    let names = section_names(rev);
     let mut sections: Vec<Vec<Record>> = vec![];
     let mut current = vec![];
     let mut system_wide = rev >= 34;
@@ -553,7 +625,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         if r.fields.is_empty() {
             continue;
         }
-        if r.fields.len() == 1 && r.fields[0] == "0" {
+        if r.is_end() {
             if system_wide {
                 system_wide = false;
                 continue;
@@ -566,11 +638,73 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
     if !current.is_empty() {
         return Err(current[0].error("unterminated RAW section"));
     }
+    log::debug!("parsed {} RAW sections", sections.len());
+    convert(rev, base_mva, header_line, sections, ctx)
+}
+
+/// RAW records already split into sections, as a file lays them out: each
+/// section of the revision in order, SYSTEM-WIDE left out, then any further
+/// sections (revision 35's substation data). For callers that hold a case's
+/// records in memory and needn't write them as text first.
+#[derive(Clone, Debug)]
+pub struct RawSections {
+    pub revision: u32,
+    pub base_mva: f64,
+    /// The change code IC from the case identification record.
+    pub ic: f64,
+    pub sections: Vec<Vec<RawRecord>>,
+}
+
+/// Convert records already split into sections, as [`parse_raw_with_options`]
+/// converts a file's. Warnings name the records' own `line` numbers.
+pub fn convert_raw_records(input: RawSections, options: &RawOptions) -> Result<RawImport, Error> {
+    let rev = input.revision;
+    if !(23..=35).contains(&rev) {
+        return Err(Error::Unsupported(format!(
+            "RAW revision {rev}; supported revisions are 23–35"
+        )));
+    }
+    let mut ctx = Context {
+        options,
+        warnings: vec![],
+    };
+    if input.ic != 0.0 {
+        ctx.warn(
+            1,
+            true,
+            "IC is nonzero: change cases are not applied as incremental updates",
+        )?;
+    }
+    if input.base_mva.is_nan() || input.base_mva <= 0.0 {
+        return Err(Error::Parse {
+            line: 1,
+            column: 1,
+            message: "base MVA must be positive".into(),
+        });
+    }
+    convert(rev, input.base_mva, 1, input.sections, ctx)
+}
+
+fn convert(
+    rev: u32,
+    base_mva: f64,
+    header_line: usize,
+    sections: Vec<Vec<Record>>,
+    mut ctx: Context<'_>,
+) -> Result<RawImport, Error> {
+    let options = ctx.options;
+    let header_error = |message: &str| Error::Parse {
+        line: header_line,
+        column: 1,
+        message: message.into(),
+    };
+    let names = section_names(rev);
     let required = names.iter().position(|s| *s == "branch").unwrap() + 1;
     if sections.len() < required {
-        return Err(header.error("missing required RAW sections through branch data"));
+        return Err(header_error(
+            "missing required RAW sections through branch data",
+        ));
     }
-    log::debug!("parsed {} RAW sections", sections.len());
     let section = |name: &str| -> &[Record] {
         names
             .iter()
@@ -595,7 +729,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         && bus_rows.iter().all(|r| {
             [9, 10]
                 .iter()
-                .all(|i| r.fields.get(*i).is_some_and(|s| !s.is_empty()))
+                .all(|i| r.fields.get(*i).is_some_and(|s| !s.text().is_empty()))
         });
     if !have_limits {
         ctx.warn(
@@ -643,14 +777,14 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             bs: if rev <= 30 { r.num(5)? } else { 0.0 },
             extra: vec![],
         };
-        buses.push((b, r.text(name)?.to_owned()));
+        buses.push((b, r.text(name)?.into_owned()));
     }
     buses.sort_by_key(|(b, _)| b.id);
     let mut indices = HashMap::new();
     let mut bus_names = vec![];
     for (b, name) in buses {
         if indices.insert(b.id, case.buses.len()).is_some() {
-            return Err(header.error("duplicate RAW bus ID"));
+            return Err(header_error("duplicate RAW bus ID"));
         }
         bus_names.push(name);
         case.buses.push(b);
@@ -991,7 +1125,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             slack_bus,
             desired_mw: r.optional(2, 0.0)?,
             tolerance_mw: r.optional(3, 10.0)?,
-            name: r.fields.get(4).map_or("", |s| s.trim()).to_string(),
+            name: r.field_text(4).unwrap_or_default(),
         });
     }
     for (i, rows) in sections.iter().enumerate().take(names.len()) {
@@ -1109,13 +1243,8 @@ fn convert_switching_devices(
             }
         }
         let x = r.optional(3, SWITCH_X)?;
-        let status = |i: usize| -> Result<bool, Error> {
-            if r.fields.get(i).is_none_or(|s| s.trim().is_empty()) {
-                Ok(true)
-            } else {
-                r.status(i)
-            }
-        };
+        let status =
+            |i: usize| -> Result<bool, Error> { if r.blank(i) { Ok(true) } else { r.status(i) } };
         let online = status(16)?;
         let normally_open = !status(17)?;
         let kind = match r.optional(19, 1.0)? {
@@ -1123,11 +1252,7 @@ fn convert_switching_devices(
             3.0 => SwitchType::Disconnector,
             _ => SwitchType::Generic,
         };
-        let name = r
-            .fields
-            .get(20)
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+        let name = r.field_text(20).unwrap_or_default();
         devices.push(SwitchingDevice {
             branch: case.branches.len(),
             kind,
@@ -1177,10 +1302,10 @@ fn convert_substations(
     for rows in extra {
         let Some(first) = rows.first() else { continue };
         let named = first.quoted.contains(&1)
-            || first
-                .fields
-                .get(1)
-                .is_some_and(|f| f.trim().replace(['d', 'D'], "E").parse::<f64>().is_err());
+            || first.fields.get(1).is_some_and(|f| match f {
+                RawField::Text(t) => t.trim().replace(['d', 'D'], "E").parse::<f64>().is_err(),
+                RawField::Number(_) => false,
+            });
         if !named {
             continue;
         }
@@ -1228,7 +1353,7 @@ fn convert_substations(
         }
         substations.push(RawSubstation {
             number,
-            name: first.fields[1].trim().to_string(),
+            name: first.fields[1].text().trim().to_string(),
             place,
             buses,
             line: first.line,
@@ -1320,11 +1445,7 @@ fn switched_shunt(
     } else {
         indices.get(&(remote as u32)).map(|&i| case.buses[i].id)
     };
-    let name = r
-        .fields
-        .get(rmidnt)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let name = r.field_text(rmidnt).filter(|s| !s.is_empty());
     let mut watches = Watches::Nothing;
     let (mode, regulated_bus) = match modsw as u8 {
         1 | 2 => {
@@ -1501,11 +1622,7 @@ fn facts_device(
     // NAME (N before revision 33), I, J, MODE, PDES, QDES, VSET, SHMX, TRMX,
     // VTMN, VTMX, VSMX, IMX, LINX, RMPCT, OWNER, SET1, SET2, VSREF, then
     // REMOT (FCREG in revision 35) from revision 31, and MNAME.
-    let name = r
-        .fields
-        .first()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
+    let name = r.field_text(0).unwrap_or_default();
     let label = if name.is_empty() {
         "FACTS device".to_string()
     } else {
@@ -1571,7 +1688,7 @@ fn facts_device(
     let remote = if rev >= 31 && !r.quoted.contains(&19) {
         r.fields
             .get(19)
-            .and_then(|s| s.trim().parse::<f64>().ok())
+            .and_then(|s| s.text().trim().parse::<f64>().ok())
             .unwrap_or(0.0)
             .abs()
     } else {
@@ -2301,7 +2418,7 @@ fn lcc_line(
     let text = |rec: &Record, i: usize| {
         rec.fields
             .get(i)
-            .map(|s| s.trim().trim_matches(['\'', '"']).trim().to_string())
+            .map(|s| s.text().trim().trim_matches(['\'', '"']).trim().to_string())
             .unwrap_or_default()
     };
     let converter = |c: &Record| -> Result<LccConverter, Error> {
@@ -2575,7 +2692,7 @@ fn convert_multi_terminal(
     let text = |rec: &Record, i: usize| {
         rec.fields
             .get(i)
-            .map(|s| s.trim().trim_matches(['\'', '"']).trim().to_string())
+            .map(|s| s.text().trim().trim_matches(['\'', '"']).trim().to_string())
             .unwrap_or_default()
     };
     let mut out = vec![];

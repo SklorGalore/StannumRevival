@@ -306,11 +306,17 @@ fn stn_files_open_edit_and_save() {
             .unwrap()
             .starts_with("transformer3 2:4:6:2 ")
     );
+    // Warnings about records of no element point at the record too.
+    let zone = warnings
+        .iter()
+        .find(|w| w.message.contains("zone data"))
+        .unwrap();
     assert!(
-        warnings
-            .iter()
-            .filter(|w| w.element.is_none())
-            .all(|w| w.line == 0)
+        stn_text
+            .lines()
+            .nth(zone.line - 1)
+            .unwrap()
+            .starts_with("zone ")
     );
 
     // A .stn file the reader refuses doesn't open.
@@ -466,4 +472,58 @@ fn stnb_files_open_and_save() {
     let as_text = dir.join("spur-saved.stn");
     ws.current_mut().unwrap().save_as(&as_text).unwrap();
     assert_eq!(std::fs::read_to_string(&as_text).unwrap(), text);
+}
+
+/// Opening a Stannum case reads its records straight into the power flow
+/// model; that gives the same model as writing them as RAW text and reading
+/// that, for every RAW file the tests have.
+#[test]
+fn direct_open_matches_raw_text() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut files = Vec::new();
+    let mut dirs = vec![
+        root.join("stannum-core/tests"),
+        root.join("stannum-format/conformance"),
+        root.join("rs-power/tests"),
+    ];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "raw") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    let mut compared = 0;
+    for path in files {
+        let bytes = std::fs::read(&path).unwrap();
+        let Ok((doc, _)) = stn::from_raw("case.raw", &bytes) else {
+            continue;
+        };
+        let text = stn::to_raw(&doc, "case").unwrap();
+        let from_text = stannum_core::power::load(&text, false);
+        let (sections, _) = stn::raw_sections(&doc).unwrap();
+        let direct = stannum_core::power::load_sections(sections);
+        // Source lines differ (there is no RAW text), so they're left out.
+        let shown = |p: Result<stannum_core::power::PowerCase, String>| match p {
+            Ok(p) => {
+                let text = format!("{p:?}");
+                let mut out = String::new();
+                for (i, part) in text.split("line: ").enumerate() {
+                    if i > 0 {
+                        out.push_str("line: _");
+                    }
+                    out.push_str(part.trim_start_matches(|c: char| c.is_ascii_digit()));
+                }
+                out
+            }
+            Err(e) => format!("error: {}", e.split(':').next_back().unwrap_or("")),
+        };
+        assert_eq!(shown(direct), shown(from_text), "{}", path.display());
+        compared += 1;
+    }
+    assert!(compared >= 10, "only {compared} files compared");
 }

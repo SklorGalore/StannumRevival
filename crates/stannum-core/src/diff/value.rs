@@ -8,8 +8,23 @@
 use std::fmt;
 
 /// An exact decimal: sign, significant digits and base-10 exponent.
+///
+/// Numbers made in memory (a case converted, not read from a file) keep
+/// their machine value and become a decimal only when compared or written:
+/// opening a Stannum case makes a million of them.
 #[derive(Clone, Debug)]
-pub struct Number {
+pub struct Number(Repr);
+
+#[derive(Clone, Debug)]
+enum Repr {
+    Decimal(Decimal),
+    /// A finite float, written in its shortest form that reads back the same.
+    Float(f64),
+    Int(i64),
+}
+
+#[derive(Clone, Debug)]
+struct Decimal {
     negative: bool,
     /// Coefficient digits without leading zeros ("0" for zero).
     digits: String,
@@ -18,6 +33,50 @@ pub struct Number {
 }
 
 impl Number {
+    /// A float, written in its shortest form that reads back the same.
+    /// Not-a-number and infinities become 0; so does -0.
+    pub fn from_f64(v: f64) -> Self {
+        let v = if v.is_finite() && v != 0.0 { v } else { 0.0 };
+        Self(Repr::Float(v))
+    }
+
+    pub fn from_i64(v: i64) -> Self {
+        Self(Repr::Int(v))
+    }
+
+    /// The number as a float.
+    pub fn to_f64(&self) -> f64 {
+        match &self.0 {
+            Repr::Float(v) => *v,
+            Repr::Int(v) => *v as f64,
+            Repr::Decimal(_) => self.to_string().parse().unwrap_or(0.0),
+        }
+    }
+
+    fn decimal(&self) -> std::borrow::Cow<'_, Decimal> {
+        use std::borrow::Cow;
+        match &self.0 {
+            Repr::Decimal(d) => Cow::Borrowed(d),
+            Repr::Float(v) => Cow::Owned(
+                Self::parse_number(&format!("{v:?}"))
+                    .expect("a finite number")
+                    .into_decimal(),
+            ),
+            Repr::Int(v) => Cow::Owned(
+                Self::parse_integer(&v.to_string())
+                    .expect("an integer")
+                    .into_decimal(),
+            ),
+        }
+    }
+
+    fn into_decimal(self) -> Decimal {
+        match self.0 {
+            Repr::Decimal(d) => d,
+            _ => unreachable!("parsed numbers are decimals"),
+        }
+    }
+
     /// Parse a base-10 integer token (`[+-]?[0-9]+`).
     pub fn parse_integer(token: &str) -> Option<Self> {
         let (negative, body) = split_sign(token);
@@ -70,15 +129,17 @@ impl Number {
     fn new(negative: bool, digits: &str, exponent: i64, integer: bool) -> Self {
         let trimmed = digits.trim_start_matches('0');
         let digits = if trimmed.is_empty() { "0" } else { trimmed };
-        Self {
+        Self(Repr::Decimal(Decimal {
             // Python ints have no negative zero; Decimal keeps the sign.
             negative: negative && !(integer && digits == "0"),
             digits: digits.to_string(),
             exponent,
             integer,
-        }
+        }))
     }
+}
 
+impl Decimal {
     /// Value-only identity: trailing zeros and sign of zero are ignored.
     fn canonical(&self) -> (bool, &str, i64) {
         if self.digits == "0" {
@@ -100,18 +161,27 @@ fn split_sign(token: &str) -> (bool, &str) {
 
 impl PartialEq for Number {
     fn eq(&self, other: &Self) -> bool {
-        self.canonical() == other.canonical()
+        self.decimal().canonical() == other.decimal().canonical()
     }
 }
 impl Eq for Number {}
 
 impl std::hash::Hash for Number {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.canonical().hash(state);
+        self.decimal().canonical().hash(state);
     }
 }
 
 impl fmt::Display for Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Repr::Int(v) => write!(f, "{v}"),
+            _ => self.decimal().fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for Decimal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sign = if self.negative { "-" } else { "" };
         if self.integer {

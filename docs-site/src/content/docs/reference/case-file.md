@@ -264,10 +264,12 @@ df = buses.to_pandas()   # or polars.from_arrow(buses)
   `export_stn path=case.stn` or `case.call("export_stn", path="case.stnb")`;
   a path ending in `.stnb` writes the binary form.
 
-Opening a Stannum case currently goes through the RAW text it converts to,
-so it takes longer than opening the same case as RAW (about 0.8 s against
-0.2 s at 12,000 buses). Reading the file itself is quick: 0.1 s for
-`.stnb`.
+Opening a Stannum case reads its records straight into the power flow
+model, using every processor core for large tables: at 12,000 buses on a
+four-core machine, `.stnb` opens in about 0.11 s and `.stn` in about 0.12 s,
+against 0.14 s for the same case as RAW. The case's RAW form, which
+Records, topology and case diff read, is written in the background after
+it opens.
 
 Saving or exporting a case that was opened from a Stannum file keeps that
 file's ids, comments and `x.` extensions for every record still in the
@@ -291,6 +293,5 @@ can test against:
 
 ## Still to come
 
-Opening Stannum cases without going through RAW text, applying lists files
-to the contingency module, and a reader in the Python package are planned
-for the next preview.
+Applying lists files to the contingency module, and a reader in the Python
+package, are planned for the next preview.

@@ -84,62 +84,79 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             area_loads: Vec::new(),
         })
     } else {
-        // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
-        // Line-commutated converters absorb reactive power, unlike MATPOWER's
-        // positive estimates. Generators hold the remote buses they regulate.
-        // Loads keep their constant-current and constant-impedance parts.
-        let options = rs_power::RawOptions {
-            all_dc_lines: true,
-            lcc_absorbs_reactive: true,
-            remote_regulation: true,
-            zip_loads: true,
-            ..Default::default()
-        };
-        let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
-        let elements = Elements::from_raw(
-            &import.case,
-            &import.branch_sources,
-            &import.generator_sources,
-            &import.dc_line_names,
-        );
-        // Which element each record's first line belongs to, so a warning
-        // can name what it is about.
-        let mut by_line: HashMap<usize, String> = HashMap::new();
-        for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
-            by_line.entry(s.line).or_insert_with(|| e.element.clone());
-        }
-        for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
-            by_line.entry(s.line).or_insert_with(|| e.element.clone());
-        }
-        Ok(PowerCase {
-            elements,
-            dc_line_kinds: import
-                .dc_line_kinds
-                .iter()
-                .copied()
-                .map(dc_kind_label)
-                .collect(),
-            lcc_lines: import.lcc_lines,
-            vsc_lines: import.vsc_lines,
-            voltage_controls: import.voltage_controls,
-            flow_controls: import.flow_controls,
-            mtdc: import.mtdc,
-            substations: import.substations,
-            switching_devices: import.switching_devices,
-            revision: Some(import.revision),
-            areas: import.areas,
-            area_loads: import.area_loads,
-            case: import.case,
-            warnings: import
-                .warnings
-                .into_iter()
-                .map(|w| Warning {
-                    element: by_line.get(&w.line).cloned(),
-                    line: w.line,
-                    message: w.message,
-                })
-                .collect(),
-        })
+        let import =
+            rs_power::parse_raw_with_options(text, &raw_options()).map_err(|e| e.to_string())?;
+        Ok(from_import(import))
+    }
+}
+
+/// How RAW cases are read for power flow. VSC and multi-terminal DC lines
+/// are imported too, beyond MATPOWER. Line-commutated converters absorb
+/// reactive power, unlike MATPOWER's positive estimates. Generators hold
+/// the remote buses they regulate. Loads keep their constant-current and
+/// constant-impedance parts.
+fn raw_options() -> rs_power::RawOptions {
+    rs_power::RawOptions {
+        all_dc_lines: true,
+        lcc_absorbs_reactive: true,
+        remote_regulation: true,
+        zip_loads: true,
+        ..Default::default()
+    }
+}
+
+/// A case from RAW records already in memory (a Stannum case's, see
+/// [`crate::stn::raw_sections`]), read as a RAW file's are.
+pub fn load_sections(sections: rs_power::RawSections) -> Result<PowerCase, String> {
+    let import =
+        rs_power::convert_raw_records(sections, &raw_options()).map_err(|e| e.to_string())?;
+    Ok(from_import(import))
+}
+
+fn from_import(import: rs_power::RawImport) -> PowerCase {
+    let elements = Elements::from_raw(
+        &import.case,
+        &import.branch_sources,
+        &import.generator_sources,
+        &import.dc_line_names,
+    );
+    // Which element each record's first line belongs to, so a warning
+    // can name what it is about.
+    let mut by_line: HashMap<usize, String> = HashMap::new();
+    for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
+        by_line.entry(s.line).or_insert_with(|| e.element.clone());
+    }
+    for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
+        by_line.entry(s.line).or_insert_with(|| e.element.clone());
+    }
+    PowerCase {
+        elements,
+        dc_line_kinds: import
+            .dc_line_kinds
+            .iter()
+            .copied()
+            .map(dc_kind_label)
+            .collect(),
+        lcc_lines: import.lcc_lines,
+        vsc_lines: import.vsc_lines,
+        voltage_controls: import.voltage_controls,
+        flow_controls: import.flow_controls,
+        mtdc: import.mtdc,
+        substations: import.substations,
+        switching_devices: import.switching_devices,
+        revision: Some(import.revision),
+        areas: import.areas,
+        area_loads: import.area_loads,
+        case: import.case,
+        warnings: import
+            .warnings
+            .into_iter()
+            .map(|w| Warning {
+                element: by_line.get(&w.line).cloned(),
+                line: w.line,
+                message: w.message,
+            })
+            .collect(),
     }
 }
 
