@@ -144,6 +144,7 @@ fn answers_fit_their_schemas() {
     assert!(c.ok("case_summary", json!({})).is_null());
     c.ok("contingency_progress", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
+    c.ok("diagnostics", json!({}));
 
     // A RAW case: every module works on it.
     let raw = fixture("five_bus.raw");
@@ -340,6 +341,12 @@ fn answers_fit_their_schemas() {
     assert!(!report["vsc_grids"].is_null());
     c.ok("clear_dc_grids", json!({}));
     c.ok("topology_snapshot", json!({}));
+
+    // A built-in sample, written into the scratch folder.
+    let samples = c.ok("sample_cases", json!({}));
+    let id = samples[1]["id"].clone();
+    let summary = c.ok("open_sample", json!({ "id": id, "dir": dir }));
+    assert!(!summary["coordinates"].is_null());
     let _ = std::fs::remove_dir_all(&dir);
 
     let missing: Vec<_> = COMMANDS

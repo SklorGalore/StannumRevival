@@ -505,6 +505,31 @@ export type DiagnosticRow = {
   side: "baseline" | "comparison";
 };
 
+/**
+ * Versions and platform for a problem report. It holds nothing from the
+ * case: no file names, element names or values.
+ */
+export type Diagnostics = {
+  /** The command set's version (API_VERSION in the core). */
+  api_version: number;
+  /** The processor ("x86_64", "aarch64"). */
+  arch: string;
+  /** stannum-core's version. */
+  core: string;
+  /** Whether this is a debug build. */
+  debug_build: boolean;
+  /** Internal errors (panics) since the program started. */
+  internal_errors: number;
+  /** nodal's version (topology). */
+  nodal: string;
+  /** The operating system ("windows", "macos", "linux"). */
+  os: string;
+  /** rs-power's version (power flow). */
+  rs_power: string;
+  /** Processor threads available to solves. */
+  threads: number;
+};
+
 export type DiffRecordDetail = {
   after_lines: string[] | null;
   before_lines: string[] | null;
@@ -1211,6 +1236,22 @@ export type RunReport = {
   steps: number;
 };
 
+/** A case built into Stannum. */
+export type SampleCase = {
+  /** How many buses it has, counting the star bus of a three-winding transformer. */
+  buses: number;
+  description: string;
+  /** The case file's name. */
+  file_name: string;
+  /** "matpower" or "raw". */
+  format: string;
+  /** Whether it comes with bus coordinates for the map. */
+  has_coordinates: boolean;
+  /** What `open_sample` takes. */
+  id: string;
+  title: string;
+};
+
 /** One record type in the list, without its rows. */
 export type SectionInfo = {
   count: number;
@@ -1672,6 +1713,14 @@ export interface CoreCommands {
     };
     result: ContingencySummary | null;
   };
+  /**
+   * Versions and platform for a problem report, and how many internal
+   * errors there have been. Nothing from the case.
+   */
+  diagnostics: {
+    args: Record<string, never>;
+    result: Diagnostics;
+  };
   /** The case as a drawable network, for one-line diagrams. */
   diagram_network: {
     args: {
@@ -1789,6 +1838,18 @@ export interface CoreCommands {
   open_case: {
     args: {
       path: string;
+    };
+    result: CaseSummary;
+  };
+  /**
+   * Write a built-in sample case (and its bus coordinates, if it has
+   * any) into `dir`, or a `stannum-samples` folder in the temp folder,
+   * and open it. It replaces the open case.
+   */
+  open_sample: {
+    args: {
+      dir?: string | null;
+      id: string;
     };
     result: CaseSummary;
   };
@@ -1924,6 +1985,11 @@ export interface CoreCommands {
       results?: boolean | null;
     };
     result: RunReport;
+  };
+  /** The small cases built into Stannum, to open with `open_sample`. */
+  sample_cases: {
+    args: Record<string, never>;
+    result: SampleCase[];
   };
   /** Save the case, with its edits, to a new file. */
   save_case_as: {
@@ -2066,6 +2132,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "load_coordinates",
   "load_dc_grids",
   "open_case",
+  "open_sample",
   "run_contingencies",
   "save_case_as",
   "set_study_edits",

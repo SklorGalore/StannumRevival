@@ -137,12 +137,13 @@ jobs:
         run: |
           npm install --no-save playwright@1
           npx playwright install --with-deps chromium
-          cargo build --locked --release -p stannum-core --example dev_bridge
-          ./target/release/examples/dev_bridge &
+          # fault-injection: the fault_test command panics, for the crash test.
+          cargo build --locked --release -p stannum-core --example dev_bridge --features fault-injection
+          STANNUM_FAULT_COMMAND=fault_test ./target/release/examples/dev_bridge &
           npx vite preview --port 1420 --strictPort &
           npx wait-on -t 60000 http://localhost:1420
           F=crates/stannum-core/tests/fixtures
-          STANNUM_MATPOWER=$PWD/$F/case9.m STANNUM_RAW=$PWD/$F/five_bus.raw STANNUM_RAW_B=$PWD/$F/five_bus_modified.raw \
+          STANNUM_CRASH_TEST=1 STANNUM_MATPOWER=$PWD/$F/case9.m STANNUM_RAW=$PWD/$F/five_bus.raw STANNUM_RAW_B=$PWD/$F/five_bus_modified.raw \
             STANNUM_RAW_DC=$PWD/crates/rs-power/tests/fixtures/raw/t_psse_case3.raw \
             STANNUM_DC_A=$PWD/$F/five_bus_dc.raw STANNUM_DC_B=$PWD/$F/five_bus_dc_modified.raw \
             STANNUM_VIOLATIONS=$PWD/crates/rs-power/tests/fixtures/case300.m \

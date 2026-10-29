@@ -296,7 +296,8 @@ export interface DiagramMetadata {
   description: string;
   createdAt: string;
   modifiedAt: string;
-  schemaVersion: "1.0";
+  /** "major.minor"; see DIAGRAM_SCHEMA_VERSION. Missing in some early files. */
+  schemaVersion: string;
   /** File name of the case this diagram was generated from, if any. */
   caseName?: string;
   /** For a local drawing: the studied bus and how many hops out it reaches. */

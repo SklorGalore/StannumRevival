@@ -5,6 +5,8 @@ import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
 import { StudyNoticeBar } from "./StudyFileControls";
 import { RunFileBar } from "./RunFileBar";
+import { UpdateBar } from "./UpdateBar";
+import { startUpdateChecks } from "../store/updateStore";
 import { useRunFile } from "../store/runFileStore";
 import { startAttach } from "../store/attachStore";
 import { RUN_FILE_EXTENSION } from "../lib/analysis/api";
@@ -13,6 +15,7 @@ import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { LogDock } from "./LogDock";
+import { CrashBoundary, CrashNoticeBar } from "./CrashNotice";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { MODULES } from "./ModuleRail";
 import { DiagramModule } from "../modules/diagram/DiagramModule";
@@ -166,6 +169,8 @@ export function Shell() {
   useModuleKeys();
   // Python scripts can drive the window (stannum.attach()).
   useEffect(() => startAttach(), []);
+  // Release builds look for a newer version a little after startup.
+  useEffect(() => startUpdateChecks(), []);
   const shown = (id: ModuleId) => id === module || id === split;
   // Modules stay mounted so switching keeps their results and scroll state.
   // `module-hidden` forces descendants hidden too: React Flow sets
@@ -185,7 +190,9 @@ export function Shell() {
         data-module={id}
       >
         {side && <PaneHeader side={side} />}
-        <div className="flex-1 min-h-0 relative">{content}</div>
+        <div className="flex-1 min-h-0 relative">
+          <CrashBoundary name={`the ${MODULES.find((m) => m.id === id)?.label ?? id} view`}>{content}</CrashBoundary>
+        </div>
       </div>
     );
   };
@@ -205,7 +212,9 @@ export function Shell() {
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
         <StudyNoticeBar />
+        <CrashNoticeBar />
         <RunFileBar />
+        <UpdateBar />
         <CommandPalette />
         <ShortcutsDialog />
         <main ref={body} id="main" tabIndex={-1} aria-label={MODULES.find((m) => m.id === module)?.label} className="flex-1 min-h-0 relative focus:outline-none">

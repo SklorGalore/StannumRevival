@@ -1,11 +1,12 @@
 // The log: a one-line strip under every module that says what the app is
 // doing, opening into a drawer with the full record (Ctrl+`).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Copy, Download, Loader2, OctagonX, Terminal, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Copy, Download, LifeBuoy, Loader2, OctagonX, Terminal, Trash2 } from "lucide-react";
 import { startLogStream, useLog } from "../store/logStore";
 import { useWorkspace } from "../store/workspaceStore";
 import { asText, clock, duration, linkify, shown, type LevelFilter, type LogEntry } from "../lib/log/log";
 import { saveTextExport } from "../lib/analysis/api";
+import { saveDiagnostics } from "../lib/diagnostics/save";
 import { SearchBox } from "../ui/primitives";
 
 const HEIGHT_KEY = "stannum-log-height";
@@ -240,6 +241,9 @@ function LogDrawer({ height, onClose }: { height: number; onClose: () => void })
           </button>
           <button className={tool} onClick={save} disabled={!visible.length}>
             <Download size={12} /> Save…
+          </button>
+          <button className={tool} onClick={() => void saveDiagnostics()} title="Save the log with Stannum's versions, for reporting a problem. No case data.">
+            <LifeBuoy size={12} /> Save diagnostics…
           </button>
           <button className={tool} onClick={clear} disabled={!entries.length}>
             <Trash2 size={12} /> Clear

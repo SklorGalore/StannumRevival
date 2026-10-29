@@ -6,6 +6,10 @@ description = "Analysis core for Stannum: power flow, topology and RAW case comp
 publish = false
 license.workspace = true
 
+[features]
+# Lets tests make a named command panic (crash::inject).
+fault-injection = []
+
 [dependencies]
 rs-power = { path = "../rs-power" }
 nodal = { path = "../nodal", features = ["schemars"] }

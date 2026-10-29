@@ -53,9 +53,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------
 ```
 
-MATPOWER's case files are excluded from its software licence. None are built
-into Stannum; the few in the source repository are test fixtures and keep
-their own provenance (see `crates/rs-power/NOTICE`).
+MATPOWER's case files are excluded from its software licence, and Stannum's
+licence grants nothing for them either. One is built into Stannum as a
+sample case: `case9.m` (MATPOWER 8.1, `data/case9.m`), unchanged, with its
+original header naming its source (J. H. Chow, ed., *Time-Scale Modeling of
+Dynamic Networks with Applications to Power Systems*, Springer-Verlag, 1982,
+p. 70, from R. P. Schulz, A. E. Turner and D. N. Ewart, "Long Term Power
+System Dynamics," EPRI Report 90-7-0, 1974). The others in the source
+repository are test fixtures and keep their own provenance (see
+`crates/rs-power/NOTICE`). Stannum's other sample cases are its own made-up
+data (see `crates/stannum-core/samples/README.md`).
 
 ## Eclipse Layout Kernel, via elkjs (EPL-2.0)
 

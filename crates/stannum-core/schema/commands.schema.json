@@ -2159,6 +2159,65 @@
       ],
       "type": "object"
     },
+    "Diagnostics": {
+      "description": "Versions and platform for a problem report. It holds nothing from the\ncase: no file names, element names or values.",
+      "properties": {
+        "api_version": {
+          "description": "The command set's version (API_VERSION in the core).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arch": {
+          "description": "The processor (\"x86_64\", \"aarch64\").",
+          "type": "string"
+        },
+        "core": {
+          "description": "stannum-core's version.",
+          "type": "string"
+        },
+        "debug_build": {
+          "description": "Whether this is a debug build.",
+          "type": "boolean"
+        },
+        "internal_errors": {
+          "description": "Internal errors (panics) since the program started.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodal": {
+          "description": "nodal's version (topology).",
+          "type": "string"
+        },
+        "os": {
+          "description": "The operating system (\"windows\", \"macos\", \"linux\").",
+          "type": "string"
+        },
+        "rs_power": {
+          "description": "rs-power's version (power flow).",
+          "type": "string"
+        },
+        "threads": {
+          "description": "Processor threads available to solves.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "core",
+        "api_version",
+        "rs_power",
+        "nodal",
+        "os",
+        "arch",
+        "debug_build",
+        "threads",
+        "internal_errors"
+      ],
+      "type": "object"
+    },
     "DiffRecordDetail": {
       "properties": {
         "after_lines": {
@@ -4849,6 +4908,49 @@
       ],
       "type": "object"
     },
+    "SampleCase": {
+      "description": "A case built into Stannum.",
+      "properties": {
+        "buses": {
+          "description": "How many buses it has, counting the star bus of a three-winding transformer.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_name": {
+          "description": "The case file's name.",
+          "type": "string"
+        },
+        "format": {
+          "description": "\"matpower\" or \"raw\".",
+          "type": "string"
+        },
+        "has_coordinates": {
+          "description": "Whether it comes with bus coordinates for the map.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "What `open_sample` takes.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "format",
+        "buses",
+        "has_coordinates",
+        "file_name"
+      ],
+      "type": "object"
+    },
     "SectionInfo": {
       "description": "One record type in the list, without its rows.",
       "properties": {
@@ -6353,6 +6455,18 @@
       },
       "takes_case": true
     },
+    "diagnostics": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Versions and platform for a problem report, and how many internal\nerrors there have been. Nothing from the case.",
+      "result": {
+        "$ref": "#/$defs/Diagnostics"
+      },
+      "takes_case": false
+    },
     "diagram_network": {
       "action": false,
       "args": {
@@ -6728,6 +6842,32 @@
         "type": "object"
       },
       "doc": "Open a case file (PSS/E RAW or MATPOWER). It replaces the open case.",
+      "result": {
+        "$ref": "#/$defs/CaseSummary"
+      },
+      "takes_case": false
+    },
+    "open_sample": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "doc": "Write a built-in sample case (and its bus coordinates, if it has\nany) into `dir`, or a `stannum-samples` folder in the temp folder,\nand open it. It replaces the open case.",
       "result": {
         "$ref": "#/$defs/CaseSummary"
       },
@@ -7162,6 +7302,21 @@
       "doc": "Run a run file (`.stnrun`): commands one per line, in order (see\n`run_file`). Every line is checked first. The run stops at the first\ncommand that fails unless `keepGoing`; `results` keeps each answer.",
       "result": {
         "$ref": "#/$defs/RunReport"
+      },
+      "takes_case": false
+    },
+    "sample_cases": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "The small cases built into Stannum, to open with `open_sample`.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/SampleCase"
+        },
+        "type": "array"
       },
       "takes_case": false
     },
