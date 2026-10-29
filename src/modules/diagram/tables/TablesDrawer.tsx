@@ -198,7 +198,7 @@ export function TablesDrawer() {
       tab === "buses" && selected?.startsWith("bus:") ? Number(selected.slice(4)) : tab === "equipment" ? (selected ?? undefined) : undefined;
     body = (
       <>
-        <Tabs tabs={tabs} value={tab} onChange={(t) => { setTab(t); setSearch(""); }} />
+        <Tabs label="Network tables" tabs={tabs} value={tab} onChange={(t) => { setTab(t); setSearch(""); }} />
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200">
           <SearchBox value={search} onChange={setSearch} placeholder={tab === "buses" ? "Search bus number or name…" : "Search…"} />
           <span className="hidden @3xl:inline truncate text-[11px] text-slate-500">
@@ -253,7 +253,7 @@ export function TablesDrawer() {
         title="Drag to resize"
       />
       <button
-        className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
         onClick={() => setTables(false)}
         aria-label="Hide tables"
         title="Hide tables"

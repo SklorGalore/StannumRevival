@@ -98,7 +98,7 @@ function Section({
       >
         <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
         {title}
-        {count !== undefined && <span className="ml-1 font-medium text-slate-400 normal-case tracking-normal">{count}</span>}
+        {count !== undefined && <span className="ml-1 font-medium text-slate-500 normal-case tracking-normal">{count}</span>}
       </button>
       {open && <div className="px-3 pb-2.5">{children}</div>}
     </section>
@@ -124,7 +124,7 @@ function Rows({ rows }: { rows: { label: string; value: string; unit: string; to
           <dd className={`text-right font-mono tabular-nums ${TONE_TEXT[r.tone ?? "ok"]} ${r.tone && r.tone !== "ok" ? "font-semibold" : ""}`}>
             {r.value}
           </dd>
-          <dd className="text-slate-400 text-[11px] whitespace-nowrap">{r.unit}</dd>
+          <dd className="text-slate-500 text-[11px] whitespace-nowrap">{r.unit}</dd>
         </div>
       ))}
     </dl>
@@ -198,7 +198,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
     <div className="flex flex-col text-xs" data-testid="element-inspector" data-element={element}>
       <header className="px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{kindLabel(kind)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{kindLabel(kind)}</p>
           <span
             className={`rounded px-1.5 py-px text-[10px] font-semibold ${
               offline ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"
@@ -210,7 +210,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
           {onClose && (
             <button
               type="button"
-              className="ml-auto -mr-1 p-0.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="ml-auto -mr-1 p-0.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               onClick={onClose}
               aria-label="Close inspector"
               title="Close"
@@ -300,7 +300,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
         {error ? (
           <p className="text-red-700">{error}</p>
         ) : !detail ? (
-          <p className="text-slate-400">{canSolve ? "Reading…" : "Power flow can't read this case, so its data isn't available."}</p>
+          <p className="text-slate-500">{canSolve ? "Reading…" : "Power flow can't read this case, so its data isn't available."}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {detail.data.map((g, i) => (
@@ -310,7 +310,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
               </div>
             ))}
             {detail.note && <p className="text-[11px] text-slate-500">{detail.note}</p>}
-            <p className="font-mono text-[10px] text-slate-400 break-all" title="Shared id used by every module">
+            <p className="font-mono text-[10px] text-slate-500 break-all" title="Shared id used by every module">
               {element}
             </p>
           </div>
@@ -339,7 +339,7 @@ export function ElementInspector({ element, from, onPick, onClose, children, dra
                 <span className="flex-1 min-w-0 text-slate-700">{describeEdit(entry)}</span>
                 <button
                   type="button"
-                  className="shrink-0 p-0.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  className="shrink-0 p-0.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   onClick={() => void removeEdit(index)}
                   aria-label={`Undo: ${describeEdit(entry)}`}
                   title="Remove this edit from the study"

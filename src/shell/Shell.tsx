@@ -13,6 +13,7 @@ import { RUN_FILE_EXTENSION } from "../lib/analysis/api";
 import { useStudyFile } from "../store/studyFileStore";
 import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
+import { ShortcutsDialog } from "./ShortcutsDialog";
 import { LogDock } from "./LogDock";
 import { CrashBoundary, CrashNoticeBar } from "./CrashNotice";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
@@ -54,6 +55,27 @@ function useCaseDrop() {
       cancelled = true;
       unlisten?.();
     };
+  }, []);
+}
+
+/** Ctrl+1 to 4 shows a module; with Shift, beside the current one. */
+function useModuleKeys() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const n = /^Digit([1-9])$/.exec(e.code)?.[1];
+      const target = n ? MODULES[Number(n) - 1] : undefined;
+      if (!target) return;
+      e.preventDefault();
+      const w = useWorkspace.getState();
+      if (e.shiftKey) {
+        if (target.id !== w.module) w.setSplit(target.id);
+      } else w.setModule(target.id);
+      // Into the module, so Tab carries on from there.
+      requestAnimationFrame(() => document.getElementById("main")?.focus({ preventScroll: true }));
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, []);
 }
 
@@ -144,6 +166,7 @@ export function Shell() {
   const ratio = useWorkspace((s) => s.splitRatio);
   const body = useRef<HTMLDivElement>(null);
   useCaseDrop();
+  useModuleKeys();
   // Python scripts can drive the window (stannum.attach()).
   useEffect(() => startAttach(), []);
   // Release builds look for a newer version a little after startup.
@@ -161,7 +184,10 @@ export function Shell() {
         className={`absolute ${split && side ? "inset-y-0" : "inset-0"} flex flex-col ${shown(id) ? "" : "module-hidden pointer-events-none"}`}
         style={style}
         aria-hidden={!shown(id)}
+        // Out of the Tab order too, not only out of sight.
+        inert={!shown(id)}
         data-pane={side ?? undefined}
+        data-module={id}
       >
         {side && <PaneHeader side={side} />}
         <div className="flex-1 min-h-0 relative">
@@ -172,6 +198,16 @@ export function Shell() {
   };
   return (
     <div className="h-screen w-screen flex bg-slate-50 overflow-hidden text-slate-800">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:left-2 focus:top-2 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-medium focus:text-teal-800 focus:shadow-lg"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to the module
+      </a>
       <ModuleRail />
       <div className="flex-1 min-w-0 flex flex-col">
         <CaseBar />
@@ -180,13 +216,14 @@ export function Shell() {
         <RunFileBar />
         <UpdateBar />
         <CommandPalette />
-        <div ref={body} className="flex-1 min-h-0 relative">
+        <ShortcutsDialog />
+        <main ref={body} id="main" tabIndex={-1} aria-label={MODULES.find((m) => m.id === module)?.label} className="flex-1 min-h-0 relative focus:outline-none">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}
           {pane("power", <PowerFlowModule active={shown("power")} />)}
           {pane("records", <RecordsModule active={shown("records")} />)}
           {pane("diff", <CaseDiffModule active={shown("diff")} />)}
           {split && <Divider container={body} />}
-        </div>
+        </main>
         <LogDock />
       </div>
     </div>

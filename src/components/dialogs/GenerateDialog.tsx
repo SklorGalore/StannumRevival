@@ -6,6 +6,7 @@ import { caseNetwork } from "../../lib/diagram/network";
 import type { CaseNetwork } from "../../lib/analysis/types";
 import { busLabel, generateDiagram, READABLE_BUSES, selectBuses, type Scope } from "../../lib/diagram/generate";
 import { Button, ErrorBanner, Field, inputClass } from "../../ui/primitives";
+import { Modal } from "../../ui/Modal";
 
 type ScopeKind = Scope["kind"];
 
@@ -104,16 +105,10 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 whitespace-normal" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-label="Generate from case"
-        className="bg-white rounded-lg shadow-xl w-96 p-5 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal label="Generate one-line from case" onClose={onClose} className="w-96 p-5 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-800">Generate one-line from case</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close">
             <X size={16} />
           </button>
         </div>
@@ -190,7 +185,6 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
             <Wand2 size={14} /> {busy ? "Laying out…" : "Generate"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

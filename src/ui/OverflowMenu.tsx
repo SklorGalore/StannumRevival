@@ -45,13 +45,22 @@ export function OverflowMenu({
     const w = menu.current?.offsetWidth ?? 220;
     setAt({ top: b.bottom + 4, left: Math.max(8, Math.min(b.right - w, window.innerWidth - w - 8)) });
   }, [open]);
+  // Opened from the keyboard or not, the first item takes focus so arrows work at once.
+  useEffect(() => {
+    if (open && at) menu.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus({ preventScroll: true });
+  }, [open, at]);
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!menu.current?.contains(t) && !button.current?.contains(t)) setOpen(false);
     };
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault(); // Escape closes the menu, not the selection too.
+      setOpen(false);
+      button.current?.focus();
+    };
     const close = () => setOpen(false);
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", key);
@@ -73,6 +82,12 @@ export function OverflowMenu({
         aria-label={label}
         title={label}
         onClick={() => setOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !open) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
         className={`shrink-0 flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium text-slate-600 hover:bg-slate-100 whitespace-nowrap ${
           open ? "bg-slate-100" : ""
         } ${className}`}
@@ -94,6 +109,20 @@ export function OverflowMenu({
             aria-label={label}
             className="fixed z-[100] min-w-48 max-h-[70vh] overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg text-xs"
             style={at ?? { top: -9999, left: -9999 }}
+            onKeyDown={(e) => {
+              const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)")];
+              const at = items.indexOf(document.activeElement as HTMLButtonElement);
+              const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[e.key];
+              if (to !== undefined && items.length) {
+                e.preventDefault();
+                items[(to + items.length) % items.length].focus();
+              } else if (e.key === "Tab") {
+                // The menu sits in a portal at the end of the page: Tab leaves it from the button.
+                e.preventDefault();
+                setOpen(false);
+                button.current?.focus();
+              }
+            }}
           >
             {items.map((item) => (
               <button
@@ -102,12 +131,14 @@ export function OverflowMenu({
                 role="menuitem"
                 disabled={item.disabled}
                 title={item.title}
+                tabIndex={-1}
                 onClick={() => {
                   setOpen(false);
+                  button.current?.focus();
                   item.onClick();
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${
-                  item.danger ? "text-red-600 hover:bg-red-50" : "text-slate-700 hover:bg-slate-100"
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left whitespace-nowrap focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
+                  item.danger ? "text-red-600 hover:bg-red-50 focus:bg-red-50" : "text-slate-700 hover:bg-slate-100 focus:bg-slate-100"
                 }`}
               >
                 <span className="w-4 shrink-0 flex justify-center text-slate-500">{item.icon}</span>

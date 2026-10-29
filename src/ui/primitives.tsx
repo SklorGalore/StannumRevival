@@ -42,7 +42,7 @@ export function Panel({
         <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200">
           <div className="min-w-0">
             {eyebrow && (
-              <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{eyebrow}</p>
+              <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">{eyebrow}</p>
             )}
             {title && <h2 className="text-sm font-semibold text-slate-800 truncate">{title}</h2>}
           </div>
@@ -90,10 +90,13 @@ export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
+  label,
 }: {
   tabs: { id: T; label: ReactNode; count?: number; disabled?: boolean }[];
   value: T;
   onChange: (id: T) => void;
+  /** What the tabs choose between, for screen readers. */
+  label?: string;
 }) {
   const [rowRef, width] = useWidth<HTMLDivElement>(100000);
   const measure = useRef<HTMLDivElement>(null);
@@ -109,16 +112,44 @@ export function Tabs<T extends string>({
   const fits = widths.length === tabs.length ? fitTabs(widths, current, width - 16, 76) : tabs.map(() => true);
   const hidden = tabs.filter((_, i) => !fits[i]);
   return (
-    <div ref={rowRef} role="tablist" className="relative flex items-center gap-0.5 border-b border-slate-200 px-2 bg-white overflow-hidden">
-      {tabs.map(
-        (t, i) =>
-          fits[i] && (
-            <button key={t.id} role="tab" aria-selected={t.id === value} disabled={t.disabled} onClick={() => onChange(t.id)} className={tabClass(t.id === value)}>
-              {t.label}
-              <TabCount count={t.count} />
-            </button>
-          )
-      )}
+    <div ref={rowRef} className="relative flex items-center gap-0.5 border-b border-slate-200 px-2 bg-white overflow-hidden">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex items-center gap-0.5 min-w-0"
+        onKeyDown={(e) => {
+          // One Tab stop for the row; arrows move between tabs and open them.
+          const shown = tabs.filter((t, i) => fits[i] && !t.disabled);
+          const at = shown.findIndex((t) => t.id === value);
+          const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: shown.length - 1 }[e.key];
+          if (to === undefined || !shown.length) return;
+          e.preventDefault();
+          const next = shown[(to + shown.length) % shown.length];
+          const list = e.currentTarget;
+          onChange(next.id);
+          requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab="${CSS.escape(next.id)}"]`)?.focus());
+        }}
+      >
+        {tabs.map(
+          (t, i) =>
+            fits[i] && (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                data-tab={t.id}
+                aria-selected={t.id === value}
+                tabIndex={t.id === value ? 0 : -1}
+                disabled={t.disabled}
+                onClick={() => onChange(t.id)}
+                className={tabClass(t.id === value)}
+              >
+                {t.label}
+                <TabCount count={t.count} />
+              </button>
+            )
+        )}
+      </div>
       {hidden.length > 0 && (
         <OverflowMenu
           label="More"
@@ -166,7 +197,7 @@ export function Metric({
   }[tone];
   return (
     <article className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 min-w-0">
-      <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{label}</p>
+      <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">{label}</p>
       <p className={`text-lg font-semibold tabular-nums truncate ${toneClass}`}>{value}</p>
       {detail && <p className="text-[11px] text-slate-500 truncate">{detail}</p>}
     </article>
@@ -184,7 +215,7 @@ export function SearchBox({
 }) {
   return (
     <label className="relative flex items-center">
-      <Search size={13} className="absolute left-2 text-slate-400 pointer-events-none" />
+      <Search size={13} className="absolute left-2 text-slate-500 pointer-events-none" />
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -251,7 +282,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 }
 
 export const inputClass =
-  "px-2 py-1.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/40 disabled:bg-slate-50 disabled:text-slate-400";
+  "px-2 py-1.5 text-xs rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/40 disabled:bg-slate-50 disabled:text-slate-500";
 
 export function StatusPill({ status }: { status: "added" | "removed" | "changed" | "unchanged" }) {
   const style = {

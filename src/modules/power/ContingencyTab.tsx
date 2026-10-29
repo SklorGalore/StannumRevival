@@ -77,7 +77,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
       header: "Worst branch",
       title: "The most loaded branch that is over the limit and new or worse; otherwise the most loaded branch",
       value: (r) => (r.worst ? elementLabel(r.worst.element) : null),
-      render: (r) => (r.worst ? elementLabel(r.worst.element) : <span className="text-slate-400">Unrated</span>),
+      render: (r) => (r.worst ? elementLabel(r.worst.element) : <span className="text-slate-500">Unrated</span>),
     },
     {
       key: "pct",
@@ -155,7 +155,7 @@ function columns(limit: number): Column<ContingencyRow>[] {
 function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <section className="px-3 py-2 border-t border-slate-100">
-      <h3 className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase mb-1">{title}</h3>
+      <h3 className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase mb-1">{title}</h3>
       {children}
     </section>
   );
@@ -196,10 +196,10 @@ function OutagePanel({
     drawAround(row.element, "power");
   };
   return (
-    <aside className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0" data-testid="contingency-detail">
+    <aside aria-label="Outage detail" className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0" data-testid="contingency-detail">
       <header className="flex items-start gap-2 px-3 py-2 border-b border-slate-200">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Outage #{row.rank}</p>
+          <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Outage #{row.rank}</p>
           <h2 className="text-sm font-semibold text-slate-800">{elementLabel(row.element)}</h2>
           <p className="text-[11px] text-slate-500">
             {row.checked === "ac"
@@ -209,7 +209,7 @@ function OutagePanel({
               : "Linear screen only"}
           </p>
         </div>
-        <button type="button" className="p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={onClose} aria-label="Close outage">
+        <button type="button" className="p-1 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700" onClick={onClose} aria-label="Close outage">
           <X size={14} />
         </button>
       </header>
@@ -240,7 +240,7 @@ function OutagePanel({
                         <ElementLink element={o.element} from="power" onOpen={() => onPick(o.element)} />
                       </span>
                       <span className="tabular-nums font-semibold text-red-700">{fixed(o.pct, 1)}%</span>
-                      <span className="tabular-nums text-slate-400 w-14 text-right">was {fixed(o.base_pct, 0)}</span>
+                      <span className="tabular-nums text-slate-500 w-14 text-right">was {fixed(o.base_pct, 0)}</span>
                     </li>
                   ))}
                 </ul>
@@ -261,7 +261,7 @@ function OutagePanel({
                           </ElementLink>
                         </span>
                         <span className="tabular-nums font-semibold text-amber-800">{fixed(v.vm, 3)}</span>
-                        <span className="tabular-nums text-slate-400 w-14 text-right">was {fixed(v.base_vm, 3)}</span>
+                        <span className="tabular-nums text-slate-500 w-14 text-right">was {fixed(v.base_vm, 3)}</span>
                       </li>
                     ))}
                   </ul>

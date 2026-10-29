@@ -10,6 +10,31 @@
   visibility: hidden !important;
 }
 
+/* One focus ring for the keyboard everywhere; widgets that draw their own
+   (a ring utility, a highlighted row) turn this off with outline-none. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-teal-600);
+    outline-offset: 2px;
+  }
+  /* On the dark module rail. */
+  .force-light :focus-visible {
+    outline-color: var(--color-teal-300);
+  }
+}
+
+/* Less movement when the system asks for it: no transitions, no spinning. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Connection points: hidden until a symbol is hovered or a wire is drawn. */
 .react-flow__handle {
   width: 8px;

@@ -32,7 +32,7 @@ export function WarningsTab({ warnings, onShow }: { warnings: RawWarning[]; onSh
                 onClick={() => setOpen(on ? null : g.message)}
                 className={`w-full flex items-start gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50 ${on ? "bg-teal-50/60" : ""}`}
               >
-                <ChevronRight size={13} className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${on ? "rotate-90" : ""}`} />
+                <ChevronRight size={13} className={`mt-0.5 shrink-0 text-slate-500 transition-transform ${on ? "rotate-90" : ""}`} />
                 <span className="shrink-0 min-w-12 rounded-full bg-amber-100 px-1.5 py-px text-center text-[11px] font-semibold tabular-nums text-amber-900">
                   {count(g.count)}
                 </span>
@@ -60,7 +60,7 @@ export function WarningsTab({ warnings, onShow }: { warnings: RawWarning[]; onSh
                 key: "element",
                 header: "Element",
                 value: (w) => w.element ?? "",
-                render: (w) => (w.element ? <ElementLink element={w.element} from="power" onOpen={() => onShow(w.element!)} /> : <span className="text-slate-400">—</span>),
+                render: (w) => (w.element ? <ElementLink element={w.element} from="power" onOpen={() => onShow(w.element!)} /> : <span className="text-slate-500">—</span>),
               },
             ]}
           />
