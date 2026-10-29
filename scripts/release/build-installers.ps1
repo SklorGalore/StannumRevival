@@ -19,6 +19,13 @@ Without the key:
   proven on every platform. Those installers can't install real updates,
   as the throwaway key doesn't match the real one.
 
+A pre-release version (1.0.0-rc.1) gets an MSI version too: Windows
+Installer takes only numbers (major.minor.patch.build), and Tauri refuses a
+pre-release that isn't a bare number. The build field is the pre-release's
+last number (rc.1 -> 1.0.0.1). Windows Installer ignores that field when it
+compares versions, and Tauri's MSI replaces any installed copy, so 1.0.0
+still installs over 1.0.0-rc.1.
+
 .EXAMPLE
 pwsh scripts/release/build-installers.ps1 -Bundles deb,appimage
 #>
@@ -31,6 +38,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '../..')
 $overlay = Join-Path $root 'src-tauri/tauri.updater.conf.json'
+$msiOverlay = Join-Path $root 'src-tauri/tauri.msi-version.conf.json'
 $pubKey = (Get-Content -Path (Join-Path $root 'src-tauri/updater-key.pub') -Raw).Trim()
 
 # The 8-byte key id inside a minisign public key or signature (base64 of the
@@ -41,6 +49,20 @@ function Get-KeyId([string] $Base64) {
     $bytes = [Convert]::FromBase64String($line)
     # Written as minisign prints it (little-endian), e.g. AD2CD0DAC66B8C16.
     -join ($bytes[9..2] | ForEach-Object { $_.ToString('X2') })
+}
+
+# The numeric version Windows Installer needs: 1.0.0-rc.1 -> 1.0.0.1,
+# 1.0.0-beta -> 1.0.0.0, 1.0.0 -> 1.0.0 (unchanged).
+function Get-MsiVersion([string] $Version) {
+    if ($Version -notmatch '^(\d+\.\d+\.\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$') {
+        throw "The app version $Version is not major.minor.patch with an optional suffix."
+    }
+    if (-not $Matches[2]) { return $Version }
+    $core = $Matches[1]
+    $numbers = @([regex]::Matches($Matches[2], '\d+') | ForEach-Object { [int64] $_.Value })
+    $build = if ($numbers) { $numbers[-1] } else { 0 }
+    if ($build -gt 65535) { throw "The pre-release number in $Version is over 65535, which an MSI version can't hold." }
+    "$core.$build"
 }
 
 $updater = $true
@@ -75,13 +97,22 @@ if ($updater) {
     $tauriArgs += @('--config', $overlay)
 }
 
+$version = (Get-Content -Path (Join-Path $root 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
+$msiVersion = Get-MsiVersion $version
+if ($msiVersion -ne $version) {
+    @{ bundle = @{ windows = @{ wix = @{ version = $msiVersion } } } } |
+        ConvertTo-Json -Depth 5 | Set-Content -Path $msiOverlay -Encoding utf8NoBOM
+    $tauriArgs += @('--config', $msiOverlay)
+    Write-Host "MSI version for $version is $msiVersion."
+}
+
 Push-Location $root
 try {
     & npm run tauri -- @tauriArgs
     if ($LASTEXITCODE -ne 0) { throw 'tauri build failed' }
 } finally {
     Pop-Location
-    Remove-Item -Path $overlay -ErrorAction SilentlyContinue
+    Remove-Item -Path $overlay, $msiOverlay -ErrorAction SilentlyContinue
 }
 
 if ($updater) {
