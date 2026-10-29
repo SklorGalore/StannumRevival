@@ -1,3 +1,6 @@
+/// This crate's version, for problem reports.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod model;
 pub mod parser;
 pub mod topology;

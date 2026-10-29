@@ -32,3 +32,15 @@ crates/stannum-py/python/stannum/_native*.pyd
 __pycache__/
 .pytest_cache/
 .venv/
+# Copies of the root licence files that scripts/ci/test-python.ps1 puts
+# beside pyproject.toml for the wheel
+crates/stannum-py/LICENSE
+crates/stannum-py/THIRD-PARTY-*
+src-tauri/tauri.updater.conf.json
+
+# cargo-fuzz (fuzz/README.md): build output, grown corpora, crash inputs
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/seeds/
+/fuzz/artifacts/
+/fuzz/coverage/

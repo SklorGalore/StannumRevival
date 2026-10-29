@@ -6,8 +6,8 @@
 
 use serde::Serialize;
 use std::collections::VecDeque;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Lines kept in memory. Older lines are dropped first.
@@ -88,9 +88,8 @@ fn push(level: log::Level, source: String, message: String) {
     let time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
-    let Ok(mut entries) = BOOK.entries.lock() else {
-        return;
-    };
+    // A panic elsewhere never stops the log (and the hook logs panics).
+    let mut entries = BOOK.entries.lock().unwrap_or_else(PoisonError::into_inner);
     // Numbered under the lock so lines are stored in order.
     let seq = BOOK.next.fetch_add(1, Ordering::Relaxed);
     if entries.len() == CAPACITY {
@@ -105,18 +104,19 @@ fn push(level: log::Level, source: String, message: String) {
     });
 }
 
-/// Register the logger. Later calls, or another logger already set, are ignored.
+/// Register the logger, and the panic hook that writes internal errors to
+/// it ([`crate::crash::install_hook`]). Later calls, or another logger
+/// already set, are ignored.
 pub fn install() {
     if log::set_logger(&BOOK).is_ok() {
         log::set_max_level(log::LevelFilter::Debug);
     }
+    crate::crash::install_hook();
 }
 
 /// Lines numbered above `seq`, oldest first. `since(0)` returns every line kept.
 pub fn since(seq: u64) -> Vec<Entry> {
-    let Ok(entries) = BOOK.entries.lock() else {
-        return Vec::new();
-    };
+    let entries = BOOK.entries.lock().unwrap_or_else(PoisonError::into_inner);
     // Sequence numbers are contiguous, so skip straight to the first new line.
     let first = entries.front().map_or(0, |e| e.seq);
     let skip = (seq + 1).saturating_sub(first) as usize;

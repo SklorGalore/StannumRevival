@@ -17,6 +17,11 @@ export function useKeyboardShortcuts(enabled = true) {
       const el = e.target as HTMLElement;
       // Leave typing in fields alone.
       if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable) return;
+      // Leave widgets with their own keys alone (a table's arrows, a menu's),
+      // and the other pane when the Diagram sits beside another module.
+      if (el.closest("[role=grid],[role=tablist],[role=menu],[role=listbox],[role=dialog]")) return;
+      const pane = el.closest<HTMLElement>("[data-module]");
+      if (pane && pane.dataset.module !== "diagram") return;
 
       const store = useDiagramStore.getState();
       const ctrl = e.ctrlKey || e.metaKey;

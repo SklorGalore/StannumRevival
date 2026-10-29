@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "PSS/E RAW v35 parser and network topology analysis"
 publish = false
+license.workspace = true
 
 [dependencies]
 rustworkx-core = "0.18.1"

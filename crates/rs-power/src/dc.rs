@@ -423,6 +423,9 @@ pub(crate) fn operating_point(
     (out, targets)
 }
 
+/// PSS/E's default converter tap step (`STP`).
+pub(crate) const DEFAULT_TAP_STEP: f64 = 0.00625;
+
 /// Round `tap` to the converter's tap steps and limits.
 pub(crate) fn step_tap(c: &LccConverter, tap: f64, round: fn(f64) -> f64) -> f64 {
     // The limits themselves are reachable even when they are not a whole

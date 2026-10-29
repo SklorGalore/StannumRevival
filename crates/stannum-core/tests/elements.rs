@@ -46,7 +46,6 @@ fn check(path: PathBuf) -> (usize, usize) {
     }
     for e in &topo.case.equipment {
         let expected = match e.kind {
-            nodal::model::EquipmentKind::Switch => continue,
             _ if e.buses.len() == 3 => 3,
             _ => 1,
         };
@@ -254,6 +253,40 @@ fn solve_report_lists_dc_lines_with_absorbing_converters() {
 }
 
 #[test]
+fn area_interchange_setting_holds_the_raw_areas() {
+    use stannum_core::power::{InterchangeChoice, SolveSettings};
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |area_interchange| {
+        ws.current_mut()
+            .unwrap()
+            .solve(SolveSettings {
+                enforce_q_limits: true,
+                area_interchange,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let off = solve(InterchangeChoice::Off);
+    assert!(off.converged);
+    assert_eq!(off.area_interchange, InterchangeChoice::Off);
+    assert_eq!(off.areas.len(), 6);
+    assert_eq!(off.areas[0].name, "CENTRAL");
+    assert!(off.areas.iter().all(|a| !a.controlled));
+    // EAST is 260 MW short of its PDES with control off.
+    let east = &off.areas[1];
+    assert!(east.error_mw.unwrap().abs() > 100.0, "{east:?}");
+    let on = solve(InterchangeChoice::TieLines);
+    assert!(on.converged);
+    assert!(on.interchange_passes > 0);
+    for a in on.areas.iter().filter(|a| a.number <= 2) {
+        assert!(a.controlled, "{a:?}");
+        assert!(a.error_mw.unwrap().abs() <= a.tolerance_mw, "{a:?}");
+        assert!(a.slack_change_mw != 0.0);
+    }
+    assert_eq!(on.areas[1].slack_bus_name, "URBGEN");
+}
+
+#[test]
 fn solve_settings_switch_voltage_controls() {
     let mut ws = open(rs_power_raw("t_psse_case3.raw"));
     let mut solve = |switch_shunts: bool, adjust_transformer_taps: bool| {
@@ -263,6 +296,9 @@ fn solve_settings_switch_voltage_controls() {
                 enforce_q_limits: true,
                 switch_shunts,
                 adjust_transformer_taps,
+                // The inverter transformers (COD 4) lock with them: a shunt
+                // holds bus 3021, so they only move once it is locked.
+                adjust_dc_taps: adjust_transformer_taps,
                 ..Default::default()
             })
             .unwrap()
@@ -342,4 +378,170 @@ fn every_solve_method_reaches_the_same_solution() {
             "{method:?}"
         );
     }
+}
+
+#[test]
+fn solve_report_lists_facts_devices() {
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let mut solve = |model| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                enforce_q_limits: model == stannum_core::power::ModelChoice::Ac,
+                model,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let ac = solve(stannum_core::power::ModelChoice::Ac);
+    assert!(ac.converged);
+    let names: Vec<_> = ac
+        .facts
+        .iter()
+        .map(|f| (f.name.as_str(), f.bus, f.terminal_bus))
+        .collect();
+    assert_eq!(names, vec![("1", 153, None), ("2", 153, Some(155))]);
+    assert!(ac.facts.iter().all(|f| f.at_limit && !f.held));
+    // The UPFC sends 350 MW into bus 155, which passes it on to 154, also
+    // in a DC solve, where the shunts are held.
+    let dc = solve(stannum_core::power::ModelChoice::Dc);
+    assert_eq!(dc.facts[1].series_mw, 350.0);
+    assert!(dc.facts.iter().all(|f| f.held));
+    let flow = |r: &stannum_core::power::SolveReport| {
+        r.branches
+            .iter()
+            .find(|b| (b.from, b.to) == (154, 155))
+            .map(|b| b.pt)
+            .unwrap()
+    };
+    assert!((flow(&dc) - 350.0).abs() < 1.0, "{}", flow(&dc));
+    assert!((flow(&ac) - 350.0).abs() < 1.0, "{}", flow(&ac));
+}
+
+#[test]
+fn solve_settings_move_or_lock_phase_shifters() {
+    // five_bus plus a phase shifter from bus 1 to bus 3 (COD 3) that holds
+    // 40-45 MW, which its 0 degree starting angle misses.
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_phase_shifter.raw");
+    let mut ws = open(path);
+    let mut solve = |adjust_phase_shifters: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_phase_shifters,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let flow = |r: &stannum_core::power::SolveReport| {
+        let k = r.branches.iter().position(|b| b.circuit == "PS").unwrap();
+        (r.branches[k].pf, r.branches[k].shift_deg)
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!(locked.phase_shifters, 1);
+    assert!(locked.phase_shifters_locked);
+    assert_eq!(locked.phase_shifters_moved, 0);
+    let (before, angle) = flow(&locked);
+    assert_eq!(angle, 0.0);
+    assert!(!(40.0..=45.0).contains(&before), "{before}");
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.phase_shifters_moved, 1);
+    assert!(moved.flow_control_passes > 0);
+    let (after, angle) = flow(&moved);
+    assert!((39.9..=45.1).contains(&after), "{after}");
+    assert!(angle != 0.0);
+    // Locked after that solve, it stays where the solve left it.
+    let kept = solve(false, Last);
+    assert_eq!(kept.flow_control_passes, 0);
+    assert_eq!(kept.phase_shifters_moved, 1);
+    assert!((flow(&kept).1 - angle).abs() < 1e-12);
+}
+
+#[test]
+fn transformer_tap_setting_moves_or_locks_reactive_flow_taps() {
+    // five_bus with its 2-4 transformer in reactive flow control (COD 2),
+    // holding 21.0-21.6 Mvar into it at bus 2; ratio 1.0 gives 22.4.
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_reactive_tap.raw");
+    let mut ws = open(path);
+    let mut solve = |adjust_transformer_taps: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_transformer_taps,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let flow = |r: &stannum_core::power::SolveReport| {
+        let k = r
+            .branches
+            .iter()
+            .position(|b| b.from == 2 && b.to == 4)
+            .unwrap();
+        (r.branches[k].qf, r.branches[k].tap)
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!(locked.taps_moved, 0);
+    let (before, tap) = flow(&locked);
+    assert_eq!(tap, 1.0);
+    assert!(!(21.0..=21.6).contains(&before), "{before}");
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.taps_moved, 1);
+    assert!(moved.flow_control_passes > 0);
+    let (after, tap) = flow(&moved);
+    assert!((20.9..=21.7).contains(&after), "{after} at tap {tap}");
+    assert!(tap != 1.0);
+    let kept = solve(false, Last);
+    assert_eq!(kept.flow_control_passes, 0);
+    assert!((flow(&kept).1 - tap).abs() < 1e-12);
+}
+
+#[test]
+fn dc_converter_tap_setting_moves_or_locks_cod_4_transformers() {
+    // The rectifier of the five-bus DC line sits behind the 1-6
+    // transformer (COD 4), which steps in place of the converter tap.
+    let mut ws = open(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../rs-power/tests/fixtures/dc_line_taps/five_bus_dc_transformer.raw"),
+    );
+    let mut solve = |adjust_dc_taps: bool, start| {
+        ws.current_mut()
+            .unwrap()
+            .solve(stannum_core::power::SolveSettings {
+                adjust_dc_taps,
+                start,
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    let tap = |r: &stannum_core::power::SolveReport| {
+        r.branches
+            .iter()
+            .find(|b| b.from == 1 && b.to == 6)
+            .unwrap()
+            .tap
+    };
+    use stannum_core::power::StartChoice::{Flat, Last};
+    let locked = solve(false, Flat);
+    assert!(locked.converged);
+    assert_eq!((locked.taps_moved, tap(&locked)), (0, 1.0));
+    let moved = solve(true, Flat);
+    assert!(moved.converged);
+    assert_eq!(moved.taps_moved, 1);
+    assert!(moved.dc_tap_passes > 0);
+    let ratio = tap(&moved);
+    assert!(ratio > 1.0, "{ratio}");
+    // A solve from the last solution keeps the transformer where it ended.
+    let kept = solve(false, Last);
+    assert!((tap(&kept) - ratio).abs() < 1e-12);
 }

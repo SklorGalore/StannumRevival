@@ -12,8 +12,10 @@
 //! an error instead of reaching a different case.
 
 use crate::contingency::{ContingencySettings, ContingencySummary, Progress, RunHandle};
+use crate::crash::{self, relock};
 use crate::error::{Error, ErrorKind};
-use crate::power::SolveSettings;
+use crate::paging::{self, PageQuery};
+use crate::power::{SolveReport, SolveSettings};
 use crate::record_edit::RecordEdit;
 use crate::study::Edit;
 use crate::workspace::{CaseId, Workspace};
@@ -22,6 +24,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +36,7 @@ use std::time::Instant;
 ///
 /// 2: errors are `{kind, message}` objects instead of text.
 /// 3: `record_table` rows and `contingency_rows` come as columns.
+/// (Paged tables, `result_buses` and the like, were added within 3.)
 pub const API_VERSION: u32 = 3;
 
 /// How many times work done without the workspace lock is redone when the
@@ -120,7 +124,50 @@ pub struct Session {
     contingencies: Mutex<Option<RunHandle>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
+    /// Sorted, filtered orders of the tables being paged through, newest
+    /// last: scrolling asks for the next page of the same order.
+    orders: Mutex<Vec<KeptOrder>>,
 }
+
+/// How many sorted orders [`Session`] keeps.
+const ORDERS_KEPT: usize = 8;
+
+/// A table's order for one query. `source` holds the rows' owner so its
+/// address, part of `key`, can't be reused by other rows meanwhile.
+struct KeptOrder {
+    key: String,
+    _source: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    order: Arc<paging::Order>,
+}
+
+/// Which Power flow table a page is cut from.
+#[derive(Clone, Copy)]
+struct ResultTable<R: 'static> {
+    name: &'static str,
+    rows: fn(&SolveReport) -> &[R],
+    view: for<'a> fn(&'a SolveReport) -> paging::StructRows<'a, R>,
+    /// Whether a row touches one of the buses passing the bus rules.
+    touches: fn(&R, &HashSet<u32>) -> bool,
+}
+
+const BUSES: ResultTable<crate::power::BusRow> = ResultTable {
+    name: "buses",
+    rows: |r| &r.buses,
+    view: paging::results::buses,
+    touches: |b, p| p.contains(&b.id),
+};
+const GENERATORS: ResultTable<crate::power::GeneratorRow> = ResultTable {
+    name: "generators",
+    rows: |r| &r.generators,
+    view: paging::results::generators,
+    touches: |g, p| p.contains(&g.bus),
+};
+const BRANCHES: ResultTable<crate::power::BranchRow> = ResultTable {
+    name: "branches",
+    rows: |r| &r.branches,
+    view: paging::results::branches,
+    touches: |b, p| p.contains(&b.from) || p.contains(&b.to),
+};
 
 /// How [`Session::run_steps`] runs a run file.
 #[derive(Clone, Copy, Debug, Default)]
@@ -138,15 +185,21 @@ impl Session {
 
     /// Run one command. `args` is a JSON object of its arguments (null is
     /// read as no arguments). The result is JSON text, ready to send.
+    ///
+    /// A bug that panics while the command runs is logged and answered as an
+    /// [`ErrorKind::Internal`] error, so the caller carries on (see
+    /// [`crate::crash`]).
     pub fn invoke(&self, command: &str, args: Value) -> Result<String, Error> {
-        dispatch(self, command, args)
+        crash::catch(command, || {
+            #[cfg(feature = "fault-injection")]
+            crash::inject(command);
+            dispatch(self, command, args)
+        })
     }
 
     /// The workspace, for callers that need it directly (tests, examples).
     pub fn workspace(&self) -> Result<MutexGuard<'_, Workspace>, Error> {
-        self.workspace
-            .lock()
-            .map_err(|_| Error::internal("Workspace is unavailable after an earlier failure."))
+        Ok(relock(&self.workspace))
     }
 
     fn solve(
@@ -155,27 +208,143 @@ impl Session {
         settings: SolveSettings,
     ) -> Result<crate::power::SolveReport, Error> {
         let flag = Arc::new(AtomicBool::new(false));
-        if let Ok(mut slot) = self.solving.lock() {
-            *slot = Some(flag.clone());
-        }
+        *relock(&self.solving) = Some(flag.clone());
+        // Only clear the slot if a newer solve hasn't taken it; also if the
+        // solve panics.
+        let _clear = OnDrop(|| {
+            let mut slot = relock(&self.solving);
+            if slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag)) {
+                *slot = None;
+            }
+        });
         // The solve runs without the workspace lock, so other commands
         // keep answering meanwhile.
-        let result = self
-            .workspace()
+        self.workspace()
             .and_then(|ws| ws.case(case)?.solve_job(settings, Some(flag.clone())))
             .and_then(|job| job.run())
-            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done));
-        // Only clear the slot if a newer solve hasn't taken it.
-        if let Ok(mut slot) = self.solving.lock()
-            && slot.as_ref().is_some_and(|f| Arc::ptr_eq(f, &flag))
+            .and_then(|done| self.workspace()?.case_mut(case)?.finish_solve(done))
+    }
+
+    /// The order `key` names, from the kept ones or made now (without the
+    /// workspace lock or the kept orders' lock) and kept.
+    fn ordered(
+        &self,
+        key: String,
+        source: Option<Arc<dyn std::any::Any + Send + Sync>>,
+        make: impl FnOnce() -> paging::Order,
+    ) -> Arc<paging::Order> {
+        if let Ok(kept) = self.orders.lock()
+            && let Some(k) = kept.iter().find(|k| k.key == key)
         {
-            *slot = None;
+            return k.order.clone();
         }
-        result
+        let order = Arc::new(make());
+        if let Ok(mut kept) = self.orders.lock() {
+            kept.retain(|k| k.key != key);
+            if kept.len() >= ORDERS_KEPT {
+                kept.remove(0);
+            }
+            kept.push(KeptOrder {
+                key,
+                _source: source,
+                order: order.clone(),
+            });
+        }
+        order
+    }
+
+    /// A page of one of a result's Power flow tables. `bus_rules` keep the
+    /// rows touching a bus that passes them (the filter chips).
+    fn result_page<R: Serialize + JsonSchema + Clone + Send + Sync + 'static>(
+        &self,
+        case: Option<CaseId>,
+        name: &str,
+        table: ResultTable<R>,
+        query: PageQuery,
+        bus_rules: Vec<paging::Rule>,
+    ) -> Result<paging::Page<R>, Error> {
+        let report = self.workspace()?.case_mut(case)?.shared_result(name)?;
+        let key = format!(
+            "result {}|{:p}|{}|{}",
+            table.name,
+            Arc::as_ptr(&report),
+            query.order_key(),
+            serde_json::to_string(&bus_rules).unwrap_or_default()
+        );
+        let source: Arc<dyn std::any::Any + Send + Sync> = report.clone();
+        let order = self.ordered(key, Some(source), || {
+            let passing = paging::results::passing(&report, &bus_rules);
+            let rows = (table.rows)(&report);
+            let touches = |i: usize| {
+                passing
+                    .as_ref()
+                    .is_none_or(|p| (table.touches)(&rows[i], p))
+            };
+            let extra: Option<&dyn Fn(usize) -> bool> = if passing.is_some() {
+                Some(&touches)
+            } else {
+                None
+            };
+            paging::order(&(table.view)(&report), &query, extra)
+        });
+        Ok(paging::Page::cut((table.rows)(&report), &order, &query))
+    }
+
+    /// The case's records, read first if they haven't been.
+    fn records(&self, case: Option<CaseId>) -> Result<Arc<crate::records::Records>, Error> {
+        self.read_records(case)?;
+        self.workspace()?.case_mut(case)?.shared_records()
+    }
+
+    fn record_page(
+        &self,
+        case: Option<CaseId>,
+        section: &str,
+        query: PageQuery,
+    ) -> Result<crate::records::RecordPage, Error> {
+        let records = self.records(case)?;
+        let table = records.table(section)?;
+        let key = format!(
+            "records {section}|{:p}|{}",
+            Arc::as_ptr(&records),
+            query.order_key()
+        );
+        let source: Arc<dyn std::any::Any + Send + Sync> = records.clone();
+        let order = self.ordered(key, Some(source), || paging::order(table, &query, None));
+        Ok(crate::records::RecordPage {
+            id: table.id.clone(),
+            label: table.label.clone(),
+            columns: table.columns.clone(),
+            skipped: table.skipped,
+            note: table.note.clone(),
+            page: paging::Page::cut(&table.rows, &order, &query),
+        })
+    }
+
+    fn contingency_page(
+        &self,
+        case: Option<CaseId>,
+        query: PageQuery,
+    ) -> Result<paging::Page<crate::contingency::ContingencyRow>, Error> {
+        let ws = self.workspace()?;
+        let results = ws
+            .case(case)?
+            .contingencies
+            .as_ref()
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let key = format!("contingencies|{}|{}", results.id, query.order_key());
+        let order = self.ordered(key, None, || {
+            let rows = paging::StructRows {
+                rows: &results.rows,
+                element: |r: &crate::contingency::ContingencyRow| Some(r.element.clone()),
+            };
+            paging::order(&rows, &query, None)
+        });
+        Ok(paging::Page::cut(&results.rows, &order, &query))
     }
 
     fn cancel_solve(&self) {
-        if let Some(flag) = self.solving.lock().ok().and_then(|f| f.clone()) {
+        if let Some(flag) = relock(&self.solving).clone() {
             flag.store(true, Ordering::Relaxed);
         }
     }
@@ -192,13 +361,11 @@ impl Session {
             let open = ws.case(case)?;
             (open.contingency_job(settings)?, open.version)
         };
-        if let Ok(mut slot) = self.contingencies.lock() {
-            *slot = Some(job.handle());
-        }
+        *relock(&self.contingencies) = Some(job.handle());
+        // Cleared however the run ends, so a crashed run doesn't look busy.
+        let clear = OnDrop(|| *relock(&self.contingencies) = None);
         let results = job.run();
-        if let Ok(mut slot) = self.contingencies.lock() {
-            *slot = None;
-        }
+        drop(clear);
         let results = results?;
         self.workspace()?
             .case_mut(case)?
@@ -282,9 +449,7 @@ impl Session {
     ) -> Result<run_file::RunReport, Error> {
         let flag = Arc::new(AtomicBool::new(false));
         {
-            let mut slot = self.running_file.lock().map_err(|_| {
-                Error::internal("Run files are unavailable after an earlier failure.")
-            })?;
+            let mut slot = relock(&self.running_file);
             if slot.is_some() {
                 return Err(Error::not_ready(
                     "A run file is already running. Wait for it, or cancel it first.",
@@ -292,6 +457,7 @@ impl Session {
             }
             *slot = Some(flag.clone());
         }
+        let clear = OnDrop(|| *relock(&self.running_file) = None);
         let started = Instant::now();
         let mut report = run_file::RunReport {
             path: path.display().to_string(),
@@ -339,9 +505,7 @@ impl Session {
                 break;
             }
         }
-        if let Ok(mut slot) = self.running_file.lock() {
-            *slot = None;
-        }
+        drop(clear);
         report.seconds = started.elapsed().as_secs_f64();
         let ran = report.outcomes.len();
         if report.cancelled {
@@ -379,7 +543,7 @@ impl Session {
     /// Stops the run file in progress before its next step, and the solve
     /// or contingency run it is waiting on.
     fn cancel_run_file(&self) {
-        let running = self.running_file.lock().ok().and_then(|f| f.clone());
+        let running = relock(&self.running_file).clone();
         if let Some(flag) = running {
             flag.store(true, Ordering::Relaxed);
             self.cancel_solve();
@@ -388,17 +552,25 @@ impl Session {
     }
 
     fn cancel_contingencies(&self) {
-        if let Some(handle) = self.contingencies.lock().ok().and_then(|h| h.clone()) {
+        if let Some(handle) = relock(&self.contingencies).clone() {
             handle.cancel();
         }
     }
 
     fn contingency_progress(&self) -> Progress {
-        self.contingencies
-            .lock()
-            .ok()
-            .and_then(|h| h.as_ref().map(RunHandle::progress))
+        relock(&self.contingencies)
+            .as_ref()
+            .map(RunHandle::progress)
             .unwrap_or_default()
+    }
+}
+
+/// Runs its closure when dropped: on return and on panic alike.
+struct OnDrop<F: FnMut()>(F);
+
+impl<F: FnMut()> Drop for OnDrop<F> {
+    fn drop(&mut self) {
+        (self.0)()
     }
 }
 
@@ -541,6 +713,15 @@ commands! {
     /// Open a case file (PSS/E RAW or MATPOWER). It replaces the open case.
     open_case { path: PathBuf } -> crate::CaseSummary => |s, a| s.workspace()?.open(&a.path);
 
+    /// The small cases built into Stannum, to open with `open_sample`.
+    sample_cases {} -> Vec<crate::samples::SampleCase> => |_, _| Ok(crate::samples::list());
+
+    /// Write a built-in sample case (and its bus coordinates, if it has
+    /// any) into `dir`, or a `stannum-samples` folder in the temp folder,
+    /// and open it. It replaces the open case.
+    open_sample { id: String, dir: Option<PathBuf> } -> crate::CaseSummary =>
+        |s, a| crate::samples::open(&mut *s.workspace()?, &a.id, a.dir.as_deref());
+
     /// Close the case.
     close_case { case: Option<CaseId> } -> () => |s, a| {
         let mut ws = s.workspace()?;
@@ -619,6 +800,12 @@ commands! {
     export_matpower { case: Option<CaseId>, path: PathBuf, solved: bool } -> () =>
         |s, a| s.workspace()?.case(a.case)?.export_matpower(&a.path, a.solved);
 
+    /// Write the case, with its Records and study edits, as a complete PSS/E
+    /// RAW file of revision 33 or 35. The answer lists anything the file
+    /// couldn't keep.
+    export_raw { case: Option<CaseId>, path: PathBuf, revision: u32 } -> crate::raw_export::RawExport =>
+        |s, a| s.workspace()?.case_mut(a.case)?.export_raw(&a.path, a.revision);
+
     /// The case as a drawable network, for one-line diagrams.
     diagram_network { case: Option<CaseId> } -> crate::diagram::CaseNetwork =>
         |s, a| s.workspace()?.case(a.case)?.diagram_network();
@@ -651,6 +838,21 @@ commands! {
         s.read_records(a.case)?;
         s.workspace()?.case_mut(a.case)?.record_table(&a.section)
     };
+
+    /// A page of one record type, sorted, searched and filtered in the core
+    /// (fields are column positions, "line" and "element").
+    record_page { case: Option<CaseId>, section: String, query: Option<PageQuery> } -> crate::records::RecordPage =>
+        |s, a| s.record_page(a.case, &a.section, a.query.unwrap_or_default());
+
+    /// How each column of one record type filters: by number, by text, or
+    /// by picking one of its few values.
+    record_fields { case: Option<CaseId>, section: String } -> Vec<paging::FieldType> =>
+        |s, a| Ok(paging::record_field_types(s.records(a.case)?.table(&a.section)?));
+
+    /// The distinct values of one column of a record type, sorted, missing
+    /// last: the choices its filter offers. At most `limit` (500 when left out).
+    record_values { case: Option<CaseId>, section: String, field: String, limit: Option<usize> } -> Vec<Value> =>
+        |s, a| Ok(paging::distinct(s.records(a.case)?.table(&a.section)?, &a.field, a.limit.unwrap_or(500)));
 
     /// Write cell edits into the case and reopen it in place.
     apply_record_edits { case: Option<CaseId>, edits: Vec<RecordEdit> } -> crate::CaseSummary =>
@@ -721,6 +923,11 @@ commands! {
     contingency_rows { case: Option<CaseId>, offset: usize, limit: usize } -> crate::table::Table<crate::contingency::ContingencyRow> =>
         |s, a| s.workspace()?.case(a.case)?.contingency_rows(a.offset, a.limit);
 
+    /// A page of the last run's results, sorted, searched and filtered in
+    /// the core. Left unsorted, the rows keep their rank order.
+    contingency_page { case: Option<CaseId>, query: Option<PageQuery> } -> paging::Page<crate::contingency::ContingencyRow> =>
+        |s, a| s.contingency_page(a.case, a.query.unwrap_or_default());
+
     /// One outage's flow and voltage changes, by rank.
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
@@ -734,8 +941,33 @@ commands! {
     result_report { case: Option<CaseId>, name: String } -> crate::power::SolveReport =>
         |s, a| s.workspace()?.case_mut(a.case)?.result(&a.name);
 
+    /// A page of a result's buses, sorted, searched and filtered in the
+    /// core. `name` is a result name, or "latest" for the latest solve. `busRules` keep the buses passing every rule (the Power flow
+    /// filter chips: area, base_kv, kind, number, name, vm).
+    result_buses { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::BusRow> =>
+        |s, a| s.result_page(a.case, &a.name, BUSES, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// A page of a result's generators. `busRules` keep the generators at a
+    /// bus passing every rule.
+    result_generators { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::GeneratorRow> =>
+        |s, a| s.result_page(a.case, &a.name, GENERATORS, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// A page of a result's branches. `busRules` keep the branches with an
+    /// end at a bus passing every rule.
+    result_branches { case: Option<CaseId>, name: String, query: Option<PageQuery>, bus_rules: Option<Vec<paging::Rule>> } -> paging::Page<crate::power::BranchRow> =>
+        |s, a| s.result_page(a.case, &a.name, BRANCHES, a.query.unwrap_or_default(), a.bus_rules.unwrap_or_default());
+
+    /// The distinct values of a bus filter field in a result, sorted,
+    /// missing last. At most `limit` (500 when left out).
+    result_bus_values { case: Option<CaseId>, name: String, field: String, limit: Option<usize> } -> Vec<Value> =>
+        |s, a| Ok(paging::results::bus_values(&*s.workspace()?.case_mut(a.case)?.shared_result(&a.name)?, &a.field, a.limit.unwrap_or(500)));
+
     /// Log lines numbered above `since`.
     log_entries { since: u64 } -> Vec<logbook::Entry> => |_, a| Ok(logbook::since(a.since));
+
+    /// Versions and platform for a problem report, and how many internal
+    /// errors there have been. Nothing from the case.
+    diagnostics {} -> crash::Diagnostics => |_, _| Ok(crash::diagnostics());
 
     /// Size, hash and date of a file, so a study can tell whether its case changed.
     file_fingerprint { path: PathBuf } -> study_file::Fingerprint => |_, a| study_file::fingerprint(&a.path);
@@ -805,6 +1037,31 @@ mod tests {
     }
 
     #[test]
+    fn a_crash_holding_the_workspace_leaves_it_usable() {
+        crate::logbook::install();
+        let session = Session::new();
+        session
+            .invoke("open_case", json!({ "path": case_file() }))
+            .unwrap();
+        // A bug that panics while it holds the workspace lock poisons it.
+        let crashed: Result<(), Error> = crash::catch("a test", || {
+            let _held = session.workspace()?;
+            panic!("bug while holding the workspace");
+        });
+        assert!(crashed.unwrap_err().is(ErrorKind::Internal));
+        // Every later command still works, on the case as it was.
+        let summary: Value =
+            serde_json::from_str(&session.invoke("case_summary", json!({})).unwrap()).unwrap();
+        assert_eq!(summary["power"]["info"]["counts"]["buses"], 9, "{summary}");
+        session
+            .invoke("solve_power_flow", json!({}))
+            .expect("solves after the crash");
+        let d: Value =
+            serde_json::from_str(&session.invoke("diagnostics", json!({})).unwrap()).unwrap();
+        assert!(d["internal_errors"].as_u64().unwrap() >= 1);
+    }
+
+    #[test]
     fn names_are_unique_and_documented() {
         let mut names: Vec<_> = COMMANDS.iter().map(|c| c.name).collect();
         names.sort();
@@ -860,8 +1117,9 @@ mod tests {
         // arguments only need to parse.
         let value = |name: &str| match name {
             "settings" => json!({ "solve": SolveSettings::default() }),
-            "path" | "quantity" | "element" | "section" | "name" => json!("unused"),
-            "edits" => json!([]),
+            "path" | "quantity" | "element" | "section" | "name" | "field" => json!("unused"),
+            "edits" | "bus_rules" => json!([]),
+            "query" => json!({}),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),
             _ => json!(1),

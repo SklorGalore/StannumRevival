@@ -3,6 +3,9 @@ import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Za
 import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
 import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
+  AreaRow,
+  FactsRow,
+  InterchangeChoice,
   DcLineKind,
   DcGridsSummary,
   DcLineRow,
@@ -39,6 +42,7 @@ import { TopBranches, VoltageProfile } from "./OverviewCharts";
 import { useWidth } from "../../ui/useWidth";
 import { useStudyFile } from "../../store/studyFileStore";
 import { RecentFiles } from "../../ui/RecentFiles";
+import { SampleCases } from "../../ui/SampleCases";
 import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
@@ -48,8 +52,10 @@ import { useContingencies } from "../../store/contingencyStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
+import type { Page, PageQuery, PageRule } from "../../lib/analysis/types";
+import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
 import { tolerancePu } from "../../lib/analysis/tolerance";
-import { AC_METHODS, LOCKED_HINT, controlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
+import { AC_METHODS, LOCKED_HINT, controlsDetail, flowControlsDetail, iterationSplit, methodLabel, type AcMethod } from "../../lib/analysis/acMethods";
 import { RESULT_BUS_FIELDS, busFieldOptions, passingBuses } from "../../lib/analysis/busFilters";
 
 type Tab =
@@ -59,6 +65,8 @@ type Tab =
   | "branches"
   | "dc"
   | "dcnet"
+  | "areas"
+  | "facts"
   | "vsc"
   | "sensitivities"
   | "contingencies"
@@ -115,6 +123,7 @@ const loadPartColumns: Column<BusRow>[] = (["p", "q"] as const).flatMap((side) =
     const value = (r: BusRow) => (r.load_parts ? r.load_parts[side][k] : k === 0 ? r[side === "p" ? "pd" : "qd"] : 0);
     return {
       key: `load_${side}_${short}`,
+      sortField: `load_parts.${side}.${k}`,
       header: `${side === "p" ? "Pd" : "Qd"} ${short} (${side === "p" ? "MW" : "MVAr"})`,
       title: `${side === "p" ? "Active" : "Reactive"} load drawn as ${LOAD_PART_NAMES[k]} at the solved voltage`,
       value,
@@ -170,25 +179,26 @@ const generatorColumns: Column<GeneratorRow>[] = [
 const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
   { key: "index", header: "#", value: (r) => r.index + 1, align: "right" },
   { key: "from", header: "From", value: (r) => r.from, align: "right" },
-  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "" }] : []),
+  ...(names.size ? [{ key: "from_name", header: "From name", value: (r: BranchRow) => names.get(r.from) ?? "", sortField: null }] : []),
   { key: "to", header: "To", value: (r) => r.to, align: "right" },
-  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "" }] : []),
+  ...(names.size ? [{ key: "to_name", header: "To name", value: (r: BranchRow) => names.get(r.to) ?? "", sortField: null }] : []),
   {
     key: "circuit",
     header: "Circuit",
     value: (r) => r.circuit,
     render: (r) => (r.winding ? `${r.circuit} · W${r.winding}` : r.circuit),
   },
-  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line") },
+  { key: "type", header: "Type", value: (r) => (r.is_transformer ? "Transformer" : "Line"), sortField: "is_transformer" },
   { key: "online", header: "Status", value: (r) => (r.online ? "Online" : "Offline") },
   { key: "pf", header: "PF (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "qf", header: "QF (MVAr)", value: (r) => r.qf, render: (r) => fixed(r.qf), align: "right" },
   { key: "pt", header: "PT (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
   { key: "qt", header: "QT (MVAr)", value: (r) => r.qt, render: (r) => fixed(r.qt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   { key: "rate_a", header: "Rate A (MVA)", value: (r) => r.rate_a, render: (r) => (r.rate_a > 0 ? fixed(r.rate_a, 1) : "—"), align: "right" },
   {
     key: "loading",
+    sortField: "loading_pct",
     header: "Loading (%)",
     value: (r) => r.loading_pct,
     render: (r) =>
@@ -201,6 +211,19 @@ const branchColumns = (names: Map<number, string>): Column<BranchRow>[] => [
           </span>
         </LoadingBar>
       ),
+    align: "right",
+  },  {
+    key: "tap",
+    header: "Tap",
+    value: (r) => r.tap,
+    render: (r) => (r.is_transformer ? fixed(r.tap, 4) : ""),
+    align: "right",
+  },
+  {
+    key: "shift",
+    header: "Shift (°)",
+    value: (r) => r.shift_deg,
+    render: (r) => (r.shift_deg ? fixed(r.shift_deg, 2) : ""),
     align: "right",
   },
 ];
@@ -310,7 +333,7 @@ const dcLineColumns: Column<DcLineRow>[] = [
   { key: "tap_i", header: "Tap I", title: "Inverter converter transformer tap", value: (r) => dcTap(r, false), render: (r) => num(dcTap(r, false), 5), align: "right" },
   { key: "pf", header: "P sent (MW)", value: (r) => r.pf, render: (r) => fixed(r.pf), align: "right" },
   { key: "pt", header: "P received (MW)", value: (r) => r.pt, render: (r) => fixed(r.pt), align: "right" },
-  { key: "loss", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
+  { key: "loss", sortField: "loss_mw", header: "Loss (MW)", value: (r) => r.loss_mw, render: (r) => fixed(r.loss_mw, 3), align: "right" },
   {
     key: "qf",
     header: "QF (MVAr)",
@@ -370,6 +393,168 @@ const dcLinkColumns: Column<DcSystemReport["links"][number]>[] = [
   { key: "loss", header: "Loss (MW)", value: (l) => l.loss_mw, render: (l) => fixed(l.loss_mw, 3), align: "right" },
 ];
 
+/** Area interchange choices, as the solve panel offers them. */
+const INTERCHANGE_CHOICES: { value: InterchangeChoice; label: string; about: string }[] = [
+  { value: "off", label: "Off", about: "Areas are not held; the Areas tab still shows each area's interchange." },
+  {
+    value: "tie_lines",
+    label: "Tie lines",
+    about: "Each area's slack generation moves until the flow on its tie lines meets the desired interchange (PSS/E area data PDES within PTOL).",
+  },
+  {
+    value: "tie_lines_and_loads",
+    label: "Tie lines and loads",
+    about: "As tie lines, also counting loads that belong to another area than their bus as exports to that area.",
+  },
+];
+
+const areaColumns: Column<AreaRow>[] = [
+  { key: "number", header: "Area", value: (a) => a.number, align: "right" },
+  { key: "name", header: "Name", value: (a) => a.name },
+  {
+    key: "interchange",
+    header: "Interchange (MW)",
+    title: "Net export: flow out on tie lines (metered at their from end; DC lines at the sending converter). Negative is import.",
+    value: (a) => a.interchange_mw,
+    render: (a) => fixed(a.interchange_mw),
+    align: "right",
+  },
+  { key: "desired", header: "Desired (MW)", value: (a) => a.desired_mw ?? null, render: (a) => (a.desired_mw == null ? "" : fixed(a.desired_mw)), align: "right" },
+  {
+    key: "error",
+    header: "Off by (MW)",
+    title: "Interchange minus desired; highlighted beyond the tolerance",
+    value: (a) => a.error_mw ?? null,
+    render: (a) =>
+      a.error_mw == null ? (
+        ""
+      ) : Math.abs(a.error_mw) > a.tolerance_mw ? (
+        <span className="text-amber-700 font-medium">{fixed(a.error_mw)}</span>
+      ) : (
+        fixed(a.error_mw)
+      ),
+    align: "right",
+  },
+  { key: "tolerance", header: "Tolerance (MW)", value: (a) => a.tolerance_mw, render: (a) => (a.desired_mw == null ? "" : fixed(a.tolerance_mw, 1)), align: "right" },
+  { key: "slack", header: "Slack bus", value: (a) => a.slack_bus ?? null, render: (a) => a.slack_bus ?? "", align: "right" },
+  { key: "slack_name", header: "Slack name", value: (a) => a.slack_bus_name },
+  {
+    key: "held",
+    header: "Held",
+    title: "Whether the solve held this area's interchange. Areas holding an island's reference bus balance the island instead.",
+    value: (a) => (a.controlled ? "Yes" : "No"),
+  },
+  {
+    key: "moved",
+    header: "Slack moved (MW)",
+    title: "How far the solve moved the area slack generation",
+    value: (a) => a.slack_change_mw,
+    render: (a) => (a.slack_change_mw ? fixed(a.slack_change_mw) : ""),
+    align: "right",
+  },
+];
+
+/** Each area's net interchange, and whether the solve held it. */
+function AreasTab({ report }: { report: SolveReport }) {
+  const mode = report.area_interchange;
+  const choice = INTERCHANGE_CHOICES.find((c) => c.value === mode);
+  const outside = report.areas.filter((a) => a.controlled && a.error_mw != null && Math.abs(a.error_mw) > a.tolerance_mw).length;
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="areas-tab">
+      <Panel
+        title="Area interchange"
+        eyebrow={
+          mode === "off"
+            ? "Control off: interchange by tie lines, as solved"
+            : `Control: ${choice?.label.toLowerCase()} · ${count(report.areas.filter((a) => a.controlled).length)} held · ${
+                report.interchange_passes
+              } pass${report.interchange_passes === 1 ? "" : "es"}${outside ? ` · ${outside} outside tolerance` : ""}`
+        }
+      >
+        <DataTable rows={report.areas} columns={areaColumns} rowKey={(a) => a.number} />
+      </Panel>
+    </div>
+  );
+}
+
+const factsColumns: Column<FactsRow>[] = [
+  { key: "name", header: "Device", value: (f) => f.name },
+  { key: "bus", header: "Bus", value: (f) => f.bus, align: "right" },
+  { key: "bus_name", header: "Name", value: (f) => f.bus_name },
+  {
+    key: "kind",
+    header: "Kind",
+    title: "STATCOM: shunt element only. UPFC: a series element to a terminal-end bus as well.",
+    value: (f) => (f.terminal_bus == null ? "STATCOM" : `UPFC to ${f.terminal_bus}`),
+  },
+  { key: "held_bus", header: "Holds bus", value: (f) => f.regulated_bus, align: "right" },
+  { key: "vset", header: "VSET (pu)", value: (f) => f.vset, render: (f) => fixed(f.vset, 4), align: "right" },
+  {
+    key: "vm",
+    header: "V (pu)",
+    title: "Solved voltage at the held bus; highlighted when it misses VSET",
+    value: (f) => f.vm,
+    render: (f) =>
+      Math.abs(f.vm - f.vset) > 1e-4 ? <span className="text-amber-700 font-medium">{fixed(f.vm, 4)}</span> : fixed(f.vm, 4),
+    align: "right",
+  },
+  {
+    key: "shunt",
+    header: "Shunt (Mvar)",
+    title: "Reactive power the shunt element injects; negative absorbs",
+    value: (f) => f.shunt_mvar,
+    render: (f) => fixed(f.shunt_mvar),
+    align: "right",
+  },
+  {
+    key: "range",
+    header: "Range (Mvar)",
+    title: "SHMX at the voltage setpoint, either way",
+    value: (f) => f.shunt_max_mvar,
+    render: (f) => `±${fixed(f.shunt_max_mvar, 1)}`,
+    align: "right",
+  },
+  {
+    key: "state",
+    header: "Shunt state",
+    value: (f) => (f.held ? "Held at 0" : f.at_limit ? "At limit" : "Holding"),
+    render: (f) =>
+      f.held ? "Held at 0" : f.at_limit ? <span className="text-amber-700 font-medium">At limit</span> : "Holding",
+  },
+  {
+    key: "series_mw",
+    header: "Series (MW)",
+    title: "Active power the series element sends to the terminal-end bus",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mw),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mw)),
+    align: "right",
+  },
+  {
+    key: "series_mvar",
+    header: "Series (Mvar)",
+    value: (f) => (f.terminal_bus == null ? null : f.series_mvar),
+    render: (f) => (f.terminal_bus == null ? "" : fixed(f.series_mvar)),
+    align: "right",
+  },
+];
+
+/** Each FACTS device's shunt and series output. */
+function FactsTab({ report }: { report: SolveReport }) {
+  const facts = report.facts ?? [];
+  const atLimit = facts.filter((f) => f.at_limit).length;
+  const held = facts.filter((f) => f.held).length;
+  return (
+    <div className="h-full overflow-auto p-3 space-y-3 bg-slate-50" data-testid="facts-tab">
+      <Panel
+        title="FACTS devices"
+        eyebrow={`${count(facts.length)} in service · ${atLimit} at a limit${held ? ` · ${held} held` : ""}`}
+      >
+        <DataTable rows={facts} columns={factsColumns} rowKey={(f) => `${f.name}-${f.bus}`} />
+      </Panel>
+    </div>
+  );
+}
+
 /** DC buses, links and converters of each multi-terminal system. */
 function DcNetworkTab({ systems }: { systems: DcSystemReport[] }) {
   return (
@@ -428,13 +613,14 @@ function SolvePanel({
   const ac = settings.model === "ac";
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
+  const exportRaw = useStudyFile((s) => s.exportRaw);
   return (
-    <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
+    <aside aria-label="Solve settings" className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Solve settings</p>
+        <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Solve settings</p>
         <button
           type="button"
-          className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+          className="p-0.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100"
           onClick={onHide}
           title="Hide solve settings"
           aria-label="Hide solve settings"
@@ -560,6 +746,35 @@ function SolvePanel({
         />
         Move transformer taps
       </label>
+      <label
+        className="flex items-center gap-2 text-xs text-slate-700"
+        title={LOCKED_HINT("Phase shifters", "angle")}
+      >
+        <input
+          type="checkbox"
+          checked={settings.adjust_phase_shifters !== false && ac}
+          disabled={!ac}
+          data-testid="adjust-phase-shifters"
+          onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
+        />
+        Move phase shifters
+      </label>
+      <Field label="Area interchange">
+        <select
+          className={inputClass}
+          value={settings.area_interchange}
+          disabled={!ac}
+          data-testid="area-interchange"
+          onChange={(e) => setSettings({ ...settings, area_interchange: e.target.value as InterchangeChoice })}
+          title={INTERCHANGE_CHOICES.find((c) => c.value === settings.area_interchange)?.about}
+        >
+          {INTERCHANGE_CHOICES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="DC line model">
         <select
           className={inputClass}
@@ -593,13 +808,26 @@ function SolvePanel({
         <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
       </Button>
       <div className="mt-2 pt-3 border-t border-slate-200 flex flex-col gap-1.5">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Export MATPOWER</p>
+        <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export MATPOWER</p>
         <Button variant="ghost" className="justify-start" onClick={() => onExport(false)} disabled={!!busy}>
           <Download size={13} /> Input case…
         </Button>
         <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
           <Download size={13} /> Solved case…
         </Button>
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export PSS/E RAW</p>
+        {([35, 33] as const).map((revision) => (
+          <Button
+            key={revision}
+            variant="ghost"
+            className="justify-start"
+            onClick={() => void exportRaw(revision)}
+            disabled={!!busy}
+            title="The case with its Records edits and study edits, every record included"
+          >
+            <Download size={13} /> Revision {revision}…
+          </Button>
+        ))}
       </div>
     </aside>
   );
@@ -691,6 +919,13 @@ function Overview({
           value={`${report.shunts_switched ?? 0} shunts, ${report.taps_moved ?? 0} taps`}
           detail={controlsDetail(report)}
         />
+        {(report.phase_shifters ?? 0) > 0 && (
+          <Metric
+            label="Phase shifters"
+            value={`${report.phase_shifters_moved ?? 0} of ${report.phase_shifters} moved`}
+            detail={flowControlsDetail(report)}
+          />
+        )}
         <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />
@@ -783,6 +1018,10 @@ function Overview({
 
 function TableTab<T>({
   rows,
+  page,
+  sourceKey,
+  find = null,
+  filtering = false,
   columns,
   rowKey,
   placeholder,
@@ -796,7 +1035,16 @@ function TableTab<T>({
   initialProblemsOnly = false,
   inspector = false,
 }: {
-  rows: T[];
+  /** Every row, for small tables kept in the app (DC lines). */
+  rows?: T[];
+  /** Or a page of rows from the core, sorted and filtered there. */
+  page?: (query: PageQuery) => Promise<Page<T>>;
+  /** Changes whenever the rows behind `page` do (a new result, other filter chips). */
+  sourceKey?: string;
+  /** With `page`: the table's element for the selection (a load's bus), scrolled to. */
+  find?: string | null;
+  /** With `page`: the filter chips narrow the rows, so the selection is kept listed. */
+  filtering?: boolean;
   columns: Column<T>[];
   rowKey: (r: T) => number;
   placeholder: string;
@@ -809,31 +1057,55 @@ function TableTab<T>({
   /** The element picked here or, while linked, anywhere. */
   selected: string | null;
   onPick: (element: string) => void;
-  /** Rows outside their limits, with the column that measures how far, worst first. */
-  problem?: { test: (r: T) => boolean; sortKey: string; label: string };
+  /** Rows outside their limits (rules the core applies), with the column that measures how far, worst first. */
+  problem?: { rules: PageRule[]; sortKey: string; label: string };
   initialProblemsOnly?: boolean;
   /** The element inspector is open beside the table, so the actions live there. */
   inspector?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [problemsOnly, setProblemsOnly] = useState(initialProblemsOnly);
-  const problemCount = useMemo(() => (problem ? rows.filter(problem.test).length : 0), [rows, problem]);
-  const shown = useMemo(
-    () => (problem && problemsOnly ? rows.filter(problem.test) : rows),
-    [rows, problem, problemsOnly]
-  );
   const isSelected = (r: T) => selected !== null && (matches ? matches(r, selected) : element(r) === selected);
-  const selectedRow = selected === null ? undefined : rows.find(isSelected);
+  // From the core: the picked row stays listed whatever the filters.
+  const source = useMemo<RowSource<T> | undefined>(() => {
+    if (!page) return undefined;
+    const rules = problem && problemsOnly ? problem.rules : [];
+    const keep = filtering ? find : null;
+    return {
+      key: `${sourceKey}\u0000${problemsOnly}\u0000${keep}`,
+      fetch: (r) => page({ offset: r.offset, limit: r.limit, sort: r.sort, search: r.search, find: r.find, keep, rules }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, problemsOnly, filtering ? find : null]);
+  const [problemCount, setProblemCount] = useState(0);
+  useEffect(() => {
+    if (!page || !problem) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules })
+      .then((p) => live && setProblemCount(p.matched))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
   // An element picked elsewhere stays visible: drop the problems filter that would hide it.
   useEffect(() => {
-    if (problem && problemsOnly && selectedRow && !problem.test(selectedRow)) setProblemsOnly(false);
+    if (!page || !problem || !problemsOnly || find === null) return;
+    let live = true;
+    page({ limit: 0, rules: problem.rules, find })
+      .then((p) => live && p.found === null && setProblemsOnly(false))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
+  const selectedRow = selected === null || !rows ? undefined : rows.find(isSelected);
+  const selectedElement = source ? find : selectedRow ? element(selectedRow) : null;
   async function exportCsv() {
-    const filtered = filterRows(shown, columns, search);
-    const csv = toCsv(
-      filtered.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)])))
-    );
+    const all = source ? await allRows(source, null, search.trim()) : filterRows(rows ?? [], columns, search);
+    const csv = toCsv(all.map((r) => Object.fromEntries(columns.map((c) => [c.key, c.value(r)]))));
     await saveTextExport(exportName, csv, { name: "CSV", extensions: ["csv"] });
   }
   return (
@@ -841,7 +1113,7 @@ function TableTab<T>({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 border-b border-slate-200 bg-white">
         <SearchBox value={search} onChange={setSearch} placeholder={placeholder} />
         {problem && (
-          <label className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${problemCount ? "text-slate-700" : "text-slate-400"}`}>
+          <label className={`flex items-center gap-1.5 text-xs whitespace-nowrap ${problemCount ? "text-slate-700" : "text-slate-500"}`}>
             <input
               type="checkbox"
               checked={problemsOnly}
@@ -852,13 +1124,13 @@ function TableTab<T>({
           </label>
         )}
         <div className="ml-auto flex items-center gap-2 min-w-0">
-          {selectedRow && selected && (
+          {selectedElement && selected && (
             <span className="flex items-center gap-1 min-w-0 text-xs text-slate-600" data-testid="table-selection">
               <span className="truncate font-medium text-slate-800">{elementLabel(selected)}</span>
               {!inspector && (
                 <>
-                  <DrawAroundButton element={element(selectedRow)} from="power" />
-                  <StudyActions element={element(selectedRow)} />
+                  <DrawAroundButton element={selectedElement} from="power" />
+                  <StudyActions element={selectedElement} />
                 </>
               )}
             </span>
@@ -870,12 +1142,15 @@ function TableTab<T>({
       </div>
       <div className="flex-1 min-h-0 bg-white">
         <DataTable
-          rows={shown}
+          rows={rows}
+          source={source}
+          find={find}
           columns={columns}
           rowKey={rowKey}
           search={search}
           rowClassName={rowClassName}
           isSelected={isSelected}
+          label={exportName.replace(/\.csv$/, "").replace(/[-_]/g, " ")}
           onRowClick={(r) => onPick(element(r))}
           initialSort={problem && initialProblemsOnly ? { key: problem.sortKey, dir: "desc" } : null}
         />
@@ -884,17 +1159,23 @@ function TableTab<T>({
   );
 }
 
-const BUS_PROBLEM = { test: (r: BusRow) => r.violation > 0, sortKey: "violation", label: "Voltage violations" };
+const rule = (field: string, operator: PageRule["operator"], value = ""): PageRule => ({ field, operator, value, upper: null });
+const BUS_PROBLEM = { rules: [rule("violation", "gt", "0")], sortKey: "violation", label: "Voltage violations" };
 const GENERATOR_PROBLEM = {
-  test: (r: GeneratorRow) => r.online && r.q_violation > 0,
+  rules: [rule("online", "eq", "true"), rule("q_violation", "gt", "0")],
   sortKey: "q_violation",
   label: "Q limit violations",
 };
 const BRANCH_PROBLEM = {
-  test: (r: BranchRow) => r.online && (r.loading_pct ?? 0) > 100,
+  rules: [rule("online", "eq", "true"), rule("loading_pct", "gt", "100")],
   sortKey: "loading",
   label: "Overloads",
 };
+
+/** A filter chip's rule as the core reads it. */
+function pageRule(r: FilterRule): PageRule {
+  return { field: r.field, operator: r.operator, value: r.value, upper: r.upper ?? null };
+}
 
 /** The table that lists an element. */
 function tabFor(element: string): Tab | null {
@@ -1003,6 +1284,11 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       branches: report.branches.filter((b) => passing.has(b.from) || passing.has(b.to) || b.element === selected),
     };
   }, [report, passing, selected, selectedBus]);
+
+  // The Power flow tables read pages of the shown result from the core.
+  const resultName = shown?.report ? shown.name : "latest";
+  const busRules = useMemo(() => rules.map(pageRule), [rules]);
+  const pageKey = report ? `${objectKey(report)}\u0000${JSON.stringify(busRules)}` : "";
 
   // A new case invalidates every result.
   useEffect(() => {
@@ -1141,6 +1427,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.dc_systems?.length
         ? [{ id: "dcnet" as const, label: "DC network", count: report.dc_systems.length, disabled: false }]
         : []),
+      ...((report?.areas?.length ?? 0) > 1
+        ? [{ id: "areas" as const, label: "Areas", count: report!.areas.length, disabled: false }]
+        : []),
+      ...(report?.facts?.length
+        ? [{ id: "facts" as const, label: "FACTS", count: report.facts.length, disabled: false }]
+        : []),
       { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
       { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
@@ -1160,7 +1452,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
             <FolderOpen size={14} /> Open case…
           </Button>
         }
-        footer={<RecentFiles />}
+        footer={
+          <>
+            <RecentFiles />
+            <SampleCases />
+          </>
+        }
       >
         Open a MATPOWER (.m) or PSS/E RAW (revisions 23–35) case to run AC or DC power flow, check operating limits and
         calculate sensitivities. Powered by rs-power.
@@ -1269,6 +1566,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         ) : (
           <>
             <Tabs
+              label="Power flow results"
               tabs={tabs}
               value={tab}
               onChange={(t) => {
@@ -1310,7 +1608,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BUS_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.buses ?? report.buses}
+                  page={(q) => api.resultBuses(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selectedBus === null ? null : busElement(selectedBus)}
                   columns={busCols}
                   rowKey={(r) => r.id}
                   placeholder="Search buses…"
@@ -1328,13 +1629,16 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={GENERATOR_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.generators ?? report.generators}
+                  page={(q) => api.resultGenerators(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "generators" ? selected : null}
                   columns={generatorColumns}
                   rowKey={(r) => r.index}
                   placeholder="Search generators…"
                   exportName="generators.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "branches" && report && (
@@ -1345,13 +1649,16 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   inspector={showInspector}
                   problem={BRANCH_PROBLEM}
                   initialProblemsOnly={jump.problems}
-                  rows={filtered?.branches ?? report.branches}
+                  page={(q) => api.resultBranches(resultName, q, busRules)}
+                  sourceKey={pageKey}
+                  filtering={passing !== null}
+                  find={selected !== null && tabFor(selected) === "branches" ? selected : null}
                   columns={branchCols}
                   rowKey={(r) => r.index}
                   placeholder="Search branches…"
                   exportName="branches.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? ((r.loading_pct ?? 0) > 100 ? "bg-red-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "dc" && report?.dc_lines && (
@@ -1365,10 +1672,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   placeholder="Search DC lines…"
                   exportName="dc-lines.csv"
                   element={(r) => r.element}
-                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-400")}
+                  rowClassName={(r) => (r.online ? (r.q_violation > 0 ? "bg-amber-50/60" : "") : "text-slate-500")}
                 />
               )}
               {tab === "dcnet" && report?.dc_systems && <DcNetworkTab systems={report.dc_systems} />}
+              {tab === "areas" && report && <AreasTab report={report} />}
+              {tab === "facts" && report && <FactsTab report={report} />}
               {tab === "vsc" && (
                 <VscGridsTab file={dcGrids} report={report} busy={!!busy} onLoad={attachDcGrids} onClear={detachDcGrids} />
               )}
@@ -1401,7 +1710,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       {selected && (showInspector || (!split && selection?.from === "power")) && (
         // In a narrow window it floats, clear of the tab bar. Side by side,
         // the other pane's inspector shows the selection instead.
-        <aside className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
+        <aside aria-label="Inspector" className={inspectorClass(!showInspector, "top-11")} data-testid="power-inspector">
           <ElementInspector
             element={selected}
             from="power"

@@ -32,13 +32,55 @@ without the app:
 What changed in each version is in the release notes on the same page, and in
 [CHANGELOG.md](https://github.com/SklorGalore/StannumRevival/blob/main/CHANGELOG.md).
 
+## Updates
+
+Stannum checks for a newer release a few seconds after it starts. When there
+is one, a bar under the case bar says so, with the first lines of what's new:
+
+- **Install and restart** downloads the update, installs it and opens the
+  new version. If the open case has edits or a study that isn't saved,
+  Stannum asks first, as it does before opening another case.
+- **What's new** opens the release page.
+- **Skip this version** stops the startup check offering that version.
+  The next one is offered as usual.
+
+Click the version number at the foot of the module rail, or choose **Check
+for updates** in the command palette (**Ctrl+K**), to check at any time. A
+dot beside the version means an update is waiting. To stop the startup
+check, choose **Stop checking for updates at startup** in the palette.
+
+Each update is signed, and Stannum only installs one whose signature matches
+the project's key, which is built into the app. How each install updates:
+
+| Installed from | The update |
+| --- | --- |
+| `-setup.exe` or `.msi` | Runs the new installer with a progress bar and no questions, then opens Stannum. |
+| `.dmg` | Replaces Stannum in Applications. |
+| `.AppImage` | Replaces the AppImage file. |
+| `.deb` or `.rpm` | Installs the new package; your system asks for your password. |
+
+The check downloads one small file (`latest.json`) from the latest GitHub
+release. It never sends your cases or files anywhere.
+
 ## The first time you open it
 
-The installers aren't code-signed yet, so your system warns about them once:
+The installers aren't signed by an identified developer yet, so your system
+warns about them once:
 
-- **macOS** says Apple can't check Stannum for malicious software. In
-  Applications, right-click Stannum, choose **Open**, then **Open** again.
-  After that it opens normally.
+- **macOS 15 (Sequoia) and later** says Apple could not verify Stannum is free
+  of malware. Choose **Done**, then open **System Settings > Privacy &
+  Security**, scroll to **Security**, choose **Open Anyway** next to Stannum,
+  and confirm. After that it opens normally.
+- **macOS 14 and earlier** says Apple can't check Stannum for malicious
+  software. In Applications, right-click Stannum, choose **Open**, then
+  **Open** again.
+- If macOS says **"Stannum.app is damaged and can't be opened"** (versions
+  0.4.1 and older), move the app to Applications and run this in Terminal,
+  then open it again:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Stannum.app
+  ```
 - **Windows** SmartScreen says "Windows protected your PC". Choose **More
   info**, then **Run anyway**.
 

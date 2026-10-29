@@ -113,7 +113,10 @@ voltage control are also listed in `RawImport::voltage_controls` (see below).
 Transformer magnetizing admittance, other tap controls, correction tables and
 wind control are ignored with warnings when present, and so is remote
 regulation unless `remote_regulation` is set. Unsupported equipment sections are skipped with warnings, following
-MATPOWER; ownership, zone, interchange and grouping metadata are not retained.
+MATPOWER; ownership, zone, inter-area transfer and grouping metadata are not
+retained. Area data is kept in `RawImport::areas`, and loads whose area differs
+from their bus's in `RawImport::area_loads`, for area interchange control
+(see below).
 Change-code files warn and are treated as standalone cases, never incremental
 updates. Unknown branch endpoints are retained with warnings; invalid transformer
 endpoints are skipped. `solve` still validates the resulting network.
@@ -207,6 +210,50 @@ still converges with both on and the largest bus voltage error against the
 saved solution drops from 0.076 to 0.047 p.u. On the Memphis case (61
 continuous shunts) the mean error drops from 0.0013 to 0.00006 p.u.
 
+### Phase shifters
+
+`RawImport::flow_controls` lists transformer windings in active power flow
+control (COD 3, and asymmetric COD 5 with connection angle CNXA). Pass them in
+`PowerFlowOptions::flow_controls` and each angle moves within RMI..RMA,
+between Newton solves, to bring the MW flowing into the winding at its own
+bus inside VMI..VMA:
+
+- Shifters move after reactive limits, shunts and taps have settled, aiming
+  20% inside the nearer edge of the band.
+- The moves of all shifters outside their bands are solved together from
+  their flows' sensitivities through the power-flow Jacobian, so parallel
+  shifters share the correction. At most 10 degrees per pass.
+- An asymmetric shifter's tap follows its angle as
+  `sin(CNXA) / sin(CNXA - angle)`, relative to the case's tap.
+- `FlowControls::reactive_taps` lists windings in reactive power flow
+  control (COD 2); they step in whole positions (NTP) within RMI..RMA to hold
+  the Mvar into the winding within VMI..VMA, in the same joint solve.
+  `lock_taps` locks them and `reactive_tap_ratios` gives their final ratios.
+- `lock_phase_shifters` keeps the shifters at their angles; the result still lists
+  them. `PowerFlowResult::phase_shift_angles` and `flow_control_passes` give
+  the outcome.
+
+### Area interchange control
+
+`PowerFlowOptions::interchange` holds each listed `Area`'s net interchange
+(MW, positive for export) at `desired_mw` within `tolerance_mw` by moving the
+generation at its `slack_bus`, shared by machine base (AC only). Off by
+default (`InterchangeMode::Off`). `TieLines` counts the active power leaving
+the area on branches to other areas, metered at the from end, and on DC lines,
+metered at the sending converter; `TieLinesAndLoads` also counts each
+`AreaLoad` (a load owned by another area than its bus's) as an export to its
+area. RAW area data and such loads come from `RawImport::areas` and
+`RawImport::area_loads`.
+
+The areas are checked once reactive limits have settled at full tolerance,
+before shunts and taps move. An area holding an island's reference bus is not
+held, since the reference balances the island. A solve that fails after a
+pass is undone and retried with half the step. `PowerFlowResult::areas` gives
+every area's interchange (`AreaSolution`), also with control off, and
+`interchange_passes` the passes that moved anything. On SyntheticUSA, with a
+slack unit picked in each area and 20 areas asked to move 100 MW, 73 areas are
+held to 5 MW in two passes.
+
 ### Detailed two-terminal DC model
 
 `RawImport::lcc_lines` keeps every field of each two-terminal DC record as an
@@ -231,8 +278,10 @@ rows stay simplified, and DC (linear) solves always use the simplified model.
 - `PowerFlowResult::lcc` reports current, DC voltages, angles, taps, control
   mode, losses and both ends' P and Q; the `dcline` row gets the AC-side P and
   Q (absorbed Q negative) and terminal voltages.
-- Not modelled: capacitor-commutated converters (XCAP), the AC transformer
-  named by IF/IT/ID (the tap is applied inside the converter), a separate
+- A converter that names a two-winding transformer with COD 4 (IF/IT/ID)
+  holds its own tap and steps that transformer's branch tap instead, within
+  its TMX..TMN, when `flow_controls` lists it (`FlowControls::dc_line_taps`).
+- Not modelled: capacitor-commutated converters (XCAP), a separate
   commutating bus (IC), and DCVMIN. Import warns when a line uses them.
 
 ### Detailed VSC model

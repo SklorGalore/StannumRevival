@@ -3,6 +3,9 @@ use crate::{
     BusType, Case, Error, Generator, VoltageControls,
     controls::{self, Controller, Setup},
     dc::{self, LccLine, LccSolution, TapTargets, Taps},
+    facts::{self, FactsSolution},
+    flow_controls::{self, FlowController, FlowControls},
+    interchange::{self, AreaInterchange, AreaSolution, Interchange, InterchangeMode},
     mtdc::{self, MtdcMode, MtdcSolution, MtdcSystem},
     network::Network,
     vsc::{self, DcState, VscAcControl, VscLine, VscSolution},
@@ -120,9 +123,20 @@ pub struct PowerFlowOptions {
     /// susceptance instead of switching it; the result still lists them.
     /// Defaults to false.
     pub lock_switched_shunts: bool,
-    /// Keep every tap control in `voltage_controls` at its starting ratio
+    /// Keep every tap control in `voltage_controls`, and every reactive
+    /// flow tap in `flow_controls`, at its starting ratio
     /// instead of moving it; the result still lists them. Defaults to false.
     pub lock_taps: bool,
+    /// Phase shifters that hold transformer active power flows within a
+    /// band between Newton solves (AC only); empty by default.
+    pub flow_controls: FlowControls,
+    /// Keep every phase shifter in `flow_controls` at its starting angle
+    /// instead of moving it; the result still lists them. Defaults to false.
+    pub lock_phase_shifters: bool,
+    /// Area interchange control (AC only): areas whose slack generation
+    /// moves until their net export meets the desired value. Off by
+    /// default; the result reports every area's interchange either way.
+    pub interchange: AreaInterchange,
     /// Set this flag from another thread to stop the solve: it returns
     /// [`Error::Cancelled`] before its next Newton step. None by default.
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -175,6 +189,9 @@ impl Default for PowerFlowOptions {
             voltage_controls: VoltageControls::default(),
             lock_switched_shunts: false,
             lock_taps: false,
+            flow_controls: FlowControls::default(),
+            lock_phase_shifters: false,
+            interchange: AreaInterchange::default(),
             cancel: None,
         }
     }
@@ -244,9 +261,34 @@ pub struct PowerFlowResult {
     pub tap_ratios: Vec<f64>,
     /// Number of passes that switched shunts or moved taps.
     pub voltage_control_passes: usize,
+    /// Operating point of each FACTS device in
+    /// [`PowerFlowOptions::voltage_controls`], in its order. The shunt
+    /// elements' output is not in `case`; the series transfers are not in
+    /// its loads.
+    pub facts: Vec<FactsSolution>,
+    /// Final phase shift angle (degrees) of each phase shifter in
+    /// [`PowerFlowOptions::flow_controls`], in its order; also applied to
+    /// the branches' `shift` (and `tap`, for asymmetric ones) in `case`.
+    pub phase_shift_angles: Vec<f64>,
+    /// Final winding ratio of each reactive flow tap in
+    /// [`PowerFlowOptions::flow_controls`], in its order; also applied to
+    /// the branches' `tap` in `case`.
+    pub reactive_tap_ratios: Vec<f64>,
+    /// Final off-nominal tap of each transformer a DC line converter moves
+    /// (COD 4) in [`PowerFlowOptions::flow_controls`], in its order; the
+    /// branches' `tap` in `case`.
+    pub dc_line_tap_ratios: Vec<f64>,
+    /// Number of passes that moved phase shifters or reactive flow taps.
+    pub flow_control_passes: usize,
     /// Operating points of the detailed multi-terminal DC systems, in the
     /// order given by [`DcModel::Detailed`]. Empty for the simplified model.
     pub mtdc: Vec<MtdcSolution>,
+    /// Every area's net interchange (AC only): the areas listed in
+    /// [`PowerFlowOptions::interchange`] in order, then the other areas
+    /// found on buses, ascending. Empty for DC solves.
+    pub areas: Vec<AreaSolution>,
+    /// Number of passes that moved area slack generation.
+    pub interchange_passes: usize,
 }
 
 fn linear(
@@ -597,7 +639,41 @@ struct LccTerminal<'a> {
     taps: Taps,
     solution: LccSolution,
     targets: TapTargets,
+    /// Transformers the converters move in place of their own taps
+    /// (COD 4), rectifier then inverter.
+    transformers: [Option<AcTap>; 2],
+    /// The line with unlimited taps at the converters that move a
+    /// transformer, to work out the tap they would need.
+    free: Option<Box<LccLine>>,
 }
+
+/// A transformer that a DC line converter moves in place of its own tap.
+#[derive(Clone, Copy, Debug)]
+struct AcTap {
+    /// Index in `case.branches`.
+    branch: usize,
+    /// False when the control is suppressed (COD -4).
+    enabled: bool,
+    /// The converter bus is the branch's `from` end, so a larger branch tap
+    /// raises the converter's AC voltage; PSS/E expects the `to` end.
+    on_from: bool,
+    /// The converter's AC voltage before the last move, and the factor the
+    /// move was expected to scale it by.
+    last_move: Option<(f64, f64)>,
+    /// Held after a move barely changed the converter's AC voltage, as when
+    /// another control holds that bus.
+    held: bool,
+    /// How far the converter's AC voltage followed the last move, relative
+    /// to scaling with the ratio; 1 until measured.
+    gain: f64,
+}
+
+/// Share of the expected change in a converter's AC voltage that a move of
+/// its transformer must reach for the transformer to keep moving.
+const TRANSFORMER_EFFECT: f64 = 0.25;
+
+/// Most converter tap steps a transformer moves in one pass.
+const MAX_TRANSFORMER_STEPS: f64 = 4.0;
 
 impl LccTerminal<'_> {
     fn evaluate(&self, vm: [f64; 2]) -> (LccSolution, TapTargets) {
@@ -827,26 +903,97 @@ impl DcTerminal<'_> {
         }
     }
 
-    /// Step the converter taps; returns whether any moved.
-    fn adjust_taps(&mut self, vm: &[f64]) -> bool {
+    /// Step the converter taps, and the transformers that some converters
+    /// move instead in `case`; returns whether any converter tap and any
+    /// transformer moved.
+    fn adjust_taps(&mut self, vm: &[f64], case: &mut Case) -> (bool, bool) {
         match self {
             Self::Lcc(t) => {
-                let next = dc::adjust_taps(
-                    t.line,
+                let mut next = dc::adjust_taps(
+                    t.free.as_deref().unwrap_or(t.line),
                     &t.solution,
                     &t.targets,
                     [vm[0], vm[1]],
                     t.kv,
                     t.taps,
                 );
-                std::mem::replace(&mut t.taps, next) != next
+                let mut moved = false;
+                for (k, tap) in t.transformers.iter_mut().enumerate() {
+                    let Some(tap) = tap else { continue };
+                    let branch = &mut case.branches[tap.branch];
+                    let ratio = if branch.tap == 0.0 { 1.0 } else { branch.tap };
+                    // How far the converter's AC voltage followed the last
+                    // move, relative to scaling with the ratio: the next
+                    // move is sized by it.
+                    if let Some((before, expected)) = tap.last_move.take() {
+                        let followed = (vm[k] / before).ln() / expected.ln();
+                        if followed < TRANSFORMER_EFFECT {
+                            tap.held = true;
+                            log::warn!(
+                                "DC line {}: transformer {}-{} barely changes the {} AC voltage, which another control may hold; holding it",
+                                t.line.name.trim(),
+                                branch.from,
+                                branch.to,
+                                ["rectifier", "inverter"][k]
+                            );
+                        } else {
+                            tap.gain = followed.min(1.0 / TRANSFORMER_EFFECT);
+                        }
+                    }
+                    // The converter tap holds; the transformer takes the
+                    // change in no-load DC voltage the converter wanted,
+                    // which scales with the converter's AC voltage.
+                    let wanted = std::mem::replace(&mut next[k], t.taps[k]);
+                    if !tap.enabled || tap.held || wanted == t.taps[k] || ratio <= 0.0 {
+                        continue;
+                    }
+                    let scale = (wanted / t.taps[k]).powf(1.0 / tap.gain);
+                    let converter = [&t.line.rectifier, &t.line.inverter][k];
+                    let reach = MAX_TRANSFORMER_STEPS
+                        * if converter.tap_step > 0.0 {
+                            converter.tap_step
+                        } else {
+                            dc::DEFAULT_TAP_STEP
+                        };
+                    let target = if tap.on_from {
+                        ratio / scale
+                    } else {
+                        ratio * scale
+                    }
+                    .clamp(ratio - reach, ratio + reach);
+                    // Like the rectifier's own tap, step past the exact
+                    // ratio so that its angle ends inside its range.
+                    let round = match (k, target > ratio) {
+                        (1, _) => f64::round,
+                        (_, true) => f64::ceil,
+                        (_, false) => f64::floor,
+                    };
+                    let stepped = dc::step_tap(converter, target, round);
+                    if (stepped - ratio).abs() > 1e-9 {
+                        branch.tap = stepped;
+                        moved = true;
+                        let factor = if tap.on_from {
+                            stepped / ratio
+                        } else {
+                            ratio / stepped
+                        };
+                        tap.last_move = Some((vm[k], factor));
+                        log::info!(
+                            "DC line {}: transformer {}-{} tap {ratio:.5} -> {stepped:.5}",
+                            t.line.name.trim(),
+                            branch.from,
+                            branch.to
+                        );
+                    }
+                }
+                (std::mem::replace(&mut t.taps, next) != next, moved)
             }
             Self::Mtdc(t) => {
                 let next =
                     mtdc::adjust_taps(t.system, &t.topology, &t.solution, vm, &t.kv, &t.taps);
                 let changed = next != t.taps;
                 t.taps = next;
-                changed
+                (changed, false)
             }
         }
     }
@@ -1412,9 +1559,16 @@ fn dc(net: &Network, mut case: Case, opt: &PowerFlowOptions) -> Result<PowerFlow
         vsc: Vec::new(),
         vsc_limit_passes: 0,
         switched_shunts: Vec::new(),
+        facts: Vec::new(),
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
+        phase_shift_angles: Vec::new(),
+        reactive_tap_ratios: Vec::new(),
+        dc_line_tap_ratios: Vec::new(),
+        flow_control_passes: 0,
         mtdc: Vec::new(),
+        areas: Vec::new(),
+        interchange_passes: 0,
     })
 }
 
@@ -1427,6 +1581,7 @@ fn zero_offline(net: &Network, case: &mut Case) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn solve_core(
     input: &Case,
     opt: &PowerFlowOptions,
@@ -1435,6 +1590,8 @@ fn solve_core(
     adjust_taps: bool,
     vsc_terminals: &mut [VscTerminal<'_>],
     setup: &Setup<'_>,
+    shifters: &flow_controls::Moving<'_>,
+    dc_pairs: &[[usize; 2]],
 ) -> Result<PowerFlowResult, Error> {
     if !opt.tolerance.is_finite()
         || opt.tolerance <= 0.0
@@ -1451,6 +1608,9 @@ fn solve_core(
     let mut net = Network::new(input)?;
     let mut case = input.clone();
     if opt.model == Model::Dc {
+        if opt.interchange.mode != InterchangeMode::Off {
+            log::warn!("area interchange control applies to AC solves only; ignored");
+        }
         return dc(&net, case, opt);
     }
     let base_kv = |c: &dc::LccConverter, name: &str| -> Result<(usize, f64), Error> {
@@ -1473,6 +1633,14 @@ fn solve_core(
         Ok((i, kv))
     };
     let mut controller = Controller::new(setup, &net, &case);
+    let mut flow = FlowController::new(shifters, &opt.flow_controls);
+    let mut terminal_gen = vec![false; case.generators.len()];
+    for &g in dc_pairs.iter().flatten() {
+        terminal_gen[g] = true;
+    }
+    let mut areas = Interchange::new(&opt.interchange, &net, &case, |g| {
+        g < setup.limited_from && !terminal_gen[g]
+    });
     let mut terminals = Vec::with_capacity(lines.len() + systems.len());
     for &line in lines {
         let mut ends = [0; 2];
@@ -1482,6 +1650,34 @@ fn solve_core(
         }
         let taps = [line.rectifier.tap, line.inverter.tap];
         let (solution, targets) = dc::operating_point(line, 1.0, 1.0, kv, taps);
+        let mut transformers = [None; 2];
+        for d in &opt.flow_controls.dc_line_taps {
+            if d.dc_line != line.row || d.branch >= case.branches.len() {
+                continue;
+            }
+            let k = usize::from(d.end == dc::LccEnd::Inverter);
+            let bus = [line.rectifier.bus, line.inverter.bus][k];
+            transformers[k] = Some(AcTap {
+                branch: d.branch,
+                enabled: d.enabled,
+                on_from: case.branches[d.branch].from == bus,
+                last_move: None,
+                held: false,
+                gain: 1.0,
+            });
+        }
+        let free = transformers.iter().any(Option::is_some).then(|| {
+            let mut free = Box::new(line.clone());
+            for (c, tap) in [&mut free.rectifier, &mut free.inverter]
+                .into_iter()
+                .zip(&transformers)
+            {
+                if tap.is_some() {
+                    (c.tap_min, c.tap_max, c.tap_step) = (f64::MIN_POSITIVE, f64::INFINITY, 0.0);
+                }
+            }
+            free
+        });
         terminals.push(DcTerminal::Lcc(LccTerminal {
             line,
             ends,
@@ -1489,6 +1685,8 @@ fn solve_core(
             taps,
             solution,
             targets,
+            transformers,
+            free,
         }));
     }
     for &system in systems {
@@ -1597,13 +1795,18 @@ fn solve_core(
     let mut stats = MethodStats::default();
     let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
     let mut control_passes = 0;
+    let mut flow_passes = 0;
     let mut round = 0;
     // State before the last control pass, to go back to if the solve after
     // it fails.
     let mut checkpoint = None;
+    // State before the last area interchange pass, likewise.
+    let mut area_checkpoint = None;
+    // State before the last DC tap pass that moved AC transformers.
+    let mut transformer_checkpoint: Option<(Case, Vec<C>, Vec<DcTerminal<'_>>)> = None;
     // Continuous-shunt helpers always keep to their range.
     let limited = |g: usize| opt.enforce_q_limits || g >= setup.limited_from;
-    let limits = opt.enforce_q_limits || !setup.continuous.is_empty();
+    let limits = opt.enforce_q_limits || !setup.continuous.is_empty() || !setup.facts.is_empty();
     // While reactive limits may still switch buses, solves stop at a looser
     // tolerance: the next pass changes the equations anyway. The last solve
     // always meets `opt.tolerance`. A tolerance already at or above the
@@ -1642,9 +1845,10 @@ fn solve_core(
             count(BusType::Pq)
         );
         let (shunts, taps) = controller.devices();
-        if !remote.is_empty() || !terminals.is_empty() || shunts + taps > 0 {
+        let (shifters, flow_taps) = flow.devices();
+        if !remote.is_empty() || !terminals.is_empty() || shunts + taps + shifters + flow_taps > 0 {
             log::info!(
-                "Controls: {} generator buses regulating a remote bus, {} detailed DC lines or systems, {shunts} switched shunts and {taps} tap changers in voltage control",
+                "Controls: {} generator buses regulating a remote bus, {} detailed DC lines or systems, {shunts} switched shunts and {taps} tap changers in control, {shifters} phase shifters and {flow_taps} reactive flow taps in flow control",
                 remote.len(),
                 terminals.len()
             );
@@ -1679,27 +1883,73 @@ fn solve_core(
         )?;
         iterations += it;
         if status != SolveStatus::Converged
-            && let Some((earlier, saved_case, saved_v, saved_terminals)) = checkpoint.take()
+            && let Some((earlier, earlier_flow, saved_case, saved_v, saved_terminals)) =
+                checkpoint.take()
         {
             let held = controller.undo(earlier);
-            log::warn!(
-                "solve failed after voltage control pass {control_passes}; undoing it and holding {held} shunts or taps"
-            );
+            let held_shifters = flow.undo(earlier_flow);
+            if held_shifters > 0 {
+                log::warn!(
+                    "solve failed after flow control pass {flow_passes}; undoing it and holding {}",
+                    count(held_shifters, "flow control", "flow controls")
+                );
+                reason = "after undoing the last flow control moves";
+            } else {
+                log::warn!(
+                    "solve failed after voltage control pass {control_passes}; undoing it and holding {held} shunts or taps"
+                );
+                reason = "after undoing the last shunt and tap moves";
+            }
             (case, v, terminals) = (saved_case, saved_v, saved_terminals);
             net = Network::new(&case)?;
-            reason = "after undoing the last shunt and tap moves";
+            continue;
+        }
+        if status != SolveStatus::Converged
+            && let Some((saved_case, saved_v, mut saved_terminals)) = transformer_checkpoint.take()
+        {
+            log::warn!(
+                "solve failed after DC tap pass {tap_passes}; undoing it and holding the AC transformers DC line converters move"
+            );
+            for terminal in saved_terminals.iter_mut() {
+                if let DcTerminal::Lcc(lcc) = terminal {
+                    for tap in lcc.transformers.iter_mut().flatten() {
+                        tap.held = true;
+                    }
+                }
+            }
+            (case, v, terminals) = (saved_case, saved_v, saved_terminals);
+            net = Network::new(&case)?;
+            reason = "after undoing the last DC transformer moves";
+            continue;
+        }
+        if status != SolveStatus::Converged
+            && let Some((saved_case, saved_v, saved_terminals)) = area_checkpoint.take()
+            && areas.retreat()
+        {
+            log::warn!(
+                "solve failed after area interchange pass {}; undoing it and retrying with half the step",
+                areas.passes()
+            );
+            (case, v, terminals) = (saved_case, saved_v, saved_terminals);
+            reason = "after undoing the last area slack moves";
             continue;
         }
         checkpoint = None;
+        area_checkpoint = None;
+        transformer_checkpoint = None;
         allocate(&net, &mut case, &kinds, &references, &v, &terminals);
         if status != SolveStatus::Converged {
             break (status, residual);
         }
         if adjust_taps && tap_passes < MAX_TAP_PASSES {
             let mut changed = Vec::new();
+            let mut transformers = false;
+            let saved = (case.clone(), v.clone(), terminals.clone());
             for t in &mut terminals {
                 let vm = end_magnitudes(t, &v);
-                if t.adjust_taps(&vm) {
+                let (taps, moved) = t.adjust_taps(&vm, &mut case);
+                transformers |= moved;
+                if taps || moved {
                     changed.push(match t {
                         DcTerminal::Lcc(t) => t.line.name.trim().to_string(),
                         DcTerminal::Mtdc(t) => t.system.name.trim().to_string(),
@@ -1709,7 +1959,7 @@ fn solve_core(
             if !changed.is_empty() {
                 tap_passes += 1;
                 log::info!(
-                    "DC tap pass {tap_passes}: converter taps moved on DC {} {}",
+                    "DC tap pass {tap_passes}: converter taps or their transformers moved on DC {} {}",
                     if changed.len() == 1 { "line" } else { "lines" },
                     changed.join(", ")
                 );
@@ -1718,6 +1968,10 @@ fn solve_core(
                     log::warn!(
                         "DC converter taps still moving after {MAX_TAP_PASSES} passes; holding them"
                     );
+                }
+                if transformers {
+                    net = Network::new(&case)?;
+                    transformer_checkpoint = Some(saved);
                 }
                 continue;
             }
@@ -1754,6 +2008,15 @@ fn solve_core(
                 }
             }
         }
+        // A continuous shunt at a limit stays fixed for good, so it waits
+        // until nothing else is switching: a generator or FACTS device
+        // reaching its own limit can move the voltages it saw a long way
+        // (on the PSS/E sample case, a STATCOM pulled two continuous shunts
+        // to the top of their range in its first pass, and they stayed
+        // there).
+        if violations.iter().any(|v| v.1 < setup.continuous_from) {
+            violations.retain(|v| v.1 < setup.continuous_from);
+        }
         // A remote-regulating bus at a limit holds its bus again once that
         // bus's voltage is past the setpoint on the side the limit pushes.
         let mut restored = Vec::new();
@@ -1778,11 +2041,22 @@ fn solve_core(
                 reason = "reactive limits settled, finishing at full tolerance";
                 continue;
             }
+            // Area slack generation moves once the reactive limits have
+            // settled, before shunts and taps.
+            let dc = dc_flows(&net, &case, dc_pairs, &terminals);
+            let floor = opt.tolerance * case.base_mva;
+            let saved = (case.clone(), v.clone(), terminals.clone());
+            if areas.pass(&net, &mut case, &references, &v, &dc, floor) > 0 {
+                area_checkpoint = Some(saved);
+                reason = "after moving area slack generation";
+                continue;
+            }
             // Shunts and taps move once the generators have settled, so they
             // see the final reactive limits rather than fight them.
             if !controller.is_empty() && control_passes < MAX_CONTROL_PASSES {
                 let saved = (
                     controller.clone(),
+                    flow.clone(),
                     case.clone(),
                     v.clone(),
                     terminals.clone(),
@@ -1798,6 +2072,35 @@ fn solve_core(
                     if control_passes == MAX_CONTROL_PASSES {
                         log::warn!(
                             "switched shunts or taps still moving after {MAX_CONTROL_PASSES} passes; holding them"
+                        );
+                    }
+                    net = Network::new(&case)?;
+                    checkpoint = Some(saved);
+                    continue;
+                }
+            }
+            // Phase shifters move once the voltage controls have settled
+            // too, one kind of control per pass, so that each pass's effect
+            // on a shifter's flow can be measured.
+            if !flow.is_empty() && flow_passes < MAX_CONTROL_PASSES {
+                let saved = (
+                    controller.clone(),
+                    flow.clone(),
+                    case.clone(),
+                    v.clone(),
+                    terminals.clone(),
+                );
+                let moved = flow.pass(&mut case, &net, &v, &kinds)?;
+                if moved > 0 {
+                    flow_passes += 1;
+                    log::info!(
+                        "Flow control pass {flow_passes}: moved {}",
+                        count(moved, "phase shifter or tap", "phase shifters or taps")
+                    );
+                    reason = "after moving phase shifters and flow taps";
+                    if flow_passes == MAX_CONTROL_PASSES {
+                        log::warn!(
+                            "phase shifters or flow taps still moving after {MAX_CONTROL_PASSES} passes; holding them"
                         );
                     }
                     net = Network::new(&case)?;
@@ -1855,6 +2158,13 @@ fn solve_core(
                     "Reactive limits are infeasible in island {}: no generator is left to hold its voltage",
                     k + 1
                 );
+                let report = areas.report(
+                    &net,
+                    &case,
+                    &references,
+                    &v,
+                    &dc_flows(&net, &case, dc_pairs, &terminals),
+                );
                 return finish_ac(
                     input,
                     &net,
@@ -1869,7 +2179,17 @@ fn solve_core(
                     &terminals,
                     vsc_terminals,
                 )
-                .map(|r| with_controls(r, &controller, opt, control_passes, &stats));
+                .map(|r| {
+                    with_controls(
+                        r,
+                        &controller,
+                        &flow,
+                        opt,
+                        [control_passes, flow_passes],
+                        &stats,
+                    )
+                })
+                .map(|r| with_areas(r, report, &areas));
             }
         }
         if loose && violations.iter().any(|v| kinds[v.0] == BusType::Reference) {
@@ -1900,10 +2220,17 @@ fn solve_core(
         );
         for (n, &(i, g, limit, upper)) in violations.iter().enumerate() {
             let gen_data = &case.generators[g];
-            let text = if g >= setup.limited_from {
+            let text = if g >= setup.continuous_from {
                 format!(
                     "  continuous shunt at bus {} reaches the {} of its range ({:.1} Mvar)",
                     case.buses[net.external[i]].id,
+                    if upper { "top" } else { "bottom" },
+                    limit
+                )
+            } else if g >= setup.limited_from {
+                format!(
+                    "  FACTS shunt element at bus {} reaches the {} of its range ({:.1} Mvar); bus becomes PQ",
+                    gen_data.bus,
                     if upper { "top" } else { "bottom" },
                     limit
                 )
@@ -1946,7 +2273,7 @@ fn solve_core(
         let mut fixed = false;
         for &(i, g, limit, upper) in &violations {
             kinds[i] = BusType::Pq;
-            if g >= setup.limited_from {
+            if g >= setup.continuous_from {
                 // A continuous shunt at an end of its range is a fixed shunt
                 // from then on, so its output follows the voltage squared.
                 fixed |= controller.fix_continuous(&mut case, net.external[i], g, limit);
@@ -2000,6 +2327,13 @@ fn solve_core(
         }
         reason = "after reactive-limit switching";
     };
+    let report = areas.report(
+        &net,
+        &case,
+        &references,
+        &v,
+        &dc_flows(&net, &case, dc_pairs, &terminals),
+    );
     finish_ac(
         input,
         &net,
@@ -2014,20 +2348,79 @@ fn solve_core(
         &terminals,
         vsc_terminals,
     )
-    .map(|r| with_controls(r, &controller, opt, control_passes, &stats))
+    .map(|r| {
+        with_controls(
+            r,
+            &controller,
+            &flow,
+            opt,
+            [control_passes, flow_passes],
+            &stats,
+        )
+    })
+    .map(|r| with_areas(r, report, &areas))
 }
 
-/// Record the switched shunts' and taps' final settings, and the
+/// Record the area interchange report on a result.
+fn with_areas(
+    mut result: PowerFlowResult,
+    report: Vec<AreaSolution>,
+    areas: &Interchange<'_>,
+) -> PowerFlowResult {
+    result.areas = report;
+    result.interchange_passes = areas.passes();
+    result
+}
+
+/// The DC devices' AC ends and the MW each injects, for area interchange.
+fn dc_flows(
+    net: &Network,
+    case: &Case,
+    pairs: &[[usize; 2]],
+    terminals: &[DcTerminal<'_>],
+) -> Vec<Vec<(usize, f64)>> {
+    interchange::dc_ends(
+        net,
+        case,
+        pairs,
+        terminals.iter().map(|t| {
+            t.ends()
+                .iter()
+                .copied()
+                .zip(
+                    t.injections(case.base_mva)
+                        .iter()
+                        .map(|z| z.re * case.base_mva),
+                )
+                .collect()
+        }),
+    )
+}
+
+/// Record the switched shunts', taps' and phase shifters' final settings, and the
 /// iteration counts by method, on a result.
 fn with_controls(
     mut result: PowerFlowResult,
     controller: &Controller<'_>,
+    flow: &FlowController<'_>,
     opt: &PowerFlowOptions,
-    passes: usize,
+    [passes, flow_passes]: [usize; 2],
     stats: &MethodStats,
 ) -> PowerFlowResult {
     (result.switched_shunts, result.tap_ratios) = controller.values(Some(&opt.voltage_controls));
     result.voltage_control_passes = passes;
+    (result.phase_shift_angles, result.reactive_tap_ratios) = flow.values(&opt.flow_controls);
+    result.dc_line_tap_ratios = opt
+        .flow_controls
+        .dc_line_taps
+        .iter()
+        .map(|d| match result.case.branches.get(d.branch) {
+            Some(b) if b.tap != 0.0 => b.tap,
+            Some(_) => 1.0,
+            None => d.ratio,
+        })
+        .collect();
+    result.flow_control_passes = flow_passes;
     result.decoupled_iterations = stats.decoupled_iterations;
     result.newton_fallbacks = stats.newton_fallbacks;
     result
@@ -2112,8 +2505,13 @@ fn finish_ac(
         vsc,
         vsc_limit_passes: vsc_passes,
         switched_shunts: Vec::new(),
+        facts: Vec::new(),
         tap_ratios: Vec::new(),
         voltage_control_passes: 0,
+        phase_shift_angles: Vec::new(),
+        reactive_tap_ratios: Vec::new(),
+        dc_line_tap_ratios: Vec::new(),
+        flow_control_passes: 0,
         mtdc: terminals
             .iter()
             .filter_map(|t| match t {
@@ -2121,13 +2519,15 @@ fn finish_ac(
                 DcTerminal::Lcc(_) => None,
             })
             .collect(),
+        areas: Vec::new(),
+        interchange_passes: 0,
     })
 }
 
 pub(crate) struct DcLineGenerators {
-    row: usize,
-    from_generator: usize,
-    to_generator: usize,
+    pub(crate) row: usize,
+    pub(crate) from_generator: usize,
+    pub(crate) to_generator: usize,
 }
 
 fn dc_bus(value: f64) -> Option<u32> {
@@ -2491,14 +2891,32 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
             })
         })
         .collect();
+    let facts_from = working.generators.len();
+    let facts_setup = facts::setup(
+        &mut working,
+        &opt.voltage_controls.facts,
+        opt.model == Model::Ac,
+    )?;
     let setup = if opt.model == Model::Ac {
         controls::setup(
             &mut working,
             &opt.voltage_controls,
             [opt.lock_switched_shunts, opt.lock_taps],
+            original_generators,
+            &mappings,
+            (&facts_setup.helpers, facts_from),
         )?
     } else {
         Setup::none(&working)
+    };
+    let shifters = if opt.model == Model::Ac {
+        flow_controls::setup(
+            &working,
+            &opt.flow_controls,
+            [opt.lock_phase_shifters, opt.lock_taps],
+        )?
+    } else {
+        flow_controls::Moving::none()
     };
     let mut result = solve_core(
         &working,
@@ -2508,6 +2926,11 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         adjust_taps,
         &mut vsc_terminals,
         &setup,
+        &shifters,
+        &mappings
+            .iter()
+            .map(|m| [m.from_generator, m.to_generator])
+            .collect::<Vec<_>>(),
     )
     .inspect_err(|error| match error {
         // Stopped on request: not a failure.
@@ -2515,6 +2938,7 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
         _ => log::error!("{:?} power-flow solve failed: {error}", opt.model),
     })?;
     controls::finish(&setup, &mut result.case, &mut result.switched_shunts);
+    result.facts = facts::finish(&facts_setup, &opt.voltage_controls.facts, &mut result.case);
     let solved_vsc = std::mem::take(&mut result.vsc);
     result.vsc = detailed_vsc
         .iter()
@@ -2585,8 +3009,10 @@ pub fn solve(input: &Case, opt: &PowerFlowOptions) -> Result<PowerFlowResult, Er
     for (n, what) in [
         (result.q_limit_passes, "reactive-limit"),
         (result.voltage_control_passes, "shunt and tap"),
+        (result.flow_control_passes, "phase shifter"),
         (result.dc_tap_passes, "DC tap"),
         (result.vsc_limit_passes, "VSC limit"),
+        (result.interchange_passes, "area interchange"),
     ] {
         if n > 0 {
             passes.push(format!("{n} {what}"));

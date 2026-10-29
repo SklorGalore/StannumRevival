@@ -8,6 +8,140 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-29
+
+### Added
+
+- **Updates in the app.** A little after it starts, Stannum checks GitHub
+  for a newer release and offers to install it and restart; click the
+  version at the foot of the module rail (or **Check for updates** in
+  **Ctrl+K**) to check by hand. Updates are signed, and Stannum only
+  installs one signed with the project's key. Turn the startup check off in
+  **Ctrl+K**. Takes effect from the first release after this one.
+- Reference pages for every Stannum file format: study files (`.stannum`),
+  diagrams (`.sld`), run files (`.stnrun`) and bus coordinates, each with
+  how its version number works. Studies, diagrams, run files and coordinates
+  saved by 0.3.0 and 0.4.1 are kept in `tests/compat`, and the tests open
+  them on every change.
+- Run files and bus coordinates files can say which version of their format
+  they follow with a first comment line (`# stannum-run-file version 1`,
+  `# stannum-coordinates version 1`). Saved run files start with it. A file
+  from a newer Stannum is refused with a message saying so, instead of being
+  read wrongly; so is a diagram with a newer major `schemaVersion`.
+- **Sample cases** to try on first run: with no case open, Power flow and
+  Records offer MATPOWER's nine-bus case, two five-bus RAW cases and a
+  synthetic 200-bus grid, the last three with bus coordinates for the map.
+  Also in **Ctrl+K** ("Open sample"), and as `sample_cases` and
+  `open_sample` in run files and scripts.
+- **Crash handling**: a bug inside Stannum no longer takes the window down.
+  The step that hit it fails with a notice and an error line in the log, and
+  everything else keeps working. A view that fails while drawing can be drawn
+  again on its own. Python and run files get an `internal` error instead of a
+  crash.
+- **Save diagnostics…** (log toolbar, crash notice and command palette)
+  saves the log with Stannum's, rs-power's and nodal's versions and the
+  platform, for bug reports. No case data. Also the `diagnostics` command.
+- **Keyboard and screen reader pass.** Tables are one Tab stop: arrow keys,
+  Page Up/Down and Home/End move between rows, Enter opens a row, Up from
+  the first row reaches the column headers to sort, and **F2** edits a
+  Records cell. Rows of tabs switch with the arrow keys, menus open and move
+  with the arrow keys, and dialogs keep focus inside and give it back when
+  they close. **Ctrl+1** to **4** show the modules (with Shift, side by
+  side), the menu key or **Shift+F10** opens the diagram's case actions on
+  the selected symbol, **?** lists every shortcut, and the first Tab offers
+  **Skip to the module**. One teal focus ring everywhere, landmarks and
+  labels for screen readers, darker small grey text in both themes, and
+  less motion when the system asks for it.
+- **Versions and compatibility** page in the docs: what a version number
+  promises from 1.0 on for Stannum's files, the Python package,
+  `stannum-cli`, run-file commands and attach, and how anything is
+  deprecated before it's removed.
+- Stannum is now licensed BSD-3-Clause. The installers, Python wheels and
+  `stannum-cli` archives include `LICENSE`, `THIRD-PARTY-NOTICES.md` and
+  `THIRD-PARTY-LICENSES.txt`, the licences of the software built into them.
+- **Area interchange** control in AC solves: each area's slack generation
+  moves until its net interchange is within `PTOL` of the RAW area data's
+  `PDES`, counting tie lines, or tie lines and loads that belong to another
+  area. Off by default; choose it under **Area interchange** in the solve
+  settings, or with `area_interchange` in run files and Python. A new
+  **Areas** tab lists every area's interchange, desired value and slack
+  movement, also with control off.
+- **Export PSS/E RAW** 33 or 35 from any open case, with its Records edits
+  and study edits: in Power flow's side panel, **Ctrl+K**, `export_raw` in
+  run files and `Case.export_raw` in Python. RAW 33 and 35 cases are written
+  record by record, keeping every record and converting between the two
+  revisions; MATPOWER and older RAW revisions are written from the power flow
+  model, with its two-terminal and VSC DC lines, FACTS devices, phase
+  shifters, area interchange targets and every switched shunt mode.
+  Anything the file can't keep is listed after the export.
+- Large tables read a page at a time. Power flow's bus, generator and
+  branch tables, Records, and contingency results are now sorted, searched
+  and filtered in the core, and the window reads only the rows in view as
+  you scroll. On an 80,000-bus case a Records table no longer copies 19 MB
+  into the window, and every contingency result can be sorted and scrolled
+  without **Load all**. Under a filtered table the count reads "69 rows of
+  80,000". Scripts get the same pages with `result_buses`,
+  `result_generators`, `result_branches`, `record_page` and
+  `contingency_page` (plus `result_bus_values`, `record_fields` and
+  `record_values` for filter choices).
+- Generated one-lines draw RAW switching devices: breakers and disconnectors
+  with their name, open or closed state (flagged when not in their normal
+  position) and flow. Double-click one to open or close it in the study.
+  The inspector shows their type, state, normal state and flow, and its
+  study action reads **Open** / **Close** for them.
+- **DC line transformer taps**: when a two-terminal DC line converter in a
+  RAW file names a two-winding transformer with `COD` 4 (`IFR`/`ITR`/`IDR`
+  or `IFI`/`ITI`/`IDI`), that transformer's tap now steps in place of the
+  converter's own tap, within the converter's tap limits, to keep the
+  rectifier's firing angle in range or the inverter's DC voltage at
+  schedule. **Adjust DC converter taps** moves and locks them. RAW exports
+  written from the model keep these transformers and reactive flow taps
+  (`COD` 2).
+- **Reactive flow taps**: transformer windings in reactive power flow
+  control in RAW files (`COD` 2) now step their taps in AC solves to hold
+  their Mvar band, moving with the phase shifters. **Move transformer taps**
+  moves and locks them too.
+- **Phase shifters**: transformer windings in active power flow control in
+  RAW files (`COD` 3, and asymmetric `COD` 5) now move their angles in AC
+  solves to hold their MW band. The moves are solved together through the
+  network, so parallel shifters share the correction. **Move phase shifters**
+  in the solve settings (`adjust_phase_shifters` in run files and Python)
+  locks them when off. The overview counts the shifters that moved, and the
+  Branches table shows each transformer's tap and phase shift.
+- Switched shunts in RAW modes 3, 4 and 5 now switch: they keep a plant's
+  reactive output, a VSC converter's, or another switched shunt's setting
+  within their band, as PSS/E does. Mode 6 keeps a FACTS device's shunt
+  element within its band.
+- **FACTS devices** from RAW FACTS control device data: the shunt element
+  holds its bus (or `REMOT`) at `VSET` within `SHMX`, like a STATCOM, and a
+  series element in normal mode sends `PDES` and `QDES` to its terminal-end
+  bus, like a UPFC (also in DC solves). A new **FACTS** tab in Power flow
+  lists each device's output. On the PSS/E sample case the largest angle
+  error against its saved solution drops from 10.8° to 0.9°.
+- Continuous switched shunts wait for generators and FACTS devices to settle
+  their reactive limits before they are fixed at the end of their range.
+
+### Changed
+
+- The `stannum` Python package's public API is now exactly what
+  `stannum.__all__` lists. The `stannum.errors` module is private
+  (`stannum._errors`); import the errors from `stannum` itself, as in
+  `stannum.NotFound`. Helpers the package used inside, such as
+  `stannum.from_kind` and `stannum.tables_in`, are no longer reachable from
+  the top.
+
+### Fixed
+
+- The macOS app is signed ad hoc, so a downloaded copy no longer says
+  "Stannum.app is damaged and can't be opened". macOS still asks once
+  before the first launch; [Download](https://sklorgalore.github.io/StannumRevival/start/download/)
+  has the steps, and the Terminal command that opens older builds.
+- Power flow reads RAW revision 34 and 35 system switching devices instead
+  of skipping them, so buses joined only by a breaker or disconnector are no
+  longer split apart. Each solves as a lossless branch of the device's
+  reactance, closed devices in service. Case diff compares their fields
+  too (it used to list them as an unsupported layout).
+
 ## 0.4.1 - 2026-10-28
 
 ### Added

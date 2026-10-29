@@ -67,7 +67,7 @@ function NotDrawn({ element }: { element: string }) {
         <strong>{elementLabel(element)}</strong> isn't in this drawing.
       </span>
       <DrawAroundButton element={element} from="diagram" label={`Draw around bus ${centreBus(element)}`} />
-      <button className="text-slate-400 hover:text-slate-700" onClick={() => setHidden(element)} aria-label="Dismiss">
+      <button className="text-slate-500 hover:text-slate-700" onClick={() => setHidden(element)} aria-label="Dismiss">
         <X size={12} />
       </button>
     </div>
@@ -195,9 +195,9 @@ function Inner({ active }: { active: boolean }) {
         {layersOpen && !floating ? (
           <LayersPanel />
         ) : network ? null : paletteOpen ? (
-          <aside className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
+          <aside aria-label="Components" className="relative w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto" data-testid="components-palette">
             <button
-              className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               onClick={() => setPalette(false)}
               title="Hide components"
               aria-label="Hide components"
@@ -207,7 +207,7 @@ function Inner({ active }: { active: boolean }) {
             <ComponentPalette />
           </aside>
         ) : (
-          <aside className="w-10 shrink-0 border-r border-slate-200 bg-white flex flex-col items-center py-2">
+          <aside aria-label="Components" className="w-10 shrink-0 border-r border-slate-200 bg-white flex flex-col items-center py-2">
             <button
               className="p-1.5 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800"
               onClick={() => setPalette(true)}
@@ -218,7 +218,7 @@ function Inner({ active }: { active: boolean }) {
             </button>
           </aside>
         )}
-        <main className={`@container flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
+        <div className={`@container flex-1 min-w-0 relative ${dark ? "" : "force-light"}`}>
           <DiagramCanvas />
           {!drawing.busy && !network && <DrawPrompt />}
           {missing && !drawing.busy && !blank && !network && <NotDrawn element={missing} />}
@@ -263,11 +263,11 @@ function Inner({ active }: { active: boolean }) {
               )}
             </div>
           )}
-        </main>
+        </div>
         {style === "network" && <NetworkInspector floating={floating} />}
         {map && <MapInspector floating={floating} />}
         {!network && (hasSelection || missing) && (
-          <aside className={inspectorClass(floating)} data-testid="inspector">
+          <aside aria-label="Inspector" className={inspectorClass(floating)} data-testid="inspector">
             <PropertiesPanel missing={hasSelection ? null : missing} />
           </aside>
         )}

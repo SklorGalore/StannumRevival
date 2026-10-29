@@ -1,0 +1,64 @@
+name: Fuzz file readers
+
+# Feeds random and mutated files to the RAW, MATPOWER, run file and
+# coordinates CSV readers (fuzz/README.md). A bad file must give an error,
+# never a panic. Runs weekly and on request for ten minutes per reader, and
+# briefly on pull requests that change the fuzz setup. Each reader's corpus
+# is kept between runs, so coverage grows week to week.
+on:
+  schedule:
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds to fuzz each reader
+        default: "600"
+  pull_request:
+    paths:
+      - "fuzz/**"
+      - "scripts/fuzz.ps1"
+      - ".github/workflows/fuzz.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [raw, matpower, run_file, coordinates]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: fuzz
+          cache-bin: true
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      # A run saves the corpus under its own key; the next run restores the
+      # newest one for its reader.
+      - name: Restore the corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+      - name: Fuzz
+        shell: pwsh
+        run: ./scripts/fuzz.ps1 -Target ${{ matrix.target }} -Seconds ${{ github.event_name == 'pull_request' && '60' || inputs.seconds || '600' }} -Jobs 2
+      - name: Keep the crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}

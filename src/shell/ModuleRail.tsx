@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import logoUrl from "../assets/stannum-logo.svg";
 import logoSmallUrl from "../assets/stannum-logo-small.svg";
 import { dragRegion } from "./WindowControls";
+import { useUpdate } from "../store/updateStore";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
@@ -17,6 +18,8 @@ export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: stri
 export function Logo({ size = 28 }: { size?: number }) {
   return <img src={size < 40 ? logoSmallUrl : logoUrl} width={size} height={size} alt="" aria-hidden="true" draggable={false} />;
 }
+
+const MOD = typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
 
 export function ModuleRail() {
   const module = useWorkspace((s) => s.module);
@@ -33,10 +36,12 @@ export function ModuleRail() {
         <Logo />
         <span className="text-[11px] font-semibold tracking-wide">Stannum</span>
       </div>
-      {MODULES.map((m) => (
+      {MODULES.map((m, i) => (
         <button
           key={m.id}
-          title={`${m.hint}. Shift+click to open it beside the current module.`}
+          type="button"
+          title={`${m.hint} (${MOD}+${i + 1}). Shift+click or ${MOD}+Shift+${i + 1} to open it beside the current module.`}
+          aria-keyshortcuts={`Control+${i + 1}`}
           aria-current={module === m.id || split === m.id ? "page" : undefined}
           onClick={(e) => (e.shiftKey && m.id !== module ? setSplit(m.id) : setModule(m.id))}
           className={`mx-2 flex flex-col items-center gap-1 rounded-lg py-2 text-[10.5px] font-medium transition-colors ${
@@ -47,15 +52,33 @@ export function ModuleRail() {
                 : "text-teal-100/70 hover:bg-white/5 hover:text-white"
           }`}
         >
-          {m.icon}
+          <span aria-hidden="true">{m.icon}</span>
           {m.label}
         </button>
       ))}
       <ThemeButton />
-      <div className="text-center text-[9px] text-teal-100/40" title={`Stannum ${__APP_VERSION__}`}>
-        v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
-      </div>
+      <VersionButton />
     </nav>
+  );
+}
+
+/** The version, at the foot of the rail. Click to check for updates; a dot means one is waiting. */
+function VersionButton() {
+  const update = useUpdate((s) => s.update);
+  const check = useUpdate((s) => s.check);
+  const waiting = !!update && update.version !== __APP_VERSION__;
+  return (
+    <button
+      type="button"
+      onClick={() => void check()}
+      className="relative mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/70 hover:bg-white/5 hover:text-teal-50"
+      title={waiting ? `Stannum ${__APP_VERSION__}. Stannum ${update.version} is available: click to see it.` : `Stannum ${__APP_VERSION__}. Click to check for updates.`}
+      aria-label={waiting ? `Stannum ${__APP_VERSION__}, update ${update.version} available` : `Stannum ${__APP_VERSION__}, check for updates`}
+      data-testid="version-button"
+    >
+      v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
+      {waiting && <span className="absolute -right-0.5 top-0 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
+    </button>
   );
 }
 

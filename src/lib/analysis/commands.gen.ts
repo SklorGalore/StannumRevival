@@ -18,6 +18,25 @@ export type AnalysisWire = {
   synthetic_junctions: number;
 };
 
+/** One area's net interchange after a solve. */
+export type AreaRow = {
+  /** Whether the solve held this area's interchange. */
+  controlled: boolean;
+  /** Desired net export in MW, when the case's area data gives one. */
+  desired_mw: number | null;
+  /** Interchange minus desired, in MW, when there is a desired value. */
+  error_mw: number | null;
+  /** Net export in MW (negative is import). */
+  interchange_mw: number;
+  name: string;
+  number: number;
+  slack_bus: number | null;
+  slack_bus_name: string;
+  /** How far the solve moved the area slack generation, in MW. */
+  slack_change_mw: number;
+  tolerance_mw: number;
+};
+
 /** A branch's flow after one outage, for drawing the change on a diagram. */
 export type BranchChange = {
   base_mw: number;
@@ -47,6 +66,8 @@ export type BranchRowColumns = {
   qf: number[];
   qt: number[];
   rate_a: number[];
+  shift_deg: number[];
+  tap: number[];
   to: number[];
   winding: number[];
 };
@@ -484,6 +505,31 @@ export type DiagnosticRow = {
   side: "baseline" | "comparison";
 };
 
+/**
+ * Versions and platform for a problem report. It holds nothing from the
+ * case: no file names, element names or values.
+ */
+export type Diagnostics = {
+  /** The command set's version (API_VERSION in the core). */
+  api_version: number;
+  /** The processor ("x86_64", "aarch64"). */
+  arch: string;
+  /** stannum-core's version. */
+  core: string;
+  /** Whether this is a debug build. */
+  debug_build: boolean;
+  /** Internal errors (panics) since the program started. */
+  internal_errors: number;
+  /** nodal's version (topology). */
+  nodal: string;
+  /** The operating system ("windows", "macos", "linux"). */
+  os: string;
+  /** rs-power's version (power flow). */
+  rs_power: string;
+  /** Processor threads available to solves. */
+  threads: number;
+};
+
 export type DiffRecordDetail = {
   after_lines: string[] | null;
   before_lines: string[] | null;
@@ -619,6 +665,36 @@ export type Error = {
 /** What went wrong, in a form a client can match on. */
 export type ErrorKind = "unknown_command" | "invalid_arguments" | "no_case" | "case_not_open" | "not_ready" | "not_found" | "unsupported" | "case_changed" | "cancelled" | "file" | "failed" | "internal";
 
+/** One FACTS device after a solve. */
+export type FactsRow = {
+  /** The shunt element ended at an end of its range. */
+  at_limit: boolean;
+  /** Sending-end bus, where the shunt element connects. */
+  bus: number;
+  bus_name: string;
+  /**
+   * The shunt element was held at zero (a generator holds its bus, or
+   * the solve was DC).
+   */
+  held: boolean;
+  name: string;
+  /** Bus whose voltage the shunt element holds. */
+  regulated_bus: number;
+  series_mvar: number;
+  /** Power the series element sends to the terminal-end bus. */
+  series_mw: number;
+  /** Largest shunt output at the setpoint (SHMX × VSET), in Mvar. */
+  shunt_max_mvar: number;
+  /** Reactive power the shunt element injects, in Mvar. */
+  shunt_mvar: number;
+  /** Terminal-end bus of the series element; none for a STATCOM. */
+  terminal_bus: number | null;
+  /** Solved voltage at the regulated bus, in per unit. */
+  vm: number;
+  /** Voltage setpoint in per unit. */
+  vset: number;
+};
+
 export type Field = {
   label: string;
   /** "MW", "p.u.", "kV", ... or empty. */
@@ -633,6 +709,12 @@ export type FieldRow = {
   name: string;
   status: DiffStatus;
 };
+
+/**
+ * How a Records column filters: by number, by text, or by picking one of
+ * a few values.
+ */
+export type FieldType = "number" | "text" | "category";
 
 /** A number, or text for values that aren't numbers (a bus type, a missing limit). */
 export type FieldValue = number | string;
@@ -699,6 +781,12 @@ export type InjectionColumns = {
   section: number[];
   status: number[];
 };
+
+/**
+ * Area interchange control: what counts as an area's net export when its
+ * slack generation holds it at the desired value.
+ */
+export type InterchangeChoice = "off" | "tie_lines" | "tie_lines_and_loads";
 
 export type IslandWire = {
   id: number;
@@ -799,6 +887,8 @@ export type NetworkBranch = {
   online: boolean;
   rate_a: number;
   shift: number;
+  /** Set when the branch is a RAW system switching device. */
+  switching?: NetworkSwitch | null;
   /** Off-nominal turns ratio (1.0 when unity) and phase shift in degrees. */
   tap: number;
   to: number;
@@ -854,6 +944,16 @@ export type NetworkGenerator = {
   pmax: number;
 };
 
+/** A system switching device drawn on a one-line. */
+export type NetworkSwitch = {
+  /** "breaker", "disconnector" or "connector" (PSS/E's generic type). */
+  kind: "breaker" | "disconnector" | "connector";
+  /** The device's name; may be empty. */
+  name: string;
+  /** Its normal status is open. */
+  normally_open: boolean;
+};
+
 export type NodeColumns = {
   /** The bus a bus node stands for, or null for a junction. */
   bus: (number | null)[];
@@ -866,6 +966,8 @@ export type NodeColumns = {
   members: ([number, number[]])[];
 };
 
+export type Operator = "eq" | "neq" | "contains" | "gt" | "gte" | "lt" | "lte" | "between" | "missing" | "present";
+
 /** A branch over its limit after an outage. */
 export type Overload = {
   base_mw: number;
@@ -877,6 +979,107 @@ export type Overload = {
   /** MVA as a percent of rate A, after the outage and before it. */
   pct: number;
   to: number;
+};
+
+/** One page of a table. */
+export type PageOfBranchRow = {
+  /** Where `find` is among the matched rows, if it is there. */
+  found: number | null;
+  /** Rows passing the search and rules (and the kept row). */
+  matched: number;
+  /** Where this page starts among the matched rows. */
+  offset: number;
+  /** Each row's position in the whole table, in the order sent. */
+  positions: number[];
+  rows: BranchRowColumns;
+  /** Rows in the whole table. */
+  total: number;
+};
+
+/** One page of a table. */
+export type PageOfBusRow = {
+  /** Where `find` is among the matched rows, if it is there. */
+  found: number | null;
+  /** Rows passing the search and rules (and the kept row). */
+  matched: number;
+  /** Where this page starts among the matched rows. */
+  offset: number;
+  /** Each row's position in the whole table, in the order sent. */
+  positions: number[];
+  rows: BusRowColumns;
+  /** Rows in the whole table. */
+  total: number;
+};
+
+/** One page of a table. */
+export type PageOfContingencyRow = {
+  /** Where `find` is among the matched rows, if it is there. */
+  found: number | null;
+  /** Rows passing the search and rules (and the kept row). */
+  matched: number;
+  /** Where this page starts among the matched rows. */
+  offset: number;
+  /** Each row's position in the whole table, in the order sent. */
+  positions: number[];
+  rows: ContingencyRowColumns;
+  /** Rows in the whole table. */
+  total: number;
+};
+
+/** One page of a table. */
+export type PageOfGeneratorRow = {
+  /** Where `find` is among the matched rows, if it is there. */
+  found: number | null;
+  /** Rows passing the search and rules (and the kept row). */
+  matched: number;
+  /** Where this page starts among the matched rows. */
+  offset: number;
+  /** Each row's position in the whole table, in the order sent. */
+  positions: number[];
+  rows: GeneratorRowColumns;
+  /** Rows in the whole table. */
+  total: number;
+};
+
+/** One page of a table. */
+export type PageOfRecordRow = {
+  /** Where `find` is among the matched rows, if it is there. */
+  found: number | null;
+  /** Rows passing the search and rules (and the kept row). */
+  matched: number;
+  /** Where this page starts among the matched rows. */
+  offset: number;
+  /** Each row's position in the whole table, in the order sent. */
+  positions: number[];
+  rows: RecordRowColumns;
+  /** Rows in the whole table. */
+  total: number;
+};
+
+/** Which rows of a table to send, in what order. */
+export type PageQuery = {
+  /** And, when there are any, passing at least one of these. */
+  any?: Rule[];
+  /**
+   * An element id whose position in the sorted, filtered rows is sent
+   * back as `found`, so the app can scroll to it.
+   */
+  find?: string | null;
+  /**
+   * An element id listed even when the search or rules would hide it, so
+   * the picked row stays in view.
+   */
+  keep?: string | null;
+  /** Rows to send: 200 when left out, at most 5,000. */
+  limit?: number | null;
+  /** Rows to skip in the sorted, filtered order. */
+  offset?: number;
+  /** Keep rows passing every rule. */
+  rules?: Rule[];
+  /** Keep rows where any field's text contains this, ignoring case. */
+  search?: string;
+  /** Sort by one field. Left out, rows keep the table's own order. */
+  sort?: Sort | null;
 };
 
 export type Path = {
@@ -913,6 +1116,24 @@ export type QuantityInfo = {
   title: string;
 };
 
+/** What an export wrote, and what it couldn't keep. */
+export type RawExport = {
+  /**
+   * What changed on the way, such as fields the revision has no place
+   * for. Empty when the file holds everything the case had.
+   */
+  notes: string[];
+  /** Records written, in every section. */
+  records: number;
+  /** The RAW revision written: 33 or 35. */
+  revision: number;
+  /**
+   * "records" when the file's own records were written, "model" when the
+   * power flow model was (MATPOWER cases, other RAW revisions).
+   */
+  source: "records" | "model";
+};
+
 export type RecordBook = {
   /** Whether cells can be edited at all (RAW 33/35 and MATPOWER files). */
   editable: boolean;
@@ -940,6 +1161,16 @@ export type RecordEdit = {
   /** Table id, such as "BUS" or "gen". */
   section: string;
   value: string;
+};
+
+/** A page of one record type: its columns, and the rows asked for. */
+export type RecordPage = {
+  columns: RecordColumn[];
+  id: string;
+  label: string;
+  note: string | null;
+  page: PageOfRecordRow;
+  skipped: number;
 };
 
 /** RecordRow rows as columns: one array per field, each `count` long. */
@@ -982,6 +1213,17 @@ export type ResponseTable = {
   units: string;
 };
 
+/**
+ * One filter rule: a field compared with a value. The same rules as the
+ * app's filter chips (`src/lib/filters.ts`).
+ */
+export type Rule = {
+  field: string;
+  operator: Operator;
+  upper?: string | null;
+  value?: string;
+};
+
 /** What running a run file did. */
 export type RunReport = {
   cancelled: boolean;
@@ -992,6 +1234,22 @@ export type RunReport = {
   seconds: number;
   /** Steps in the file. */
   steps: number;
+};
+
+/** A case built into Stannum. */
+export type SampleCase = {
+  /** How many buses it has, counting the star bus of a three-winding transformer. */
+  buses: number;
+  description: string;
+  /** The case file's name. */
+  file_name: string;
+  /** "matpower" or "raw". */
+  format: string;
+  /** Whether it comes with bus coordinates for the map. */
+  has_coordinates: boolean;
+  /** What `open_sample` takes. */
+  id: string;
+  title: string;
 };
 
 /** One record type in the list, without its rows. */
@@ -1020,6 +1278,13 @@ export type SensitivitySummary = {
 };
 
 export type SolveReport = {
+  /** The area interchange control the solve used (off for DC). */
+  area_interchange: InterchangeChoice;
+  /**
+   * Every area's net interchange (AC only): areas from the case's area
+   * data first, then the others found on buses.
+   */
+  areas: AreaRow[];
   branches: BranchRowColumns;
   /** Sent as columns (see [`Table`]); the frontend turns them back into rows. */
   buses: BusRowColumns;
@@ -1032,7 +1297,13 @@ export type SolveReport = {
   /** How many of `iterations` were decoupled iterations. */
   decoupled_iterations: number;
   elapsed_ms: number;
+  /** FACTS devices in service, in file order (RAW only). */
+  facts: FactsRow[];
+  /** Passes that moved phase shifters. */
+  flow_control_passes: number;
   generators: GeneratorRowColumns;
+  /** Passes that moved area slack generation. */
+  interchange_passes: number;
   /** Iterations in all passes, Newton and decoupled together. */
   iterations: number;
   limits: LimitSummary;
@@ -1041,6 +1312,12 @@ export type SolveReport = {
   model: ModelChoice;
   /** Passes in which the automatic method finished with Newton. */
   newton_fallbacks: number;
+  /** Phase shifters in active power flow control in the case. */
+  phase_shifters: number;
+  /** Whether the solve locked the phase shifters at their angles (AC only). */
+  phase_shifters_locked: boolean;
+  /** Phase shifters that ended away from their starting angle. */
+  phase_shifters_moved: number;
   q_limit_passes: number;
   residual_mva: number;
   residual_pu: number;
@@ -1053,7 +1330,11 @@ export type SolveReport = {
   shunts_switched: number;
   status: string;
   taps_locked: boolean;
-  /** Transformer taps that ended away from their starting ratio. */
+  /**
+   * Transformer taps that ended away from their starting ratio, in
+   * voltage control (COD 1), reactive flow control (COD 2) or moved by a
+   * DC line converter (COD 4, with the DC converter taps).
+   */
   taps_moved: number;
   total_generation_mw: number;
   total_load_mw: number;
@@ -1075,13 +1356,26 @@ export type SolveReport = {
  * every control on.
  */
 export type SolveSettings = {
-  /** Step DC converter taps (detailed model only). */
+  /**
+   * Step DC converter taps, and the transformers that some converters
+   * step instead (COD 4); detailed model only.
+   */
   adjust_dc_taps?: boolean;
   /**
-   * Step transformer taps in voltage control (AC only). When false they
-   * are locked, like shunts.
+   * Move phase shifters in active power flow control (AC only). When
+   * false they are locked, like taps.
+   */
+  adjust_phase_shifters?: boolean;
+  /**
+   * Step transformer taps in voltage control (COD 1) and reactive flow
+   * control (COD 2) (AC only). When false they are locked, like shunts.
    */
   adjust_transformer_taps?: boolean;
+  /**
+   * Hold each area's net interchange at its desired value with the
+   * area slack generation (AC only; RAW area data). Off by default.
+   */
+  area_interchange?: InterchangeChoice;
   dc_model?: DcModelChoice;
   /**
    * Decoupled iterations per pass (fixed-slope and fast decoupled, and
@@ -1107,6 +1401,11 @@ export type SolveSettings = {
    * the same MW and Mvar on every case.
    */
   tolerance_mva?: number;
+};
+
+export type Sort = {
+  descending?: boolean;
+  field: string;
 };
 
 /** Where the element inspector reads an element from. */
@@ -1382,6 +1681,17 @@ export interface CoreCommands {
     };
     result: ContingencyDetail;
   };
+  /**
+   * A page of the last run's results, sorted, searched and filtered in
+   * the core. Left unsorted, the rows keep their rank order.
+   */
+  contingency_page: {
+    args: {
+      case?: CaseId | null;
+      query?: PageQuery | null;
+    };
+    result: PageOfContingencyRow;
+  };
   /** How far the contingency run in progress has got. */
   contingency_progress: {
     args: Record<string, never>;
@@ -1402,6 +1712,14 @@ export interface CoreCommands {
       case?: CaseId | null;
     };
     result: ContingencySummary | null;
+  };
+  /**
+   * Versions and platform for a problem report, and how many internal
+   * errors there have been. Nothing from the case.
+   */
+  diagnostics: {
+    args: Record<string, never>;
+    result: Diagnostics;
   };
   /** The case as a drawable network, for one-line diagrams. */
   diagram_network: {
@@ -1465,6 +1783,19 @@ export interface CoreCommands {
     };
     result: null;
   };
+  /**
+   * Write the case, with its Records and study edits, as a complete PSS/E
+   * RAW file of revision 33 or 35. The answer lists anything the file
+   * couldn't keep.
+   */
+  export_raw: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+      revision: number;
+    };
+    result: RawExport;
+  };
   /** Size, hash and date of a file, so a study can tell whether its case changed. */
   file_fingerprint: {
     args: {
@@ -1510,6 +1841,41 @@ export interface CoreCommands {
     };
     result: CaseSummary;
   };
+  /**
+   * Write a built-in sample case (and its bus coordinates, if it has
+   * any) into `dir`, or a `stannum-samples` folder in the temp folder,
+   * and open it. It replaces the open case.
+   */
+  open_sample: {
+    args: {
+      dir?: string | null;
+      id: string;
+    };
+    result: CaseSummary;
+  };
+  /**
+   * How each column of one record type filters: by number, by text, or
+   * by picking one of its few values.
+   */
+  record_fields: {
+    args: {
+      case?: CaseId | null;
+      section: string;
+    };
+    result: FieldType[];
+  };
+  /**
+   * A page of one record type, sorted, searched and filtered in the core
+   * (fields are column positions, "line" and "element").
+   */
+  record_page: {
+    args: {
+      case?: CaseId | null;
+      query?: PageQuery | null;
+      section: string;
+    };
+    result: RecordPage;
+  };
   /** Every record of one type, with every field. */
   record_table: {
     args: {
@@ -1517,6 +1883,72 @@ export interface CoreCommands {
       section: string;
     };
     result: RecordTable;
+  };
+  /**
+   * The distinct values of one column of a record type, sorted, missing
+   * last: the choices its filter offers. At most `limit` (500 when left out).
+   */
+  record_values: {
+    args: {
+      case?: CaseId | null;
+      field: string;
+      limit?: number | null;
+      section: string;
+    };
+    result: unknown[];
+  };
+  /**
+   * A page of a result's branches. `busRules` keep the branches with an
+   * end at a bus passing every rule.
+   */
+  result_branches: {
+    args: {
+      busRules?: Rule[] | null;
+      case?: CaseId | null;
+      name: string;
+      query?: PageQuery | null;
+    };
+    result: PageOfBranchRow;
+  };
+  /**
+   * The distinct values of a bus filter field in a result, sorted,
+   * missing last. At most `limit` (500 when left out).
+   */
+  result_bus_values: {
+    args: {
+      case?: CaseId | null;
+      field: string;
+      limit?: number | null;
+      name: string;
+    };
+    result: unknown[];
+  };
+  /**
+   * A page of a result's buses, sorted, searched and filtered in the
+   * core. `name` is a result name, or "latest" for the latest solve. `busRules` keep the buses passing every rule (the Power flow
+   * filter chips: area, base_kv, kind, number, name, vm).
+   */
+  result_buses: {
+    args: {
+      busRules?: Rule[] | null;
+      case?: CaseId | null;
+      name: string;
+      query?: PageQuery | null;
+    };
+    result: PageOfBusRow;
+  };
+  /**
+   * A page of a result's generators. `busRules` keep the generators at a
+   * bus passing every rule.
+   */
+  result_generators: {
+    args: {
+      busRules?: Rule[] | null;
+      case?: CaseId | null;
+      name: string;
+      query?: PageQuery | null;
+    };
+    result: PageOfGeneratorRow;
   };
   /**
    * A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
@@ -1553,6 +1985,11 @@ export interface CoreCommands {
       results?: boolean | null;
     };
     result: RunReport;
+  };
+  /** The small cases built into Stannum, to open with `open_sample`. */
+  sample_cases: {
+    args: Record<string, never>;
+    result: SampleCase[];
   };
   /** Save the case, with its edits, to a new file. */
   save_case_as: {
@@ -1691,9 +2128,11 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "diff_compare",
   "diff_compare_working",
   "export_matpower",
+  "export_raw",
   "load_coordinates",
   "load_dc_grids",
   "open_case",
+  "open_sample",
   "run_contingencies",
   "save_case_as",
   "set_study_edits",
@@ -1749,15 +2188,15 @@ export const ELEMENT_KINDS = [
   {
     "buses": 2,
     "format": "<bus>:<bus>:<circuit>",
-    "inspector": "topology",
+    "inspector": "model",
     "kind": "switch",
     "label": "Switch",
     "matpower_table": null,
-    "outage": false,
+    "outage": true,
     "raw_sections": [
       "SYSTEM SWITCHING DEVICE"
     ],
-    "solved": false
+    "solved": true
   },
   {
     "buses": 1,

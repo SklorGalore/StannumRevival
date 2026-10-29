@@ -72,7 +72,7 @@ const converterColumns: Column<VscGridConverterRow>[] = [
     key: "flags",
     header: "Limits",
     value: flags,
-    render: (c) => <span className={c.outside_limits || c.p_limited ? "text-amber-700 font-medium" : "text-slate-400"}>{flags(c)}</span>,
+    render: (c) => <span className={c.outside_limits || c.p_limited ? "text-amber-700 font-medium" : "text-slate-500"}>{flags(c)}</span>,
   },
 ];
 
@@ -117,7 +117,7 @@ function GridPanel({ grid }: { grid: VscGridReport }) {
             rows={grid.converters}
             columns={converterColumns}
             rowKey={(c) => `${c.name}-${c.ac_bus}-${c.dc_bus}`}
-            rowClassName={(c) => (!c.in_service ? "text-slate-400" : c.outside_limits ? "bg-amber-50/60" : "")}
+            rowClassName={(c) => (!c.in_service ? "text-slate-500" : c.outside_limits ? "bg-amber-50/60" : "")}
           />
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
@@ -131,7 +131,7 @@ function GridPanel({ grid }: { grid: VscGridReport }) {
               rows={grid.lines}
               columns={lineColumns}
               rowKey={(l) => grid.lines.indexOf(l)}
-              rowClassName={(l) => (l.in_service ? "" : "text-slate-400")}
+              rowClassName={(l) => (l.in_service ? "" : "text-slate-500")}
             />
           </div>
         </div>

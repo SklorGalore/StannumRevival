@@ -311,9 +311,11 @@ fn outages(
         }
     };
     for (row, e) in power.elements.branches.iter().enumerate() {
+        // Switching devices run only when listed: opening one is a
+        // switching study, not a branch outage.
         let chosen = match &wanted {
             Some(w) => w.contains(e.element.as_str()),
-            None => settings.branches,
+            None => settings.branches && !e.element.starts_with("switch:"),
         };
         if chosen {
             take(&e.element, "branch", row, true);
@@ -472,8 +474,10 @@ impl ContingencyJob {
             power: self.power,
             base: self.base,
             settings: self.settings,
+            id: next_run_id(),
             last_detail: None,
             last_solution: None,
+            last_report: None,
         })
     }
 }
@@ -547,9 +551,11 @@ fn parallel<T: Send>(
                 })
             })
             .collect();
+        // A worker that panicked takes the run down with it, so the command
+        // fails as an internal error instead of reporting a partial run.
         handles
             .into_iter()
-            .map(|h| h.join().unwrap_or_default())
+            .map(|h| h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)))
             .collect()
     });
     for (i, value) in results.into_iter().flatten() {
@@ -1060,9 +1066,19 @@ pub struct ContingencyResults {
     power: PowerCase,
     base: PowerFlowResult,
     settings: ContingencySettings,
+    /// Different for every run, so a sorted order kept for one run's rows
+    /// is never used for another's.
+    pub id: u64,
     last_detail: Option<(usize, ContingencyDetail)>,
     /// The converged AC solution of the last outage solved in full, by rank.
     last_solution: Option<(usize, PowerFlowResult)>,
+    /// The last outage's report, kept while its tables are paged through.
+    last_report: Option<(usize, std::sync::Arc<power::SolveReport>)>,
+}
+
+fn next_run_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl ContingencyResults {
@@ -1121,6 +1137,25 @@ impl ContingencyResults {
     /// view can show it like the base solve. Solved in AC even when the run
     /// only screened the outage.
     pub fn report(&mut self, rank: usize) -> Result<power::SolveReport, Error> {
+        self.shared_report(rank).map(|r| (*r).clone())
+    }
+
+    /// [`Self::report`], kept for the next call with the same rank.
+    pub fn shared_report(
+        &mut self,
+        rank: usize,
+    ) -> Result<std::sync::Arc<power::SolveReport>, Error> {
+        if let Some((r, report)) = &self.last_report
+            && *r == rank
+        {
+            return Ok(report.clone());
+        }
+        let report = std::sync::Arc::new(self.build_report(rank)?);
+        self.last_report = Some((rank, report.clone()));
+        Ok(report)
+    }
+
+    fn build_report(&mut self, rank: usize) -> Result<power::SolveReport, Error> {
         let i = self.index(rank)?;
         let start = Instant::now();
         let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);
@@ -1146,16 +1181,13 @@ impl ContingencyResults {
             self.last_solution = Some((rank, solution));
         }
         let (_, solution) = self.last_solution.as_ref().expect("solved above");
-        let controls = self
-            .settings
-            .solve
-            .options_for(&self.power)
-            .voltage_controls;
+        let options = self.settings.solve.options_for(&self.power);
         Ok(power::report(
             solution,
             &self.power.elements,
             &self.power.dc_line_kinds,
-            &controls,
+            &options.voltage_controls,
+            &options.flow_controls,
             &self.settings.solve,
             start.elapsed().as_secs_f64() * 1000.0,
         ))

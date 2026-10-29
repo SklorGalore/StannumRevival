@@ -40,9 +40,30 @@ const BUDGETS: &[(&str, f64, f64)] = &[
     ("topology_source", 0.25, 0.1),
     ("case_records", 0.5, 0.1),
     ("record_table (largest)", 0.5, 4.5),
+    // Tables read a page at a time: the first page of a new order sorts
+    // and filters the whole table; the next pages reuse that order.
+    ("record_page sorted", 0.5, 0.1),
+    ("record_page next", 0.05, 0.1),
+    ("result_buses sorted", 0.5, 0.1),
+    ("result_buses next", 0.05, 0.1),
+    ("result_branches search and bus rules", 0.5, 0.1),
+    ("result_generators find", 0.5, 0.1),
     ("run_contingencies", 90.0, 0.5),
     ("contingency_rows 100", 0.5, 0.1),
+    ("contingency_page sorted", 0.5, 0.1),
 ];
+
+/// How a command's time budget grows past [`BUDGET_BUSES`]: in proportion
+/// to the case, except where the work grows faster. A contingency run
+/// takes an outage per branch and generator, each solved on the whole
+/// network, so it grows by about the case size to the power 1.5.
+fn growth(what: &str) -> f64 {
+    if what == "run_contingencies" {
+        1.5
+    } else {
+        1.0
+    }
+}
 
 struct Measured {
     what: String,
@@ -215,6 +236,62 @@ fn a_large_case_stays_within_budget() {
         "record_table",
         json!({ "section": largest }),
     );
+    let sorted = json!({ "sort": { "field": "1", "descending": true }, "limit": 200 });
+    let page = run(
+        &s,
+        &mut out,
+        "record_page sorted",
+        "record_page",
+        json!({ "section": largest, "query": sorted }),
+    );
+    assert_eq!(page["page"]["rows"]["count"], 200);
+    let mut next = sorted.clone();
+    next["offset"] = json!(40_000.min(bus_count / 2));
+    run(
+        &s,
+        &mut out,
+        "record_page next",
+        "record_page",
+        json!({ "section": largest, "query": next }),
+    );
+    let by_voltage = json!({ "sort": { "field": "vm" }, "limit": 200 });
+    let page = run(
+        &s,
+        &mut out,
+        "result_buses sorted",
+        "result_buses",
+        json!({ "name": "latest", "query": by_voltage }),
+    );
+    assert_eq!(page["total"], bus_count);
+    let mut next = by_voltage.clone();
+    next["offset"] = json!(bus_count / 2);
+    run(
+        &s,
+        &mut out,
+        "result_buses next",
+        "result_buses",
+        json!({ "name": "latest", "query": next }),
+    );
+    let page = run(
+        &s,
+        &mut out,
+        "result_branches search and bus rules",
+        "result_branches",
+        json!({
+            "name": "latest",
+            "query": { "search": "1", "sort": { "field": "loading_pct", "descending": true } },
+            "busRules": [{ "field": "base_kv", "operator": "gte", "value": "100" }],
+        }),
+    );
+    assert!(page["matched"].as_u64().unwrap() > 0);
+    run(
+        &s,
+        &mut out,
+        "result_generators find",
+        "result_generators",
+        // A bus id is never a generator id, so the whole order is searched.
+        json!({ "name": "latest", "query": { "sort": { "field": "pg" }, "find": "bus:1" } }),
+    );
     run(
         &s,
         &mut out,
@@ -228,6 +305,13 @@ fn a_large_case_stays_within_budget() {
         "contingency_rows 100",
         "contingency_rows",
         json!({ "offset": 0, "limit": 100 }),
+    );
+    run(
+        &s,
+        &mut out,
+        "contingency_page sorted",
+        "contingency_page",
+        json!({ "query": { "sort": { "field": "lost_load_mw", "descending": true } } }),
     );
     if !keep {
         let _ = std::fs::remove_dir_all(&dir);
@@ -245,7 +329,10 @@ fn a_large_case_stays_within_budget() {
             .iter()
             .find(|b| b.0 == m.what)
             .unwrap_or_else(|| panic!("no budget for {}", m.what));
-        let (seconds, megabytes) = (seconds * scale.max(1.0), megabytes * scale.max(1.0));
+        let (seconds, megabytes) = (
+            seconds * scale.max(1.0).powf(growth(&m.what)),
+            megabytes * scale.max(1.0),
+        );
         let mb = m.bytes as f64 / 1e6;
         let _ = writeln!(
             table,

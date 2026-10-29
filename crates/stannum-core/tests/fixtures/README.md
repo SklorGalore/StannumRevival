@@ -23,3 +23,8 @@
   (bus 1) and Central (buses 2 and 4) with made-up Texas latitudes and
   longitudes, and East (bus 3) at 0, 0, which means no place. Bus 5 is in no
   substation. North also has one terminal record, which isn't read.
+- `five_bus_switches.raw` is `five_bus.raw` with Central 138 kV split into
+  three buses joined by system switching devices: breaker "Central BT" (2-6,
+  closed), disconnector "Central D1" (6-7, closed) and breaker "Central BC"
+  (2-7, open and normally open). The line to East leaves from bus 6, and bus
+  7 has a 15 MW load, so power flows through both closed devices.

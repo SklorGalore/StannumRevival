@@ -39,7 +39,7 @@ function SavedRow({ solve, onRestore }: { solve: SavedSolve; onRestore: () => vo
       <button type="button" className="p-1 rounded text-slate-500 hover:bg-slate-100" onClick={onRestore} title="Go back to this solve's edits" aria-label={`Restore the edits of ${solve.name}`}>
         <RotateCcw size={13} />
       </button>
-      <button type="button" className="p-1 rounded text-slate-400 hover:text-red-700 hover:bg-red-50" onClick={() => remove(solve.id)} aria-label={`Delete ${solve.name}`} title="Delete this saved solve">
+      <button type="button" className="p-1 rounded text-slate-500 hover:text-red-700 hover:bg-red-50" onClick={() => remove(solve.id)} aria-label={`Delete ${solve.name}`} title="Delete this saved solve">
         <X size={13} />
       </button>
     </li>
@@ -81,7 +81,7 @@ export function StudyPanel({ onShow, report, stale }: { onShow: (element: string
       >
         {entries.length === 0 ? (
           <div className="p-4 text-xs text-slate-600 flex gap-3">
-            <FlaskConical size={18} className="text-slate-400 shrink-0" />
+            <FlaskConical size={18} className="text-slate-500 shrink-0" />
             <div className="flex flex-col gap-1">
               <p className="font-medium text-slate-800">No edits yet. Every solve uses the case as filed.</p>
               <p>
@@ -97,14 +97,14 @@ export function StudyPanel({ onShow, report, stale }: { onShow: (element: string
               const element = e.kind === "load" ? busElement(e.bus) : e.element;
               return (
                 <li key={i} className="flex items-center gap-2 px-3 py-2 text-xs">
-                  <span className="w-5 text-right tabular-nums text-slate-400">{i + 1}</span>
+                  <span className="w-5 text-right tabular-nums text-slate-500">{i + 1}</span>
                   <button type="button" className="flex-1 min-w-0 truncate text-left text-slate-800 hover:underline" onClick={() => onShow(element)}>
                     {describeEdit(entry)}
                   </button>
                   <DrawAroundButton element={element} from="power" compact />
                   <button
                     type="button"
-                    className="p-1 rounded text-slate-400 hover:text-red-700 hover:bg-red-50 disabled:opacity-40"
+                    className="p-1 rounded text-slate-500 hover:text-red-700 hover:bg-red-50 disabled:opacity-40"
                     onClick={() => void remove(i)}
                     disabled={busy}
                     aria-label={`Undo: ${describeEdit(entry)}`}

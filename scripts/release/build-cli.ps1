@@ -5,8 +5,9 @@ Builds stannum-cli for this machine and packs it for a release.
 .DESCRIPTION
 Builds the release binary, checks that it runs (prints its version and
 checks one of the repository's run files), and packs it with a short
-README into stannum-cli-<version>-<platform>.zip on Windows or .tar.gz
-elsewhere, in -OutDir. The version is stannum-cli's own, which
+README, LICENSE and the third-party notices and licences into
+stannum-cli-<version>-<platform>.zip on Windows or .tar.gz elsewhere, in
+-OutDir. The version is stannum-cli's own, which
 check-release.ps1 holds to the app's.
 
 .PARAMETER OutDir
@@ -56,6 +57,9 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) $name
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item $exe $stage
+foreach ($file in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY-LICENSES.txt') {
+    Copy-Item (Join-Path $root $file) $stage
+}
 @"
 stannum-cli $version ($Platform)
 
@@ -66,6 +70,9 @@ Runs Stannum run files (.stnrun) without the app:
   stannum-cli commands
 
 Guide: https://sklorgalore.github.io/StannumRevival/guide/run-files/
+
+Stannum is BSD-3-Clause (LICENSE). THIRD-PARTY-NOTICES.md and
+THIRD-PARTY-LICENSES.txt list the third-party work it includes.
 "@ | Set-Content -Path (Join-Path $stage 'README.txt') -Encoding utf8NoBOM
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

@@ -6,6 +6,7 @@ import { useTheme } from "../../store/themeStore";
 import { exportPNG } from "../../lib/export/pngExporter";
 import { exportPDF } from "../../lib/export/pdfExporter";
 import { showSaveDialog, saveBinaryFile } from "../../lib/tauri/commands";
+import { Modal } from "../../ui/Modal";
 
 interface Props {
   onClose: () => void;
@@ -89,11 +90,11 @@ export function ExportDialog({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 whitespace-normal">
-      <div className="bg-white rounded-lg shadow-xl w-80 p-5">
+    <Modal label="Export diagram" onClose={onClose} className="w-80 p-5">
+      <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-700">Export Diagram</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close">
             <X size={16} />
           </button>
         </div>
@@ -166,6 +167,6 @@ export function ExportDialog({ onClose }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -147,6 +147,25 @@ export function DiagramCanvas() {
   const [menu, setMenu] = useState<{ x: number; y: number; node: SLDNode } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const { linked, expand } = useCaseActions();
+  // The menu key (or Shift+F10) opens the right-click menu on the selected symbol.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ContextMenu" && !(e.key === "F10" && e.shiftKey)) return;
+      const wrapper = wrapperRef.current;
+      if (!linked || !wrapper || wrapper.closest(".module-hidden")) return;
+      const el = e.target as HTMLElement;
+      const pane = el.closest<HTMLElement>("[data-module]");
+      if (el !== document.body && pane && !pane.contains(wrapper)) return;
+      const { selectedNodeIds, nodes } = useDiagramStore.getState();
+      const node = selectedNodeIds.length === 1 ? nodes.find((n) => n.id === selectedNodeIds[0]) : undefined;
+      const box = node && wrapper.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`)?.getBoundingClientRect();
+      if (!node || !box) return;
+      e.preventDefault();
+      setMenu({ x: box.left + box.width / 2, y: box.bottom, node });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [linked]);
 
   // The first layout of a session pays to start the layout worker; do it now.
   useEffect(() => {

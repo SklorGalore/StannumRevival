@@ -37,8 +37,8 @@ export function CaseBar() {
   const [ref, width] = useWidth<HTMLDivElement>(1440);
   const narrow = width < 1100;
   return (
-    <div ref={ref} {...dragRegion} className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white whitespace-nowrap">
-      <FileText size={16} className="text-slate-400 shrink-0" />
+    <header ref={ref} {...dragRegion} className="h-12 shrink-0 flex items-center gap-3 px-4 border-b border-slate-200 bg-white whitespace-nowrap">
+      <FileText size={16} className="text-slate-500 shrink-0" aria-hidden="true" />
       {summary ? (
         <div className="min-w-[10rem] flex-[1_1_0] flex items-baseline gap-2" data-case-summary>
           <span className="min-w-0 max-w-full shrink-0 text-sm font-semibold text-slate-800 truncate" title={summary.path}>
@@ -54,7 +54,7 @@ export function CaseBar() {
           </span>
         </div>
       ) : (
-        <span className="text-sm text-slate-500">
+        <span role="status" className="text-sm text-slate-500">
           {studyOpening ? "Opening study…" : opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file or a Stannum study, or drop one on the window."}
         </span>
       )}
@@ -88,17 +88,18 @@ export function CaseBar() {
           }`}
           title={split ? "Back to one module at a time" : "Show two modules side by side, with linked selection"}
         >
-          <Columns2 size={13} /> {!narrow && "Side by side"}
+          <Columns2 size={13} aria-hidden="true" /> <span className={narrow ? "sr-only" : ""}>Side by side</span>
         </button>
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
           className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-700"
           title="Find a bus, branch or generator, or run a command"
+          aria-keyshortcuts="Control+K"
         >
-          <Search size={13} />
-          {!narrow && <span>{summary ? "Find in case" : "Commands"}</span>}
-          <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-400">{SHORTCUT}</kbd>
+          <Search size={13} aria-hidden="true" />
+          <span className={narrow ? "sr-only" : ""}>{summary ? "Find in case" : "Commands"}</span>
+          <kbd className="rounded border border-slate-200 px-1 text-[10px] text-slate-500" aria-hidden="true">{SHORTCUT}</kbd>
         </button>
         <Button
           variant="primary"
@@ -116,6 +117,6 @@ export function CaseBar() {
         )}
       </div>
       <WindowControls />
-    </div>
+    </header>
   );
 }

@@ -3,7 +3,7 @@
   "target": "branch",
   "enforcement": "active",
   "conditions": {
-    "ref_name": { "include": ["refs/heads/release/**"], "exclude": [] }
+    "ref_name": { "include": ["refs/heads/release/**", "refs/heads/hotfix/**"], "exclude": [] }
   },
   "bypass_actors": [
     { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" }

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { catchUpLog, useLog } from "../../store/logStore";
+import { useCrash } from "../../store/crashStore";
 import type {
   CaseNetwork,
   CaseSummary,
@@ -30,19 +31,22 @@ import type {
   TopoCase,
   TopoPath,
 } from "./types";
-import { decodeSolveReport, fromColumns } from "./wire";
+import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
+import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, Step } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, SampleCase, Step } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
 /** How each command reads in the log. Quiet ones only log when they fail. */
 const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean }> = {
   open_case: { label: "Opening case", done: "Opened case" },
+  open_sample: { label: "Opening sample case", done: "Opened sample case" },
   close_case: { label: "Closing case", done: "Closed case" },
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
   calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
+  export_raw: { label: "Exporting PSS/E RAW case", done: "Exported PSS/E RAW case" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
@@ -64,6 +68,11 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   element_detail: { label: "Reading an element", quiet: true },
   case_records: { label: "Reading the case's records", quiet: true },
   record_table: { label: "Reading records", quiet: true },
+  record_page: { label: "Reading records", quiet: true },
+  result_buses: { label: "Reading bus results", quiet: true },
+  result_generators: { label: "Reading generator results", quiet: true },
+  result_branches: { label: "Reading branch results", quiet: true },
+  contingency_page: { label: "Reading contingency results", quiet: true },
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
@@ -116,7 +125,10 @@ export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: A
   try {
     result = await invoke<CoreResult<C>>("stannum_command", { command, args: args ?? {} });
   } catch (e) {
-    throw toStannumError(e);
+    const error = toStannumError(e);
+    // A bug in the core, not a bad input: tell the person, who can carry on.
+    if (error.kind === "internal") useCrash.getState().report(LOG_LABELS[command]?.label ?? command.replace(/_/g, " "), error.message, false);
+    throw error;
   }
   for (const watcher of watchers) watcher(command, (args ?? {}) as Record<string, unknown>);
   return result;
@@ -174,6 +186,8 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   adjust_dc_taps: true,
   switch_shunts: true,
   adjust_transformer_taps: true,
+  adjust_phase_shifters: true,
+  area_interchange: "off",
 };
 
 export const CASE_FILTERS = [
@@ -214,8 +228,20 @@ export async function saveTextExport(
   return true;
 }
 
+/** A page as the core sends it: rows as columns. */
+function decodePage<T>(page: { total: number; matched: number; offset: number; positions: number[]; found?: number | null; rows: unknown }): Page<T> {
+  return { ...page, found: page.found ?? null, rows: fromColumns<T>(page.rows as Columns<T>) };
+}
+
+/** A Power flow table read a page at a time. */
+export type ResultTable = "buses" | "generators" | "branches";
+
 export const api = {
   openCase: (path: string): Promise<CaseSummary> => call("open_case", { path }),
+  /** The small cases built into Stannum. */
+  sampleCases: (): Promise<SampleCase[]> => invokeCore("sample_cases"),
+  /** Write a built-in sample into `dir` (the temp folder when left out) and open it. */
+  openSample: (id: string, dir?: string): Promise<CaseSummary> => call("open_sample", { id, dir: dir ?? null }),
   closeCase: () => call("close_case"),
   caseSummary: (): Promise<CaseSummary | null> => call("case_summary"),
 
@@ -235,6 +261,8 @@ export const api = {
     call("sensitivity_responses", { column, quantity, engineering }),
   exportMatpower: (path: string, solved: boolean) =>
     call("export_matpower", { path, solved }),
+  /** Write the case, with its Records and study edits, as a complete RAW 33 or 35 file. */
+  exportRaw: (path: string, revision: 33 | 35) => call("export_raw", { path, revision }),
 
   runContingencies: (settings: ContingencySettings): Promise<ContingencySummary> =>
     call("run_contingencies", { settings }),
@@ -249,6 +277,22 @@ export const api = {
   resultReport: async (name: string): Promise<SolveReport> =>
     decodeSolveReport(await call("result_report", { name })),
 
+  /**
+   * A page of a result's table ("latest" for the latest solve), sorted,
+   * searched and filtered in the core; `busRules` are the filter chips.
+   */
+  resultBuses: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<BusRow>> =>
+    decodePage<BusRow>(await call("result_buses", { name, query, busRules })),
+  resultGenerators: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<GeneratorRow>> =>
+    decodePage<GeneratorRow>(await call("result_generators", { name, query, busRules })),
+  resultBranches: async (name: string, query: PageQuery, busRules: PageRule[]): Promise<Page<BranchRow>> =>
+    decodePage<BranchRow>(await call("result_branches", { name, query, busRules })),
+  /** The values a bus filter field takes in a result, for its picker. */
+  resultBusValues: (name: string, field: string): Promise<(string | number | null)[]> =>
+    call("result_bus_values", { name, field }) as Promise<(string | number | null)[]>,
+  contingencyPage: async (query: PageQuery): Promise<Page<ContingencyRow>> =>
+    decodePage<ContingencyRow>(await call("contingency_page", { query })),
+
   diagramNetwork: (): Promise<CaseNetwork> => call("diagram_network"),
   elementDetail: (element: string): Promise<ElementDetail> => call("element_detail", { element }),
   caseRecords: (): Promise<RecordBook> => call("case_records"),
@@ -256,6 +300,13 @@ export const api = {
     const table = await call("record_table", { section });
     return { ...table, rows: fromColumns<CaseRecord>(table.rows) };
   },
+  recordPage: async (section: string, query: PageQuery): Promise<RecordPage> => {
+    const r = await call("record_page", { section, query });
+    return { ...r, page: decodePage<CaseRecord>(r.page) };
+  },
+  recordFields: (section: string): Promise<FieldType[]> => call("record_fields", { section }),
+  recordValues: (section: string, field: string): Promise<(string | number | null)[]> =>
+    call("record_values", { section, field }) as Promise<(string | number | null)[]>,
   applyRecordEdits: (edits: RecordEdit[]): Promise<CaseSummary> => call("apply_record_edits", { edits }),
   saveCaseAs: (path: string): Promise<CaseSummary> => call("save_case_as", { path }),
 

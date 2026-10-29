@@ -59,7 +59,7 @@ function RuleRow({
             </option>
           ))}
         </select>
-        <button className="text-slate-400 hover:text-slate-700" onClick={onRemove} aria-label="Remove filter" title="Remove filter">
+        <button className="text-slate-500 hover:text-slate-700" onClick={onRemove} aria-label="Remove filter" title="Remove filter">
           <X size={14} />
         </button>
       </div>

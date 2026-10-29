@@ -86,6 +86,23 @@ passes they are held.
 The maximum angles `ANMX` are treated as the nominal top of the tap band, the
 minimum angles as hard limits.
 
+### AC transformer taps (COD 4)
+
+A converter can name a two-winding AC transformer in `IFR`, `ITR`, `IDR`
+(rectifier) or `IFI`, `ITI`, `IDI` (inverter). When that transformer's
+winding has `COD` = 4, the converter's own tap holds at `TAPR`/`TAPI` and the
+transformer's tap moves instead, by the same rules: it scales the converter's
+AC voltage the way the converter tap would, within the converter's
+`TMN`…`TMX` and in steps of its `STP`. As in PSS/E, the converter bus is
+expected on the transformer's winding two side; the rest of the
+transformer's tap control data is ignored. The final tap shows in the
+**Tap** column of the **Branches** table.
+
+With `COD` = −4 the transformer and the converter tap both hold. A converter
+that names a transformer without `COD` 4 moves its own tap, and a `COD` 4
+transformer that no converter names keeps its tap; both cases are listed
+under **Import warnings**.
+
 ## Results
 
 The **DC lines** tab reports current, DC voltages, $\alpha$, $\gamma$, taps,
@@ -98,8 +115,6 @@ On the PSS/E test case `t_psse_case3.raw`, the two LCC lines lose 60.5 and
 ## Not modelled
 
 - Capacitor-commutated converters (`XCAP`).
-- The AC transformer named by `IF`/`IT`/`ID`; the tap is applied inside the
-  converter instead.
 - A separate commutating bus (`IC`).
 - `DCVMIN`.
 

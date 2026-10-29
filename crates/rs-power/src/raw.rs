@@ -1,8 +1,9 @@
 //! PSS/E RAW conversion following MATPOWER 8.1 psse_read/parse/convert.
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
-    Branch, Bus, BusType, Case, Error, Generator, LccControl, LccConverter, LccEnd, LccLine,
-    MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, ShuntMode, SwitchedShunt, TapControl,
+    Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, DcLineTap, Error, FactsDevice,
+    FlowControls, Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter,
+    MtdcLink, MtdcSystem, PhaseShifter, ReactiveTap, ShuntMode, SwitchedShunt, TapControl,
     VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
 };
 use std::{
@@ -73,12 +74,19 @@ pub struct RawImport {
     /// its full RAW data, for the detailed DC model. Only filled when
     /// [`RawOptions::all_dc_lines`] imports VSC rows.
     pub vsc_lines: Vec<VscLine>,
-    /// Switched shunts in voltage control (MODSW 1 or 2, in service, with a
-    /// valid band and blocks) and transformer windings with voltage-control
+    /// Switched shunts in control (MODSW 1 to 5, in service, with a valid
+    /// band and blocks, and the device they watch found) and transformer
+    /// windings with voltage-control
     /// taps (COD 1), for [`crate::PowerFlowOptions::voltage_controls`].
     /// Revisions 30 and later; MATPOWER freezes both, as the import still
     /// does in `case`.
     pub voltage_controls: VoltageControls,
+    /// Transformer windings with phase shifters in active power flow
+    /// control (COD 3, symmetric, and COD 5, asymmetric) and taps in
+    /// reactive power flow control (COD 2), for
+    /// [`crate::PowerFlowOptions::flow_controls`]. Revisions 30 and later;
+    /// `case` keeps every angle and ratio as the file gives it.
+    pub flow_controls: FlowControls,
     /// Every multi-terminal DC system with its full RAW data, for the
     /// detailed DC model. Each converter names its `case.dcline` row. Only
     /// filled when [`RawOptions::all_dc_lines`] imports multi-terminal rows.
@@ -87,6 +95,17 @@ pub struct RawImport {
     /// latitude and longitude and the buses their nodes sit at, in file
     /// order. Empty for earlier revisions and files without that data.
     pub substations: Vec<RawSubstation>,
+    /// The area data records, in file order, for
+    /// [`crate::AreaInterchange::areas`]. An `ISW` naming no bus leaves the
+    /// area without a slack bus.
+    pub areas: Vec<Area>,
+    /// In-service loads whose `AREA` differs from their bus's area, for
+    /// [`crate::AreaInterchange::loads`]. Their power is already in the
+    /// bus's load in `case`.
+    pub area_loads: Vec<AreaLoad>,
+    /// Revision 34-35 system switching devices, in file order. Each also
+    /// solves as a branch of `case`.
+    pub switching_devices: Vec<SwitchingDevice>,
 }
 
 /// A substation record of revision 34-35 RAW data.
@@ -126,6 +145,33 @@ pub enum BranchKind {
     Line,
     /// A two- or three-winding transformer record.
     Transformer,
+    /// A system switching device record (revisions 34-35).
+    Switch,
+}
+
+/// What a system switching device is, from its STYPE field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SwitchType {
+    /// STYPE 1, PSS/E's default: a generic connector.
+    Generic,
+    /// STYPE 2: a circuit breaker.
+    Breaker,
+    /// STYPE 3: a disconnect switch.
+    Disconnector,
+}
+
+/// A system switching device of revision 34-35 RAW data. It solves as a
+/// lossless branch of reactance X (`case.branches[branch]`), in service when
+/// closed (STAT 1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SwitchingDevice {
+    /// Row in `case.branches` and `branch_sources`.
+    pub branch: usize,
+    pub kind: SwitchType,
+    /// Device name, trimmed; may be empty.
+    pub name: String,
+    /// The normal status (NSTAT) is open.
+    pub normally_open: bool,
 }
 
 /// The RAW record a converted branch came from. MATPOWER rows have none.
@@ -616,6 +662,7 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             .copied()
             .ok_or_else(|| r.error("unknown bus reference"))
     };
+    let mut area_loads = Vec::new();
     for r in section("load") {
         let b = &mut case.buses[bus_index(r, 0)?];
         if r.status(2)? {
@@ -623,6 +670,27 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             let iq = r.optional(8, 0.0)?;
             let yp = r.optional(9, 0.0)?;
             let yq = r.optional(10, 0.0)?;
+            let area = r.optional(3, b.area as f64)?;
+            if area > 0.0 && area.fract() == 0.0 && area as u32 != b.area {
+                let pl = r.num(5)?;
+                area_loads.push(if options.zip_loads {
+                    AreaLoad {
+                        bus: b.id,
+                        area: area as u32,
+                        p: pl,
+                        p_i: ip,
+                        p_z: yp,
+                    }
+                } else {
+                    AreaLoad {
+                        bus: b.id,
+                        area: area as u32,
+                        p: pl + ip * b.vm + yp * b.vm * b.vm,
+                        p_i: 0.0,
+                        p_z: 0.0,
+                    }
+                });
+            }
             b.pd += r.num(5)?;
             b.qd += r.num(6)?;
             if options.zip_loads {
@@ -653,6 +721,10 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         }
     }
     let mut voltage_controls = VoltageControls::default();
+    let mut flow_controls = FlowControls::default();
+    // Switched shunts whose watched VSC converter or switched shunt is
+    // found once every record has been read.
+    let mut pending_shunts = Vec::new();
     for r in section("switched shunt") {
         let index = bus_index(r, 0)?;
         let control = if rev >= 30 {
@@ -661,13 +733,14 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             None
         };
         let b = &mut case.buses[index];
+        let modsw = r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)?;
         if let Some(shunt) = control {
-            voltage_controls.switched_shunts.push(shunt);
-        } else if r.optional(if rev >= 35 { 2 } else { 1 }, 0.0)? != 0.0 {
+            pending_shunts.push(shunt);
+        } else if modsw != 0.0 {
             ctx.warn(
                 r.line,
                 true,
-                "switched shunt frozen at BINIT; its switching control is not supported",
+                "switched shunt frozen at BINIT; its switching control is not supported, or its band, blocks or controlled bus are not valid",
             )?;
         }
         if rev >= 32 && !r.status(if rev >= 35 { 4 } else { 3 })? {
@@ -811,12 +884,29 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         &indices,
         &mut ctx,
         &mut voltage_controls.taps,
+        &mut flow_controls,
     )?;
-    let (mut dc_line_names, lcc_lines) = convert_dc(
+    // After the transformers, so branch rows of files that have none keep
+    // the numbers they had before switching devices were read.
+    let switching_devices = convert_switching_devices(
+        section("system switching device"),
+        &mut case,
+        &mut branch_sources,
+        &indices,
+        &mut ctx,
+    )?;
+    let (mut dc_line_names, lcc_lines, lcc_sources) = convert_dc(
         rev,
         section("two-terminal DC"),
         &mut case,
         &indices,
+        &mut ctx,
+    )?;
+    link_dc_line_taps(
+        &mut flow_controls,
+        &lcc_lines,
+        &lcc_sources,
+        &branch_sources,
         &mut ctx,
     )?;
     let mut dc_line_kinds = vec![DcLineKind::TwoTerminal; dc_line_names.len()];
@@ -855,6 +945,19 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
+    for r in section("FACTS control device") {
+        if let Some(device) = facts_device(rev, r, &indices, &case, &mut ctx)? {
+            voltage_controls.facts.push(device);
+        }
+    }
+    voltage_controls.switched_shunts = resolve_switched_shunts(
+        pending_shunts,
+        &case,
+        &dc_line_names,
+        &dc_line_kinds,
+        &voltage_controls.facts,
+        &mut ctx,
+    )?;
     if options.lcc_absorbs_reactive
         && let Some(lines) = &mut case.dcline
     {
@@ -867,6 +970,29 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
             }
         }
     }
+    let mut areas = Vec::new();
+    for r in section("area") {
+        let isw = r.optional(1, 0.0)?;
+        let slack_bus = if isw == 0.0 {
+            None
+        } else if let Some(&i) = indices.get(&r.id(1)?) {
+            Some(case.buses[i].id)
+        } else {
+            ctx.warn(
+                r.line,
+                false,
+                "area slack bus (ISW) is not a bus in the case; the area holds no interchange",
+            )?;
+            None
+        };
+        areas.push(Area {
+            number: r.id(0)?,
+            slack_bus,
+            desired_mw: r.optional(2, 0.0)?,
+            tolerance_mw: r.optional(3, 10.0)?,
+            name: r.fields.get(4).map_or("", |s| s.trim()).to_string(),
+        });
+    }
     for (i, rows) in sections.iter().enumerate().take(names.len()) {
         let name = names[i];
         if !matches!(
@@ -877,9 +1003,11 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
                 | "switched shunt"
                 | "generator"
                 | "branch"
+                | "system switching device"
                 | "transformer"
                 | "two-terminal DC"
                 | "area"
+                | "FACTS control device"
         ) && !(options.all_dc_lines
             && matches!(name, "voltage source converter" | "multi-terminal DC"))
             && let Some(r) = rows.first()
@@ -943,9 +1071,93 @@ pub fn parse_raw_with_options(input: &str, options: &RawOptions) -> Result<RawIm
         lcc_lines,
         vsc_lines,
         voltage_controls,
+        flow_controls,
         mtdc,
         substations,
+        areas,
+        area_loads,
+        switching_devices,
     })
+}
+
+/// PSS/E's default switching device reactance, in per unit.
+const SWITCH_X: f64 = 0.0001;
+
+/// Revision 34-35 system switching devices:
+/// `I, J, 'CKT', X, RATE1..RATE12, STAT, NSTAT, MET, STYPE, 'NAME'`. Each
+/// becomes a lossless branch of reactance X (PSS/E's 0.0001 when 0 or
+/// blank), in service when STAT is 1.
+fn convert_switching_devices(
+    rows: &[Record],
+    case: &mut Case,
+    branch_sources: &mut Vec<BranchSource>,
+    indices: &HashMap<u32, usize>,
+    ctx: &mut Context,
+) -> Result<Vec<SwitchingDevice>, Error> {
+    let mut devices = Vec::with_capacity(rows.len());
+    for r in rows {
+        let from = r.id(0)?;
+        let to = r.integer(1, true)?;
+        for id in [from, to] {
+            if !indices.contains_key(&id) {
+                ctx.warn(
+                    r.line,
+                    false,
+                    format!("switching device references unknown bus {id}; device retained"),
+                )?;
+            }
+        }
+        let x = r.optional(3, SWITCH_X)?;
+        let status = |i: usize| -> Result<bool, Error> {
+            if r.fields.get(i).is_none_or(|s| s.trim().is_empty()) {
+                Ok(true)
+            } else {
+                r.status(i)
+            }
+        };
+        let online = status(16)?;
+        let normally_open = !status(17)?;
+        let kind = match r.optional(19, 1.0)? {
+            2.0 => SwitchType::Breaker,
+            3.0 => SwitchType::Disconnector,
+            _ => SwitchType::Generic,
+        };
+        let name = r
+            .fields
+            .get(20)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        devices.push(SwitchingDevice {
+            branch: case.branches.len(),
+            kind,
+            name,
+            normally_open,
+        });
+        branch_sources.push(BranchSource {
+            kind: BranchKind::Switch,
+            buses: vec![from, to],
+            circuit: identifier(r, 2),
+            winding: 0,
+            line: r.line,
+        });
+        case.branches.push(Branch {
+            from,
+            to,
+            r: 0.0,
+            x: if x == 0.0 { SWITCH_X } else { x },
+            b: 0.0,
+            rate_a: r.optional(4, 0.0)?,
+            rate_b: r.optional(5, 0.0)?,
+            rate_c: r.optional(6, 0.0)?,
+            tap: 0.0,
+            shift: 0.0,
+            online,
+            angmin: -360.0,
+            angmax: 360.0,
+            extra: vec![],
+        });
+    }
+    Ok(devices)
 }
 
 /// Substation records from the sections after the known ones. A substation
@@ -1024,31 +1236,57 @@ fn convert_substations(
     Ok((substations, read))
 }
 
-/// The voltage control of a switched shunt record (revision 30 or later), if
-/// it has one that the solver can apply.
+/// A switched shunt control read from its record, before the VSC
+/// converter or switched shunt it watches (MODSW 4 and 5) is found.
+struct PendingShunt {
+    shunt: SwitchedShunt,
+    /// The record's shunt ID (revision 35), "1" before.
+    id: String,
+    watches: Watches,
+}
+
+enum Watches {
+    /// Its own control needs nothing else (MODSW 1 to 3).
+    Nothing,
+    /// The converter at `bus` of the VSC DC line named `name` (MODSW 4).
+    Converter { name: String, bus: u32 },
+    /// A switched shunt at `bus`, the one with ID `id` when given (MODSW 5).
+    Shunt { bus: u32, id: Option<String> },
+    /// The FACTS device named `name`, at sending-end bus `bus` when given
+    /// (MODSW 6).
+    Facts { name: String, bus: Option<u32> },
+}
+
+/// The control of a switched shunt record (revision 30 or later), if it has
+/// one that the solver can apply.
 fn switched_shunt(
     rev: u32,
     r: &Record,
     indices: &HashMap<u32, usize>,
     case: &Case,
-) -> Result<Option<SwitchedShunt>, Error> {
+) -> Result<Option<PendingShunt>, Error> {
     // Field positions: MODSW, STAT (none before 32), VSWHI, VSWLO, SWREM,
-    // BINIT, first N.
-    let [modsw, stat, vhi, vlo, rem, binit, first] = match rev {
-        35.. => [2, 4, 5, 6, 7, 11, 12],
-        32..=34 => [1, 3, 4, 5, 6, 9, 10],
-        _ => [1, usize::MAX, 2, 3, 4, 7, 8],
+    // RMIDNT, BINIT, first N.
+    let [modsw, stat, vhi, vlo, rem, rmidnt, binit, first] = match rev {
+        35.. => [2, 4, 5, 6, 7, 10, 11, 12],
+        32..=34 => [1, 3, 4, 5, 6, 8, 9, 10],
+        _ => [1, usize::MAX, 2, 3, 4, 6, 7, 8],
     };
-    let mode = match r.optional(modsw, 0.0)? {
-        1.0 => ShuntMode::Discrete,
-        2.0 => ShuntMode::Continuous,
-        _ => return Ok(None),
-    };
+    let modsw = r.optional(modsw, 0.0)?;
+    if !matches!(modsw, 1.0..=6.0) || modsw.fract() != 0.0 {
+        return Ok(None);
+    }
     if stat != usize::MAX && !r.status(stat)? {
         return Ok(None);
     }
     let (vmax, vmin) = (r.optional(vhi, 1.0)?, r.optional(vlo, 1.0)?);
-    if !(vmin > 0.0 && vmax >= vmin) {
+    let band_ok = if modsw <= 2.0 {
+        vmin > 0.0 && vmax >= vmin
+    } else {
+        // Fractions of the watched device's reactive range.
+        vmin >= 0.0 && vmax >= vmin && vmax <= 1.0
+    };
+    if !band_ok {
         return Ok(None);
     }
     // Revision 35 records carry S, N, B per block; earlier ones N, B.
@@ -1073,20 +1311,304 @@ fn switched_shunt(
     if blocks.is_empty() {
         return Ok(None);
     }
+    let own = r.id(0)?;
     let remote = r.optional(rem, 0.0)?.abs();
-    let regulated_bus = if remote == 0.0 || remote == r.num(0)? {
-        None
+    // The bus SWREM names, its own bus when 0; `None` when it is not in the case.
+    let named = if remote == 0.0 || remote == f64::from(own) {
+        Some(own)
     } else {
         indices.get(&(remote as u32)).map(|&i| case.buses[i].id)
     };
-    Ok(Some(SwitchedShunt {
-        bus: r.id(0)?,
-        mode,
+    let name = r
+        .fields
+        .get(rmidnt)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut watches = Watches::Nothing;
+    let (mode, regulated_bus) = match modsw as u8 {
+        1 | 2 => {
+            let mode = if modsw == 1.0 {
+                ShuntMode::Discrete
+            } else {
+                ShuntMode::Continuous
+            };
+            (mode, named.filter(|&b| b != own))
+        }
+        3 => {
+            let Some(bus) = named else { return Ok(None) };
+            (ShuntMode::PlantReactive { bus }, None)
+        }
+        4 => {
+            let (Some(bus), Some(name)) = (named, name) else {
+                return Ok(None);
+            };
+            watches = Watches::Converter { name, bus };
+            // The row is filled in once the VSC lines are read.
+            (ShuntMode::ConverterReactive { row: 0, bus }, None)
+        }
+        6 => {
+            // The device is found by name once the FACTS data is read;
+            // SWREM, when given, is its sending-end bus.
+            let Some(name) = name else { return Ok(None) };
+            watches = Watches::Facts {
+                name,
+                bus: (remote != 0.0).then_some(named).flatten(),
+            };
+            (ShuntMode::FactsReactive { device: 0 }, None)
+        }
+        _ => {
+            let Some(bus) = named else { return Ok(None) };
+            // Revision 35 allows several shunts at a bus; RMIDNT, when
+            // given, is taken as the ID of the one watched.
+            watches = Watches::Shunt {
+                bus,
+                id: name.filter(|_| rev >= 35),
+            };
+            (ShuntMode::ShuntSetting { shunt: 0 }, None)
+        }
+    };
+    Ok(Some(PendingShunt {
+        shunt: SwitchedShunt {
+            bus: own,
+            mode,
+            regulated_bus,
+            vmax,
+            vmin,
+            initial: r.num(binit)?,
+            blocks,
+            line: r.line,
+        },
+        id: if rev >= 35 {
+            identifier(r, 1)
+        } else {
+            "1".into()
+        },
+        watches,
+    }))
+}
+
+/// Find the VSC converter, switched shunt or FACTS device each MODSW 4, 5
+/// or 6 shunt watches. Shunts whose device is missing stay frozen at BINIT,
+/// with a warning.
+fn resolve_switched_shunts(
+    pending: Vec<PendingShunt>,
+    case: &Case,
+    dc_line_names: &[String],
+    dc_line_kinds: &[DcLineKind],
+    facts: &[FactsDevice],
+    ctx: &mut Context<'_>,
+) -> Result<Vec<SwitchedShunt>, Error> {
+    let mut kept = Vec::with_capacity(pending.len());
+    for mut p in pending {
+        if let Watches::Facts { name, bus } = &p.watches {
+            let device = facts
+                .iter()
+                .position(|d| d.name == *name && bus.is_none_or(|b| d.bus == b));
+            let Some(device) = device else {
+                ctx.warn(
+                    p.shunt.line,
+                    true,
+                    format!(
+                        "switched shunt frozen at BINIT; it watches FACTS device {name}, which is not in the case or not in service"
+                    ),
+                )?;
+                continue;
+            };
+            p.shunt.mode = ShuntMode::FactsReactive { device };
+        }
+        if let Watches::Converter { name, bus } = &p.watches {
+            let row = (case.dcline.iter().flatten().enumerate()).position(|(r, line)| {
+                dc_line_kinds.get(r) == Some(&DcLineKind::VoltageSourceConverter)
+                    && dc_line_names.get(r).is_some_and(|n| n.trim() == name)
+                    && (line[0] == f64::from(*bus) || line[1] == f64::from(*bus))
+            });
+            let Some(row) = row else {
+                ctx.warn(
+                    p.shunt.line,
+                    true,
+                    format!(
+                        "switched shunt frozen at BINIT; it watches the converter at bus {bus} of VSC DC line {name}, which is not in the case (VSC lines are read only with all DC lines on)"
+                    ),
+                )?;
+                continue;
+            };
+            p.shunt.mode = ShuntMode::ConverterReactive { row, bus: *bus };
+        }
+        kept.push(p);
+    }
+    let found: Vec<Option<usize>> = (0..kept.len())
+        .map(|k| {
+            let Watches::Shunt { bus, id } = &kept[k].watches else {
+                return Some(k);
+            };
+            (0..kept.len()).find(|&j| {
+                j != k
+                    && kept[j].shunt.bus == *bus
+                    && id.as_ref().is_none_or(|id| kept[j].id == *id)
+            })
+        })
+        .collect();
+    // A shunt watching a shunt that drops out drops out too.
+    let mut alive: Vec<bool> = found.iter().map(Option::is_some).collect();
+    loop {
+        let mut changed = false;
+        for k in 0..kept.len() {
+            if alive[k] && found[k].is_some_and(|j| j != k && !alive[j]) {
+                alive[k] = false;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut shunts = Vec::with_capacity(kept.len());
+    // New positions, as frozen shunts drop out of the list.
+    let mut position = vec![usize::MAX; kept.len()];
+    for (k, p) in kept.iter().enumerate() {
+        if alive[k] {
+            position[k] = shunts.len();
+            shunts.push(p.shunt.clone());
+        } else if let Watches::Shunt { bus, .. } = &p.watches {
+            ctx.warn(
+                p.shunt.line,
+                true,
+                format!(
+                    "switched shunt frozen at BINIT; it watches a switched shunt at bus {bus} that is not in the case or not in control"
+                ),
+            )?;
+        }
+    }
+    for (k, p) in kept.iter().enumerate() {
+        if let (true, Watches::Shunt { .. }, Some(j)) = (alive[k], &p.watches, found[k]) {
+            shunts[position[k]].mode = ShuntMode::ShuntSetting { shunt: position[j] };
+        }
+    }
+    Ok(shunts)
+}
+
+/// The FACTS device of a FACTS control device record, if it is in service
+/// and in a mode the solver models: normal mode (1), or the series link
+/// bypassed (2), which keeps only the shunt element.
+fn facts_device(
+    rev: u32,
+    r: &Record,
+    indices: &HashMap<u32, usize>,
+    case: &Case,
+    ctx: &mut Context<'_>,
+) -> Result<Option<FactsDevice>, Error> {
+    // NAME (N before revision 33), I, J, MODE, PDES, QDES, VSET, SHMX, TRMX,
+    // VTMN, VTMX, VSMX, IMX, LINX, RMPCT, OWNER, SET1, SET2, VSREF, then
+    // REMOT (FCREG in revision 35) from revision 31, and MNAME.
+    let name = r
+        .fields
+        .first()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let label = if name.is_empty() {
+        "FACTS device".to_string()
+    } else {
+        format!("FACTS device {name}")
+    };
+    let mode = r.optional(3, 1.0)?;
+    if mode == 0.0 {
+        return Ok(None);
+    }
+    let bus = r.id(1)?;
+    let terminal = r.optional(2, 0.0)?.abs();
+    if !indices.contains_key(&bus) {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; its sending-end bus {bus} is not in the case"),
+        )?;
+        return Ok(None);
+    }
+    let terminal_bus = if terminal == 0.0 {
+        None
+    } else if let Some(&j) = indices.get(&(terminal as u32)) {
+        Some(case.buses[j].id)
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; its terminal-end bus {terminal} is not in the case"),
+        )?;
+        return Ok(None);
+    };
+    let series = if mode == 1.0 {
+        terminal_bus.is_some()
+    } else if mode == 2.0 && terminal_bus.is_some() {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label} has its series link bypassed (MODE 2), which is not modelled; only its shunt element is kept"
+            ),
+        )?;
+        false
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label} skipped; MODE {mode} is not modelled (normal mode 1 and bypassed series link 2 are)"
+            ),
+        )?;
+        return Ok(None);
+    };
+    if series {
+        ctx.warn(
+            r.line,
+            true,
+            format!(
+                "{label}: series element sends PDES and QDES to its terminal end without its voltage and current limits (VSMX, IMX, TRMX) or impedance (LINX)"
+            ),
+        )?;
+    }
+    // REMOT may be missing or, in files that leave it out, hold MNAME.
+    let remote = if rev >= 31 && !r.quoted.contains(&19) {
+        r.fields
+            .get(19)
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .unwrap_or(0.0)
+            .abs()
+    } else {
+        0.0
+    };
+    let regulated_bus = if remote == 0.0 || remote == f64::from(bus) {
+        None
+    } else if let Some(&k) = indices.get(&(remote as u32)) {
+        Some(case.buses[k].id)
+    } else {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} holds its own bus; its remote bus {remote} is not in the case"),
+        )?;
+        None
+    };
+    let vset = r.optional(6, 1.0)?;
+    let shunt_max = r.optional(7, 9999.0)?;
+    if vset <= 0.0 || shunt_max < 0.0 {
+        ctx.warn(
+            r.line,
+            true,
+            format!("{label} skipped; VSET or SHMX is not valid"),
+        )?;
+        return Ok(None);
+    }
+    Ok(Some(FactsDevice {
+        name,
+        bus,
+        terminal_bus: terminal_bus.filter(|_| series),
         regulated_bus,
-        vmax,
-        vmin,
-        initial: r.num(binit)?,
-        blocks,
+        vset,
+        shunt_max,
+        p_desired: if series { r.optional(4, 0.0)? } else { 0.0 },
+        q_desired: if series { r.optional(5, 0.0)? } else { 0.0 },
+        reactive_share: r.optional(14, 100.0)?,
+        initial_mvar: 0.0,
         line: r.line,
     }))
 }
@@ -1142,6 +1664,147 @@ fn tap_control(
         ratio_min,
         positions: positions as u32,
         tap_per_ratio: tap / ratio,
+        line: w.line,
+    }))
+}
+
+/// Add a transformer winding record's flow control, if it has one: a
+/// reactive flow tap (COD 2) or a phase shifter (COD 3 or 5).
+fn flow_control(
+    rev: u32,
+    w: &Record,
+    controls: [usize; 3],
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+    flow: &mut FlowControls,
+) -> Result<(), Error> {
+    if let Some(t) = reactive_tap(rev, w, controls[0], branch, tap, ctx)? {
+        flow.reactive_taps.push(t);
+    }
+    if let Some(p) = phase_shifter(rev, w, controls, branch, tap, ctx)? {
+        flow.phase_shifters.push(p);
+    }
+    Ok(())
+}
+
+/// The reactive power flow tap of a transformer winding record (COD 2), if
+/// any. `cod` is the record's COD field and `tap` the winding's branch tap.
+fn reactive_tap(
+    rev: u32,
+    w: &Record,
+    cod: usize,
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+) -> Result<Option<ReactiveTap>, Error> {
+    if rev < 30 || w.optional(cod, 0.0)? != 2.0 {
+        return Ok(None);
+    }
+    // CONT, (NODE in revision 35), RMA, RMI, VMA, VMI, NTP.
+    let skip = usize::from(rev >= 35);
+    let [rma, rmi, vma, vmi, ntp] = [2, 3, 4, 5, 6].map(|k| cod + skip + k);
+    let (ratio_max, ratio_min) = (w.optional(rma, 1.1)?, w.optional(rmi, 0.9)?);
+    let (mvar_max, mvar_min) = (w.optional(vma, 0.0)?, w.optional(vmi, 0.0)?);
+    let positions = w.optional(ntp, 33.0)?;
+    let ratio = w.num(0)?;
+    if ratio <= 0.0
+        || tap <= 0.0
+        || ratio_max <= ratio_min
+        || positions < 2.0
+        || positions.fract() != 0.0
+    {
+        ctx.warn(
+            w.line,
+            true,
+            "reactive flow tap with an invalid ratio range or tap positions held at its ratio",
+        )?;
+        return Ok(None);
+    }
+    if mvar_max < mvar_min {
+        ctx.warn(
+            w.line,
+            false,
+            "reactive flow tap limits given high-to-low (VMA < VMI); using them as a band",
+        )?;
+    }
+    Ok(Some(ReactiveTap {
+        branch,
+        mvar_max,
+        mvar_min,
+        ratio,
+        ratio_max,
+        ratio_min,
+        positions: positions as u32,
+        tap_per_ratio: tap / ratio,
+        line: w.line,
+    }))
+}
+
+/// The phase shifter of a transformer winding record in active power flow
+/// control (COD 3 or 5), if any. `controls` holds the record's COD, TAB and
+/// CNXA fields; `tap` is the winding's branch tap.
+fn phase_shifter(
+    rev: u32,
+    w: &Record,
+    controls: [usize; 3],
+    branch: usize,
+    tap: f64,
+    ctx: &mut Context<'_>,
+) -> Result<Option<PhaseShifter>, Error> {
+    let cod = controls[0];
+    let mode = w.optional(cod, 0.0)?;
+    if rev < 30 || !(mode == 3.0 || mode == 5.0) {
+        return Ok(None);
+    }
+    // CONT, (NODE in revision 35), RMA, RMI, VMA, VMI.
+    let skip = usize::from(rev >= 35);
+    let [rma, rmi, vma, vmi] = [2, 3, 4, 5].map(|k| cod + skip + k);
+    let (angle_max, angle_min) = (w.optional(rma, 0.0)?, w.optional(rmi, 0.0)?);
+    let (mw_max, mw_min) = (w.optional(vma, 0.0)?, w.optional(vmi, 0.0)?);
+    let angle = w.num(2)?;
+    if angle_max == angle_min {
+        ctx.warn(
+            w.line,
+            true,
+            "phase shifter with no angle range (RMA = RMI) held at its angle",
+        )?;
+        return Ok(None);
+    }
+    if mw_max < mw_min {
+        ctx.warn(
+            w.line,
+            false,
+            "phase shifter flow limits given high-to-low (VMA < VMI); using them as a band",
+        )?;
+    }
+    let asymmetric = if mode == 5.0 {
+        // CNXA is normalized into -90..=90.
+        let mut alpha = w.optional(controls[2], 0.0)?;
+        alpha = (alpha + 90.0).rem_euclid(180.0) - 90.0;
+        if alpha.abs() < 1.0 || tap <= 0.0 {
+            ctx.warn(
+                w.line,
+                true,
+                "asymmetric phase shifter with a connection angle of zero cannot shift; held at its angle",
+            )?;
+            return Ok(None);
+        }
+        Some(Asymmetric {
+            connection_angle: if alpha == -90.0 { 90.0 } else { alpha },
+            tap,
+        })
+    } else {
+        None
+    };
+    Ok(Some(PhaseShifter {
+        branch,
+        mw_max,
+        mw_min,
+        angle_max,
+        angle_min,
+        angle,
+        asymmetric,
         line: w.line,
     }))
 }
@@ -1226,6 +1889,7 @@ fn transformer_branch(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn convert_transformers(
     rev: u32,
     rows: &[Record],
@@ -1234,6 +1898,7 @@ fn convert_transformers(
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
     taps: &mut Vec<TapControl>,
+    flow: &mut FlowControls,
 ) -> Result<(), Error> {
     let mut groups = [vec![], vec![]];
     let mut pos = 0;
@@ -1288,8 +1953,16 @@ fn convert_transformers(
             for w in ws.iter().take(if kind == 0 { 1 } else { 3 }) {
                 for i in controls {
                     let value = w.optional(i, 0.0)?;
-                    // Voltage control (COD ±1) goes to `voltage_controls`.
-                    if value != 0.0 && !(i == controls[0] && value.abs() == 1.0) {
+                    // Voltage control (COD ±1) goes to `voltage_controls`
+                    // and phase shifters (COD ±3, ±5) to `flow_controls`,
+                    // which also read the connection angle (CNXA).
+                    // DC line control (COD ±4) of a two-winding transformer
+                    // goes there too, once a DC line names it.
+                    let modelled = (i == controls[0]
+                        && ([1.0, 2.0, 3.0, 5.0].contains(&value.abs())
+                            || (value.abs() == 4.0 && kind == 0)))
+                        || (i == controls[2] && w.optional(controls[0], 0.0)?.abs() == 5.0);
+                    if value != 0.0 && !modelled {
                         ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
                         break;
                     }
@@ -1342,6 +2015,19 @@ fn convert_transformers(
                     )?
                 {
                     taps.push(control);
+                }
+                flow_control(rev, &ws[0], controls, case.branches.len(), tap, ctx, flow)?;
+                let cod = ws[0].optional(controls[0], 0.0)?;
+                if cod.abs() == 4.0 {
+                    // Linked to its converter after the DC lines are read.
+                    flow.dc_line_taps.push(DcLineTap {
+                        branch: case.branches.len(),
+                        dc_line: usize::MAX,
+                        end: LccEnd::Rectifier,
+                        ratio: tap,
+                        enabled: cod > 0.0,
+                        line: ws[0].line,
+                    });
                 }
                 let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
                 case.branches.push(transformer_branch(
@@ -1400,6 +2086,7 @@ fn convert_transformers(
                     {
                         taps.push(control);
                     }
+                    flow_control(rev, &ws[i], controls, case.branches.len(), tap, ctx, flow)?;
                     let b = &case.buses[buses[i]];
                     case.branches.push(transformer_branch(
                         r, &ws[i], b.id, id, star_z[i], tap, online,
@@ -1452,13 +2139,14 @@ fn convert_dc(
     case: &mut Case,
     indices: &HashMap<u32, usize>,
     ctx: &mut Context<'_>,
-) -> Result<(Vec<String>, Vec<LccLine>), Error> {
+) -> Result<TwoTerminalDc, Error> {
     if rows.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
     }
     let mut dc = vec![];
     let mut names = vec![];
     let mut lcc = vec![];
+    let mut sources = vec![];
     for group in rows.chunks(3) {
         let r = &group[0];
         if group.len() != 3 {
@@ -1508,9 +2196,6 @@ fn convert_dc(
             if c.commutating_bus != 0 && !ignored.contains(&"IC") {
                 ignored.push("IC");
             }
-            if c.transformer.is_some() && !ignored.contains(&"IF/IT/ID") {
-                ignored.push("IF/IT/ID");
-            }
         }
         if !ignored.is_empty() {
             ctx.warn(
@@ -1526,6 +2211,7 @@ fn convert_dc(
         dc.push(line);
         names.push(identifier(r, 0));
         lcc.push(detail);
+        sources.push(r.line);
     }
     ctx.warn(
         rows[0].line,
@@ -1533,8 +2219,70 @@ fn convert_dc(
         "in the simplified DC model, two-terminal DC lines use MATPOWER's lossless approximation and estimated reactive limits",
     )?;
     case.dcline = Some(dc);
-    Ok((names, lcc))
+    Ok((names, lcc, sources))
 }
+
+/// Link each COD 4 transformer to the two-terminal DC line converter that
+/// names it, dropping those no converter names. A converter that names a
+/// transformer without COD 4 moves its own tap, as when it names none.
+fn link_dc_line_taps(
+    flow: &mut FlowControls,
+    lines: &[LccLine],
+    records: &[usize],
+    sources: &[BranchSource],
+    ctx: &mut Context<'_>,
+) -> Result<(), Error> {
+    for (line, &record) in lines.iter().zip(records) {
+        for (end, c) in [
+            (LccEnd::Rectifier, &line.rectifier),
+            (LccEnd::Inverter, &line.inverter),
+        ] {
+            let Some((from, to, circuit)) = &c.transformer else {
+                continue;
+            };
+            let found = flow.dc_line_taps.iter_mut().find(|t| {
+                let s = &sources[t.branch];
+                t.dc_line == usize::MAX
+                    && s.winding == 0
+                    && s.circuit == *circuit
+                    && (s.buses[..] == [*from, *to] || s.buses[..] == [*to, *from])
+            });
+            match found {
+                Some(t) => {
+                    t.dc_line = line.row;
+                    t.end = end;
+                }
+                None => ctx.warn(
+                    record,
+                    false,
+                    format!(
+                        "DC line {} names transformer {from}-{to} circuit {circuit}, which is not a two-winding transformer with COD 4; the converter tap moves instead",
+                        line.name.trim()
+                    ),
+                )?,
+            }
+        }
+    }
+    let mut unused = Vec::new();
+    flow.dc_line_taps.retain(|t| {
+        if t.dc_line == usize::MAX {
+            unused.push(t.line);
+        }
+        t.dc_line != usize::MAX
+    });
+    for line in unused {
+        ctx.warn(
+            line,
+            false,
+            "transformer COD 4 is not named by a two-terminal DC line converter; tap held",
+        )?;
+    }
+    Ok(())
+}
+
+/// Two-terminal DC line names, their detailed data and the source line of
+/// each detailed line's first record.
+type TwoTerminalDc = (Vec<String>, Vec<LccLine>, Vec<usize>);
 
 /// Full RAW data of one two-terminal DC line, which becomes `case.dcline` row `row`.
 fn lcc_line(

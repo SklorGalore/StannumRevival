@@ -1,5 +1,6 @@
 //! Voltage controls applied between Newton solves: switched shunts and
-//! transformer tap changers (PSS/E switched shunt MODSW 1–2, winding COD 1).
+//! transformer tap changers (PSS/E switched shunt MODSW 1–6, winding COD 1),
+//! and the FACTS devices that hold bus voltages during each solve.
 
 /// Voltage controls to apply during an AC solve, usually from
 /// [`crate::RawImport::voltage_controls`]. Empty by default.
@@ -9,12 +10,15 @@ pub struct VoltageControls {
     pub switched_shunts: Vec<SwitchedShunt>,
     /// Transformer windings whose taps hold a bus voltage.
     pub taps: Vec<TapControl>,
+    /// FACTS devices in service. Their shunt elements hold bus voltages in
+    /// AC solves; their series elements also move active power in DC solves.
+    pub facts: Vec<FactsDevice>,
 }
 
 impl VoltageControls {
     /// True when there is nothing to control.
     pub fn is_empty(&self) -> bool {
-        self.switched_shunts.is_empty() && self.taps.is_empty()
+        self.switched_shunts.is_empty() && self.taps.is_empty() && self.facts.is_empty()
     }
 }
 
@@ -28,9 +32,47 @@ pub enum ShuntMode {
     /// voltage at the middle of the band, like a static var compensator
     /// (PSS/E MODSW 2).
     Continuous,
+    /// Whole blocks switch to keep the reactive output of the plant at
+    /// `bus` within the band (PSS/E MODSW 3). The band is given in
+    /// fractions of the plant's total range, QMIN to QMAX.
+    PlantReactive {
+        /// External ID of the plant's bus.
+        bus: u32,
+    },
+    /// Whole blocks switch to keep the reactive output of a VSC converter
+    /// within the band (PSS/E MODSW 4), in fractions of the converter's
+    /// MINQ to MAXQ.
+    ConverterReactive {
+        /// The converter's row in `case.dcline`.
+        row: usize,
+        /// External ID of the converter's AC bus, one end of that row.
+        bus: u32,
+    },
+    /// Whole blocks switch to keep the susceptance of another switched
+    /// shunt within the band (PSS/E MODSW 5), in fractions of that shunt's
+    /// range from its largest reactor total to its largest capacitor total.
+    ShuntSetting {
+        /// Index of the other shunt in [`VoltageControls::switched_shunts`].
+        shunt: usize,
+    },
+    /// Whole blocks switch to keep the reactive output of a FACTS device's
+    /// shunt element within the band (PSS/E MODSW 6), in fractions of its
+    /// range, -SHMX to +SHMX at its voltage setpoint.
+    FactsReactive {
+        /// Index of the device in [`VoltageControls::facts`].
+        device: usize,
+    },
 }
 
-/// A switched shunt in voltage control.
+impl ShuntMode {
+    /// Whether the band is in fractions of a reactive range (modes 3 to 5)
+    /// rather than a voltage band in per unit.
+    pub fn watches_reactive(self) -> bool {
+        !matches!(self, ShuntMode::Discrete | ShuntMode::Continuous)
+    }
+}
+
+/// A switched shunt in voltage or reactive control.
 ///
 /// Its starting susceptance `initial` is already part of the bus's `bs`
 /// (as in MATPOWER); the solver moves `bs` by the change from it.
@@ -38,13 +80,15 @@ pub enum ShuntMode {
 pub struct SwitchedShunt {
     /// External ID of the bus the shunt is connected to.
     pub bus: u32,
-    /// Discrete or continuous control.
+    /// How it switches and what it watches.
     pub mode: ShuntMode,
-    /// Bus whose voltage is controlled when it is not `bus` (PSS/E SWREM).
+    /// Bus whose voltage is controlled when it is not `bus` (PSS/E SWREM),
+    /// in the voltage modes.
     pub regulated_bus: Option<u32>,
-    /// Upper voltage limit of the band, in per unit.
+    /// Upper limit of the band (VSWHI): a voltage in per unit, or for the
+    /// reactive modes a fraction of the watched device's range.
     pub vmax: f64,
-    /// Lower voltage limit of the band, in per unit.
+    /// Lower limit of the band (VSWLO), in the same units as `vmax`.
     pub vmin: f64,
     /// Starting susceptance, MVAr injected at 1 p.u. (BINIT).
     pub initial: f64,
@@ -116,20 +160,53 @@ impl TapControl {
 // ---------------------------------------------------------------------------
 // Solver side.
 
-use crate::{BusType, Case, Error, Generator, network::Network};
+use crate::{
+    BusType, Case, Error, Generator, facts::FactsDevice, network::Network, solver::DcLineGenerators,
+};
 use num_complex::Complex64 as C;
+
+/// What a discrete shunt watches, resolved against the working case.
+#[derive(Clone, Debug)]
+pub(crate) enum Watch {
+    /// The voltage of its own or its regulated bus (MODSW 1).
+    Voltage,
+    /// The total reactive output of these generators (a plant, or a VSC
+    /// converter's terminal generator), kept within a band in Mvar
+    /// (MODSW 3 and 4).
+    Reactive {
+        gens: Vec<usize>,
+        band: (f64, f64),
+        /// "plant at bus 101" or "VSC converter at bus 101", for messages.
+        what: String,
+    },
+    /// The susceptance of another listed shunt, kept within a band in MVAr
+    /// at 1 p.u. (MODSW 5).
+    Setting {
+        shunt: usize,
+        /// External ID of that shunt's bus, for messages.
+        bus: u32,
+        band: (f64, f64),
+    },
+}
 
 /// Controls resolved against a working case before solving.
 pub(crate) struct Setup<'a> {
-    /// Discrete shunts, with their index in [`VoltageControls::switched_shunts`].
-    pub discrete: Vec<(usize, &'a SwitchedShunt)>,
+    /// Discrete shunts, with their index in [`VoltageControls::switched_shunts`]
+    /// and what each watches.
+    pub discrete: Vec<(usize, &'a SwitchedShunt, Watch)>,
     /// Continuous shunts and the helper generator standing in for each.
     pub continuous: Vec<(usize, &'a SwitchedShunt, usize)>,
     /// Tap controls, with their index in [`VoltageControls::taps`].
     pub taps: Vec<(usize, &'a TapControl)>,
-    /// Generators from this index on are continuous-shunt helpers, which
-    /// always keep to their reactive limits.
+    /// Generators from this index on are FACTS and continuous-shunt
+    /// helpers, which always keep to their reactive limits.
     pub limited_from: usize,
+    /// Generators from this index on are continuous-shunt helpers; those
+    /// from `limited_from` up to here stand in for FACTS shunt elements.
+    pub continuous_from: usize,
+    /// The FACTS shunt elements in control, as (device index, helper
+    /// generator).
+    pub facts: Vec<(usize, usize)>,
     /// Number of listed shunts and taps.
     pub counts: [usize; 2],
 }
@@ -141,6 +218,8 @@ impl Setup<'_> {
             continuous: Vec::new(),
             taps: Vec::new(),
             limited_from: case.generators.len(),
+            continuous_from: case.generators.len(),
+            facts: Vec::new(),
             counts: [0, 0],
         }
     }
@@ -151,10 +230,19 @@ impl Setup<'_> {
 /// static var compensator. Shunts at buses that already have an online
 /// generator, or that are offline, stay at their starting value, as do
 /// every shunt and every tap when `[lock_shunts, lock_taps]` says so.
+///
+/// `case.generators[..plants]` are the case's own generators, which make up
+/// the plants that MODSW 3 shunts watch; `dc` maps DC line rows to the
+/// terminal generators that stand in for their converters (MODSW 4).
+/// `facts` holds the helper generator of each FACTS device's shunt element
+/// (MODSW 6), all added just before this call, from `facts_from` on.
 pub(crate) fn setup<'a>(
     case: &mut Case,
     controls: &'a VoltageControls,
     [lock_shunts, lock_taps]: [bool; 2],
+    plants: usize,
+    dc: &[DcLineGenerators],
+    (facts, facts_from): (&[Option<usize>], usize),
 ) -> Result<Setup<'a>, Error> {
     let index: std::collections::HashMap<u32, usize> = case
         .buses
@@ -174,12 +262,15 @@ pub(crate) fn setup<'a>(
             generated[i] = true;
         }
     }
-    let limited_from = case.generators.len();
     let mut setup = Setup {
         discrete: Vec::new(),
         continuous: Vec::new(),
         taps: Vec::new(),
-        limited_from,
+        limited_from: facts_from.min(case.generators.len()),
+        continuous_from: case.generators.len(),
+        facts: (facts.iter().enumerate())
+            .filter_map(|(k, g)| Some((k, (*g)?)))
+            .collect(),
         counts: [controls.switched_shunts.len(), controls.taps.len()],
     };
     for (k, shunt) in controls.switched_shunts.iter().enumerate() {
@@ -187,20 +278,120 @@ pub(crate) fn setup<'a>(
         if let Some(r) = shunt.regulated_bus {
             known(r, "switched shunt")?;
         }
-        if !(shunt.vmin > 0.0 && shunt.vmax >= shunt.vmin && shunt.initial.is_finite())
-            || shunt.blocks.iter().any(|b| !b.1.is_finite())
+        let band_ok = if shunt.mode.watches_reactive() {
+            shunt.vmin >= 0.0 && shunt.vmax >= shunt.vmin && shunt.vmax <= 1.0
+        } else {
+            shunt.vmin > 0.0 && shunt.vmax >= shunt.vmin
+        };
+        if !(band_ok && shunt.initial.is_finite()) || shunt.blocks.iter().any(|b| !b.1.is_finite())
         {
             return Err(Error::InvalidCase(format!(
                 "switched shunt at bus {} has an invalid band or block",
                 shunt.bus
             )));
         }
+        // The reactive range a MODSW 3-5 shunt keeps a fraction of, as
+        // (lowest, highest), with the generators it is measured on.
+        let range = |gens: &[usize]| {
+            gens.iter().fold((0.0, 0.0), |(lo, hi), &g| {
+                (lo + case.generators[g].qmin, hi + case.generators[g].qmax)
+            })
+        };
+        let band =
+            |(lo, hi): (f64, f64)| (lo + shunt.vmin * (hi - lo), lo + shunt.vmax * (hi - lo));
+        let watch = match shunt.mode {
+            ShuntMode::Discrete => Some(Watch::Voltage),
+            ShuntMode::Continuous => None,
+            ShuntMode::PlantReactive { bus } => {
+                known(bus, "switched shunt")?;
+                let gens: Vec<usize> = (0..plants.min(case.generators.len()))
+                    .filter(|&g| case.generators[g].online && case.generators[g].bus == bus)
+                    .collect();
+                let (lo, hi) = range(&gens);
+                if gens.is_empty() || !(hi - lo > 1e-6 && (hi - lo).is_finite()) {
+                    if !lock_shunts {
+                        log::info!(
+                            "  switched shunt at bus {} watches the plant at bus {bus}, which has no online generator with a reactive range; holding it",
+                            shunt.bus
+                        );
+                    }
+                    continue;
+                }
+                Some(Watch::Reactive {
+                    gens,
+                    band: band((lo, hi)),
+                    what: format!("plant at bus {bus}"),
+                })
+            }
+            ShuntMode::ConverterReactive { row, bus } => {
+                known(bus, "switched shunt")?;
+                let g = dc.iter().find(|m| m.row == row).and_then(|m| {
+                    [m.from_generator, m.to_generator]
+                        .into_iter()
+                        .find(|&g| case.generators[g].bus == bus)
+                });
+                let range = g.map(|g| range(&[g]));
+                let Some((g, (lo, hi))) = g.zip(range).filter(|(_, (lo, hi))| hi - lo > 1e-6)
+                else {
+                    if !lock_shunts {
+                        log::info!(
+                            "  switched shunt at bus {} watches a VSC converter at bus {bus} that is off or in power factor control; holding it",
+                            shunt.bus
+                        );
+                    }
+                    continue;
+                };
+                Some(Watch::Reactive {
+                    gens: vec![g],
+                    band: band((lo, hi)),
+                    what: format!("VSC converter at bus {bus}"),
+                })
+            }
+            ShuntMode::FactsReactive { device } => {
+                let Some(fd) = controls.facts.get(device) else {
+                    return Err(Error::InvalidCase(format!(
+                        "switched shunt at bus {} watches a missing FACTS device {device}",
+                        shunt.bus
+                    )));
+                };
+                let Some(g) = facts.get(device).copied().flatten() else {
+                    if !lock_shunts {
+                        log::info!(
+                            "  switched shunt at bus {} watches FACTS device {}, whose shunt element is held; holding it",
+                            shunt.bus,
+                            fd.name
+                        );
+                    }
+                    continue;
+                };
+                Some(Watch::Reactive {
+                    gens: vec![g],
+                    band: band(range(&[g])),
+                    what: format!("FACTS device {}", fd.name),
+                })
+            }
+            ShuntMode::ShuntSetting { shunt: other } => {
+                let Some(target) = controls.switched_shunts.get(other).filter(|_| other != k)
+                else {
+                    return Err(Error::InvalidCase(format!(
+                        "switched shunt at bus {} watches a missing switched shunt {other}",
+                        shunt.bus
+                    )));
+                };
+                let levels = target.levels();
+                Some(Watch::Setting {
+                    shunt: other,
+                    bus: target.bus,
+                    band: band((levels[0], levels[levels.len() - 1])),
+                })
+            }
+        };
         if lock_shunts {
             continue;
         }
-        match shunt.mode {
-            ShuntMode::Discrete => setup.discrete.push((k, shunt)),
-            ShuntMode::Continuous => {
+        match watch {
+            Some(watch) => setup.discrete.push((k, shunt, watch)),
+            None => {
                 let bus = &mut case.buses[i];
                 if generated[i] || bus.kind == BusType::Isolated {
                     continue;
@@ -255,20 +446,94 @@ struct ShuntState<'a> {
     shunt: &'a SwitchedShunt,
     /// Index in `case.buses`.
     bus: usize,
-    /// Network index of the controlled bus, if it is active.
-    controlled: Option<usize>,
+    /// What the shunt watches; `None` when it is held from the start (its
+    /// bus or controlled bus is offline, or what it watches never moves).
+    watching: Option<Watching>,
     levels: Vec<f64>,
     value: f64,
     last: i8,
     reversals: u8,
-    /// The level the shunt last moved away from and the controlled voltage
-    /// it gave, so that a step back can be judged before it is taken.
+    /// The level the shunt last moved away from and the watched value it
+    /// gave, so that a step back can be judged before it is taken.
     previous: Option<(f64, f64)>,
+    /// Moved in the last pass, so its effect on what it watches can be
+    /// measured now.
+    fresh: bool,
 }
 
-/// How far (p.u.) `vm` is outside `vmin..=vmax`; zero inside.
-fn band_violation(vm: f64, vmin: f64, vmax: f64) -> f64 {
-    (vmin - vm).max(vm - vmax).max(0.0)
+/// What a discrete shunt watches during the solve.
+#[derive(Clone)]
+enum Watching {
+    /// Network index of the bus whose voltage is held.
+    Voltage(usize),
+    /// Generators whose total reactive output is kept in `band` (Mvar).
+    Reactive {
+        gens: Vec<usize>,
+        band: (f64, f64),
+        what: String,
+    },
+    /// Another shunt whose susceptance is kept in `band` (MVAr at 1 p.u.).
+    Setting {
+        source: Source,
+        bus: u32,
+        band: (f64, f64),
+    },
+}
+
+/// Where the susceptance of a watched shunt is read from.
+#[derive(Clone, Copy)]
+enum Source {
+    /// A discrete shunt, by its position in [`Controller::shunts`].
+    Discrete(usize),
+    /// A continuous shunt: its listed index, starting value, helper
+    /// generator, and the network index of its bus.
+    Continuous {
+        listed: usize,
+        initial: f64,
+        helper: usize,
+        bus: usize,
+    },
+}
+
+/// Mvar (or MVAr at 1 p.u.) outside a reactive band before a shunt moves.
+const REACTIVE_TOLERANCE: f64 = 0.01;
+
+/// Smallest drop in the watched reactive output, per Mvar of susceptance
+/// switched in, for a MODSW 3-5 shunt to keep switching.
+const MIN_SHUNT_EFFECT: f64 = 0.05;
+
+/// How far `x` is outside `lo..=hi`; zero inside.
+fn band_violation(x: f64, lo: f64, hi: f64) -> f64 {
+    (lo - x).max(x - hi).max(0.0)
+}
+
+/// A value a discrete shunt watches, read between solves.
+struct Seen {
+    value: f64,
+    band: (f64, f64),
+    /// A voltage in per unit, rather than Mvar.
+    voltage: bool,
+    /// What the value belongs to, for messages.
+    what: String,
+}
+
+impl Seen {
+    fn reading(&self, x: f64) -> String {
+        if self.voltage {
+            format!("{} at {x:.4} pu", self.what)
+        } else {
+            format!("{} at {x:.1} Mvar", self.what)
+        }
+    }
+
+    fn band_text(&self) -> String {
+        let (lo, hi) = self.band;
+        if self.voltage {
+            format!("{lo:.4}-{hi:.4} pu")
+        } else {
+            format!("{lo:.1} to {hi:.1} Mvar")
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -328,23 +593,71 @@ impl<'a> Controller<'a> {
             .enumerate()
             .map(|(i, b)| (b.id, i))
             .collect();
+        let position: std::collections::HashMap<usize, usize> = setup
+            .discrete
+            .iter()
+            .enumerate()
+            .map(|(p, d)| (d.0, p))
+            .collect();
         let shunts = setup
             .discrete
             .iter()
-            .map(|&(k, shunt)| ShuntState {
-                index: k,
-                shunt,
-                bus: index[&shunt.bus],
-                controlled: net
-                    .by_id
-                    .get(&shunt.regulated_bus.unwrap_or(shunt.bus))
-                    .copied()
-                    .filter(|_| net.by_id.contains_key(&shunt.bus)),
-                levels: shunt.levels(),
-                value: shunt.initial,
-                last: 0,
-                reversals: 0,
-                previous: None,
+            .map(|(k, shunt, watch)| {
+                let watching = match watch {
+                    Watch::Voltage => net
+                        .by_id
+                        .get(&shunt.regulated_bus.unwrap_or(shunt.bus))
+                        .copied()
+                        .map(Watching::Voltage),
+                    Watch::Reactive { gens, band, what } => Some(Watching::Reactive {
+                        gens: gens.clone(),
+                        band: *band,
+                        what: what.clone(),
+                    }),
+                    Watch::Setting {
+                        shunt: other,
+                        bus,
+                        band,
+                    } => {
+                        let source = if let Some(&p) = position.get(other) {
+                            Some(Source::Discrete(p))
+                        } else {
+                            setup.continuous.iter().find(|c| c.0 == *other).and_then(
+                                |&(_, target, helper)| {
+                                    Some(Source::Continuous {
+                                        listed: *other,
+                                        initial: target.initial,
+                                        helper,
+                                        bus: *net.by_id.get(&target.bus)?,
+                                    })
+                                },
+                            )
+                        };
+                        if source.is_none() {
+                            log::info!(
+                                "  switched shunt at bus {} watches the switched shunt at bus {}, which does not move; holding it",
+                                shunt.bus, bus
+                            );
+                        }
+                        source.map(|source| Watching::Setting {
+                            source,
+                            bus: *bus,
+                            band: *band,
+                        })
+                    }
+                };
+                ShuntState {
+                    index: *k,
+                    shunt,
+                    bus: index[&shunt.bus],
+                    watching: watching.filter(|_| net.by_id.contains_key(&shunt.bus)),
+                    levels: shunt.levels(),
+                    value: shunt.initial,
+                    last: 0,
+                    reversals: 0,
+                    previous: None,
+                    fresh: false,
+                }
             })
             .collect();
         let mut held = std::collections::HashMap::<u32, usize>::new();
@@ -399,6 +712,51 @@ impl<'a> Controller<'a> {
         (self.shunts.len(), self.taps.len())
     }
 
+    /// The value shunt `s` watches now, with its band; `None` while the
+    /// shunt has nothing to act on (a voltage held by a generator, say).
+    fn watched(&self, s: &ShuntState<'_>, case: &Case, v: &[C], kinds: &[BusType]) -> Option<Seen> {
+        Some(match s.watching.as_ref()? {
+            &Watching::Voltage(c) => {
+                if kinds[c] != BusType::Pq {
+                    return None;
+                }
+                Seen {
+                    value: v[c].norm(),
+                    band: (s.shunt.vmin, s.shunt.vmax),
+                    voltage: true,
+                    what: format!("bus {}", s.shunt.regulated_bus.unwrap_or(s.shunt.bus)),
+                }
+            }
+            Watching::Reactive { gens, band, what } => Seen {
+                value: gens.iter().map(|&g| case.generators[g].qg).sum(),
+                band: *band,
+                voltage: false,
+                what: what.clone(),
+            },
+            &Watching::Setting { source, bus, band } => Seen {
+                value: match source {
+                    Source::Discrete(p) => self.shunts[p].value,
+                    Source::Continuous {
+                        listed,
+                        initial,
+                        helper,
+                        bus,
+                    } => {
+                        let fixed: f64 = (self.fixed.iter())
+                            .filter(|f| f.0 == listed)
+                            .map(|f| f.1)
+                            .sum();
+                        let vm = v[bus].norm();
+                        initial + fixed + case.generators[helper].qg / (vm * vm)
+                    }
+                },
+                band,
+                voltage: false,
+                what: format!("switched shunt at bus {bus}"),
+            },
+        })
+    }
+
     pub fn pass(&mut self, case: &mut Case, v: &[C], kinds: &[BusType], round: usize) -> usize {
         let mut moved = 0;
         // The first few moves of a pass go to the normal log, the rest to the detailed one.
@@ -410,17 +768,56 @@ impl<'a> Controller<'a> {
             }
         };
         let free = |i: usize| kinds[i] == BusType::Pq;
-        for s in &mut self.shunts {
-            let Some(c) = s.controlled.filter(|&c| free(c)) else {
-                continue;
-            };
+        // Read every watched value before any shunt moves, as a MODSW 5
+        // shunt reads another shunt's setting.
+        let seen: Vec<Option<Seen>> = self
+            .shunts
+            .iter()
+            .map(|s| self.watched(s, case, v, kinds))
+            .collect();
+        for (s, seen) in self.shunts.iter_mut().zip(seen) {
+            let Some(seen) = seen else { continue };
             if s.reversals >= MAX_REVERSALS {
                 continue;
             }
-            let vm = v[c].norm();
-            let (next, dir) = if vm < s.shunt.vmin - BAND_TOLERANCE {
+            let (x, (lo, hi)) = (seen.value, seen.band);
+            // A shunt that barely moves the reactive output it watches (the
+            // plant is far away, or something nearer holds the voltage)
+            // would run to the end of its range for nothing: put back the
+            // last step and hold it.
+            if let Some((level, x_level)) = s.previous
+                && std::mem::take(&mut s.fresh)
+                && !seen.voltage
+            {
+                let effect = (x_level - x) / (s.value - level);
+                if effect < MIN_SHUNT_EFFECT {
+                    s.reversals = MAX_REVERSALS;
+                    log::info!(
+                        "  switched shunt at bus {}: the {:.1} Mvar step moved {} only {:.2} Mvar; back to {level:.1} Mvar and holding it",
+                        s.shunt.bus,
+                        s.value - level,
+                        seen.what,
+                        x - x_level,
+                    );
+                    case.buses[s.bus].bs += level - s.value;
+                    s.value = level;
+                    moved += 1;
+                    continue;
+                }
+            }
+            let tolerance = if seen.voltage {
+                BAND_TOLERANCE
+            } else {
+                REACTIVE_TOLERANCE
+            };
+            // Below a voltage band, or above a reactive band (the watched
+            // device is supplying too much), more susceptance helps.
+            let (low, high) = (x < lo - tolerance, x > hi + tolerance);
+            let up = if seen.voltage { low } else { high };
+            let down = if seen.voltage { high } else { low };
+            let (next, dir) = if up {
                 (s.levels.iter().copied().find(|&l| l > s.value + 1e-9), 1)
-            } else if vm > s.shunt.vmax + BAND_TOLERANCE {
+            } else if down {
                 (
                     s.levels.iter().rev().copied().find(|&l| l < s.value - 1e-9),
                     -1,
@@ -431,27 +828,25 @@ impl<'a> Controller<'a> {
             let Some(next) = next else { continue };
             // A step back to the level just left means one step jumps right
             // over the band (it is narrower than a step, or has no width at
-            // all, VSWLO = VSWHI). Both voltages are known by now, so settle
+            // all, VSWLO = VSWHI). Both values are known by now, so settle
             // on whichever level lands nearer the band and hold there, like
             // a target with a deadband of one step, instead of hunting.
-            if let Some((level, v_level)) = s.previous
+            if let Some((level, x_level)) = s.previous
                 && s.last != 0
                 && s.last != dir
                 && (level - next).abs() < 1e-9
             {
                 s.reversals = MAX_REVERSALS;
-                let here = band_violation(vm, s.shunt.vmin, s.shunt.vmax);
-                let there = band_violation(v_level, s.shunt.vmin, s.shunt.vmax);
+                let here = band_violation(x, lo, hi);
+                let there = band_violation(x_level, lo, hi);
                 let keep = if there < here { level } else { s.value };
                 log::info!(
-                    "  switched shunt at bus {}: one step jumps over the band {:.4}-{:.4} (bus {} at {:.4} pu with {:.1} Mvar, {:.4} pu with {:.1} Mvar); holding at {keep:.1} Mvar, nearer the band",
+                    "  switched shunt at bus {}: one step jumps over the band {} ({} with {:.1} Mvar, {} with {:.1} Mvar); holding at {keep:.1} Mvar, nearer the band",
                     s.shunt.bus,
-                    s.shunt.vmin,
-                    s.shunt.vmax,
-                    s.shunt.regulated_bus.unwrap_or(s.shunt.bus),
-                    vm,
+                    seen.band_text(),
+                    seen.reading(x),
                     s.value,
-                    v_level,
+                    seen.reading(x_level),
                     level,
                 );
                 if keep != s.value {
@@ -465,17 +860,17 @@ impl<'a> Controller<'a> {
                 s.reversals += 1;
             }
             s.last = dir;
-            s.previous = Some((s.value, vm));
+            s.previous = Some((s.value, x));
+            s.fresh = true;
             report(
                 moved,
                 format!(
-                    "  switched shunt at bus {}: {:.1} -> {:.1} Mvar, bus {} at {vm:.4} pu is outside {:.4}-{:.4}",
+                    "  switched shunt at bus {}: {:.1} -> {:.1} Mvar, {} is outside {}",
                     s.shunt.bus,
                     s.value,
                     next,
-                    s.shunt.regulated_bus.unwrap_or(s.shunt.bus),
-                    s.shunt.vmin,
-                    s.shunt.vmax
+                    seen.reading(x),
+                    seen.band_text()
                 ),
             );
             case.buses[s.bus].bs += next - s.value;

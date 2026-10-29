@@ -269,7 +269,7 @@ function HopBar({ snapshot, buses, hint }: { snapshot: TopologySnapshot; buses: 
       </button>
       <span className="w-px h-4 bg-slate-200 mx-1" />
       <span className="px-1 tabular-nums">{count(buses)} buses</span>
-      {hint && <span className="px-1 text-slate-400">Double-click a bus to centre on it</span>}
+      {hint && <span className="px-1 text-slate-500">Double-click a bus to centre on it</span>}
     </div>
   );
 }
@@ -290,7 +290,7 @@ export function NetworkInspector({ floating = false }: { floating?: boolean }) {
     useWorkspace.getState().select(next, "diagram");
   };
   return (
-    <aside className={inspectorClass(floating)} data-testid="network-selection">
+    <aside aria-label="Inspector" className={inspectorClass(floating)} data-testid="network-selection">
       <ElementInspector element={element} from="diagram" onPick={pick} onClose={() => setElement(null)}>
         <NetworkSection element={element} snapshot={snapshot} />
       </ElementInspector>

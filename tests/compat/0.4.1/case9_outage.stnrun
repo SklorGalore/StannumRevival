@@ -1,0 +1,7 @@
+# Stannum run file, recorded in the app.
+# Run it from Ctrl+K > Run a run file, or: stannum-cli run case9_outage.stnrun
+
+open_case path=case9.m
+solve_power_flow
+set_study_edits edits=[{"element": "line:4:5:1", "kind": "status", "online": false}]
+solve_power_flow
