@@ -20,6 +20,7 @@ import { DrawAroundButton } from "../../ui/DrawAround";
 import { useWidth } from "../../ui/useWidth";
 import { useStudyFile } from "../../store/studyFileStore";
 import { RecentFiles } from "../../ui/RecentFiles";
+import { SampleCases } from "../../ui/SampleCases";
 import { cellProblem, csvRows, sectionFor } from "./records";
 
 /** Below this width the record types fold into a menu. */
@@ -423,7 +424,12 @@ export function RecordsModule({ active }: { active: boolean }) {
             <FolderOpen size={14} /> Open case…
           </Button>
         }
-        footer={<RecentFiles />}
+        footer={
+          <>
+            <RecentFiles />
+            <SampleCases />
+          </>
+        }
       >
         Open a PSS/E RAW or MATPOWER case to see every bus, load, generator, branch, transformer, shunt and DC record as a table, with every
         field. Sort, search and filter them, and pick one to inspect it.

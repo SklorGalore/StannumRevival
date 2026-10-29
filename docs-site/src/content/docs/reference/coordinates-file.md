@@ -33,6 +33,33 @@ case, with spaces, dashes or underscores; other columns are ignored.
 Fields can be quoted (`"North, Main"`). Blank lines and lines starting with
 `#` are skipped. A bus listed twice keeps its last row.
 
+## Versions
+
+A coordinates file may start with a comment line that says which version of
+the format it follows, before the column names:
+
+```csv
+# stannum-coordinates version 1
+bus,latitude,longitude,substation
+1,32.7767,-96.7970,Dallas North
+```
+
+A file without it is version 1, and a Stannum from before 0.5 skips it like
+any other comment. The version goes up only when an older Stannum would read
+the file wrongly, such as a column changing its meaning or units; new
+optional columns don't change it, since older versions ignore columns they
+don't know. A Stannum refuses a file with a higher version than it reads
+("this coordinates file is version 2, from a newer Stannum") rather than put
+buses in the wrong place.
+
+| Version | Read by | Changes |
+| --- | --- | --- |
+| 1 | 0.4 and later | The first version. |
+
+A coordinates file from 0.4.1 is kept in the repository under
+[`tests/compat`](https://github.com/SklorGalore/StannumRevival/tree/development/tests/compat)
+and attached by the tests on every change.
+
 ## What Stannum does with it
 
 - **Bad rows.** A row whose bus number, latitude or longitude can't be read is

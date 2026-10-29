@@ -18,6 +18,7 @@
 //! - [`raw_export`]: the open case written as a complete RAW 33 or 35 file.
 //! - [`schema`]: checks values against the command schemas and writes them as TypeScript.
 //! - [`run_file`]: run files, commands one per line, run in order.
+//! - [`samples`]: small cases built in, to open on first run.
 //! - [`results`]: names for every solution the open case can show.
 //! - [`topology_wire`]: the topology snapshot as compact columns for the app.
 //! - [`logbook`]: the application log shown in the log panel.
@@ -34,6 +35,7 @@ pub mod diagram;
 pub mod diff;
 pub mod elements;
 pub mod error;
+pub mod file_version;
 pub mod geo;
 pub mod inspect;
 pub mod logbook;
@@ -44,6 +46,7 @@ pub mod record_edit;
 pub mod records;
 pub mod results;
 pub mod run_file;
+pub mod samples;
 pub mod schema;
 pub mod study;
 pub mod study_file;

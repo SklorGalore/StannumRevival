@@ -5,6 +5,8 @@ import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
 import { StudyNoticeBar } from "./StudyFileControls";
 import { RunFileBar } from "./RunFileBar";
+import { UpdateBar } from "./UpdateBar";
+import { startUpdateChecks } from "../store/updateStore";
 import { useRunFile } from "../store/runFileStore";
 import { startAttach } from "../store/attachStore";
 import { RUN_FILE_EXTENSION } from "../lib/analysis/api";
@@ -144,6 +146,8 @@ export function Shell() {
   useCaseDrop();
   // Python scripts can drive the window (stannum.attach()).
   useEffect(() => startAttach(), []);
+  // Release builds look for a newer version a little after startup.
+  useEffect(() => startUpdateChecks(), []);
   const shown = (id: ModuleId) => id === module || id === split;
   // Modules stay mounted so switching keeps their results and scroll state.
   // `module-hidden` forces descendants hidden too: React Flow sets
@@ -174,6 +178,7 @@ export function Shell() {
         <StudyNoticeBar />
         <CrashNoticeBar />
         <RunFileBar />
+        <UpdateBar />
         <CommandPalette />
         <div ref={body} className="flex-1 min-h-0 relative">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}

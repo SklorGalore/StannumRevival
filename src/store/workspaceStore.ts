@@ -115,6 +115,8 @@ interface WorkspaceState {
    * has already asked them.
    */
   openCase: (path?: string, opts?: { confirmed?: boolean }) => Promise<boolean>;
+  /** Open one of the sample cases built into Stannum, by id (see `api.sampleCases`). */
+  openSample: (id: string) => Promise<boolean>;
   closeCase: () => Promise<boolean>;
   /** Attach a bus coordinates CSV for the map (asking for one when no path is given). */
   attachCoordinates: (path?: string) => Promise<boolean>;
@@ -273,32 +275,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!opts?.confirmed && !caseChangeOk(get().caseSummary)) return false;
     const chosen = path ?? (await pickFile(CASE_FILTERS));
     if (!chosen) return false;
-    set({ opening: true, openError: null });
-    // The log's badge counts what this case raised, not every case so far.
-    useLog.getState().newCase();
-    try {
-      const summary = await api.openCase(chosen);
-      set((s) => ({
-        caseSummary: summary,
-        caseVersion: s.caseVersion + 1,
-        solveReport: null,
-        shown: null,
-        selection: null,
-        drawRequest: null,
-        opening: false,
-        // A RAW file outside rs-power's support may still have a topology:
-        // move to the Diagram, which draws it as a network.
-        module:
-          s.module === "power" && !summary.power.available && summary.topology.available
-            ? "diagram"
-            : s.module,
-      }));
-      addRecent(summary.path, "case");
-      return true;
-    } catch (e) {
-      set({ opening: false, openError: (e as Error).message });
-      return false;
-    }
+    const summary = await opened(set, () => api.openCase(chosen));
+    if (summary) addRecent(summary.path, "case");
+    return !!summary;
+  },
+
+  openSample: async (id) => {
+    if (get().opening) return false;
+    if (!caseChangeOk(get().caseSummary)) return false;
+    // Samples aren't added to Recent: the empty screen always lists them.
+    return !!(await opened(set, async () => api.openSample(id, await sampleFolder())));
   },
 
   attachCoordinates: async (path) => {
@@ -327,6 +313,56 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     return true;
   },
 }));
+
+/**
+ * Open a case with `open`, replacing the one open now, and reset what
+ * belonged to the old case. Resolves to the new case's summary, or null when
+ * it couldn't be opened (`openError` says why).
+ */
+async function opened(
+  set: (fn: (s: WorkspaceState) => Partial<WorkspaceState>) => void,
+  open: () => Promise<CaseSummary>
+): Promise<CaseSummary | null> {
+  set(() => ({ opening: true, openError: null }));
+  // The log's badge counts what this case raised, not every case so far.
+  useLog.getState().newCase();
+  try {
+    const summary = await open();
+    set((s) => ({
+      caseSummary: summary,
+      caseVersion: s.caseVersion + 1,
+      solveReport: null,
+      shown: null,
+      selection: null,
+      drawRequest: null,
+      opening: false,
+      // A RAW file outside rs-power's support may still have a topology:
+      // move to the Diagram, which draws it as a network.
+      module:
+        s.module === "power" && !summary.power.available && summary.topology.available ? "diagram" : s.module,
+    }));
+    return summary;
+  } catch (e) {
+    set(() => ({ opening: false, openError: (e as Error).message }));
+    return null;
+  }
+}
+
+/**
+ * Where the desktop app keeps its copies of the sample cases: a "samples"
+ * folder in its local data folder. Undefined outside the app (and if the
+ * folder can't be found), so the core uses the temp folder.
+ */
+async function sampleFolder(): Promise<string | undefined> {
+  try {
+    const { isTauri } = await import("@tauri-apps/api/core");
+    if (!isTauri()) return undefined;
+    const { appLocalDataDir, join } = await import("@tauri-apps/api/path");
+    return await join(await appLocalDataDir(), "samples");
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The solve report every view shows: the shown result once it has loaded,

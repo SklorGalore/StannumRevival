@@ -21,6 +21,10 @@
 //! - The `case` argument is left out: every line works on the case that is
 //!   open at that point.
 //!
+//! - A first comment line `# stannum-run-file version 1` says which version
+//!   of the format the file follows. A file without one is version 1; a
+//!   newer version than [`VERSION`] is refused.
+//!
 //! Every line is checked before the first one runs, so a misspelled command
 //! on line 40 stops the file before line 1 changes anything. The run stops
 //! at the first command that fails unless `keep_going` is set.
@@ -35,10 +39,17 @@ use std::path::{Path, PathBuf};
 /// File extension for run files, without the dot.
 pub const EXTENSION: &str = "stnrun";
 
+/// The newest run file version this Stannum reads, and the one it writes.
+pub const VERSION: u32 = 1;
+
+/// The tag of the comment line that declares a run file's version.
+pub const VERSION_TAG: &str = "stannum-run-file";
+
 /// Commands that change the case or write a file. Record writes these into
 /// a run file and leaves out the rest, which only read.
 const ACTIONS: &[&str] = &[
     "open_case",
+    "open_sample",
     "close_case",
     "solve_power_flow",
     "load_dc_grids",
@@ -155,6 +166,8 @@ fn line_error(line: usize, message: impl std::fmt::Display) -> Error {
 /// Reads a run file's text into steps, checking each command and argument
 /// name. Relative paths are left as written (see [`resolve_paths`]).
 pub fn parse(text: &str) -> Result<Vec<Step>, Error> {
+    crate::file_version::check(text, VERSION_TAG, VERSION, "run file")
+        .map_err(|e| Error::new(ErrorKind::Failed, e))?;
     let mut steps = Vec::new();
     let mut lexer = Lexer::new(text);
     while let Some((line, command)) = lexer.next_command()? {
@@ -236,7 +249,8 @@ pub fn read(path: &Path) -> Result<Vec<Step>, Error> {
 /// Writes steps as a run file. File paths under `folder` are written
 /// relative to it; `case` arguments are left out.
 pub fn format(steps: &[Step], folder: Option<&Path>, heading: &str) -> Result<String, Error> {
-    let mut out = String::new();
+    let mut out = crate::file_version::line(VERSION_TAG, VERSION);
+    out.push('\n');
     for line in heading.lines() {
         out.push_str("# ");
         out.push_str(line);
@@ -707,7 +721,8 @@ mod tests {
         let text = format(&steps, Some(Path::new("/work/runs")), "Recorded by Stannum").unwrap();
         assert_eq!(
             text,
-            "# Recorded by Stannum\n\n\
+            "# stannum-run-file version 1\n\
+             # Recorded by Stannum\n\n\
              open_case path=\"cases/a b.raw\"\n\
              solve_power_flow settings={\"model\": \"ac\", \"tolerance_mva\": 2.0}\n\
              trip_and_compare element=line:1-2-1 limit_pct=100.0\n\
@@ -723,6 +738,23 @@ mod tests {
         assert!(!back[1].args.contains_key("case"));
         assert_eq!(back[2].args, steps[2].args);
         assert_eq!(back[3].args, steps[3].args);
+    }
+
+    #[test]
+    fn a_newer_version_is_refused_before_anything_runs() {
+        assert_eq!(
+            parse("# stannum-run-file version 1\nlist_commands\n")
+                .unwrap()
+                .len(),
+            1
+        );
+        let e = parse("# Made by Stannum 2.0\n# stannum-run-file version 2\nlist_commands\n")
+            .unwrap_err();
+        assert!(
+            e.message.starts_with("Line 2: this run file is version 2"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]

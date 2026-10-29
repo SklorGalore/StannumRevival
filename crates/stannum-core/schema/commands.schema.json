@@ -4908,6 +4908,49 @@
       ],
       "type": "object"
     },
+    "SampleCase": {
+      "description": "A case built into Stannum.",
+      "properties": {
+        "buses": {
+          "description": "How many buses it has, counting the star bus of a three-winding transformer.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_name": {
+          "description": "The case file's name.",
+          "type": "string"
+        },
+        "format": {
+          "description": "\"matpower\" or \"raw\".",
+          "type": "string"
+        },
+        "has_coordinates": {
+          "description": "Whether it comes with bus coordinates for the map.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "What `open_sample` takes.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "format",
+        "buses",
+        "has_coordinates",
+        "file_name"
+      ],
+      "type": "object"
+    },
     "SectionInfo": {
       "description": "One record type in the list, without its rows.",
       "properties": {
@@ -6804,6 +6847,32 @@
       },
       "takes_case": false
     },
+    "open_sample": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "doc": "Write a built-in sample case (and its bus coordinates, if it has\nany) into `dir`, or a `stannum-samples` folder in the temp folder,\nand open it. It replaces the open case.",
+      "result": {
+        "$ref": "#/$defs/CaseSummary"
+      },
+      "takes_case": false
+    },
     "record_fields": {
       "action": false,
       "args": {
@@ -7233,6 +7302,21 @@
       "doc": "Run a run file (`.stnrun`): commands one per line, in order (see\n`run_file`). Every line is checked first. The run stops at the first\ncommand that fails unless `keepGoing`; `results` keeps each answer.",
       "result": {
         "$ref": "#/$defs/RunReport"
+      },
+      "takes_case": false
+    },
+    "sample_cases": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "The small cases built into Stannum, to open with `open_sample`.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/SampleCase"
+        },
+        "type": "array"
       },
       "takes_case": false
     },

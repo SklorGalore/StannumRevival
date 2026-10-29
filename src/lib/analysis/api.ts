@@ -34,13 +34,14 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, Step } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, SampleCase, Step } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
 /** How each command reads in the log. Quiet ones only log when they fail. */
 const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean }> = {
   open_case: { label: "Opening case", done: "Opened case" },
+  open_sample: { label: "Opening sample case", done: "Opened sample case" },
   close_case: { label: "Closing case", done: "Closed case" },
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
   calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
@@ -237,6 +238,10 @@ export type ResultTable = "buses" | "generators" | "branches";
 
 export const api = {
   openCase: (path: string): Promise<CaseSummary> => call("open_case", { path }),
+  /** The small cases built into Stannum. */
+  sampleCases: (): Promise<SampleCase[]> => invokeCore("sample_cases"),
+  /** Write a built-in sample into `dir` (the temp folder when left out) and open it. */
+  openSample: (id: string, dir?: string): Promise<CaseSummary> => call("open_sample", { id, dir: dir ?? null }),
   closeCase: () => call("close_case"),
   caseSummary: (): Promise<CaseSummary | null> => call("case_summary"),
 

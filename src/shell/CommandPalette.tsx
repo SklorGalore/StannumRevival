@@ -3,6 +3,8 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  ArrowDownCircle,
+  BellOff,
   Circle,
   Columns2,
   CornerDownLeft,
@@ -28,6 +30,7 @@ import {
   Wand2,
   X,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import { SPLIT_PARTNER, useWorkspace, type ModuleId } from "../store/workspaceStore";
 import { useLog } from "../store/logStore";
@@ -35,10 +38,12 @@ import { saveDiagnostics } from "../lib/diagnostics/save";
 import { useStudyFile } from "../store/studyFileStore";
 import { useRunFile } from "../store/runFileStore";
 import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
+import { useUpdate } from "../store/updateStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
+import { knownSampleCases } from "../ui/SampleCases";
 
 export interface Command {
   id: string;
@@ -65,8 +70,10 @@ function useCommands(): Command[] {
   const logOpen = useLog((s) => s.open);
   const studyPath = useStudyFile((s) => s.path);
   const recording = useRunFile((s) => s.recording);
+  const autoCheck = useUpdate((s) => s.autoCheck);
+  const updatePhase = useUpdate((s) => s.phase);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording]);
+  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording, autoCheck, updatePhase]);
 }
 
 /**
@@ -84,6 +91,13 @@ export function paletteCommands(): Command[] {
   const list: Command[] = [
     { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
     { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
+    ...knownSampleCases().map((c) => ({
+      id: `open-sample-${c.id}`,
+      title: `Open sample: ${c.title}`,
+      icon: <Sparkles size={14} />,
+      keywords: "sample example demo try first built-in tutorial",
+      run: () => void w.openSample(c.id),
+    })),
   ];
   if (summary) {
     const studyFile = useStudyFile.getState();
@@ -194,6 +208,29 @@ export function paletteCommands(): Command[] {
     icon: <LifeBuoy size={14} />,
     keywords: "report problem bug crash error log versions support",
     run: () => void saveDiagnostics(),
+  });
+  const updates = useUpdate.getState();
+  if (updates.phase === "available" && updates.update)
+    list.push({
+      id: "install-update",
+      title: `Install Stannum ${updates.update.version} and restart`,
+      icon: <ArrowDownCircle size={14} />,
+      keywords: "update upgrade new version release download install",
+      run: () => void updates.install(),
+    });
+  list.push({
+    id: "check-updates",
+    title: "Check for updates",
+    icon: <ArrowDownCircle size={14} />,
+    keywords: "update upgrade new version release download install about",
+    run: () => void updates.check(),
+  });
+  list.push({
+    id: "auto-update-check",
+    title: updates.autoCheck ? "Stop checking for updates at startup" : "Check for updates at startup",
+    icon: updates.autoCheck ? <BellOff size={14} /> : <ArrowDownCircle size={14} />,
+    keywords: "update upgrade automatic startup notify version",
+    run: () => updates.setAutoCheck(!updates.autoCheck),
   });
   return list;
 }
