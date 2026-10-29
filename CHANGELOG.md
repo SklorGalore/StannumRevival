@@ -26,6 +26,11 @@ section into the next version's when a release is cut (see
   `# stannum-coordinates version 1`). Saved run files start with it. A file
   from a newer Stannum is refused with a message saying so, instead of being
   read wrongly; so is a diagram with a newer major `schemaVersion`.
+- **Sample cases** to try on first run: with no case open, Power flow and
+  Records offer MATPOWER's nine-bus case, two five-bus RAW cases and a
+  synthetic 200-bus grid, the last three with bus coordinates for the map.
+  Also in **Ctrl+K** ("Open sample"), and as `sample_cases` and
+  `open_sample` in run files and scripts.
 - **Versions and compatibility** page in the docs: what a version number
   promises from 1.0 on for Stannum's files, the Python package,
   `stannum-cli`, run-file commands and attach, and how anything is
