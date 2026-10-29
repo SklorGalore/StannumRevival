@@ -8,6 +8,8 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 1.0.0-rc.1 - 2026-10-29
+
 ### Changed
 
 - **Enforce generator Q limits** is on by default in the app, run files
