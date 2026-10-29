@@ -140,7 +140,7 @@ export type CaseCounts = {
   generators: number;
 };
 
-export type CaseFormat = "matpower" | "raw";
+export type CaseFormat = "matpower" | "raw" | "stn";
 
 /**
  * Names one open case in commands and scripts. Ids are never reused within
@@ -1453,6 +1453,14 @@ export type StepOutcome = {
   seconds: number;
 };
 
+/** What converting a case to the Stannum format kept or changed. */
+export type StnExport = {
+  /** Anything worth knowing: conversions, data kept as RAW lines. */
+  notes: string[];
+  /** Records written, in every table. */
+  records: number;
+};
+
 export type TopologyInfo = {
   buses: number;
   /** Built from the power flow model (MATPOWER, RAW other than revision 35). */
@@ -1800,6 +1808,18 @@ export interface CoreCommands {
     };
     result: RawExport;
   };
+  /**
+   * Write the case, with its Records and study edits, as a Stannum case
+   * file (.stn, format preview). The answer lists anything converted or
+   * kept as RAW lines.
+   */
+  export_stn: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: StnExport;
+  };
   /** Size, hash and date of a file, so a study can tell whether its case changed. */
   file_fingerprint: {
     args: {
@@ -2133,6 +2153,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "diff_compare_working",
   "export_matpower",
   "export_raw",
+  "export_stn",
   "load_coordinates",
   "load_dc_grids",
   "open_case",

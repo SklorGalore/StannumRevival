@@ -666,5 +666,12 @@ pub fn parse_path(path: &std::path::Path) -> Result<DiffCase> {
         line: 1,
         reason: e.to_string(),
     })?;
+    // A Stannum case file compares as the RAW 35 text it converts to.
+    let bytes = crate::stn::raw_bytes_of(&name, bytes).map_err(|reason| RawParseError {
+        name: name.clone(),
+        section: CASE_DETAILS.into(),
+        line: 1,
+        reason,
+    })?;
     parse_bytes(&name, &bytes)
 }

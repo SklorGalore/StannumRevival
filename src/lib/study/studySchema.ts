@@ -23,7 +23,7 @@ export const studySchema = z.object({
     path: z.string(),
     relative: z.string().nullable(),
     name: z.string(),
-    format: z.enum(["matpower", "raw"]),
+    format: z.enum(["matpower", "raw", "stn"]),
     fingerprint,
   }),
   dcGrids: z.object({ path: z.string(), relative: z.string().nullable() }).nullable(),

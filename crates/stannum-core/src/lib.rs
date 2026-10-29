@@ -24,6 +24,7 @@
 //! - [`logbook`]: the application log shown in the log panel.
 //! - [`crash`]: internal errors (panics) logged and answered as errors.
 //! - [`paging`]: tables read a page at a time, sorted and filtered in the core.
+//! - [`stn`]: Stannum's open case format (`.stn`), to and from RAW.
 
 pub mod attach;
 pub mod commands;
@@ -48,6 +49,7 @@ pub mod results;
 pub mod run_file;
 pub mod samples;
 pub mod schema;
+pub mod stn;
 pub mod study;
 pub mod study_file;
 pub mod table;

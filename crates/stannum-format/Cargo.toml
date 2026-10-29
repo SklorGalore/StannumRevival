@@ -1,0 +1,11 @@
+[package]
+name = "stannum-format"
+version = "0.1.0"
+edition = "2024"
+description = "Reader and writer for Stannum's open case (.stn) and lists (.stnl) formats"
+publish = false
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

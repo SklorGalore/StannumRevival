@@ -8,6 +8,21 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+### Added
+
+- **Stannum case files (`.stn`, preview).** An open text format for whole
+  cases: one record per line with named fields, stable ids beside bus
+  numbers, units in the field names, comments, and a fixed order so version
+  control diffs show only what changed. Open a `.stn` file like any case;
+  **Save case as** writes `.stn` or `.raw`; **Export Stannum case** (Power
+  flow's side panel, **Ctrl+K**) writes any case with its edits;
+  `stannum-cli convert case.raw case.stn` converts from the command line,
+  and `export_stn` does it in run files and Python. RAW 33 and 35 cases
+  convert both ways exactly. The format is a preview and may change before
+  its 1.0; see the Case file page in the docs. Lists files (`.stnl`) for
+  subsystems, contingencies, monitors and interfaces are defined and checked,
+  and will be applied by the contingency module in the next preview.
+
 ### Changed
 
 - **Enforce generator Q limits** is on by default in the app, run files

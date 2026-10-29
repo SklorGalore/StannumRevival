@@ -13,6 +13,7 @@ fault-injection = []
 [dependencies]
 rs-power = { path = "../rs-power" }
 nodal = { path = "../nodal", features = ["schemars"] }
+stannum-format = { path = "../stannum-format" }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a number written to a run or study file reads back as the
 # same f64 (the default parser can be one unit in the last place off).

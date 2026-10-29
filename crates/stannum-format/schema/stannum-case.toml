@@ -1,0 +1,589 @@
+# Stannum case schema: every table and field, with its type, unit and default.
+# This file is the source of truth for the format; the reader, the writer and
+# the reference docs are built from it. See docs-site reference/case-file.md.
+#
+# Field types: int, float, bool, status (on/off), string, enum (one of
+# `values`), ref (the id of a record in table `to`; `soft` refs may name a
+# record the file doesn't have), element (a typed reference `kind:id`), and
+# list (of `item`: one type, or a tuple of types; `item_min` is the shortest
+# tuple allowed). A field with no `default` and not `required` is absent
+# unless set, and absent means "none".
+
+format = "stannum-case"
+version = "0.1"
+doc = "Stannum case: the network and its operating state."
+
+[[table]]
+name = "case"
+kind = "case"
+id = "main"
+order = []
+singleton = true
+doc = "The case itself: exactly one record, with the id `main`."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Case title (RAW title line 1)." },
+  { name = "description", type = "string", default = "", doc = "Second title line or a longer description." },
+  { name = "base_mva", type = "float", unit = "MVA", default = 100.0, doc = "System MVA base; per-unit values on the system base use it." },
+  { name = "frequency_hz", type = "float", unit = "Hz", default = 60.0, doc = "System base frequency." },
+  { name = "rating_names", type = "list", item = ["string"], default = ["A", "B", "C"], doc = "What rating slots 1 to 12 are, by name. The app treats the first three as ratings A, B and C." },
+]
+
+[[table]]
+name = "area"
+kind = "area"
+id = "{number}"
+order = ["number"]
+doc = "A control area."
+fields = [
+  { name = "number", type = "int", required = true, doc = "Area number." },
+  { name = "name", type = "string", default = "", doc = "Area name." },
+  { name = "slack_bus", type = "ref", to = "bus", doc = "Bus whose generation balances the area's interchange; none when absent." },
+  { name = "export_mw", type = "float", unit = "MW", default = 0.0, doc = "Desired net export; negative imports." },
+  { name = "tolerance_mw", type = "float", unit = "MW", default = 10.0, doc = "Interchange tolerance band." },
+]
+
+[[table]]
+name = "zone"
+kind = "zone"
+id = "{number}"
+order = ["number"]
+doc = "A zone."
+fields = [
+  { name = "number", type = "int", required = true, doc = "Zone number." },
+  { name = "name", type = "string", default = "", doc = "Zone name." },
+]
+
+[[table]]
+name = "owner"
+kind = "owner"
+id = "{number}"
+order = ["number"]
+doc = "An owner."
+fields = [
+  { name = "number", type = "int", required = true, doc = "Owner number." },
+  { name = "name", type = "string", default = "", doc = "Owner name." },
+]
+
+[[table]]
+name = "area_transfer"
+kind = "area-transfer"
+id = "{from_area}:{to_area}:{label}"
+order = ["from_area", "to_area", "label"]
+doc = "A scheduled transfer between two areas."
+fields = [
+  { name = "from_area", type = "ref", to = "area", soft = true, required = true, doc = "Exporting area." },
+  { name = "to_area", type = "ref", to = "area", soft = true, required = true, doc = "Importing area." },
+  { name = "label", type = "string", default = "1", doc = "Transfer identifier." },
+  { name = "p_mw", type = "float", unit = "MW", default = 0.0, doc = "Scheduled transfer from `from_area` to `to_area`." },
+]
+
+[[table]]
+name = "bus"
+kind = "bus"
+id = "{number}"
+order = ["number"]
+doc = "A bus."
+fields = [
+  { name = "number", type = "int", required = true, doc = "Bus number, 1 to 999997, unique in the case." },
+  { name = "name", type = "string", default = "", doc = "Bus name." },
+  { name = "kv", type = "float", unit = "kV", default = 0.0, doc = "Base voltage, line to line." },
+  { name = "type", type = "enum", values = ["pq", "pv", "ref", "isolated"], default = "pq", doc = "How power flow treats the bus: `pq` load bus, `pv` generator bus, `ref` swing bus, `isolated` out of the solve." },
+  { name = "area", type = "ref", to = "area", soft = true, default = "1", doc = "Area." },
+  { name = "zone", type = "ref", to = "zone", soft = true, default = "1", doc = "Zone." },
+  { name = "owner", type = "ref", to = "owner", soft = true, default = "1", doc = "Owner." },
+  { name = "vm_pu", type = "float", unit = "pu", default = 1.0, doc = "Voltage magnitude: the starting or last solved value." },
+  { name = "va_deg", type = "float", unit = "deg", default = 0.0, doc = "Voltage angle: the starting or last solved value." },
+  { name = "vmax_pu", type = "float", unit = "pu", default = 1.1, doc = "Normal upper voltage limit." },
+  { name = "vmin_pu", type = "float", unit = "pu", default = 0.9, doc = "Normal lower voltage limit." },
+  { name = "evmax_pu", type = "float", unit = "pu", default = 1.1, doc = "Emergency upper voltage limit." },
+  { name = "evmin_pu", type = "float", unit = "pu", default = 0.9, doc = "Emergency lower voltage limit." },
+  { name = "lat", type = "float", unit = "deg", doc = "Latitude (WGS 84), when the bus has a place." },
+  { name = "lon", type = "float", unit = "deg", doc = "Longitude (WGS 84), when the bus has a place." },
+]
+
+[[table]]
+name = "load"
+kind = "load"
+id = "{bus}:{label}"
+order = ["bus", "label"]
+doc = "A load. Every reactive part is MVAr consumed, so positive is inductive."
+fields = [
+  { name = "bus", type = "ref", to = "bus", required = true, doc = "Bus." },
+  { name = "label", type = "string", default = "1", doc = "Load identifier, unique at its bus." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "area", type = "ref", to = "area", soft = true, doc = "Area, when it isn't the bus's." },
+  { name = "zone", type = "ref", to = "zone", soft = true, doc = "Zone, when it isn't the bus's." },
+  { name = "owner", type = "ref", to = "owner", soft = true, doc = "Owner, when it isn't the bus's." },
+  { name = "p_mw", type = "float", unit = "MW", default = 0.0, doc = "Constant-power active load." },
+  { name = "q_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Constant-power reactive load." },
+  { name = "ip_mw", type = "float", unit = "MW", default = 0.0, doc = "Constant-current active load at 1 pu voltage." },
+  { name = "iq_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Constant-current reactive load at 1 pu voltage." },
+  { name = "yp_mw", type = "float", unit = "MW", default = 0.0, doc = "Constant-admittance active load at 1 pu voltage." },
+  { name = "yq_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Constant-admittance reactive load at 1 pu voltage (the negative of PSS/E's YQ)." },
+  { name = "scalable", type = "bool", default = true, doc = "Whether load scaling may change it." },
+  { name = "interruptible", type = "bool", default = false, doc = "Whether it is interruptible." },
+  { name = "dgen_p_mw", type = "float", unit = "MW", default = 0.0, doc = "Distributed generation, active." },
+  { name = "dgen_q_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Distributed generation, reactive." },
+  { name = "dgen_on", type = "bool", default = false, doc = "Whether the distributed generation is in service." },
+  { name = "load_type", type = "string", default = "", doc = "Free-text load type." },
+]
+
+[[table]]
+name = "shunt"
+kind = "shunt"
+id = "{bus}:{label}"
+order = ["bus", "label"]
+doc = "A fixed shunt."
+fields = [
+  { name = "bus", type = "ref", to = "bus", required = true, doc = "Bus." },
+  { name = "label", type = "string", default = "1", doc = "Shunt identifier, unique at its bus." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "g_mw", type = "float", unit = "MW", default = 0.0, doc = "Active power consumed at 1 pu voltage." },
+  { name = "b_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Reactive power injected at 1 pu voltage; positive is capacitive." },
+]
+
+[[table]]
+name = "generator"
+kind = "generator"
+id = "{bus}:{label}"
+order = ["bus", "label"]
+doc = "A generator."
+fields = [
+  { name = "bus", type = "ref", to = "bus", required = true, doc = "Bus." },
+  { name = "label", type = "string", default = "1", doc = "Machine identifier, unique at its bus." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "p_mw", type = "float", unit = "MW", default = 0.0, doc = "Active output." },
+  { name = "q_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Reactive output: the starting or last solved value." },
+  { name = "qmax_mvar", type = "float", unit = "MVAr", default = 9999.0, doc = "Upper reactive limit." },
+  { name = "qmin_mvar", type = "float", unit = "MVAr", default = -9999.0, doc = "Lower reactive limit." },
+  { name = "vset_pu", type = "float", unit = "pu", default = 1.0, doc = "Voltage setpoint at the regulated bus." },
+  { name = "reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage it holds, when not its own." },
+  { name = "reg_node", type = "int", doc = "Node of the regulated bus in its substation, when the bus has one." },
+  { name = "mva_base", type = "float", unit = "MVA", doc = "Machine base; the system base when absent." },
+  { name = "source_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Source resistance on the machine base." },
+  { name = "source_x_pu", type = "float", unit = "pu", default = 1.0, doc = "Source reactance on the machine base." },
+  { name = "gsu_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Step-up transformer resistance on the machine base; 0 when there is none." },
+  { name = "gsu_x_pu", type = "float", unit = "pu", default = 0.0, doc = "Step-up transformer reactance on the machine base; 0 when there is none." },
+  { name = "gsu_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Step-up transformer ratio." },
+  { name = "rmpct", type = "float", unit = "%", default = 100.0, doc = "Share of the reactive power that holds a remote bus." },
+  { name = "pmax_mw", type = "float", unit = "MW", default = 9999.0, doc = "Upper active limit." },
+  { name = "pmin_mw", type = "float", unit = "MW", default = -9999.0, doc = "Lower active limit." },
+  { name = "dispatch", type = "enum", values = ["both", "down_only", "none", "up_only"], default = "both", doc = "Which way dispatch may move it: `both`, `down_only`, `none`, `up_only` (PSS/E BASLOD 0 to 3)." },
+  { name = "owners", type = "list", item = ["softref:owner", "float"], default = [], doc = "Owners and their shares, as `[owner, fraction]` pairs, at most four. Empty means the owner of the first bus, 100 percent." },
+  { name = "wind_mode", type = "enum", values = ["conventional", "q_limits", "pf_limits", "fixed_pf"], default = "conventional", doc = "`conventional`, or a wind machine whose reactive limits come from `q_limits`, from `pf_limits` (wind_pf) or that holds `fixed_pf`." },
+  { name = "wind_pf", type = "float", default = 1.0, doc = "Power factor for the wind modes that use one." },
+]
+
+[[table]]
+name = "line"
+kind = "line"
+id = "{sort(from,to)}:{ckt}"
+order = ["from", "to", "ckt"]
+doc = "An AC line."
+fields = [
+  { name = "from", type = "ref", to = "bus", required = true, doc = "From bus." },
+  { name = "to", type = "ref", to = "bus", required = true, doc = "To bus." },
+  { name = "ckt", type = "string", default = "1", doc = "Circuit identifier, unique between the two buses." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "r_pu", type = "float", unit = "pu", default = 0.0, doc = "Series resistance on the system base." },
+  { name = "x_pu", type = "float", unit = "pu", default = 0.0, doc = "Series reactance on the system base." },
+  { name = "b_pu", type = "float", unit = "pu", default = 0.0, doc = "Total charging susceptance on the system base." },
+  { name = "name", type = "string", default = "", doc = "Line name." },
+  { name = "rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "gi_pu", type = "float", unit = "pu", default = 0.0, doc = "Shunt conductance at the from end, system base." },
+  { name = "bi_pu", type = "float", unit = "pu", default = 0.0, doc = "Shunt susceptance at the from end, system base." },
+  { name = "gj_pu", type = "float", unit = "pu", default = 0.0, doc = "Shunt conductance at the to end, system base." },
+  { name = "bj_pu", type = "float", unit = "pu", default = 0.0, doc = "Shunt susceptance at the to end, system base." },
+  { name = "metered", type = "enum", values = ["from", "to"], default = "from", doc = "Which end losses are metered at." },
+  { name = "length", type = "float", default = 0.0, doc = "Length, in the unit the case's author chose." },
+  { name = "owners", type = "list", item = ["softref:owner", "float"], default = [], doc = "Owners and their shares, as `[owner, fraction]` pairs, at most four. Empty means the owner of the first bus, 100 percent." },
+]
+
+[[table]]
+name = "switch"
+kind = "switch"
+id = "{sort(from,to)}:{ckt}"
+order = ["from", "to", "ckt"]
+doc = "A switching device (breaker, disconnector or other)."
+fields = [
+  { name = "from", type = "ref", to = "bus", required = true, doc = "From bus." },
+  { name = "to", type = "ref", to = "bus", required = true, doc = "To bus." },
+  { name = "ckt", type = "string", default = "1", doc = "Circuit identifier." },
+  { name = "x_pu", type = "float", unit = "pu", default = 0.0001, doc = "Reactance on the system base." },
+  { name = "rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "status", type = "status", default = "on", doc = "Closed (`on`) or open (`off`)." },
+  { name = "normal", type = "enum", values = ["closed", "open"], default = "closed", doc = "Its normal state." },
+  { name = "metered", type = "enum", values = ["from", "to"], default = "from", doc = "Which end losses are metered at." },
+  { name = "kind", type = "enum", values = ["generic", "breaker", "disconnector"], default = "generic", doc = "What it is." },
+  { name = "name", type = "string", default = "", doc = "Device name." },
+]
+
+[[table]]
+name = "transformer"
+kind = "transformer"
+id = "{sort(from,to)}:{ckt}"
+order = ["from", "to", "ckt"]
+doc = "A two-winding transformer. Impedances are per unit on its own `mva_base` and winding voltages."
+fields = [
+  { name = "from", type = "ref", to = "bus", required = true, doc = "Winding 1 bus." },
+  { name = "to", type = "ref", to = "bus", required = true, doc = "Winding 2 bus." },
+  { name = "ckt", type = "string", default = "1", doc = "Circuit identifier." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "name", type = "string", default = "", doc = "Transformer name." },
+  { name = "metered", type = "enum", values = ["from", "to"], default = "to", doc = "Which end losses are metered at." },
+  { name = "mva_base", type = "float", unit = "MVA", doc = "Base of `r_pu`, `x_pu` and the magnetizing admittance; the system base when absent." },
+  { name = "r_pu", type = "float", unit = "pu", default = 0.0, doc = "Series resistance on `mva_base`." },
+  { name = "x_pu", type = "float", unit = "pu", default = 0.0, doc = "Series reactance on `mva_base`." },
+  { name = "mag_g_pu", type = "float", unit = "pu", default = 0.0, doc = "Magnetizing conductance on `mva_base`." },
+  { name = "mag_b_pu", type = "float", unit = "pu", default = 0.0, doc = "Magnetizing susceptance on `mva_base`; negative is inductive." },
+  { name = "w1_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Winding 1 ratio, in pu of its nominal voltage." },
+  { name = "w1_kv", type = "float", unit = "kV", doc = "Winding 1 nominal voltage; the from bus's base voltage when absent." },
+  { name = "w1_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding 1 phase shift." },
+  { name = "w2_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Winding 2 ratio, in pu of its nominal voltage." },
+  { name = "w2_kv", type = "float", unit = "kV", doc = "Winding 2 nominal voltage; the to bus's base voltage when absent." },
+  { name = "rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "control", type = "enum", values = ["none", "voltage", "reactive_flow", "active_flow", "dc_line", "asymmetric_active_flow"], default = "none", doc = "What the winding's tap or angle adjusts to hold: `none`, `voltage`, `reactive_flow`, `active_flow` (a phase shifter), `dc_line`, `asymmetric_active_flow`." },
+  { name = "control_on", type = "bool", default = true, doc = "Whether that adjustment is enabled; `false` keeps the control data but locks the tap." },
+  { name = "reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage the control holds." },
+  { name = "reg_bus_reversed", type = "bool", default = false, doc = "The regulated bus is on the winding's own side, so the tap moves the other way (PSS/E negative CONT)." },
+  { name = "reg_node", type = "int", doc = "Node of the regulated bus in its substation." },
+  { name = "adjust_max", type = "float", unit = "pu or deg", default = 1.1, doc = "Upper limit of the tap (pu of the winding's nominal voltage) or of the angle (degrees, active-flow control)." },
+  { name = "adjust_min", type = "float", unit = "pu or deg", default = 0.9, doc = "Lower limit of the tap or angle." },
+  { name = "band_max", type = "float", unit = "pu, MVAr or MW", default = 1.1, doc = "Upper end of the band the control holds: voltage in pu, or flow in MVAr or MW." },
+  { name = "band_min", type = "float", unit = "pu, MVAr or MW", default = 0.9, doc = "Lower end of that band." },
+  { name = "steps", type = "int", default = 33, doc = "Number of tap positions." },
+  { name = "impedance_table", type = "ref", to = "impedance_table", doc = "Impedance correction table." },
+  { name = "comp_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation resistance." },
+  { name = "comp_x_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation reactance." },
+  { name = "comp_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding connection angle for asymmetric control." },
+  { name = "owners", type = "list", item = ["softref:owner", "float"], default = [], doc = "Owners and their shares, as `[owner, fraction]` pairs, at most four. Empty means the owner of the first bus, 100 percent." },
+  { name = "vector_group", type = "string", default = "", doc = "Vector group, such as YNd1." },
+]
+
+[[table]]
+name = "transformer3"
+kind = "transformer"
+id = "{sort(bus1,bus2,bus3)}:{ckt}"
+order = ["bus1", "bus2", "bus3", "ckt"]
+doc = "A three-winding transformer, one record for all three windings. Its typed references use the `transformer` kind, like two-winding ones."
+fields = [
+  { name = "bus1", type = "ref", to = "bus", required = true, doc = "Winding 1 bus." },
+  { name = "bus2", type = "ref", to = "bus", required = true, doc = "Winding 2 bus." },
+  { name = "bus3", type = "ref", to = "bus", required = true, doc = "Winding 3 bus." },
+  { name = "ckt", type = "string", default = "1", doc = "Circuit identifier." },
+  { name = "status", type = "enum", values = ["on", "off", "w1_off", "w2_off", "w3_off"], default = "on", doc = "`on`, `off`, or one winding out: `w1_off`, `w2_off`, `w3_off`." },
+  { name = "name", type = "string", default = "", doc = "Transformer name." },
+  { name = "metered", type = "enum", values = ["w1", "w2", "w3"], default = "w2", doc = "Which winding losses are metered at." },
+  { name = "mva_base12", type = "float", unit = "MVA", doc = "Base of the winding 1 to 2 impedance; the system base when absent." },
+  { name = "r12_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 1 to 2 resistance on `mva_base12`." },
+  { name = "x12_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 1 to 2 reactance on `mva_base12`." },
+  { name = "mva_base23", type = "float", unit = "MVA", doc = "Base of the winding 2 to 3 impedance; the system base when absent." },
+  { name = "r23_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 2 to 3 resistance on `mva_base23`." },
+  { name = "x23_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 2 to 3 reactance on `mva_base23`." },
+  { name = "mva_base31", type = "float", unit = "MVA", doc = "Base of the winding 3 to 1 impedance; the system base when absent." },
+  { name = "r31_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 3 to 1 resistance on `mva_base31`." },
+  { name = "x31_pu", type = "float", unit = "pu", default = 0.0, doc = "Winding 3 to 1 reactance on `mva_base31`." },
+  { name = "mag_g_pu", type = "float", unit = "pu", default = 0.0, doc = "Magnetizing conductance on `mva_base12`." },
+  { name = "mag_b_pu", type = "float", unit = "pu", default = 0.0, doc = "Magnetizing susceptance on `mva_base12`; negative is inductive." },
+  { name = "star_vm_pu", type = "float", unit = "pu", default = 1.0, doc = "Star point voltage magnitude." },
+  { name = "star_va_deg", type = "float", unit = "deg", default = 0.0, doc = "Star point voltage angle." },
+  { name = "w1_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Winding 1 ratio, in pu of its nominal voltage." },
+  { name = "w1_kv", type = "float", unit = "kV", doc = "Winding 1 nominal voltage; bus 1's base voltage when absent." },
+  { name = "w1_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding 1 phase shift." },
+  { name = "w1_rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w1_control", type = "enum", values = ["none", "voltage", "reactive_flow", "active_flow", "dc_line", "asymmetric_active_flow"], default = "none", doc = "What the winding's tap or angle adjusts to hold: `none`, `voltage`, `reactive_flow`, `active_flow` (a phase shifter), `dc_line`, `asymmetric_active_flow`." },
+  { name = "w1_control_on", type = "bool", default = true, doc = "Whether that adjustment is enabled; `false` keeps the control data but locks the tap." },
+  { name = "w1_reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage the control holds." },
+  { name = "w1_reg_bus_reversed", type = "bool", default = false, doc = "The regulated bus is on the winding's own side, so the tap moves the other way (PSS/E negative CONT)." },
+  { name = "w1_reg_node", type = "int", doc = "Node of the regulated bus in its substation." },
+  { name = "w1_adjust_max", type = "float", unit = "pu or deg", default = 1.1, doc = "Upper limit of the tap (pu of the winding's nominal voltage) or of the angle (degrees, active-flow control)." },
+  { name = "w1_adjust_min", type = "float", unit = "pu or deg", default = 0.9, doc = "Lower limit of the tap or angle." },
+  { name = "w1_band_max", type = "float", unit = "pu, MVAr or MW", default = 1.1, doc = "Upper end of the band the control holds: voltage in pu, or flow in MVAr or MW." },
+  { name = "w1_band_min", type = "float", unit = "pu, MVAr or MW", default = 0.9, doc = "Lower end of that band." },
+  { name = "w1_steps", type = "int", default = 33, doc = "Number of tap positions." },
+  { name = "w1_impedance_table", type = "ref", to = "impedance_table", doc = "Impedance correction table." },
+  { name = "w1_comp_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation resistance." },
+  { name = "w1_comp_x_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation reactance." },
+  { name = "w1_comp_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding connection angle for asymmetric control." },
+  { name = "w2_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Winding 2 ratio, in pu of its nominal voltage." },
+  { name = "w2_kv", type = "float", unit = "kV", doc = "Winding 2 nominal voltage; bus 2's base voltage when absent." },
+  { name = "w2_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding 2 phase shift." },
+  { name = "w2_rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w2_control", type = "enum", values = ["none", "voltage", "reactive_flow", "active_flow", "dc_line", "asymmetric_active_flow"], default = "none", doc = "What the winding's tap or angle adjusts to hold: `none`, `voltage`, `reactive_flow`, `active_flow` (a phase shifter), `dc_line`, `asymmetric_active_flow`." },
+  { name = "w2_control_on", type = "bool", default = true, doc = "Whether that adjustment is enabled; `false` keeps the control data but locks the tap." },
+  { name = "w2_reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage the control holds." },
+  { name = "w2_reg_bus_reversed", type = "bool", default = false, doc = "The regulated bus is on the winding's own side, so the tap moves the other way (PSS/E negative CONT)." },
+  { name = "w2_reg_node", type = "int", doc = "Node of the regulated bus in its substation." },
+  { name = "w2_adjust_max", type = "float", unit = "pu or deg", default = 1.1, doc = "Upper limit of the tap (pu of the winding's nominal voltage) or of the angle (degrees, active-flow control)." },
+  { name = "w2_adjust_min", type = "float", unit = "pu or deg", default = 0.9, doc = "Lower limit of the tap or angle." },
+  { name = "w2_band_max", type = "float", unit = "pu, MVAr or MW", default = 1.1, doc = "Upper end of the band the control holds: voltage in pu, or flow in MVAr or MW." },
+  { name = "w2_band_min", type = "float", unit = "pu, MVAr or MW", default = 0.9, doc = "Lower end of that band." },
+  { name = "w2_steps", type = "int", default = 33, doc = "Number of tap positions." },
+  { name = "w2_impedance_table", type = "ref", to = "impedance_table", doc = "Impedance correction table." },
+  { name = "w2_comp_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation resistance." },
+  { name = "w2_comp_x_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation reactance." },
+  { name = "w2_comp_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding connection angle for asymmetric control." },
+  { name = "w3_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Winding 3 ratio, in pu of its nominal voltage." },
+  { name = "w3_kv", type = "float", unit = "kV", doc = "Winding 3 nominal voltage; bus 3's base voltage when absent." },
+  { name = "w3_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding 3 phase shift." },
+  { name = "w3_rate1_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 1 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate2_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 2 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate3_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 3 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate4_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 4 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate5_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 5 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate6_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 6 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate7_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 7 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate8_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 8 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate9_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 9 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate10_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 10 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate11_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 11 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_rate12_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating 12 in MVA; 0 means none. `case.rating_names` says what each slot is." },
+  { name = "w3_control", type = "enum", values = ["none", "voltage", "reactive_flow", "active_flow", "dc_line", "asymmetric_active_flow"], default = "none", doc = "What the winding's tap or angle adjusts to hold: `none`, `voltage`, `reactive_flow`, `active_flow` (a phase shifter), `dc_line`, `asymmetric_active_flow`." },
+  { name = "w3_control_on", type = "bool", default = true, doc = "Whether that adjustment is enabled; `false` keeps the control data but locks the tap." },
+  { name = "w3_reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage the control holds." },
+  { name = "w3_reg_bus_reversed", type = "bool", default = false, doc = "The regulated bus is on the winding's own side, so the tap moves the other way (PSS/E negative CONT)." },
+  { name = "w3_reg_node", type = "int", doc = "Node of the regulated bus in its substation." },
+  { name = "w3_adjust_max", type = "float", unit = "pu or deg", default = 1.1, doc = "Upper limit of the tap (pu of the winding's nominal voltage) or of the angle (degrees, active-flow control)." },
+  { name = "w3_adjust_min", type = "float", unit = "pu or deg", default = 0.9, doc = "Lower limit of the tap or angle." },
+  { name = "w3_band_max", type = "float", unit = "pu, MVAr or MW", default = 1.1, doc = "Upper end of the band the control holds: voltage in pu, or flow in MVAr or MW." },
+  { name = "w3_band_min", type = "float", unit = "pu, MVAr or MW", default = 0.9, doc = "Lower end of that band." },
+  { name = "w3_steps", type = "int", default = 33, doc = "Number of tap positions." },
+  { name = "w3_impedance_table", type = "ref", to = "impedance_table", doc = "Impedance correction table." },
+  { name = "w3_comp_r_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation resistance." },
+  { name = "w3_comp_x_pu", type = "float", unit = "pu", default = 0.0, doc = "Load-drop compensation reactance." },
+  { name = "w3_comp_angle_deg", type = "float", unit = "deg", default = 0.0, doc = "Winding connection angle for asymmetric control." },
+  { name = "owners", type = "list", item = ["softref:owner", "float"], default = [], doc = "Owners and their shares, as `[owner, fraction]` pairs, at most four. Empty means the owner of the first bus, 100 percent." },
+  { name = "vector_group", type = "string", default = "", doc = "Vector group." },
+]
+
+[[table]]
+name = "impedance_table"
+kind = "impedance-table"
+id = "{number}"
+order = ["number"]
+doc = "A transformer impedance correction table."
+fields = [
+  { name = "number", type = "int", required = true, doc = "Table number." },
+  { name = "points", type = "list", item = ["float", "float", "float"], item_min = 2, default = [], doc = "`[ratio_or_angle, factor_re, factor_im]` points in increasing order: tap ratio in pu, or angle in degrees for phase shifters." },
+]
+
+[[table]]
+name = "switched_shunt"
+kind = "switched-shunt"
+id = "{bus}:{label}"
+order = ["bus", "label"]
+doc = "A switched shunt."
+fields = [
+  { name = "bus", type = "ref", to = "bus", required = true, doc = "Bus." },
+  { name = "label", type = "string", default = "1", doc = "Shunt identifier, unique at its bus." },
+  { name = "mode", type = "enum", values = ["locked", "discrete", "continuous", "plant_q", "vsc_q", "shunt_admittance", "facts_q"], default = "discrete", doc = "How it switches: `locked`, `discrete`, `continuous`, or discrete to hold a plant's reactive output (`plant_q`), a VSC's (`vsc_q`), another switched shunt's admittance (`shunt_admittance`) or a FACTS device's (`facts_q`)." },
+  { name = "switching", type = "enum", values = ["in_order", "nearest"], default = "in_order", doc = "Order blocks switch in: `in_order` as listed, or `nearest` admittance first." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "vmax_pu", type = "float", unit = "pu or MVAr", default = 1.0, doc = "Upper end of the band it holds." },
+  { name = "vmin_pu", type = "float", unit = "pu or MVAr", default = 1.0, doc = "Lower end of the band it holds." },
+  { name = "reg_bus", type = "ref", to = "bus", doc = "Bus it regulates, when not its own." },
+  { name = "reg_node", type = "int", doc = "Node of the regulated bus." },
+  { name = "rmpct", type = "float", unit = "%", default = 100.0, doc = "Share of the reactive power that holds a remote bus." },
+  { name = "controller", type = "string", default = "", doc = "Name of the VSC line or FACTS device it follows, for the modes that follow one." },
+  { name = "b_init_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Switched-in admittance: the starting or last solved value." },
+  { name = "blocks", type = "list", item = ["int", "float", "status"], item_min = 2, default = [], doc = "Blocks as `[count, mvar_per_step]` or `[count, mvar_per_step, status]`; positive MVAr is capacitive." },
+]
+
+[[table]]
+name = "lcc_line"
+kind = "dcline"
+id = "{sort(rect_bus,inv_bus)}:{name}"
+order = ["name"]
+doc = "A two-terminal line-commutated DC line."
+fields = [
+  { name = "name", type = "string", required = true, doc = "Line name, unique among DC lines." },
+  { name = "mode", type = "enum", values = ["blocked", "power", "current"], default = "blocked", doc = "`blocked`, `power` or `current` control." },
+  { name = "r_ohm", type = "float", unit = "ohm", default = 0.0, doc = "DC line resistance." },
+  { name = "setpoint", type = "float", unit = "MW or A", default = 0.0, doc = "Power (MW, negative to hold it at the inverter) or current (A) setpoint." },
+  { name = "vsched_kv", type = "float", unit = "kV", default = 0.0, doc = "Scheduled DC voltage." },
+  { name = "vcmod_kv", type = "float", unit = "kV", default = 0.0, doc = "Mode switch DC voltage." },
+  { name = "rcomp_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Compounding resistance." },
+  { name = "margin", type = "float", default = 0.0, doc = "Current margin, as a fraction of the setpoint." },
+  { name = "metered", type = "enum", values = ["rectifier", "inverter"], default = "inverter", doc = "Which end losses are metered at." },
+  { name = "dcvmin_kv", type = "float", unit = "kV", default = 0.0, doc = "Smallest compounded DC voltage." },
+  { name = "ccc_iterations", type = "int", default = 20, doc = "Iteration limit for capacitor-commutated converters." },
+  { name = "ccc_accel", type = "float", default = 1.0, doc = "Acceleration factor for those iterations." },
+  { name = "rect_bus", type = "ref", to = "bus", required = true, doc = "Rectifier AC bus." },
+  { name = "rect_bridges", type = "int", default = 1, doc = "Number of bridges in series." },
+  { name = "rect_angle_max_deg", type = "float", unit = "deg", default = 0.0, doc = "Largest firing (rectifier) or extinction (inverter) angle." },
+  { name = "rect_angle_min_deg", type = "float", unit = "deg", default = 0.0, doc = "Smallest firing or extinction angle." },
+  { name = "rect_rc_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Commutating resistance per bridge." },
+  { name = "rect_xc_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Commutating reactance per bridge." },
+  { name = "rect_ebase_kv", type = "float", unit = "kV", default = 0.0, doc = "Primary base AC voltage." },
+  { name = "rect_ratio", type = "float", default = 1.0, doc = "Transformer ratio." },
+  { name = "rect_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Tap setting." },
+  { name = "rect_tap_max_pu", type = "float", unit = "pu", default = 1.5, doc = "Largest tap." },
+  { name = "rect_tap_min_pu", type = "float", unit = "pu", default = 0.51, doc = "Smallest tap." },
+  { name = "rect_tap_step_pu", type = "float", unit = "pu", default = 0.00625, doc = "Tap step." },
+  { name = "rect_commutating_bus", type = "ref", to = "bus", doc = "Commutating bus, when not the AC bus." },
+  { name = "rect_commutating_node", type = "int", doc = "Node of the commutating bus." },
+  { name = "rect_xfmr_from", type = "ref", to = "bus", doc = "From bus of a two-winding transformer whose tap this converter controls." },
+  { name = "rect_xfmr_to", type = "ref", to = "bus", doc = "To bus of that transformer." },
+  { name = "rect_xfmr_ckt", type = "string", default = "1", doc = "Circuit of that transformer." },
+  { name = "rect_xcap_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Series capacitor reactance (capacitor-commutated converters)." },
+  { name = "inv_bus", type = "ref", to = "bus", required = true, doc = "Inverter AC bus." },
+  { name = "inv_bridges", type = "int", default = 1, doc = "Number of bridges in series." },
+  { name = "inv_angle_max_deg", type = "float", unit = "deg", default = 0.0, doc = "Largest firing (rectifier) or extinction (inverter) angle." },
+  { name = "inv_angle_min_deg", type = "float", unit = "deg", default = 0.0, doc = "Smallest firing or extinction angle." },
+  { name = "inv_rc_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Commutating resistance per bridge." },
+  { name = "inv_xc_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Commutating reactance per bridge." },
+  { name = "inv_ebase_kv", type = "float", unit = "kV", default = 0.0, doc = "Primary base AC voltage." },
+  { name = "inv_ratio", type = "float", default = 1.0, doc = "Transformer ratio." },
+  { name = "inv_tap_pu", type = "float", unit = "pu", default = 1.0, doc = "Tap setting." },
+  { name = "inv_tap_max_pu", type = "float", unit = "pu", default = 1.5, doc = "Largest tap." },
+  { name = "inv_tap_min_pu", type = "float", unit = "pu", default = 0.51, doc = "Smallest tap." },
+  { name = "inv_tap_step_pu", type = "float", unit = "pu", default = 0.00625, doc = "Tap step." },
+  { name = "inv_commutating_bus", type = "ref", to = "bus", doc = "Commutating bus, when not the AC bus." },
+  { name = "inv_commutating_node", type = "int", doc = "Node of the commutating bus." },
+  { name = "inv_xfmr_from", type = "ref", to = "bus", doc = "From bus of a two-winding transformer whose tap this converter controls." },
+  { name = "inv_xfmr_to", type = "ref", to = "bus", doc = "To bus of that transformer." },
+  { name = "inv_xfmr_ckt", type = "string", default = "1", doc = "Circuit of that transformer." },
+  { name = "inv_xcap_ohm", type = "float", unit = "ohm", default = 0.0, doc = "Series capacitor reactance (capacitor-commutated converters)." },
+]
+
+[[table]]
+name = "vsc_line"
+kind = "dcline"
+id = "{sort(c1_bus,c2_bus)}:{name}"
+order = ["name"]
+doc = "A two-terminal voltage-source-converter DC line."
+fields = [
+  { name = "name", type = "string", required = true, doc = "Line name, unique among DC lines." },
+  { name = "status", type = "status", default = "on", doc = "In service (`on`) or out of service (`off`)." },
+  { name = "r_ohm", type = "float", unit = "ohm", default = 0.0, doc = "DC line resistance." },
+  { name = "owners", type = "list", item = ["softref:owner", "float"], default = [], doc = "Owners and their shares, as `[owner, fraction]` pairs, at most four. Empty means the owner of the first bus, 100 percent." },
+  { name = "c1_bus", type = "ref", to = "bus", required = true, doc = "Converter 1 AC bus." },
+  { name = "c1_dc_mode", type = "enum", values = ["off", "voltage", "power"], default = "off", doc = "What the converter holds on the DC side: `off`, `voltage` or `power`." },
+  { name = "c1_ac_mode", type = "enum", values = ["voltage", "power_factor"], default = "voltage", doc = "What it holds on the AC side: `voltage` or `power_factor`." },
+  { name = "c1_dc_set", type = "float", unit = "kV or MW", default = 0.0, doc = "DC setpoint: voltage in kV, or power in MW (positive into the DC line)." },
+  { name = "c1_ac_set", type = "float", unit = "pu or pf", default = 1.0, doc = "AC setpoint: voltage in pu, or power factor." },
+  { name = "c1_loss_a_kw", type = "float", unit = "kW", default = 0.0, doc = "Constant loss." },
+  { name = "c1_loss_b_kw_per_a", type = "float", unit = "kW/A", default = 0.0, doc = "Loss per ampere of DC current." },
+  { name = "c1_loss_min_kw", type = "float", unit = "kW", default = 0.0, doc = "Smallest loss." },
+  { name = "c1_smax_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating; 0 means none." },
+  { name = "c1_imax_a", type = "float", unit = "A", default = 0.0, doc = "Current rating; 0 means none." },
+  { name = "c1_pwf", type = "float", default = 1.0, doc = "Power weighting factor." },
+  { name = "c1_qmax_mvar", type = "float", unit = "MVAr", default = 9999.0, doc = "Upper reactive limit." },
+  { name = "c1_qmin_mvar", type = "float", unit = "MVAr", default = -9999.0, doc = "Lower reactive limit." },
+  { name = "c1_reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage it holds, when not its own." },
+  { name = "c1_rmpct", type = "float", unit = "%", default = 100.0, doc = "Share of the reactive power that holds a remote bus." },
+  { name = "c2_bus", type = "ref", to = "bus", required = true, doc = "Converter 2 AC bus." },
+  { name = "c2_dc_mode", type = "enum", values = ["off", "voltage", "power"], default = "off", doc = "What the converter holds on the DC side: `off`, `voltage` or `power`." },
+  { name = "c2_ac_mode", type = "enum", values = ["voltage", "power_factor"], default = "voltage", doc = "What it holds on the AC side: `voltage` or `power_factor`." },
+  { name = "c2_dc_set", type = "float", unit = "kV or MW", default = 0.0, doc = "DC setpoint: voltage in kV, or power in MW (positive into the DC line)." },
+  { name = "c2_ac_set", type = "float", unit = "pu or pf", default = 1.0, doc = "AC setpoint: voltage in pu, or power factor." },
+  { name = "c2_loss_a_kw", type = "float", unit = "kW", default = 0.0, doc = "Constant loss." },
+  { name = "c2_loss_b_kw_per_a", type = "float", unit = "kW/A", default = 0.0, doc = "Loss per ampere of DC current." },
+  { name = "c2_loss_min_kw", type = "float", unit = "kW", default = 0.0, doc = "Smallest loss." },
+  { name = "c2_smax_mva", type = "float", unit = "MVA", default = 0.0, doc = "Rating; 0 means none." },
+  { name = "c2_imax_a", type = "float", unit = "A", default = 0.0, doc = "Current rating; 0 means none." },
+  { name = "c2_pwf", type = "float", default = 1.0, doc = "Power weighting factor." },
+  { name = "c2_qmax_mvar", type = "float", unit = "MVAr", default = 9999.0, doc = "Upper reactive limit." },
+  { name = "c2_qmin_mvar", type = "float", unit = "MVAr", default = -9999.0, doc = "Lower reactive limit." },
+  { name = "c2_reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage it holds, when not its own." },
+  { name = "c2_rmpct", type = "float", unit = "%", default = 100.0, doc = "Share of the reactive power that holds a remote bus." },
+]
+
+[[table]]
+name = "multi_section_line"
+kind = "multi-section-line"
+id = "{sort(from,to)}:{label}"
+order = ["from", "to", "label"]
+doc = "A line made of several sections in series, grouped for switching."
+fields = [
+  { name = "from", type = "ref", to = "bus", required = true, doc = "From bus." },
+  { name = "to", type = "ref", to = "bus", required = true, doc = "To bus." },
+  { name = "label", type = "string", default = "&1", doc = "Group identifier, starting with &." },
+  { name = "metered", type = "enum", values = ["from", "to"], default = "from", doc = "Which end losses are metered at." },
+  { name = "via", type = "list", item = ["ref:bus"], default = [], doc = "Buses between the sections, in order from `from`." },
+]
+
+[[table]]
+name = "facts"
+kind = "facts"
+id = "{name}"
+order = ["name"]
+doc = "A FACTS device: a shunt element, a series element, or both."
+fields = [
+  { name = "name", type = "string", required = true, doc = "Device name." },
+  { name = "from", type = "ref", to = "bus", required = true, doc = "Sending-end bus (shunt element)." },
+  { name = "to", type = "ref", to = "bus", doc = "Terminal-end bus of the series element; none for a shunt-only device." },
+  { name = "mode", type = "enum", values = ["off", "normal", "shunt_only", "constant_impedance", "constant_voltage", "ipfc_master_pq", "ipfc_slave_pq", "ipfc_master_voltage", "ipfc_slave_voltage"], default = "normal", doc = "Operating mode (PSS/E MODE 0 to 8)." },
+  { name = "p_set_mw", type = "float", unit = "MW", default = 0.0, doc = "Active flow setpoint at the terminal end." },
+  { name = "q_set_mvar", type = "float", unit = "MVAr", default = 0.0, doc = "Reactive flow setpoint at the terminal end." },
+  { name = "vset_pu", type = "float", unit = "pu", default = 1.0, doc = "Voltage setpoint at the sending end." },
+  { name = "shunt_max_mva", type = "float", unit = "MVA", default = 9999.0, doc = "Largest shunt current, as MVA at 1 pu." },
+  { name = "series_max_mw", type = "float", unit = "MW", default = 9999.0, doc = "Largest bridge active power transfer." },
+  { name = "vt_min_pu", type = "float", unit = "pu", default = 0.9, doc = "Smallest terminal-end voltage." },
+  { name = "vt_max_pu", type = "float", unit = "pu", default = 1.1, doc = "Largest terminal-end voltage." },
+  { name = "vs_max_pu", type = "float", unit = "pu", default = 1.0, doc = "Largest series voltage." },
+  { name = "imax_mva", type = "float", unit = "MVA", default = 0.0, doc = "Largest series current, as MVA at 1 pu; 0 means none." },
+  { name = "linx_pu", type = "float", unit = "pu", default = 0.05, doc = "Reactance of the dummy series element used in some modes." },
+  { name = "rmpct", type = "float", unit = "%", default = 100.0, doc = "Share of the reactive power that holds a remote bus." },
+  { name = "owner", type = "ref", to = "owner", soft = true, default = "1", doc = "Owner." },
+  { name = "set1", type = "float", default = 0.0, doc = "Series impedance (R) or voltage magnitude setpoint, by mode." },
+  { name = "set2", type = "float", default = 0.0, doc = "Series impedance (X) or voltage angle setpoint, by mode." },
+  { name = "series_ref", type = "enum", values = ["voltage", "impedance"], default = "voltage", doc = "What `set1` and `set2` are: series `voltage` or `impedance`." },
+  { name = "reg_bus", type = "ref", to = "bus", doc = "Bus whose voltage it holds, when not the sending end." },
+  { name = "ipfc_partner", type = "string", default = "", doc = "Name of the IPFC master device, for slave modes." },
+]

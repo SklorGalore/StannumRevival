@@ -1,0 +1,86 @@
+# Stannum lists schema: every table and field, with its type, unit and default.
+# This file is the source of truth for the format; the reader, the writer and
+# the reference docs are built from it. See docs-site reference/lists-file.md.
+#
+# Field types: int, float, bool, status (on/off), string, enum (one of
+# `values`), ref (the id of a record in table `to`; `soft` refs may name a
+# record the file doesn't have), element (a typed reference `kind:id`), and
+# list (of `item`: one type, or a tuple of types; `item_min` is the shortest
+# tuple allowed). A field with no `default` and not `required` is absent
+# unless set, and absent means "none".
+
+format = "stannum-lists"
+version = "0.1"
+doc = "Stannum lists: subsystems, contingencies, monitored elements and interfaces, reusable across cases. Elements are named by natural keys (bus numbers and circuit or machine ids)."
+
+[[table]]
+name = "subsystem"
+kind = "subsystem"
+id = "{name}"
+order = []
+doc = "A named set of equipment. Listed members combine as a union; the kV filters then narrow it."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "areas", type = "list", item = ["int"], default = [], doc = "Areas whose buses are members, by number." },
+  { name = "zones", type = "list", item = ["int"], default = [], doc = "Zones whose buses are members, by number." },
+  { name = "owners", type = "list", item = ["int"], default = [], doc = "Owners whose buses are members, by number." },
+  { name = "buses", type = "list", item = ["int"], default = [], doc = "Buses that are members, by number." },
+  { name = "subsystems", type = "list", item = ["ref:subsystem"], default = [], doc = "Other subsystems whose members are members." },
+  { name = "kv_min", type = "float", unit = "kV", doc = "Only buses at or above this base voltage." },
+  { name = "kv_max", type = "float", unit = "kV", doc = "Only buses at or below this base voltage." },
+]
+
+[[table]]
+name = "contingency"
+kind = "contingency"
+id = "{name}"
+order = []
+doc = "A contingency: events applied together."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "category", type = "string", default = "", doc = "Free-text category, such as P1 or P2." },
+  { name = "events", type = "list", item = ["enum:open|close|set_p_mw|set_q_mvar|trip_bus", "element", "float"], item_min = 2, default = [], doc = "Events as `[action, element]` or `[action, element, value]`. Actions: `open`, `close`, `set_p_mw`, `set_q_mvar`, `trip_bus` (open everything at the bus)." },
+]
+
+[[table]]
+name = "contingency_set"
+kind = "contingency-set"
+id = "{name}"
+order = []
+doc = "A rule that generates contingencies when the lists are applied to a case."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "kind", type = "enum", values = ["n_1_branches", "n_1_generators", "n_2_branches", "bus_outages"], required = true, doc = "What to take out: single branches, single generators, pairs of branches, or whole buses." },
+  { name = "subsystem", type = "ref", to = "subsystem", doc = "Only equipment in this subsystem; the whole case when absent." },
+  { name = "kv_min", type = "float", unit = "kV", doc = "Only equipment at or above this base voltage." },
+]
+
+[[table]]
+name = "monitor"
+kind = "monitor"
+id = "{name}"
+order = []
+doc = "What to check after each contingency."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "element", type = "element", doc = "One element to monitor; use this or `subsystem`." },
+  { name = "subsystem", type = "ref", to = "subsystem", doc = "Every element in a subsystem." },
+  { name = "kind", type = "enum", values = ["flow", "voltage", "interface"], default = "flow", doc = "`flow`, `voltage` or `interface`." },
+  { name = "rating", type = "int", default = 1, doc = "Rating slot that limits are taken from (1 to 12)." },
+  { name = "limit_pct", type = "float", unit = "%", default = 100.0, doc = "Percent of the rating that counts as a violation." },
+  { name = "vmax_pu", type = "float", unit = "pu", doc = "Voltage monitor: upper limit; the bus's own limit when absent." },
+  { name = "vmin_pu", type = "float", unit = "pu", doc = "Voltage monitor: lower limit; the bus's own limit when absent." },
+  { name = "interface", type = "ref", to = "interface", doc = "The interface, for `kind=interface`." },
+]
+
+[[table]]
+name = "interface"
+kind = "interface"
+id = "{name}"
+order = []
+doc = "A flowgate: weighted branch flows summed."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "elements", type = "list", item = ["element", "float"], default = [], doc = "Branches as `[element, weight]`, flow measured from the first bus of the element's id." },
+  { name = "limit_mw", type = "float", unit = "MW", doc = "Limit; none when absent." },
+]

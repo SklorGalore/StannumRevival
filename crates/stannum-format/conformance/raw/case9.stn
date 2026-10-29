@@ -1,0 +1,45 @@
+stannum-case 0.1
+
+# case
+case main name=case9.m description="Written by Stannum from the MATPOWER power flow model"
+
+# area
+area 1 number=1 slack_bus=1
+
+# zone
+zone 1 number=1
+
+# owner
+owner 1 number=1 name=1
+
+# bus
+bus 1 number=1 kv=345 type=ref
+bus 2 number=2 kv=345 type=pv
+bus 3 number=3 kv=345 type=pv
+bus 4 number=4 kv=345
+bus 5 number=5 kv=345
+bus 6 number=6 kv=345
+bus 7 number=7 kv=345
+bus 8 number=8 kv=345
+bus 9 number=9 kv=345
+
+# load
+load 5:1 bus=5 p_mw=90 q_mvar=30
+load 7:1 bus=7 p_mw=100 q_mvar=35
+load 9:1 bus=9 p_mw=125 q_mvar=50
+
+# generator
+generator 1:1 bus=1 p_mw=72.3 q_mvar=27.03 qmax_mvar=300 qmin_mvar=-300 vset_pu=1.04 pmax_mw=250 pmin_mw=10
+generator 2:1 bus=2 p_mw=163 q_mvar=6.54 qmax_mvar=300 qmin_mvar=-300 vset_pu=1.025 pmax_mw=300 pmin_mw=10
+generator 3:1 bus=3 p_mw=85 q_mvar=-10.95 qmax_mvar=300 qmin_mvar=-300 vset_pu=1.025 pmax_mw=270 pmin_mw=10
+
+# line
+line 1:4:1 from=1 to=4 x_pu=0.0576 rate1_mva=250 rate2_mva=250 rate3_mva=250
+line 3:6:1 from=3 to=6 x_pu=0.0586 rate1_mva=300 rate2_mva=300 rate3_mva=300
+line 4:5:1 from=4 to=5 r_pu=0.017 x_pu=0.092 b_pu=0.158 rate1_mva=250 rate2_mva=250 rate3_mva=250
+line 5:6:1 from=5 to=6 r_pu=0.039 x_pu=0.17 b_pu=0.358 rate1_mva=150 rate2_mva=150 rate3_mva=150
+line 6:7:1 from=6 to=7 r_pu=0.0119 x_pu=0.1008 b_pu=0.209 rate1_mva=150 rate2_mva=150 rate3_mva=150
+line 7:8:1 from=7 to=8 r_pu=0.0085 x_pu=0.072 b_pu=0.149 rate1_mva=250 rate2_mva=250 rate3_mva=250
+line 2:8:1 from=8 to=2 x_pu=0.0625 rate1_mva=250 rate2_mva=250 rate3_mva=250
+line 8:9:1 from=8 to=9 r_pu=0.032 x_pu=0.161 b_pu=0.306 rate1_mva=250 rate2_mva=250 rate3_mva=250
+line 4:9:1 from=9 to=4 r_pu=0.01 x_pu=0.085 b_pu=0.176 rate1_mva=250 rate2_mva=250 rate3_mva=250

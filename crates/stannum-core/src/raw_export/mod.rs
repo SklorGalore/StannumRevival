@@ -401,7 +401,7 @@ pub(crate) fn quote(s: &str) -> String {
     }
 }
 
-fn token(value: &Value, kind: &str) -> String {
+pub(crate) fn token(value: &Value, kind: &str) -> String {
     match (value, kind) {
         (Value::Text(s), "string") => quote(s),
         (Value::Text(s), _) => s.trim().to_string(),
@@ -592,6 +592,42 @@ pub fn from_raw(name: &str, bytes: &[u8], revision: u32) -> Result<(Vec<u8>, Raw
             notes: notes.into_lines(first),
         },
     ))
+}
+
+/// A RAW 33 or 35 file's records in revision 35, for the Stannum case
+/// format, with notes on anything the move to revision 35 changed.
+pub(crate) fn read_doc35(name: &str, bytes: &[u8]) -> Result<(Doc, Vec<String>), String> {
+    let text = encoding_rs::WINDOWS_1252
+        .decode_without_bom_handling(bytes)
+        .0;
+    let (main, tail) = split_tail(&text);
+    let main_bytes = encode(&main)?;
+    let case = parser::parse_bytes_for_viewing(name, &main_bytes).map_err(|e| e.to_string())?;
+    let from = case.revision;
+    let tail = if from == 35 { tail } else { vec![] };
+    let mut doc = from_diff(case, tail);
+    let mut notes = Notes::default();
+    convert::convert(&mut doc, 35, &mut notes);
+    let first = if from == 35 {
+        vec![]
+    } else {
+        vec![format!("Converted from RAW revision {from}.")]
+    };
+    Ok((doc, notes.into_lines(first)))
+}
+
+/// The power flow model as revision 35 records (MATPOWER cases, and RAW
+/// revisions read for power flow only).
+pub(crate) fn model_doc35(name: &str, power: &PowerCase) -> (Doc, Vec<String>) {
+    let mut notes = Notes::default();
+    let mut doc = model::doc(name, power, &mut notes);
+    convert::convert(&mut doc, 35, &mut notes);
+    (doc, notes.into_lines(vec![]))
+}
+
+/// A revision 35 document as RAW text.
+pub(crate) fn write_doc(doc: &Doc, source_name: &str) -> Result<String, String> {
+    write(doc, source_name)
 }
 
 /// Write the power flow model as RAW. `why` says why the model is used,

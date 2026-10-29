@@ -615,6 +615,7 @@ function SolvePanel({
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   const exportRaw = useStudyFile((s) => s.exportRaw);
+  const exportStn = useStudyFile((s) => s.exportStn);
   return (
     <aside aria-label="Solve settings" className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -829,6 +830,16 @@ function SolvePanel({
             <Download size={13} /> Revision {revision}…
           </Button>
         ))}
+        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export Stannum case</p>
+        <Button
+          variant="ghost"
+          className="justify-start"
+          onClick={() => void exportStn()}
+          disabled={!!busy}
+          title="The case with its Records edits and study edits, as an open Stannum case file (format preview)"
+        >
+          <Download size={13} /> .stn (preview)…
+        </Button>
       </div>
     </aside>
   );

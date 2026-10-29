@@ -23,4 +23,9 @@ describe("lineSpan", () => {
     expect(lineSpan([{ line: 4, message: "" }, { line: 9, message: "" }])).toBe("lines 4, 9");
     expect(lineSpan([{ line: 9, message: "" }, { line: 4, message: "" }, { line: 6, message: "" }])).toBe("lines 4–9");
   });
+
+  it("leaves out line 0, which is no line", () => {
+    expect(lineSpan([{ line: 0, message: "" }, { line: 7, message: "" }])).toBe("line 7");
+    expect(lineSpan([{ line: 0, message: "" }])).toBe("");
+  });
 });

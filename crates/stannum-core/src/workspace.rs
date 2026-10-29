@@ -32,6 +32,16 @@ use std::time::Instant;
 pub enum CaseFormat {
     Matpower,
     Raw,
+    /// A Stannum case file (.stn), read as the RAW 35 text it converts to.
+    Stn,
+}
+
+impl CaseFormat {
+    /// Whether the case's bytes are RAW text: RAW files, and Stannum case
+    /// files once converted.
+    pub fn is_raw(self) -> bool {
+        matches!(self, CaseFormat::Raw | CaseFormat::Stn)
+    }
 }
 
 pub struct TopologyState {
@@ -97,6 +107,10 @@ pub struct OpenCase {
     pub bytes: Vec<u8>,
     /// Cells edited in Records since the file was opened or saved.
     pub record_edits: usize,
+    /// A Stannum case's file as read (or last saved): what only it holds,
+    /// such as comments and ids, is carried onto the .stn files written
+    /// from the case's RAW form.
+    pub stn_source: Option<Arc<stannum_format::Document>>,
 }
 
 #[derive(Default)]
@@ -297,19 +311,67 @@ fn log_report(report: &power::SolveReport, solved_ms: f64) {
     }
 }
 
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
 impl OpenCase {
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Self {
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
+        let name = file_name(path);
+        if crate::stn::is_stn(bytes) {
+            let start = Instant::now();
+            return match crate::stn::open(&name, bytes) {
+                Ok((doc, raw, lines)) => {
+                    log::info!(
+                        "Read {name} as a Stannum case ({:.0} ms)",
+                        elapsed_ms(start)
+                    );
+                    let mut case =
+                        Self::from_case_bytes(path, CaseFormat::Stn, raw.as_bytes(), Some(&lines));
+                    case.stn_source = Some(Arc::new(doc));
+                    case
+                }
+                Err(e) => {
+                    let mut case = Self::from_case_bytes(path, CaseFormat::Stn, b"", None);
+                    case.power = Err(e);
+                    case
+                }
+            };
+        }
         let format = match path.extension().and_then(|e| e.to_str()) {
             Some(e) if e.eq_ignore_ascii_case("m") => CaseFormat::Matpower,
             _ => CaseFormat::Raw,
         };
+        Self::from_case_bytes(path, format, bytes, None)
+    }
+
+    /// A case from bytes in its working form: MATPOWER or RAW text (a
+    /// Stannum case already converted to RAW). For a Stannum case, `lines`
+    /// gives each element's line in the .stn file, for the warnings; lines
+    /// of the RAW text mean nothing to the user, so other warnings get none.
+    fn from_case_bytes(
+        path: &Path,
+        format: CaseFormat,
+        bytes: &[u8],
+        lines: Option<&std::collections::HashMap<String, usize>>,
+    ) -> Self {
+        let name = file_name(path);
         let text = decode_text(bytes);
         let start = Instant::now();
-        let power = power::load(&text, format == CaseFormat::Matpower);
+        let mut power = power::load(&text, format == CaseFormat::Matpower);
+        if format == CaseFormat::Stn
+            && let Ok(p) = &mut power
+        {
+            for w in &mut p.warnings {
+                w.line = w
+                    .element
+                    .as_ref()
+                    .and_then(|e| lines?.get(e).copied())
+                    .unwrap_or(0);
+            }
+        }
         match &power {
             Ok(p) => {
                 let c = power::counts(&p.case);
@@ -348,6 +410,7 @@ impl OpenCase {
             records: None,
             bytes: bytes.to_vec(),
             record_edits: 0,
+            stn_source: None,
         };
         // Without a power flow model the topology is all the case has, so
         // the summary needs to know at once whether it can be built.
@@ -377,7 +440,9 @@ impl OpenCase {
                 CaseFormat::Matpower => {
                     Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
                 }
-                CaseFormat::Raw => nodal::parse_raw(&self.bytes).map_err(|d| d.to_string()),
+                CaseFormat::Raw | CaseFormat::Stn => {
+                    nodal::parse_raw(&self.bytes).map_err(|d| d.to_string())
+                }
             };
             let topology = match (from_nodal, &self.power) {
                 (Ok(case), _) => Ok((case, false)),
@@ -452,7 +517,7 @@ impl OpenCase {
                     info: None,
                 },
             },
-            diffable: self.format == CaseFormat::Raw,
+            diffable: self.format.is_raw(),
             record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
             coordinates: self.places.clone(),
@@ -928,7 +993,7 @@ impl OpenCase {
             )));
         }
         let start = Instant::now();
-        let from_records = if self.format == CaseFormat::Raw {
+        let from_records = if self.format.is_raw() {
             match self.working_bytes() {
                 Ok(bytes) => crate::raw_export::from_raw(&self.name, &bytes, revision),
                 Err(e) => Err(e.to_string()),
@@ -964,6 +1029,56 @@ impl OpenCase {
         );
         for note in &export.notes {
             log::info!("RAW export: {note}");
+        }
+        Ok(export)
+    }
+
+    /// Write the case, with its Records edits and the study's edits, as a
+    /// Stannum case file (.stn). RAW 33 and 35 cases are converted record by
+    /// record; anything else from the power flow model.
+    pub fn export_stn(&mut self, path: &Path) -> Result<crate::stn::StnExport, Error> {
+        let start = Instant::now();
+        let from_records = if self.format.is_raw() {
+            match self.working_bytes() {
+                Ok(bytes) => crate::stn::from_raw(&self.name, &bytes),
+                Err(e) => Err(e.to_string()),
+            }
+        } else {
+            Err(String::new())
+        };
+        let (mut doc, export) = match from_records {
+            Ok(done) => done,
+            Err(reason) => {
+                let power = self.power_case_shared()?;
+                let why = match (self.format, power.revision) {
+                    (CaseFormat::Matpower, _) => {
+                        "Written from the MATPOWER case's power flow model.".to_string()
+                    }
+                    (_, Some(rev)) if !matches!(rev, 33 | 35) => format!(
+                        "Written from the power flow model: Stannum reads RAW revision {rev} for power flow only, not record by record."
+                    ),
+                    _ => format!(
+                        "Written from the power flow model: the file's records couldn't be read one by one ({reason})."
+                    ),
+                };
+                crate::stn::from_model(&self.name, &power, why)
+            }
+        };
+        // A Stannum case keeps its file's ids, comments and extensions.
+        if let Some(source) = &self.stn_source {
+            doc.carry_from(source);
+        }
+        let text = crate::stn::write(&doc)?;
+        std::fs::write(path, text).map_err(|e| Error::file(path, e))?;
+        log::info!(
+            "Exported {} as a Stannum case to {} ({} records, {:.0} ms)",
+            self.name,
+            path.display(),
+            export.records,
+            elapsed_ms(start)
+        );
+        for note in &export.notes {
+            log::info!("Stannum case export: {note}");
         }
         Ok(export)
     }
@@ -1099,6 +1214,7 @@ impl OpenCase {
         Ok(RecordEditJob {
             version: self.version,
             path: self.path.clone(),
+            format: self.format,
             name: self.name.clone(),
             bytes: self.bytes.clone(),
             records: records.clone(),
@@ -1124,6 +1240,7 @@ impl OpenCase {
         next.path = self.path.clone();
         next.name = self.name.clone();
         next.record_edits = self.record_edits + count;
+        next.stn_source = self.stn_source.take();
         next.dc_grids = self.dc_grids.take();
         // Matched again, since an edit can add, remove or reconnect buses.
         next.coordinates = self.coordinates.take();
@@ -1171,7 +1288,7 @@ impl OpenCase {
     /// with Records edits and the study's edits written in. Only RAW
     /// revisions Records can edit (33 and 35) can carry study edits.
     pub fn working_bytes(&mut self) -> Result<Vec<u8>, Error> {
-        if self.format != CaseFormat::Raw {
+        if !self.format.is_raw() {
             return Err(Error::unsupported(
                 "Case diff reads PSS/E RAW files, and this case is MATPOWER.",
             ));
@@ -1205,9 +1322,37 @@ impl OpenCase {
     }
 
     /// Save the case, with its edits, to a new file, and carry on with that file.
+    ///
+    /// A RAW or Stannum case is saved as a Stannum case file when `path`
+    /// ends in `.stn`, and as RAW otherwise.
     pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, Error> {
-        std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;
+        let to_stn = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("stn"));
+        let format = match (to_stn, self.format) {
+            (true, CaseFormat::Matpower) => {
+                return Err(Error::unsupported(
+                    "Save a MATPOWER case as a Stannum case with Export instead: it's written from the power flow model.",
+                ));
+            }
+            (true, _) => CaseFormat::Stn,
+            (false, CaseFormat::Stn) => CaseFormat::Raw,
+            (false, format) => format,
+        };
+        if format == CaseFormat::Stn {
+            let (mut doc, _) = crate::stn::from_raw(&self.name, &self.bytes)?;
+            if let Some(source) = &self.stn_source {
+                doc.carry_from(source);
+            }
+            std::fs::write(path, crate::stn::write(&doc)?).map_err(|e| Error::file(path, e))?;
+            self.stn_source = Some(Arc::new(doc));
+        } else {
+            std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;
+            self.stn_source = None;
+        }
         log::info!("Saved {} as {}", self.name, path.display());
+        self.format = format;
         self.path = path.to_path_buf();
         self.name = path
             .file_name()
@@ -1321,7 +1466,10 @@ impl Workspace {
         log::info!("Opening {}", path.display());
         let bytes = std::fs::read(path).map_err(|e| Error::file(path, e))?;
         let mut case = OpenCase::from_bytes(path, &bytes);
-        if case.power.is_err() && case.topology().is_err() && case.format == CaseFormat::Matpower {
+        if case.power.is_err()
+            && case.topology().is_err()
+            && matches!(case.format, CaseFormat::Matpower | CaseFormat::Stn)
+        {
             return Err(case.power.err().unwrap_or_default().into());
         }
         self.last_id += 1;
@@ -1394,6 +1542,7 @@ impl Workspace {
         let start = Instant::now();
         let case = self.current_mut()?;
         let file = std::fs::read(&case.path).map_err(|e| Error::file(&case.path, e))?;
+        let file = crate::stn::raw_bytes_of(&case.name, file)?;
         let working = case.working_bytes()?;
         let name = case.name.clone();
         let (record_edits, study_edits) = (case.record_edits, case.edits.len());
@@ -1664,7 +1813,7 @@ impl RecordsJob {
     pub fn run(self) -> RecordsRead {
         let start = Instant::now();
         let raw = match self.format {
-            CaseFormat::Raw => Some(
+            CaseFormat::Raw | CaseFormat::Stn => Some(
                 crate::diff::parser::parse_bytes_for_viewing(&self.name, &self.bytes)
                     .map_err(|e| e.to_string()),
             ),
@@ -1704,6 +1853,7 @@ impl RecordsJob {
 pub struct RecordEditJob {
     version: u64,
     path: PathBuf,
+    format: CaseFormat,
     name: String,
     bytes: Vec<u8>,
     records: Arc<Records>,
@@ -1752,7 +1902,7 @@ impl RecordEditJob {
                 (text.into_bytes(), None)
             }
         };
-        let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        let mut next = OpenCase::from_case_bytes(&self.path, self.format, &bytes, None);
         if let (Ok(_), Err(e)) = (&self.power, &next.power) {
             return Err(format!("The edited case can't be solved: {e}").into());
         }

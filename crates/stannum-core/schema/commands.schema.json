@@ -753,11 +753,20 @@
       "type": "object"
     },
     "CaseFormat": {
-      "enum": [
-        "matpower",
-        "raw"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "matpower",
+            "raw"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "stn",
+          "description": "A Stannum case file (.stn), read as the RAW 35 text it converts to.",
+          "type": "string"
+        }
+      ]
     },
     "CaseId": {
       "description": "Names one open case in commands and scripts. Ids are never reused within\na workspace, so a stale id is refused instead of reaching another case.",
@@ -5527,6 +5536,29 @@
       ],
       "type": "object"
     },
+    "StnExport": {
+      "description": "What converting a case to the Stannum format kept or changed.",
+      "properties": {
+        "notes": {
+          "description": "Anything worth knowing: conversions, data kept as RAW lines.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "description": "Records written, in every table.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "records",
+        "notes"
+      ],
+      "type": "object"
+    },
     "TopologyInfo": {
       "properties": {
         "buses": {
@@ -6708,6 +6740,36 @@
       "doc": "Write the case, with its Records and study edits, as a complete PSS/E\nRAW file of revision 33 or 35. The answer lists anything the file\ncouldn't keep.",
       "result": {
         "$ref": "#/$defs/RawExport"
+      },
+      "takes_case": true
+    },
+    "export_stn": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the case, with its Records and study edits, as a Stannum case\nfile (.stn, format preview). The answer lists anything converted or\nkept as RAW lines.",
+      "result": {
+        "$ref": "#/$defs/StnExport"
       },
       "takes_case": true
     },
