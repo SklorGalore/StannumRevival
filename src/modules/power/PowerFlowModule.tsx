@@ -834,11 +834,20 @@ function SolvePanel({
         <Button
           variant="ghost"
           className="justify-start"
-          onClick={() => void exportStn()}
+          onClick={() => void exportStn(false)}
           disabled={!!busy}
-          title="The case with its Records edits and study edits, as an open Stannum case file (format preview)"
+          title="The case with its Records edits and study edits, as an open Stannum case text file (format preview)"
         >
-          <Download size={13} /> .stn (preview)…
+          <Download size={13} /> Text .stn (preview)…
+        </Button>
+        <Button
+          variant="ghost"
+          className="justify-start"
+          onClick={() => void exportStn(true)}
+          disabled={!!busy}
+          title="The same case in columns (Apache Arrow): smaller, and read by pyarrow and pandas as it is (format preview)"
+        >
+          <Download size={13} /> Binary .stnb (preview)…
         </Button>
       </div>
     </aside>

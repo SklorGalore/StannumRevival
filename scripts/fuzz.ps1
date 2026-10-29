@@ -49,7 +49,7 @@ $seedPatterns = @{
     matpower    = @('*.m')
     run_file    = @('*.stnrun')
     coordinates = @('*.csv')
-    stn         = @('*.stn', '*.stnl')
+    stn         = @('*.stn', '*.stnb', '*.stnl')
 }
 $fixtureFolders = @(
     'crates/rs-power/tests/fixtures',

@@ -71,6 +71,14 @@ fn round_trip(path: &Path, dir: &Path) -> String {
         text,
         "{name}: canonical text changed on reading"
     );
+    // The binary form holds the same case.
+    let binary = stn::encode(&again, true).unwrap();
+    let from_binary = stn::read_file(&name, &binary).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        stn::write(&from_binary).unwrap(),
+        text,
+        "{name}: .stnb changed the case"
+    );
     assert!(report.records > 0);
 
     let raw = stn::to_raw(&again, &name).unwrap();
@@ -356,6 +364,16 @@ fn conformance_conversions() {
             assert_eq!(text, expected, "{}", golden.display());
         }
         assert_same_solution(&path, &written);
+        // As .stnb: the same case, opened and solved the same.
+        let binary = written.with_extension("stnb");
+        let mut ws = Workspace::default();
+        ws.open(&path).unwrap();
+        ws.current_mut().unwrap().export_stn(&binary).unwrap();
+        let bytes = std::fs::read(&binary).unwrap();
+        assert!(stn::is_stn(&bytes));
+        let doc = stn::read_file("b", &bytes).unwrap();
+        assert_eq!(stn::write(&doc).unwrap(), text, "{}", binary.display());
+        assert_same_solution(&path, &binary);
     }
 }
 
@@ -414,4 +432,38 @@ fn stn_ids_comments_and_extensions_survive_editing() {
     let exported = dir.join("spur-exported.stn");
     ws.current_mut().unwrap().export_stn(&exported).unwrap();
     assert_eq!(std::fs::read_to_string(&exported).unwrap(), out);
+}
+
+/// A .stnb file opens, takes edits and saves as .stnb or .stn, keeping its
+/// ids and comments.
+#[test]
+fn stnb_files_open_and_save() {
+    use stannum_core::workspace::CaseFormat;
+    let dir = out_dir("stnb");
+    let raw = core_fixture("five_bus_devices.raw");
+    let (doc, _) = stn::from_raw("five_bus_devices.raw", &std::fs::read(&raw).unwrap()).unwrap();
+    let text = stn::write(&doc)
+        .unwrap()
+        .replace(
+            "stannum-case 0.1\n",
+            "stannum-case 0.1\n# Kept in the manifest.\n",
+        )
+        .replace("bus 5 number=5 ", "# Spur bus.\nbus spur number=5 ")
+        .replace(" bus=5 ", " bus=spur ")
+        .replace(" to=5 ", " to=spur ")
+        .replace("reg_bus=5", "reg_bus=spur");
+    let doc = stn::read(&text).unwrap();
+    let path = dir.join("spur.stnb");
+    std::fs::write(&path, stn::encode(&doc, true).unwrap()).unwrap();
+    assert_same_solution(&raw, &path);
+
+    let mut ws = Workspace::default();
+    assert_eq!(ws.open(&path).unwrap().format, CaseFormat::Stn);
+    let saved = dir.join("spur-saved.stnb");
+    ws.current_mut().unwrap().save_as(&saved).unwrap();
+    let back = stn::read_file("s", &std::fs::read(&saved).unwrap()).unwrap();
+    assert_eq!(stn::write(&back).unwrap(), text);
+    let as_text = dir.join("spur-saved.stn");
+    ws.current_mut().unwrap().save_as(&as_text).unwrap();
+    assert_eq!(std::fs::read_to_string(&as_text).unwrap(), text);
 }

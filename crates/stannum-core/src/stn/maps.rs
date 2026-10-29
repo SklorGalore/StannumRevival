@@ -649,15 +649,27 @@ fn export_maps(
     stn_prefix: &str,
     out: &mut Fields,
 ) -> Result<(), String> {
+    // Names are only built when a prefix or suffix changes them: this runs
+    // for every field of every record when a case is opened.
+    let stn_name = |stn: &'static str| -> std::borrow::Cow<'static, str> {
+        if stn_prefix.is_empty() {
+            stn.into()
+        } else {
+            format!("{stn_prefix}{stn}").into()
+        }
+    };
     let bus = match maps.first() {
-        Some(M(_, stn, C::Bus)) => ctx.bus(r.get(&format!("{stn_prefix}{stn}")))?,
+        Some(M(_, stn, C::Bus)) => ctx.bus(r.get(&stn_name(stn)))?,
         _ => 0,
     };
+    out.reserve(maps.len());
     for M(raw, stn, c) in maps {
-        out.push((
-            format!("{raw}{raw_suffix}"),
-            export_one(ctx, table, r, &format!("{stn_prefix}{stn}"), *c, bus)?,
-        ));
+        let name = if raw_suffix.is_empty() {
+            raw.to_string()
+        } else {
+            format!("{raw}{raw_suffix}")
+        };
+        out.push((name, export_one(ctx, table, r, &stn_name(stn), *c, bus)?));
     }
     Ok(())
 }

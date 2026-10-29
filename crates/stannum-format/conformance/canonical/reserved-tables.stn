@@ -1,0 +1,11 @@
+stannum-case 0.1
+# Tables named seq. and dyn. are kept for sequence and dynamics data.
+
+# bus
+bus 1 number=1
+
+# dyn.machine
+dyn.machine 1:1 bus=1 h=4.5 model=GENROU
+
+# seq.machine
+seq.machine 1:1 bus=1 x2_pu=0.2

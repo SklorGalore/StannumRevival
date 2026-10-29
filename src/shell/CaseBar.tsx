@@ -48,7 +48,9 @@ export function CaseBar() {
             {summary.format === "matpower"
               ? "MATPOWER"
               : summary.format === "stn"
-                ? "Stannum case (preview)"
+                ? /\.stnb$/i.test(summary.name)
+                  ? "Binary Stannum case (preview)"
+                  : "Stannum case (preview)"
                 : `PSS/E RAW${revision ? ` v${revision}` : ""}`}
             {counts &&
               ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(

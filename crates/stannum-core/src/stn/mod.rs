@@ -41,10 +41,40 @@ pub struct StnExport {
     pub notes: Vec<String>,
 }
 
-/// Whether bytes look like a Stannum case file (its header line).
+/// Whether bytes look like a Stannum case file: a `.stn` header line, or a
+/// `.stnb` archive.
 pub fn is_stn(bytes: &[u8]) -> bool {
     let start = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
-    start.starts_with(b"stannum-case ")
+    start.starts_with(b"stannum-case ") || stannum_format::is_binary(bytes)
+}
+
+/// Whether a path names a binary Stannum case (`.stnb`).
+pub fn is_binary_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("stnb"))
+}
+
+/// Read a Stannum case file, text or binary.
+pub fn read_file(name: &str, bytes: &[u8]) -> Result<Document, String> {
+    if stannum_format::is_binary(bytes) {
+        return stannum_format::read_case_binary(bytes).map_err(|e| format!("{name}: {e}"));
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| format!("{name} isn't UTF-8 text"))?;
+    read(text).map_err(|e| format!("{name}: {e}"))
+}
+
+/// A Stannum case as file bytes: text, or binary for a `.stnb` file.
+pub fn encode(doc: &Document, binary: bool) -> Result<Vec<u8>, String> {
+    if binary {
+        let options = stannum_format::BinaryOptions {
+            app: Some(format!("Stannum {}", env!("CARGO_PKG_VERSION"))),
+            ..Default::default()
+        };
+        stannum_format::write_binary(doc, &options)
+    } else {
+        write(doc).map(String::into_bytes)
+    }
 }
 
 /// A RAW 33 or 35 file as a Stannum case.
@@ -84,12 +114,10 @@ pub fn to_raw(doc: &Document, source_name: &str) -> Result<String, String> {
 /// Read a `.stn` file's bytes and write them as RAW 35 text, the form the
 /// rest of Stannum opens.
 pub fn raw_text_of(name: &str, bytes: &[u8]) -> Result<String, String> {
-    let text = std::str::from_utf8(bytes).map_err(|_| format!("{name} isn't UTF-8 text"))?;
-    let doc = read(text).map_err(|e| format!("{name}: {e}"))?;
-    to_raw(&doc, name)
+    to_raw(&read_file(name, bytes)?, name)
 }
 
-/// Read a `.stn` file to open it: the file, its RAW 35 text, and the line
+/// Read a `.stn` or `.stnb` file to open it: the file, its RAW 35 text, and the line
 /// of each record by typed reference (`generator:101:1`), to point
 /// warnings at.
 #[allow(clippy::type_complexity)]
@@ -97,10 +125,15 @@ pub fn open(
     name: &str,
     bytes: &[u8],
 ) -> Result<(Document, String, HashMap<String, usize>), String> {
-    let text = std::str::from_utf8(bytes).map_err(|_| format!("{name} isn't UTF-8 text"))?;
-    let doc = read(text).map_err(|e| format!("{name}: {e}"))?;
+    let doc = read_file(name, bytes)?;
     let mut lines = HashMap::new();
-    for table in &doc.tables {
+    // A .stnb file has rows, not lines: its warnings point at no line.
+    let tables = if stannum_format::is_binary(bytes) {
+        &[][..]
+    } else {
+        &doc.tables[..]
+    };
+    for table in tables {
         let Some(def) = doc.schema.table(&table.name) else {
             continue;
         };

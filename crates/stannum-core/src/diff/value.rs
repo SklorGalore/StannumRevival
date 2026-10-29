@@ -118,6 +118,7 @@ impl fmt::Display for Number {
             return write!(f, "{sign}{}", self.digits);
         }
         // Python's Decimal.__str__ (scientific, not engineering, notation).
+        // Written piece by piece: RAW export writes every number this way.
         let len = self.digits.len() as i64;
         let left = self.exponent + len;
         let dot = if self.exponent <= 0 && left > -6 {
@@ -125,28 +126,29 @@ impl fmt::Display for Number {
         } else {
             1
         };
-        let (int_part, frac_part) = if dot <= 0 {
-            (
-                "0".to_string(),
-                format!(".{}{}", "0".repeat((-dot) as usize), self.digits),
-            )
+        let zeros = |f: &mut fmt::Formatter<'_>, n: i64| -> fmt::Result {
+            for _ in 0..n {
+                f.write_str("0")?;
+            }
+            Ok(())
+        };
+        f.write_str(sign)?;
+        if dot <= 0 {
+            f.write_str("0.")?;
+            zeros(f, -dot)?;
+            f.write_str(&self.digits)?;
         } else if dot >= len {
-            (
-                format!("{}{}", self.digits, "0".repeat((dot - len) as usize)),
-                String::new(),
-            )
+            f.write_str(&self.digits)?;
+            zeros(f, dot - len)?;
         } else {
-            (
-                self.digits[..dot as usize].to_string(),
-                format!(".{}", &self.digits[dot as usize..]),
-            )
-        };
-        let exp = if left == dot {
-            String::new()
-        } else {
-            format!("E{:+}", left - dot)
-        };
-        write!(f, "{sign}{int_part}{frac_part}{exp}")
+            f.write_str(&self.digits[..dot as usize])?;
+            f.write_str(".")?;
+            f.write_str(&self.digits[dot as usize..])?;
+        }
+        if left != dot {
+            write!(f, "E{:+}", left - dot)?;
+        }
+        Ok(())
     }
 }
 

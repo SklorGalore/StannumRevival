@@ -10,6 +10,13 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Binary Stannum case files (`.stnb`, preview).** The same case as a
+  `.stn` file, in columns (Apache Arrow tables in a ZIP archive): about a
+  quarter of the size, and readable with pyarrow, pandas or polars with no
+  Stannum code. Open one like any case; **Save case as** and **Export
+  Stannum case** write one when the name ends in `.stnb`, as do
+  `stannum-cli convert` and `export_stn`. Opening Stannum cases still goes
+  through RAW text, so it is slower than opening RAW for now.
 - **Stannum case files (`.stn`, preview).** An open text format for whole
   cases: one record per line with named fields, stable ids beside bus
   numbers, units in the field names, comments, and a fixed order so version

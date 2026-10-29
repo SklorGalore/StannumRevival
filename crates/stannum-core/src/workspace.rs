@@ -32,7 +32,8 @@ use std::time::Instant;
 pub enum CaseFormat {
     Matpower,
     Raw,
-    /// A Stannum case file (.stn), read as the RAW 35 text it converts to.
+    /// A Stannum case file (.stn text or .stnb binary), read as the RAW 35
+    /// text it converts to.
     Stn,
 }
 
@@ -1034,8 +1035,9 @@ impl OpenCase {
     }
 
     /// Write the case, with its Records edits and the study's edits, as a
-    /// Stannum case file (.stn). RAW 33 and 35 cases are converted record by
-    /// record; anything else from the power flow model.
+    /// Stannum case file: `.stnb` (binary) when `path` ends so, else `.stn`
+    /// (text). RAW 33 and 35 cases are converted record by record; anything
+    /// else from the power flow model.
     pub fn export_stn(&mut self, path: &Path) -> Result<crate::stn::StnExport, Error> {
         let start = Instant::now();
         let from_records = if self.format.is_raw() {
@@ -1068,8 +1070,8 @@ impl OpenCase {
         if let Some(source) = &self.stn_source {
             doc.carry_from(source);
         }
-        let text = crate::stn::write(&doc)?;
-        std::fs::write(path, text).map_err(|e| Error::file(path, e))?;
+        let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+        std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
         log::info!(
             "Exported {} as a Stannum case to {} ({} records, {:.0} ms)",
             self.name,
@@ -1324,12 +1326,12 @@ impl OpenCase {
     /// Save the case, with its edits, to a new file, and carry on with that file.
     ///
     /// A RAW or Stannum case is saved as a Stannum case file when `path`
-    /// ends in `.stn`, and as RAW otherwise.
+    /// ends in `.stn` (text) or `.stnb` (binary), and as RAW otherwise.
     pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, Error> {
         let to_stn = path
             .extension()
             .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("stn"));
+            .is_some_and(|e| e.eq_ignore_ascii_case("stn") || e.eq_ignore_ascii_case("stnb"));
         let format = match (to_stn, self.format) {
             (true, CaseFormat::Matpower) => {
                 return Err(Error::unsupported(
@@ -1345,7 +1347,8 @@ impl OpenCase {
             if let Some(source) = &self.stn_source {
                 doc.carry_from(source);
             }
-            std::fs::write(path, crate::stn::write(&doc)?).map_err(|e| Error::file(path, e))?;
+            let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+            std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
             self.stn_source = Some(Arc::new(doc));
         } else {
             std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;

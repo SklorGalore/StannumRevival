@@ -192,15 +192,16 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
 };
 
 export const CASE_FILTERS = [
-  { name: "Power system case", extensions: ["raw", "RAW", "m", "stn"] },
+  { name: "Power system case", extensions: ["raw", "RAW", "m", "stn", "stnb"] },
   { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
   { name: "MATPOWER", extensions: ["m"] },
-  { name: "Stannum case (preview)", extensions: ["stn"] },
+  { name: "Stannum case (preview)", extensions: ["stn", "stnb"] },
 ];
 export const DC_GRID_FILTERS = [{ name: "Stannum DC grids", extensions: ["json"] }];
 export const COORDINATE_FILTERS = [{ name: "Bus coordinates (CSV)", extensions: ["csv", "CSV", "txt"] }];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 export const STN_FILTERS = [{ name: "Stannum case (preview)", extensions: ["stn"] }];
+export const STNB_FILTERS = [{ name: "Binary Stannum case (preview)", extensions: ["stnb"] }];
 export const RUN_FILE_FILTERS = [{ name: "Stannum run file", extensions: ["stnrun"] }];
 export const RUN_FILE_EXTENSION = /\.stnrun$/i;
 

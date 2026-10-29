@@ -401,6 +401,18 @@ pub(crate) fn quote(s: &str) -> String {
     }
 }
 
+/// [`token`], written onto `out`. Plain numbers, most of a file, are
+/// written without a string of their own.
+fn push_token(out: &mut String, value: &Value, kind: &str) {
+    match (value, kind) {
+        (Value::Number(n), k) if k != "integer" && k != "string" => {
+            use std::fmt::Write as _;
+            let _ = write!(out, "{n}");
+        }
+        _ => out.push_str(&token(value, kind)),
+    }
+}
+
 pub(crate) fn token(value: &Value, kind: &str) -> String {
     match (value, kind) {
         (Value::Text(s), "string") => quote(s),
@@ -418,13 +430,22 @@ pub(crate) fn token(value: &Value, kind: &str) -> String {
     }
 }
 
-fn write_rec(out: &mut Vec<String>, section: &str, revision: i64, rec: &Rec) -> Result<(), String> {
+fn write_rec(
+    out: &mut Vec<String>,
+    section: &str,
+    revision: i64,
+    rec: &Rec,
+    layouts: &mut [Option<Option<Layout>>; 2],
+) -> Result<(), String> {
     if let Some(lines) = &rec.lines {
         out.extend(lines.iter().cloned());
         return Ok(());
     }
     let three_winding = section == "TRANSFORMER" && !is_zero(rec.get("K"));
-    let layout = layout(section, revision, three_winding)
+    // Read from the schema once per section (and per transformer kind).
+    let layout = layouts[usize::from(three_winding)]
+        .get_or_insert_with(|| layout(section, revision, three_winding))
+        .as_ref()
         .ok_or_else(|| format!("RAW {revision} {section} records have no known layout."))?;
     // Blocks at the end: write as many as the record has, at least one.
     let groups = layout.group.map(|(start, width)| {
@@ -446,14 +467,17 @@ fn write_rec(out: &mut Vec<String>, section: &str, revision: i64, rec: &Rec) -> 
         } else {
             line.len()
         };
-        let tokens: Vec<String> = line[..width]
-            .iter()
-            .map(|(name, kind)| match rec.get(name) {
-                Some(v) => token(v, kind),
-                None => token(&default(name, kind), kind),
-            })
-            .collect();
-        out.push(tokens.join(","));
+        let mut text = String::with_capacity(width * 8);
+        for (j, (name, kind)) in line[..width].iter().enumerate() {
+            if j > 0 {
+                text.push(',');
+            }
+            match rec.get(name) {
+                Some(v) => push_token(&mut text, v, kind),
+                None => push_token(&mut text, &default(name, kind), kind),
+            }
+        }
+        out.push(text);
     }
     Ok(())
 }
@@ -515,9 +539,10 @@ fn write(doc: &Doc, source_name: &str) -> Result<String, String> {
         if section != "SYSTEM-WIDE" {
             out.extend(header_lines(section, revision));
         }
+        let mut layouts = [None, None];
         for item in doc.items(section) {
             match item {
-                Item::Rec(rec) => write_rec(&mut out, section, revision, rec)?,
+                Item::Rec(rec) => write_rec(&mut out, section, revision, rec, &mut layouts)?,
                 Item::Lines(lines) => out.extend(lines.iter().cloned()),
             }
         }

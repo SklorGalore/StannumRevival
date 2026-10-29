@@ -340,6 +340,69 @@ fn typed(syntax: &Syntax, ty: &FieldType, column: usize) -> Result<Value, (usize
     Ok(Value::List(out))
 }
 
+/// Tables a reader keeps without knowing them: extensions (`x.`) and the
+/// names reserved for sequence and dynamics data (`seq.`, `dyn.`).
+pub(crate) fn kept_table(name: &str) -> bool {
+    ["x.", "seq.", "dyn."].iter().any(|p| name.starts_with(p))
+}
+
+/// A value written as text, for a field the schema doesn't know: as the
+/// text reader would keep it. None when it isn't one value.
+pub(crate) fn untyped_from_text(text: &str) -> Option<Value> {
+    let mut c = Cursor {
+        line: text,
+        at: 0,
+        number: 0,
+    };
+    let syntax = c.value(0).ok()?;
+    (c.at == text.len()).then(|| untyped(&syntax))
+}
+
+/// What the text reader checks beyond a value's type: enum words, typed
+/// references, tuple lengths. For values that arrive already typed.
+pub(crate) fn check_value(value: &Value, ty: &FieldType) -> Result<(), String> {
+    let word = |v: &Value, values: &[String]| match v.as_str() {
+        Some(s) => word_in(s, values).map(|_| ()),
+        None => Err("expected a word".to_string()),
+    };
+    let item = |v: &Value, it: &ItemType| match it {
+        ItemType::Enum(values) => word(v, values),
+        ItemType::Status => word(v, &["on".into(), "off".into()]),
+        ItemType::Element => element(v.as_str().unwrap_or_default()).map(|_| ()),
+        _ => Ok(()),
+    };
+    match ty {
+        FieldType::Enum(values) => word(value, values),
+        FieldType::Status => word(value, &["on".into(), "off".into()]),
+        FieldType::Element => element(value.as_str().unwrap_or_default()).map(|_| ()),
+        FieldType::Float => match value {
+            Value::Float(f) if f.is_nan() => Err("NaN isn't a number here".into()),
+            _ => Ok(()),
+        },
+        FieldType::List { items, min } => {
+            for v in value.as_list().unwrap_or_default() {
+                if items.len() == 1 {
+                    item(v, &items[0])?;
+                    continue;
+                }
+                let parts = v.as_list().unwrap_or_default();
+                if parts.len() < *min || parts.len() > items.len() {
+                    return Err(format!(
+                        "expected {min} to {} values in each tuple, not {}",
+                        items.len(),
+                        parts.len()
+                    ));
+                }
+                for (p, it) in parts.iter().zip(items) {
+                    item(p, it)?;
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn untyped(syntax: &Syntax) -> Value {
     match syntax {
         Syntax::Bare(s) => Value::Raw(s.clone()),
@@ -445,10 +508,8 @@ pub fn read(text: &str, schema: &'static Schema) -> Result<Document, ReadError> 
         record.comments = std::mem::take(&mut pending);
         record.comments.extend(parsed.comment);
         let def = schema.table(&parsed.table);
-        let reserved = ["seq.", "dyn."].iter().any(|p| parsed.table.starts_with(p));
         if def.is_none()
-            && !parsed.table.starts_with("x.")
-            && !reserved
+            && !kept_table(&parsed.table)
             && version.major == ours.major
             && version.minor <= ours.minor
         {
@@ -508,7 +569,7 @@ pub fn read(text: &str, schema: &'static Schema) -> Result<Document, ReadError> 
 }
 
 /// Ids unique per kind, required fields present, references resolved.
-fn check(doc: &Document, issues: &mut Vec<Issue>) {
+pub(crate) fn check(doc: &Document, issues: &mut Vec<Issue>) {
     let schema = doc.schema;
     let mut ids: HashMap<(&str, &str), usize> = HashMap::new();
     for table in &doc.tables {
@@ -602,6 +663,23 @@ pub fn write(doc: &Document) -> Result<String, String> {
     for c in &doc.preamble {
         push_comment(&mut out, c);
     }
+    for (table, records) in canonical_tables(doc) {
+        let def = schema.table(&table.name);
+        out.push('\n');
+        push_comment(&mut out, &table.name);
+        for r in records {
+            write_record(&mut out, &table.name, def, r)?;
+        }
+    }
+    Ok(out)
+}
+
+/// The tables and records in canonical order: the schema's tables in
+/// schema order, then other tables by name; records by the table's order
+/// fields, then id. Empty tables are left out.
+pub(crate) fn canonical_tables(doc: &Document) -> Vec<(&Table, Vec<&Record>)> {
+    let schema = doc.schema;
+    let mut out = Vec::new();
     let mut tables: Vec<&Table> = doc
         .tables
         .iter()
@@ -617,11 +695,8 @@ pub fn write(doc: &Document) -> Result<String, String> {
         key(a).cmp(&key(b))
     });
     for table in tables {
-        let def = schema.table(&table.name);
-        out.push('\n');
-        push_comment(&mut out, &table.name);
         let mut records: Vec<&Record> = table.records.iter().collect();
-        if let Some(def) = def
+        if let Some(def) = schema.table(&table.name)
             && !def.order.is_empty()
         {
             records.sort_by(|a, b| {
@@ -638,11 +713,9 @@ pub fn write(doc: &Document) -> Result<String, String> {
                 Value::Str(a.id.clone()).sort_cmp(&Value::Str(b.id.clone()))
             });
         }
-        for r in records {
-            write_record(&mut out, &table.name, def, r)?;
-        }
+        out.push((table, records));
     }
-    Ok(out)
+    out
 }
 
 fn push_comment(out: &mut String, c: &str) {

@@ -23,7 +23,7 @@ import { PowerFlowModule } from "../modules/power/PowerFlowModule";
 import { CaseDiffModule } from "../modules/diff/CaseDiffModule";
 import { RecordsModule } from "../modules/records/RecordsModule";
 
-const CASE_EXTENSIONS = /\.(raw|m|stn)$/i;
+const CASE_EXTENSIONS = /\.(raw|m|stnb?)$/i;
 
 /** Open a case or study, or run a run file, dropped anywhere on the window (outside the diff file pickers). */
 function useCaseDrop() {
