@@ -16,6 +16,12 @@ name: Release
 #   the setup is proven before a tag.
 # - Run it by hand (workflow_dispatch) for test installers from any branch.
 #
+# The installers are signed for the app's updater with the
+# TAURI_SIGNING_PRIVATE_KEY secret (public key: src-tauri/updater-key.pub),
+# and the draft release gets a latest.json that the app reads once
+# the release is published. Builds other than tag pushes sign with a
+# throwaway key when the secret isn't there, to prove the updater build.
+#
 # See docs/releasing.md for the whole procedure.
 on:
   push:
@@ -26,6 +32,8 @@ on:
       - ".github/workflows/release.yml"
       - "scripts/release/**"
       - "scripts/ci/test-python.ps1"
+      - "src-tauri/capabilities/**"
+      - "src-tauri/updater-key.pub"
       - "crates/stannum-py/pyproject.toml"
       - "LICENSE"
       - "THIRD-PARTY-*"
@@ -75,8 +83,14 @@ jobs:
           $want = Get-Content "$env:RUNNER_TEMP/licenses.txt" -Raw
           $have = Get-Content THIRD-PARTY-LICENSES.txt -Raw
           if ($want -ne $have) {
-            throw 'THIRD-PARTY-LICENSES.txt is out of date. Run scripts/release/third-party-licenses.ps1 and commit it.'
+            throw 'THIRD-PARTY-LICENSES.txt is out of date. Run scripts/release/third-party-licenses.ps1 and commit it, or take the file from this run''s third-party-licenses artifact.'
           }
+      # The up-to-date list, for committing from a machine without pwsh.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: third-party-licenses
+          path: ${{ runner.temp }}/licenses.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-notes
@@ -94,9 +108,10 @@ jobs:
             bundles: msi,nsis
             artifact: windows-x64
           # macos-latest runners are Apple silicon, so this builds for arm64.
+          # The app bundle is what the updater installs (Stannum.app.tar.gz).
           - name: macOS arm64
             os: macos-latest
-            bundles: dmg
+            bundles: app,dmg
             artifact: macos-arm64
           # The oldest supported Ubuntu, so the Linux builds run on older glibc.
           - name: Linux x64
@@ -140,14 +155,17 @@ jobs:
         with:
           key: release
       - run: npm ci
-      # Signing is not set up yet, so the installers are unsigned. Tauri signs
-      # on its own when these secrets exist: APPLE_CERTIFICATE,
-      # APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
-      # APPLE_PASSWORD and APPLE_TEAM_ID for macOS; Windows needs a
-      # certificate thumbprint in tauri.windows.conf.json. See docs/releasing.md.
+      # The installers themselves carry no code signature (Apple or Windows
+      # certificates); see docs/releasing.md. They are signed for the
+      # updater with the repository's key: see the top of this file and
+      # scripts/release/build-installers.ps1.
       - name: Build installers
         shell: pwsh
-        run: npm run tauri -- build --ci --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RELEASE: ${{ github.ref_type == 'tag' }}
+        run: ./scripts/release/build-installers.ps1 -Bundles '${{ matrix.bundles }}' -Release:($env:RELEASE -eq 'true')
       - name: Collect installers
         shell: pwsh
         run: ./scripts/release/collect-bundles.ps1 -OutDir installers
@@ -209,10 +227,46 @@ jobs:
           path: cli/*
           if-no-files-found: error
 
+  # latest.json, which the app's updater reads from the latest published
+  # release. Made on every run, so the manifest is proven before a tag.
+  manifest:
+    name: Updater manifest
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: out
+          pattern: "{installers-*,release-notes}"
+      - name: Write latest.json
+        id: manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.check.outputs.version) }}
+        run: |
+          if (-not (Get-ChildItem -Path out -Recurse -File -Filter '*.sig')) {
+            Write-Host '::warning title=No updater manifest::The installers are not signed for the updater (no TAURI_SIGNING_PRIVATE_KEY), so this release has no latest.json.'
+            exit 0
+          }
+          ./scripts/release/updater-manifest.ps1 -Dir out -Version $env:VERSION -Tag $env:TAG `
+            -NotesFile out/release-notes/release-notes.md -Out latest.json
+          Get-Content latest.json
+          "made=true" >> $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.manifest.outputs.made == 'true'
+        with:
+          name: updater-manifest
+          path: latest.json
+          if-no-files-found: error
+
   publish:
     name: Draft GitHub release
     if: github.ref_type == 'tag'
-    needs: [check, build, python]
+    needs: [check, build, python, manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -229,7 +283,7 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
           $files = Get-ChildItem -Path out -Recurse -File |
-            Where-Object { $_.Directory.Name -match '^(installers|python|cli)-' } |
+            Where-Object { $_.Directory.Name -match '^(installers|python|cli)-|^updater-manifest$' } |
             ForEach-Object FullName
           $pre = if ($env:VERSION -match '-') { '--prerelease' } else { $null }
           gh release create $env:TAG @files --draft --verify-tag $pre `
