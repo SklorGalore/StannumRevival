@@ -8,6 +8,8 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-29
+
 ### Added
 
 - **Updates in the app.** A little after it starts, Stannum checks GitHub
