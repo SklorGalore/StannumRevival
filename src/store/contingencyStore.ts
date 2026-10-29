@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { api } from "../lib/analysis/api";
 import { useWorkspace } from "./workspaceStore";
 import type {
+  CategoryCount,
   ContingencyDetail,
   ContingencyMethod,
   ContingencyProgress,
@@ -16,17 +17,30 @@ import type {
 /** Rows kept here: the worst outages, to open the first. The table reads pages from the core. */
 export const FIRST_PAGE = 100;
 
+/** Every branch and generator on its own, or the NERC TPL-001 planning events. */
+export type ContingencySource = "n1" | "planning";
+
+/** The planning event categories the core generates, in its order. */
+export const PLANNING_CATEGORIES = ["P0", "P1.1", "P1.2", "P1.3", "P1.4", "P1.5", "P2.1", "P7.2"];
+
 export interface ContingencyChoice {
+  source: ContingencySource;
   branches: boolean;
   generators: boolean;
+  /** Planning events: the categories to run, and the lowest voltage. */
+  categories: string[];
+  kvMin: number;
   method: ContingencyMethod;
   acCount: number;
   limitPct: number;
 }
 
 export const DEFAULT_CHOICE: ContingencyChoice = {
+  source: "n1",
   branches: true,
   generators: true,
+  categories: PLANNING_CATEGORIES,
+  kvMin: 100,
   method: "screen",
   acCount: 50,
   limitPct: 100,
@@ -37,6 +51,9 @@ interface ContingencyState {
   setChoice: (c: Partial<ContingencyChoice>) => void;
   summary: ContingencySummary | null;
   rows: ContingencyRow[];
+  /** How many planning events each category gives on the open case, at `kvMin`. */
+  counts: CategoryCount[] | null;
+  loadCounts: () => Promise<void>;
   running: boolean;
   progress: ContingencyProgress | null;
   error: string | null;
@@ -79,6 +96,16 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   setChoice: (c) => set((s) => ({ choice: { ...s.choice, ...c } })),
   summary: null,
   rows: [],
+  counts: null,
+  async loadCounts() {
+    const kvMin = get().choice.kvMin;
+    try {
+      const counts = await api.planningEventCounts({ categories: PLANNING_CATEGORIES, kv_min: kvMin, areas: [] });
+      if (get().choice.kvMin === kvMin) set({ counts });
+    } catch {
+      set({ counts: null });
+    }
+  },
   running: false,
   progress: null,
   error: null,
@@ -97,14 +124,16 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         .catch(() => undefined);
     }, 250);
     try {
+      const planning = c.source === "planning";
       const summary = await api.runContingencies({
-        elements,
+        elements: planning ? null : elements,
         branches: c.branches,
         generators: c.generators,
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,
         solve: { ...solve, model: "ac" },
+        planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
       });
       const rows = await api.contingencyRows(0, FIRST_PAGE);
       set({ summary, rows });

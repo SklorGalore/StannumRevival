@@ -81,8 +81,13 @@ solves with the fast decoupled method and the transformer taps locked.
 
 `run_contingencies` settings: `method` (`"screen"`, the default, or `"ac"`),
 `branches` and `generators` (both `true`), `elements` (a list of ids, instead
-of every branch and generator), `ac_count` (`50`: how many of the worst screened outages get an AC solve), `limit_pct` (`100`), and `solve`
-(the solve settings above).
+of every branch and generator), `ac_count` (`50`: how many of the worst screened outages get an AC solve), `limit_pct` (`100`), `solve`
+(the solve settings above), and `planning` (run NERC TPL-001 planning events
+instead: `categories` such as `["P0", "P1", "P7.2"]`, every one Stannum
+generates when left out; `kv_min`, `100`; `areas`, every area when empty).
+For example, `run_contingencies settings={"planning": {"categories": ["P1.2", "P1.3"], "kv_min": 230}}`.
+`planning_event_counts settings={...}` takes the same `planning` settings and
+says how many events each category gives.
 
 ## When a line fails
 

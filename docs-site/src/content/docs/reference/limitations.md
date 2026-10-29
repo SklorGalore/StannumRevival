@@ -12,8 +12,10 @@ keep.
 - Optimal power flow, continuation power flow, short circuit, dynamics and
   three-phase models.
 - [Contingency analysis](/StannumRevival/manual/contingencies/) takes out one
-  branch or generator at a time (a three-winding transformer counts as one).
-  Outages of several elements together (N-2 and up), bus outages and
+  branch or generator at a time (a three-winding transformer counts as one),
+  or the NERC TPL-001 planning events P0, P1, P2.1 and P7.2. Outages of
+  several elements together (N-2 and up), bus outages, planning events that
+  need breakers, two stages or tower data (P2.2 to P2.4, P3 to P6, P7.1) and
   remedial actions are not run. Loading is checked against rate A only.
 - The linear contingency screen leaves out resistance and phase shifts, and
   finds overloads only; voltage problems and reactive limits come from the
@@ -66,8 +68,9 @@ keep.
 ## File formats
 
 - RAWX (the JSON form of RAW).
-- RAW import skips GNE devices, induction machines, wind control,
-  multi-section line groupings, and zone and owner names. See [PSS/E RAW](/StannumRevival/reference/psse-raw/).
+- RAW import skips GNE devices, induction machines, wind control, and zone
+  and owner names. Multi-section line groupings are read only for
+  contingencies. See [PSS/E RAW](/StannumRevival/reference/psse-raw/).
 - RAW export writes revisions 33 and 35 only. From a RAW 33 or 35 file it
   keeps every record; the impedance correction and three-winding
   transformer layouts follow the PSS/E manual but have not been checked

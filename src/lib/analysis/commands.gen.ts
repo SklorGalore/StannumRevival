@@ -200,6 +200,24 @@ export type CaseWire = {
   zero_impedance_threshold: number;
 };
 
+/** How many events a category gives, for showing before a run. */
+export type CategoryCount = {
+  category: string;
+  count: number;
+  /** What it takes out, such as "Transformer". */
+  label: string;
+};
+
+/** One planning event category's share of a run. */
+export type CategorySummary = {
+  category: string;
+  islanding: number;
+  not_converged: number;
+  total: number;
+  with_overloads: number;
+  with_voltage_problems: number;
+};
+
 export type ColumnKind = "integer" | "number" | "text";
 
 /** One command, as `list_commands` describes it. */
@@ -246,17 +264,21 @@ export type ContingencyDetail = {
 
 /** One outage's outcome, as a row of the ranked results. */
 export type ContingencyRow = {
+  /** The planning event category, such as "P1.2"; none in an N-1 run. */
+  category: string | null;
   /** "ac" when solved in AC, "linear" when only screened. */
   checked: "ac" | "linear";
   /** AC only: whether the solve converged, and in how many iterations. */
   converged: boolean | null;
   /** Buses split off from the rest of the network, and what they carried. */
   cut_off_buses: number;
-  /** The element taken out. */
+  /** What the event is, in words, when the element alone doesn't say. */
+  description: string | null;
+  /** The element taken out; empty for the base case (P0). */
   element: string;
   iterations: number | null;
-  /** "branch" or "generator". */
-  kind: "branch" | "generator";
+  /** "branch", "generator", "shunt", "dc_line", or "base" for P0. */
+  kind: "branch" | "generator" | "shunt" | "dc_line" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
   /** AC only: why a solve failed, in a sentence. */
@@ -285,13 +307,15 @@ export type ContingencyRow = {
 
 /** ContingencyRow rows as columns: one array per field, each `count` long. */
 export type ContingencyRowColumns = {
+  category: (string | null)[];
   checked: ("ac" | "linear")[];
   converged: (boolean | null)[];
   count: number;
   cut_off_buses: number[];
+  description: (string | null)[];
   element: string[];
   iterations: (number | null)[];
-  kind: ("branch" | "generator")[];
+  kind: ("branch" | "generator" | "shunt" | "dc_line" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
   note: (string | null)[];
@@ -318,6 +342,11 @@ export type ContingencySettings = {
   /** Loading, as a percent of rate A, above which a branch is overloaded. */
   limit_pct?: number;
   method?: Method;
+  /**
+   * Run these NERC TPL-001 planning events instead of every branch and
+   * generator; `elements`, `branches` and `generators` are then unused.
+   */
+  planning?: PlanningSettings | null;
   solve?: SolveSettings;
 };
 
@@ -327,6 +356,11 @@ export type ContingencySummary = {
   already_out: number;
   /** Stopped early: outages after the stop keep their screened result. */
   cancelled: boolean;
+  /**
+   * Planning event runs: outages and problems in each category, in
+   * category order. Empty in an N-1 run.
+   */
+  categories: CategorySummary[];
   elapsed_ms: number;
   islanding: number;
   limit_pct: number;
@@ -1088,6 +1122,27 @@ export type Path = {
   equipment_ids: string[];
   hops: number;
   node_ids: string[];
+};
+
+/** Which planning events to generate. */
+export type PlanningSettings = {
+  /**
+   * Only elements with a terminal bus in one of these areas; every area
+   * when empty.
+   */
+  areas?: number[];
+  /**
+   * Categories or groups of them, such as "P1" (every P1 event) or
+   * "P1.4". Every category Stannum generates when absent.
+   */
+  categories?: string[];
+  /**
+   * Only branches, shunts and DC lines with a terminal bus at or above
+   * this voltage, kV. A bus with no base voltage counts as above.
+   * Generators are not filtered by voltage: most connect below it
+   * through a step-up transformer.
+   */
+  kv_min?: number;
 };
 
 export type PowerInfo = {
@@ -1878,6 +1933,19 @@ export interface CoreCommands {
     result: CaseSummary;
   };
   /**
+   * How many NERC TPL-001 planning events each category gives on the
+   * open case, before running them with `run_contingencies`. Settings
+   * left out take their defaults: every category Stannum generates, at
+   * 100 kV and above.
+   */
+  planning_event_counts: {
+    args: {
+      case?: CaseId | null;
+      settings?: PlanningSettings | null;
+    };
+    result: CategoryCount[];
+  };
+  /**
    * How each column of one record type filters: by number, by text, or
    * by picking one of its few values.
    */
@@ -1986,7 +2054,8 @@ export interface CoreCommands {
     result: SolveReport;
   };
   /**
-   * Run N-1 contingencies. `cancel_contingencies` stops the run and
+   * Run N-1 contingencies, or with `settings.planning` the NERC TPL-001
+   * planning events. `cancel_contingencies` stops the run and
    * `contingency_progress` follows it. Settings left out take their
    * defaults: every branch and generator, screened, then the worst in AC.
    */

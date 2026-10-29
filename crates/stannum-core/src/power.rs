@@ -42,6 +42,28 @@ pub struct PowerCase {
     pub areas: Vec<rs_power::Area>,
     /// RAW loads assigned to another area than their bus's.
     pub area_loads: Vec<rs_power::AreaLoad>,
+    /// Every fixed and switched shunt, with what it adds to its bus. A
+    /// MATPOWER case has one fixed shunt per bus with a nonzero GS or BS.
+    pub shunts: Vec<rs_power::ShuntSource>,
+    /// RAW multi-section line groupings; empty otherwise.
+    pub multi_section_lines: Vec<rs_power::MultiSectionLine>,
+}
+
+/// A MATPOWER bus's GS and BS as one fixed shunt, `shunt:<bus>:1`.
+fn matpower_shunts(case: &Case) -> Vec<rs_power::ShuntSource> {
+    case.buses
+        .iter()
+        .filter(|b| b.gs != 0.0 || b.bs != 0.0)
+        .map(|b| rs_power::ShuntSource {
+            kind: rs_power::ShuntKind::Fixed,
+            bus: b.id,
+            id: "1".into(),
+            online: true,
+            g: b.gs,
+            b: b.bs,
+            line: 0,
+        })
+        .collect()
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -67,6 +89,7 @@ pub struct Warning {
 pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     if is_matpower {
         let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
+        let shunts = matpower_shunts(&case);
         Ok(PowerCase {
             elements: Elements::from_matpower(&case),
             dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
@@ -82,6 +105,8 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             revision: None,
             areas: Vec::new(),
             area_loads: Vec::new(),
+            shunts,
+            multi_section_lines: Vec::new(),
         })
     } else {
         // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
@@ -129,6 +154,8 @@ pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
             revision: Some(import.revision),
             areas: import.areas,
             area_loads: import.area_loads,
+            shunts: import.shunts,
+            multi_section_lines: import.multi_section_lines,
             case: import.case,
             warnings: import
                 .warnings

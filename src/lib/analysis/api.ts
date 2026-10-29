@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { catchUpLog, useLog } from "../../store/logStore";
 import { useCrash } from "../../store/crashStore";
 import type {
+  CategoryCount,
   CaseNetwork,
   CaseSummary,
   ContingencyDetail,
@@ -11,6 +12,7 @@ import type {
   ContingencySettings,
   ContingencySummary,
   DcGridsSummary,
+  PlanningSettings,
   CoordinatesSummary,
   BusCoordinates,
   DiffRecordDetail,
@@ -74,6 +76,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   result_generators: { label: "Reading generator results", quiet: true },
   result_branches: { label: "Reading branch results", quiet: true },
   contingency_page: { label: "Reading contingency results", quiet: true },
+  planning_event_counts: { label: "Counting planning events", quiet: true },
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
@@ -271,6 +274,7 @@ export const api = {
   runContingencies: (settings: ContingencySettings): Promise<ContingencySummary> =>
     call("run_contingencies", { settings }),
   // Polled while a run is going, so they skip the log.
+  planningEventCounts: (settings: PlanningSettings): Promise<CategoryCount[]> => call("planning_event_counts", { settings }),
   cancelContingencies: () => invokeCore("cancel_contingencies"),
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
