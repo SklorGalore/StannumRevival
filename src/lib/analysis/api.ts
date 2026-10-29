@@ -181,7 +181,7 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   tolerance_mva: 2,
   max_iterations: 10,
   decoupled_iterations: 30,
-  enforce_q_limits: false,
+  enforce_q_limits: true,
   dc_model: "detailed",
   adjust_dc_taps: true,
   switch_shunts: true,

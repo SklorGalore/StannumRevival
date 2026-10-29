@@ -545,3 +545,53 @@ fn dc_converter_tap_setting_moves_or_locks_cod_4_transformers() {
     let kept = solve(false, Last);
     assert!((tap(&kept) - ratio).abs() < 1e-12);
 }
+
+#[test]
+fn three_winding_loading_is_measured_at_the_winding_bus() {
+    let mut ws = open(rs_power_raw("t_psse_case3.raw"));
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(stannum_core::power::SolveSettings::default())
+        .unwrap();
+    assert!(report.converged);
+    let windings: Vec<_> = report
+        .branches
+        .iter()
+        .filter(|b| b.element == "transformer:205:215:216:3")
+        .collect();
+    assert_eq!(windings.len(), 3);
+    assert!(windings.iter().all(|w| w.is_transformer));
+    // Winding 2 feeds the 140 Mvar load at bus 215 through a 20 MVA rating.
+    // The star end carries more (the winding's own reactive loss), but the
+    // star bus is internal, so only the bus end counts.
+    let w2 = windings.iter().find(|w| w.winding == 2).unwrap();
+    assert_eq!(w2.from, 215);
+    assert!(w2.qt.abs() > 150.0);
+    let pct = w2.loading_pct.unwrap();
+    assert!((pct - 700.0).abs() < 0.5, "{pct}");
+}
+
+#[test]
+fn unity_ratio_raw_transformers_are_transformers() {
+    let mut ws = open(sample("Texas2k_series25_case1_summerpeak.RAW"));
+    let report = ws
+        .current_mut()
+        .unwrap()
+        .solve(stannum_core::power::SolveSettings::default())
+        .unwrap();
+    let rows: Vec<_> = report
+        .branches
+        .iter()
+        .filter(|b| b.element.starts_with("transformer:"))
+        .collect();
+    assert!(rows.iter().any(|b| b.tap == 1.0 && b.shift_deg == 0.0));
+    assert!(rows.iter().all(|b| b.is_transformer));
+    assert!(
+        report
+            .branches
+            .iter()
+            .filter(|b| b.element.starts_with("line:"))
+            .all(|b| !b.is_transformer)
+    );
+}

@@ -123,6 +123,12 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Enforce generator Q limits** is on by default in the app, run files
+  and Python, as real cases are solved in PSS/E and PowerWorld. With it off,
+  SyntheticUSA showed a 25 Mvar unit pushing 3,500 Mvar and a 1,584% branch;
+  with it on, the case matches its saved solution. Run files and scripts
+  that leave `enforce_q_limits` out now get Q limits; set it to `false` for
+  the old behaviour. Large cases take a few seconds longer to solve.
 - The `stannum` Python package's public API is now exactly what
   `stannum.__all__` lists. The `stannum.errors` module is private
   (`stannum._errors`); import the errors from `stannum` itself, as in
@@ -225,6 +231,30 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- Sensitivities work on 80,000-bus cases. They used to hold every injection
+  column at once, over 13 GB at 82,000 buses, and the app was shut down by
+  the system; now the case is factored once and the picked column is solved
+  when asked (about 3 s and 0.5 GB for SyntheticUSA).
+- A solve that starts from the last solution and doesn't converge tries
+  again from the case voltages. Ticking **Enforce generator Q limits** after
+  a solve without them used to stop at the iteration limit on SyntheticUSA.
+- A three-winding transformer's winding loading is measured at its own bus,
+  not at the internal star bus, in results, checks and contingencies.
+- RAW transformers with a 1.0 ratio and no phase shift show as transformers
+  in Branches and in network drawings, not as lines.
+- Branches results show **Loading** next to **Status**, where it is in view.
+- Sorting a table high to low keeps rows without a value (such as unrated
+  branches' loading) at the bottom instead of the top.
+- Case diff compares cases whose records repeat a key, such as
+  SyntheticUSA's nine DC lines all named 'DC Line 1'. Repeats are numbered
+  in file order ("#2" on) and matched by that number, with a note on each.
+- Case diff reads RAW files that end with Q where a section would start, as
+  SyntheticUSA does before INDUCTION MACHINE. The missing sections are read
+  as empty, as PSS/E does; Q partway through a section is still an error.
+- One-line labels clear the result halo and layer ring around a symbol.
+- A MATPOWER bus picked on a one-line shows its **Drawing** fields again.
+  Its load and shunt symbols stand for the same bus and are picked with it,
+  and the inspector used to leave the drawing fields out.
 - Records: double-clicking a cell of a record that wasn't picked yet edits
   that cell. The first click opens the inspector, which narrows the columns,
   and the edit used to land on the cell that slid under the pointer.

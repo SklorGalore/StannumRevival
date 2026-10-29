@@ -1382,6 +1382,10 @@ export type SolveSettings = {
    * the decoupled stage of the automatic method).
    */
   decoupled_iterations?: number;
+  /**
+   * Hold generators at their reactive limits (and regulate remote buses).
+   * On by default, as real cases are solved in PSS/E and PowerWorld.
+   */
   enforce_q_limits?: boolean;
   /** Newton iterations per pass. */
   max_iterations?: number;

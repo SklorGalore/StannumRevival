@@ -109,7 +109,9 @@ export function SymbolFrame({
   useRemeasure(String(rotation));
   const sideways = rotation === 90 || rotation === 270;
   // Sideways, the block is centred under the symbol (text-anchor inherits).
-  const base = sideways ? { x: size.w / 2, y: size.h + 6 - labelTop } : { x: size.w + 2, y: 0 };
+  // A halo or layer ring reaches past the symbol; keep the text clear of it.
+  const clear = layer?.halo ? 10 : focus ? 7 : 0;
+  const base = sideways ? { x: size.w / 2, y: size.h + 6 + clear - labelTop } : { x: size.w + 2 + clear, y: 0 };
   const off = labelOffset ?? { x: 0, y: 0 };
   const labelAt = { x: base.x + off.x, y: base.y + off.y };
   const ink = useInk();

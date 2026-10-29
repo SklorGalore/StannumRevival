@@ -20,7 +20,7 @@ use crate::results::ResultName;
 use crate::study::{self, Edit};
 use crate::topology_wire;
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
-use rs_power::{PowerFlowResult, PowerFlowSensitivity};
+use rs_power::{PowerFlowResult, SensitivityModel};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -72,7 +72,7 @@ pub struct OpenCase {
     /// The last solve from before the study's edits changed, kept as a
     /// starting point for the next solve.
     pub before_edits: Option<Arc<Solved>>,
-    pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
+    pub sensitivity: Option<(SensitivityModel, power::ModelChoice)>,
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
     pub edited: Option<Arc<PowerCase>>,
@@ -1483,45 +1483,57 @@ impl SolveJob {
             }
             _ => None,
         };
-        let input = warm.as_ref().unwrap_or(&power.case);
         let grids = dc_grids
             .as_deref()
             .filter(|_| settings.model == power::ModelChoice::Ac);
         if dc_grids.is_some() && grids.is_none() {
             log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
         }
-        let (result, vsc) = match grids {
-            Some(file) => {
-                let acdc = rs_power::solve_dc_grids(
-                    input,
-                    &options,
-                    &file.grids,
-                    &rs_power::DcGridSettings::default(),
-                )
-                .map_err(failed)?;
-                let names = power::bus_names(&power.case);
-                let index: std::collections::HashMap<u32, usize> = power
-                    .case
-                    .buses
-                    .iter()
-                    .enumerate()
-                    .map(|(i, b)| (b.id, i))
-                    .collect();
-                let vsc = dc_grids::report(file, &acdc, |bus| {
-                    index
-                        .get(&bus)
-                        .and_then(|&i| names.get(i))
-                        .cloned()
-                        .unwrap_or_default()
-                });
-                let mut ac = acdc.ac;
-                // The AC/DC iteration's outcome, not only the last AC solve's.
-                ac.status = acdc.status;
-                ac.iterations = acdc.ac_iterations;
-                (ac, Some(vsc))
-            }
-            None => (rs_power::solve(input, &options).map_err(failed)?, None),
+        let run = |input: &rs_power::Case, options: &rs_power::PowerFlowOptions| {
+            Ok::<_, Error>(match grids {
+                Some(file) => {
+                    let acdc = rs_power::solve_dc_grids(
+                        input,
+                        options,
+                        &file.grids,
+                        &rs_power::DcGridSettings::default(),
+                    )
+                    .map_err(failed)?;
+                    let names = power::bus_names(&power.case);
+                    let index: std::collections::HashMap<u32, usize> = power
+                        .case
+                        .buses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, b)| (b.id, i))
+                        .collect();
+                    let vsc = dc_grids::report(file, &acdc, |bus| {
+                        index
+                            .get(&bus)
+                            .and_then(|&i| names.get(i))
+                            .cloned()
+                            .unwrap_or_default()
+                    });
+                    let mut ac = acdc.ac;
+                    // The AC/DC iteration's outcome, not only the last AC solve's.
+                    ac.status = acdc.status;
+                    ac.iterations = acdc.ac_iterations;
+                    (ac, Some(vsc))
+                }
+                None => (rs_power::solve(input, options).map_err(failed)?, None),
+            })
         };
+        let (mut result, mut vsc) = run(warm.as_ref().unwrap_or(&power.case), &options)?;
+        if warm.is_some() && result.status != rs_power::SolveStatus::Converged {
+            // The last solution can be a poor start for different settings,
+            // such as the first solve with Q limits after one without them.
+            log::warn!(
+                "The solve from the last solution did not converge; solving again from the case voltages"
+            );
+            let mut retry = cold.clone();
+            retry.cancel = options.cancel.clone();
+            (result, vsc) = run(&power.case, &retry)?;
+        }
         let solved_ms = elapsed_ms(start);
         let mut report = power::report(
             &result,
@@ -1606,7 +1618,7 @@ pub struct SensitivityJob {
 /// Finished sensitivities, to keep with [`OpenCase::finish_sensitivities`].
 pub struct SensitivitiesDone {
     version: u64,
-    sensitivity: PowerFlowSensitivity,
+    sensitivity: SensitivityModel,
     model: power::ModelChoice,
     summary: power::SensitivitySummary,
 }
@@ -1615,7 +1627,7 @@ impl SensitivityJob {
     pub fn run(self) -> Result<SensitivitiesDone, Error> {
         let power = self.power.as_ref();
         let start = Instant::now();
-        let s = rs_power::calculate_sensitivities(&power.case, &self.settings.options_for(power))
+        let s = SensitivityModel::new(&power.case, &self.settings.options_for(power))
             .map_err(|e| e.to_string())?;
         let summary = power::sensitivity_summary(&s, self.settings.model, elapsed_ms(start));
         log::info!(

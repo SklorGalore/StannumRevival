@@ -39,10 +39,11 @@ pub use raw::{
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,
-    PowerFlowJacobian, PowerFlowSensitivity, SquaredMagnitudeDerivatives, StateVariable,
-    VoltageCoordinates, branch_flow_derivatives, bus_power_derivatives, calculate_sensitivities,
-    make_jacobian, make_lodf, make_lodf_with_bridge_handling, make_ptdf, make_ptdf_columns,
-    make_ptdf_transfers, make_ptdf_with_slack_matrix,
+    PowerFlowJacobian, PowerFlowSensitivity, SensitivityColumn, SensitivityModel,
+    SquaredMagnitudeDerivatives, StateVariable, VoltageCoordinates, branch_flow_derivatives,
+    bus_power_derivatives, calculate_sensitivities, make_jacobian, make_lodf,
+    make_lodf_with_bridge_handling, make_ptdf, make_ptdf_columns, make_ptdf_transfers,
+    make_ptdf_with_slack_matrix,
 };
 pub use solver::{
     AcMethod, DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,

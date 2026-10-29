@@ -314,9 +314,15 @@ pub fn order(rows: &dyn Rows, query: &PageQuery, extra: Option<&dyn Fn(usize) ->
             .map(|&i| (i, rows.value(i, &sort.field)))
             .collect();
         // Stable, so ties keep the table's order.
+        // Missing values stay last in both directions.
         keyed.sort_by(|a, b| {
             let o = compare(&a.1, &b.1);
-            if sort.descending { o.reverse() } else { o }
+            let missing = a.1.is_null() || b.1.is_null();
+            if sort.descending && !missing {
+                o.reverse()
+            } else {
+                o
+            }
         });
         indexes = keyed.into_iter().map(|(i, _)| i).collect();
     }
@@ -920,6 +926,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(elements(&r, &q), ["bus:3", "bus:4", "bus:10", "bus:2"]);
+        // Descending too: the largest first, still missing last.
+        q.sort.as_mut().unwrap().descending = true;
+        assert_eq!(elements(&r, &q), ["bus:10", "bus:4", "bus:3", "bus:2"]);
         q.sort = Some(Sort {
             field: "name".into(),
             descending: false,

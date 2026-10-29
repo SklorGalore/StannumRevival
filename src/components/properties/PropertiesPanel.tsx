@@ -49,10 +49,17 @@ export function PropertiesPanel({ missing = null }: { missing?: string | null })
       : null;
 
   const shared = useDiagramStore(selectedCaseElement);
-  const item = selectedNode ?? selectedEdge;
+  // Several symbols of one element (a MATPOWER bus's bar, load and shunt all
+  // stand for the bus): show the drawing fields of the one of its own kind.
+  const own =
+    !selectedNode && !selectedEdge && shared
+      ? nodes.filter((n) => selectedNodeIds.includes(n.id) && n.type === shared.split(":")[0])
+      : [];
+  const primary = selectedNode ?? (own.length === 1 ? own[0] : null);
+  const item = primary ?? selectedEdge;
   const element = shared ?? (item || selectedNodeIds.length || selectedEdgeIds.length ? null : missing);
   const locked = useDiagramStore((s) => s.locked);
-  const fields = selectedNode ? <NodeForm node={selectedNode} /> : selectedEdge ? <EdgeForm edge={selectedEdge} /> : null;
+  const fields = primary ? <NodeForm node={primary} /> : selectedEdge ? <EdgeForm edge={selectedEdge} /> : null;
   // A locked drawing is inspected, not edited: its drawing fields are read
   // only. The case element's own actions (Trip and compare) stay live.
   const form = fields && locked ? <LockedFields>{fields}</LockedFields> : fields;

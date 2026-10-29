@@ -4,7 +4,7 @@ use crate::elements::Elements;
 use crate::table::{self, Table};
 use rs_power::{
     BusType, Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
-    PowerFlowSensitivity, SolveStatus, StateVariable,
+    SensitivityModel, SolveStatus, StateVariable,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -270,6 +270,8 @@ pub struct SolveSettings {
     /// the decoupled stage of the automatic method).
     #[serde(default = "decoupled_iterations")]
     pub decoupled_iterations: usize,
+    /// Hold generators at their reactive limits (and regulate remote buses).
+    /// On by default, as real cases are solved in PSS/E and PowerWorld.
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
@@ -311,7 +313,7 @@ impl Default for SolveSettings {
             tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
             decoupled_iterations: d.decoupled_iterations,
-            enforce_q_limits: false,
+            enforce_q_limits: true,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
             switch_shunts: true,
@@ -983,6 +985,20 @@ fn outside(value: f64, low: f64, high: f64) -> f64 {
     }
 }
 
+/// Loading in percent of `rate`: the larger end of a line or two-winding
+/// transformer. A three-winding transformer's winding (`winding` 1 to 3)
+/// runs from its own bus to the internal star bus, so only its bus end is
+/// measured, as PSS/E reports winding loading at the winding terminal.
+pub fn loading_pct(p_from: f64, q_from: f64, p_to: f64, q_to: f64, rate: f64, winding: u8) -> f64 {
+    let from = p_from.hypot(q_from);
+    let worst = if winding > 0 {
+        from
+    } else {
+        from.max(p_to.hypot(q_to))
+    };
+    worst / rate * 100.0
+}
+
 /// Build the frontend report from a solve, including operating-limit checks.
 /// How many devices ended more than a rounding error from where they began.
 fn moved<T>(values: &[f64], devices: &[T], start: impl Fn(&T) -> f64) -> usize {
@@ -1095,8 +1111,10 @@ pub fn report(
         .zip(&result.branch_flows)
         .enumerate()
         .map(|(index, (br, f))| {
+            let e = elements.branches.get(index);
+            let winding = e.map_or(0, |e| e.winding);
             let loading_pct = (br.online && br.rate_a > 0.0)
-                .then(|| f[0].hypot(f[1]).max(f[2].hypot(f[3])) / br.rate_a * 100.0);
+                .then(|| loading_pct(f[0], f[1], f[2], f[3], br.rate_a, winding));
             if let Some(loading) = loading_pct {
                 if loading > 100.0 {
                     limits.branch_overloads += 1;
@@ -1105,16 +1123,20 @@ pub fn report(
                     limits.worst_branch = Some((br.from, br.to, loading));
                 }
             }
-            let e = elements.branches.get(index);
             BranchRow {
                 index,
                 element: e.map(|e| e.element.clone()).unwrap_or_default(),
                 circuit: e.map(|e| e.circuit.clone()).unwrap_or_default(),
-                winding: e.map_or(0, |e| e.winding),
+                winding,
                 from: br.from,
                 to: br.to,
                 online: br.online,
-                is_transformer: (br.tap != 0.0 && br.tap != 1.0) || br.shift != 0.0,
+                // RAW transformers are named by their record, so a unity
+                // ratio transformer is still a transformer. MATPOWER has no
+                // such record and falls back to the ratio and shift.
+                is_transformer: e.is_some_and(|e| e.element.starts_with("transformer:"))
+                    || (br.tap != 0.0 && br.tap != 1.0)
+                    || br.shift != 0.0,
                 pf: f[0],
                 qf: f[1],
                 pt: f[2],
@@ -1469,7 +1491,7 @@ pub fn quantities(model: ModelChoice) -> Vec<Quantity> {
 }
 
 pub fn sensitivity_summary(
-    s: &PowerFlowSensitivity,
+    s: &SensitivityModel,
     model: ModelChoice,
     elapsed_ms: f64,
 ) -> SensitivitySummary {
@@ -1545,12 +1567,10 @@ pub struct ResponseTable {
     pub rows: Vec<Response>,
 }
 
-fn bus_label(names: &[String], case: &Case, id: u32) -> String {
-    let name = case
-        .buses
-        .iter()
-        .position(|b| b.id == id)
-        .map(|i| names[i].as_str())
+fn bus_label(names: &[String], index: &HashMap<u32, usize>, id: u32) -> String {
+    let name = index
+        .get(&id)
+        .map(|&i| names[i].as_str())
         .filter(|n| !n.is_empty());
     match name {
         Some(n) => format!("Bus {id} ({n})"),
@@ -1560,7 +1580,7 @@ fn bus_label(names: &[String], case: &Case, id: u32) -> String {
 
 /// All responses to one injection column, in input order.
 pub fn responses(
-    s: &PowerFlowSensitivity,
+    s: &SensitivityModel,
     elements: &crate::elements::Elements,
     column: usize,
     quantity: Quantity,
@@ -1572,25 +1592,28 @@ pub fn responses(
         .ok_or_else(|| format!("No injection column {column}"))?;
     let case = &s.power_flow.case;
     let names = bus_names(case);
+    let index: HashMap<u32, usize> = case
+        .buses
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id, i))
+        .collect();
+    let solved = s.column(column).map_err(|e| e.to_string())?;
     let rows = match quantity {
         Quantity::Angle | Quantity::Magnitude => s
             .state_variables
             .iter()
             .enumerate()
-            .filter_map(|(index, state)| {
+            .filter_map(|(row, state)| {
                 let (bus, q) = match *state {
                     StateVariable::VoltageAngle(b) => (b, Quantity::Angle),
                     StateVariable::VoltageMagnitude(b) => (b, Quantity::Magnitude),
                 };
                 (q == quantity).then(|| Response {
-                    index,
-                    label: bus_label(&names, case, bus),
+                    index: row,
+                    label: bus_label(&names, &index, bus),
                     element: format!("bus:{bus}"),
-                    value: q.convert(
-                        s.state_sensitivities[index][column],
-                        case.base_mva,
-                        engineering,
-                    ),
+                    value: q.convert(solved.states[row], case.base_mva, engineering),
                     offline: false,
                 })
             })
@@ -1599,20 +1622,20 @@ pub fn responses(
             .branches
             .iter()
             .enumerate()
-            .map(|(index, br)| Response {
-                index,
+            .map(|(i, br)| Response {
+                index: i,
                 label: format!(
                     "Branch {}: {} → {}",
-                    index + 1,
-                    bus_label(&names, case, br.from),
-                    bus_label(&names, case, br.to)
+                    i + 1,
+                    bus_label(&names, &index, br.from),
+                    bus_label(&names, &index, br.to)
                 ),
                 element: elements
                     .branches
-                    .get(index)
+                    .get(i)
                     .map(|e| e.element.clone())
                     .unwrap_or_default(),
-                value: s.branch_flow_sensitivities[index][column][component],
+                value: solved.branches[i][component],
                 offline: !br.online,
             })
             .collect(),
