@@ -26,6 +26,10 @@ last number (rc.1 -> 1.0.0.1). Windows Installer ignores that field when it
 compares versions, and Tauri's MSI replaces any installed copy, so 1.0.0
 still installs over 1.0.0-rc.1.
 
+RPM versions can't hold a hyphen either, and Tauri has no separate RPM
+version, so a pre-release is built without the .rpm (with a warning).
+Fedora and RHEL users of a pre-release use the AppImage.
+
 .EXAMPLE
 pwsh scripts/release/build-installers.ps1 -Bundles deb,appimage
 #>
@@ -91,13 +95,20 @@ if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
     }
 }
 
-$tauriArgs = @('build', '--ci', '--bundles', $Bundles)
+$version = (Get-Content -Path (Join-Path $root 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
+$bundleList = @($Bundles -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+if ($version.Contains('-') -and $bundleList -contains 'rpm') {
+    Write-Host "::warning title=No .rpm for a pre-release::RPM versions can't contain '-', so $version is built without the .rpm. Fedora and RHEL users can run the AppImage."
+    $bundleList = @($bundleList | Where-Object { $_ -ne 'rpm' })
+    if (-not $bundleList) { throw "Nothing left to build: $version can't be packaged as .rpm." }
+}
+
+$tauriArgs = @('build', '--ci', '--bundles', ($bundleList -join ','))
 if ($updater) {
     & (Join-Path $PSScriptRoot 'updater-config.ps1') -PubKey $pubKey -Out $overlay
     $tauriArgs += @('--config', $overlay)
 }
 
-$version = (Get-Content -Path (Join-Path $root 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
 $msiVersion = Get-MsiVersion $version
 if ($msiVersion -ne $version) {
     @{ bundle = @{ windows = @{ wix = @{ version = $msiVersion } } } } |

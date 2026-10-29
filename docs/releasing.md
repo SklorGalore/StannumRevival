@@ -102,7 +102,9 @@ A version with a suffix (`0.3.0-beta.1`, `1.0.0-rc.1`) is published as a
 pre-release. The updater never offers a pre-release, so install it by hand;
 the next full release is offered to it as usual. Windows Installer versions
 are numbers only, so `build-installers.ps1` gives the MSI the suffix's last
-number as a fourth field (`1.0.0-rc.1` builds MSI version `1.0.0.1`).
+number as a fourth field (`1.0.0-rc.1` builds MSI version `1.0.0.1`). RPM versions can't contain a
+hyphen and Tauri has no separate RPM version, so a pre-release has no `.rpm`;
+Fedora and RHEL users run the AppImage.
 
 ## Updates
 
