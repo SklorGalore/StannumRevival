@@ -14,6 +14,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 stannum-core = { path = "../crates/stannum-core" }
+# A faster allocator: reading an 80,000-bus case's records takes half the
+# time it takes with the system one.
+mimalloc = { version = "0.1", default-features = false }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

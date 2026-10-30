@@ -74,6 +74,53 @@ fn tokenize(text: &str, section: &str, line: usize) -> Result<Vec<String>, Diagn
     Ok(out)
 }
 
+/// One record's lines, read but not yet decoded.
+struct Group<'a> {
+    section: &'a str,
+    layout: &'a Value,
+    rows: Vec<Row>,
+    /// The record's first line (1-based).
+    line: usize,
+    /// Whether the rows' fields have been split already.
+    split: bool,
+}
+
+/// Decode records on a few threads, keeping file order.
+fn sources_in_parallel(groups: &[Group]) -> Vec<Result<SourceRecord, Diagnostic>> {
+    let decode = |g: &Group| {
+        if g.split {
+            return source(&g.rows, g.layout, g.section);
+        }
+        let rows: Vec<Row> = g
+            .rows
+            .iter()
+            .map(|r| {
+                Ok(Row {
+                    line: r.line,
+                    text: r.text.clone(),
+                    fields: tokenize(&r.text, g.section, r.line)?,
+                })
+            })
+            .collect::<Result<_, Diagnostic>>()?;
+        source(&rows, g.layout, g.section)
+    };
+    let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
+    if workers < 2 || groups.len() < 10_000 {
+        return groups.iter().map(decode).collect();
+    }
+    let size = groups.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = groups
+            .chunks(size)
+            .map(|chunk| scope.spawn(move || chunk.iter().map(decode).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("decoding RAW records"))
+            .collect()
+    })
+}
+
 struct Row {
     line: usize,
     text: String,
@@ -241,123 +288,164 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
     let mut seen_equipment = HashSet::new();
     let mut seen_injections = HashSet::new();
     let mut skip_lines = BTreeMap::new();
-    while pos < lines.len() {
-        let section = order
-            .get(section_index)
-            .and_then(Value::as_str)
-            .unwrap_or("UNSUPPORTED CONNECTIVITY");
-        let text = lines[pos];
-        let line = pos + 1;
-        pos += 1;
-        if text.trim().is_empty() || text.trim_start().starts_with('@') {
-            continue;
-        }
-        let tokens = tokenize(text, section, line)?;
-        if tokens.len() == 1 && tokens[0].is_empty() {
-            continue;
-        }
-        if tokens.len() == 1 && tokens[0].eq_ignore_ascii_case("Q") {
-            if section_index < order.len() {
-                return Err(diagnostic(
-                    section,
-                    line,
-                    "File ended before all revision 35 sections were complete",
-                ));
-            }
-            if lines[pos..].iter().any(|s| {
-                !s.trim().is_empty()
-                    && !s.trim_start().starts_with('@')
-                    && !s.trim_start().starts_with('/')
-            }) {
-                return Err(diagnostic(
-                    section,
-                    line,
-                    "Unexpected records after Q terminator",
-                ));
-            }
-            finished = true;
-            break;
-        }
-        if tokens.len() == 1 && tokens[0] == "0" {
-            section_index += 1;
-            continue;
-        }
-        if section == "SYSTEM-WIDE"
-            && let Some(value) = system_wide_threshold(&tokens, line)?
-        {
-            case.zero_impedance_threshold = value;
-        }
-        if !matches!(
-            section,
-            "BUS" | "LOAD" | "GENERATOR" | "BRANCH" | "SYSTEM SWITCHING DEVICE" | "TRANSFORMER"
-        ) {
-            *case
-                .skipped_sections
-                .entry(section.to_string())
-                .or_insert(0) += 1;
-            skip_lines.entry(section.to_string()).or_insert(line);
-            continue;
-        }
-        let layout = &schema["sections"][section]["layouts"]["35"];
-        let mut rows = vec![Row {
-            line,
-            text: text.into(),
-            fields: tokens,
-        }];
-        let variant;
-        let layout = if section == "TRANSFORMER" {
-            let k = rows[0]
-                .fields
-                .get(2)
-                .and_then(|v| v.parse::<i32>().ok())
-                .ok_or_else(|| diagnostic(section, line, "Missing or invalid K"))?;
-            variant = if k == 0 { 0 } else { 1 };
-            &layout["variants"][variant]
-        } else {
-            layout
-        };
-        let record_lines = layout["lines"].as_array().unwrap().len();
-        while rows.len() < record_lines {
-            if pos >= lines.len() {
-                return Err(diagnostic(section, line, "Truncated transformer record"));
-            }
+    // Read every record's lines first, then decode the records on several
+    // threads, then build the case from them in file order. An error found
+    // while reading the lines is reported after any earlier record's.
+    let mut groups: Vec<Group> = Vec::new();
+    let scanned = (|| -> Result<(), Diagnostic> {
+        while pos < lines.len() {
+            let section = order
+                .get(section_index)
+                .and_then(Value::as_str)
+                .unwrap_or("UNSUPPORTED CONNECTIVITY");
             let text = lines[pos];
-            let next_line = pos + 1;
+            let line = pos + 1;
             pos += 1;
             if text.trim().is_empty() || text.trim_start().starts_with('@') {
                 continue;
             }
-            let tokens = tokenize(text, section, next_line)?;
+            // A one-line record starting with a bus number can't be a
+            // terminator or a blank: its fields are split later, on the
+            // decoding threads.
+            if matches!(section, "BUS" | "LOAD" | "GENERATOR" | "BRANCH")
+                && text
+                    .trim_start()
+                    .trim_start_matches('\u{feff}')
+                    .starts_with(|c: char| ('1'..='9').contains(&c))
+            {
+                let layout = &schema["sections"][section]["layouts"]["35"];
+                groups.push(Group {
+                    section,
+                    layout,
+                    rows: vec![Row {
+                        line,
+                        text: text.into(),
+                        fields: Vec::new(),
+                    }],
+                    line,
+                    split: false,
+                });
+                continue;
+            }
+            let tokens = tokenize(text, section, line)?;
             if tokens.len() == 1 && tokens[0].is_empty() {
                 continue;
             }
-            let maximum_fields = layout["lines"][rows.len()]["fields"]
-                .as_array()
-                .unwrap()
-                .len();
-            if tokens.len() > maximum_fields {
-                return Err(diagnostic(
-                    section,
-                    next_line,
-                    format!(
-                        "Truncated or malformed transformer continuation: expected at most {maximum_fields} fields"
-                    ),
-                ));
+            if tokens.len() == 1 && tokens[0].eq_ignore_ascii_case("Q") {
+                if section_index < order.len() {
+                    return Err(diagnostic(
+                        section,
+                        line,
+                        "File ended before all revision 35 sections were complete",
+                    ));
+                }
+                if lines[pos..].iter().any(|s| {
+                    !s.trim().is_empty()
+                        && !s.trim_start().starts_with('@')
+                        && !s.trim_start().starts_with('/')
+                }) {
+                    return Err(diagnostic(
+                        section,
+                        line,
+                        "Unexpected records after Q terminator",
+                    ));
+                }
+                finished = true;
+                break;
             }
-            if (tokens.len() == 1 && (tokens[0] == "0" || tokens[0] == "Q"))
-                || tokens
-                    .get(3)
-                    .is_some_and(|v| v.parse::<f64>().is_err() && !v.is_empty())
+            if tokens.len() == 1 && tokens[0] == "0" {
+                section_index += 1;
+                continue;
+            }
+            if section == "SYSTEM-WIDE"
+                && let Some(value) = system_wide_threshold(&tokens, line)?
             {
-                return Err(diagnostic(section, line, "Truncated transformer record"));
+                case.zero_impedance_threshold = value;
             }
-            rows.push(Row {
-                line: next_line,
+            if !matches!(
+                section,
+                "BUS" | "LOAD" | "GENERATOR" | "BRANCH" | "SYSTEM SWITCHING DEVICE" | "TRANSFORMER"
+            ) {
+                *case
+                    .skipped_sections
+                    .entry(section.to_string())
+                    .or_insert(0) += 1;
+                skip_lines.entry(section.to_string()).or_insert(line);
+                continue;
+            }
+            let layout = &schema["sections"][section]["layouts"]["35"];
+            let mut rows = vec![Row {
+                line,
                 text: text.into(),
                 fields: tokens,
+            }];
+            let variant;
+            let layout = if section == "TRANSFORMER" {
+                let k = rows[0]
+                    .fields
+                    .get(2)
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .ok_or_else(|| diagnostic(section, line, "Missing or invalid K"))?;
+                variant = if k == 0 { 0 } else { 1 };
+                &layout["variants"][variant]
+            } else {
+                layout
+            };
+            let record_lines = layout["lines"].as_array().unwrap().len();
+            while rows.len() < record_lines {
+                if pos >= lines.len() {
+                    return Err(diagnostic(section, line, "Truncated transformer record"));
+                }
+                let text = lines[pos];
+                let next_line = pos + 1;
+                pos += 1;
+                if text.trim().is_empty() || text.trim_start().starts_with('@') {
+                    continue;
+                }
+                let tokens = tokenize(text, section, next_line)?;
+                if tokens.len() == 1 && tokens[0].is_empty() {
+                    continue;
+                }
+                let maximum_fields = layout["lines"][rows.len()]["fields"]
+                    .as_array()
+                    .unwrap()
+                    .len();
+                if tokens.len() > maximum_fields {
+                    return Err(diagnostic(
+                        section,
+                        next_line,
+                        format!(
+                            "Truncated or malformed transformer continuation: expected at most {maximum_fields} fields"
+                        ),
+                    ));
+                }
+                if (tokens.len() == 1 && (tokens[0] == "0" || tokens[0] == "Q"))
+                    || tokens
+                        .get(3)
+                        .is_some_and(|v| v.parse::<f64>().is_err() && !v.is_empty())
+                {
+                    return Err(diagnostic(section, line, "Truncated transformer record"));
+                }
+                rows.push(Row {
+                    line: next_line,
+                    text: text.into(),
+                    fields: tokens,
+                });
+            }
+            groups.push(Group {
+                section,
+                layout,
+                rows,
+                line,
+                split: true,
             });
         }
-        let s = source(&rows, layout, section)?;
+        Ok(())
+    })();
+    let sources = sources_in_parallel(&groups);
+    for (group, s) in groups.iter().zip(sources) {
+        let (section, line) = (group.section, group.line);
+        let s = s?;
         match section {
             "BUS" => {
                 let id = integer(&s, "I", None)?;
@@ -483,6 +571,7 @@ pub fn parse_raw(bytes: &[u8]) -> Result<Case, Diagnostic> {
             }
         }
     }
+    scanned?;
     if !finished {
         return Err(diagnostic(
             "FILE",

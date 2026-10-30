@@ -523,13 +523,24 @@ fn key_fields(section: &str) -> Vec<String> {
 /// Every section of a RAW file read by case-diff's parser, in file order,
 /// with case details last.
 pub fn from_raw(case: &DiffCase) -> Records {
-    let mut tables: Vec<RecordTable> = case
+    // SYSTEM-WIDE settings are listed with the case details.
+    let sections: Vec<_> = case
         .sections
         .iter()
-        // SYSTEM-WIDE settings are listed with the case details.
         .filter(|(name, _)| name != crate::diff::parser::CASE_DETAILS && name != "SYSTEM-WIDE")
-        .map(|(name, records)| raw_table(case, name, records))
         .collect();
+    // Tables are built on threads of their own: on an 80,000-bus case this
+    // takes the time of the largest table rather than of all of them.
+    let mut tables: Vec<RecordTable> = std::thread::scope(|scope| {
+        let handles: Vec<_> = sections
+            .iter()
+            .map(|(name, records)| scope.spawn(move || raw_table(case, name, records)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("building a record table"))
+            .collect()
+    });
     if let Some((name, records)) = case
         .sections
         .iter()

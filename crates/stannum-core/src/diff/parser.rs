@@ -83,7 +83,7 @@ fn decode_cp1252(bytes: &[u8]) -> std::result::Result<String, String> {
 
 struct Parser<'a> {
     name: &'a str,
-    lines: Vec<String>,
+    lines: &'a [String],
     sections: Vec<(String, Vec<Record>)>,
     section_index: BTreeMap<String, usize>,
     keys: BTreeMap<String, HashSet<Key>>,
@@ -263,6 +263,16 @@ impl<'a> Parser<'a> {
         index
     }
 
+    /// Whether a line's content before any comment is `what` (any case).
+    fn structural_is(&self, index: usize, what: &str) -> bool {
+        self.lines[index]
+            .split('/')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .eq_ignore_ascii_case(what)
+    }
+
     fn structural(&self, index: usize) -> String {
         self.lines[index]
             .split('/')
@@ -361,7 +371,9 @@ impl<'a> Parser<'a> {
         self.add(CASE_DETAILS, key, fields, raw, index)
     }
 
-    fn run(mut self) -> Result<DiffCase> {
+    /// The case identification and title lines: where the sections start,
+    /// the revision, and the sections in file order.
+    fn header(&mut self) -> Result<(usize, i64, String, Vec<String>)> {
         let schema = schema();
         self.section_mut(CASE_DETAILS);
         let mut position = self.skip_headers(0);
@@ -414,7 +426,6 @@ impl<'a> Parser<'a> {
             )?;
             position += 1;
         }
-
         let rev = revision.to_string();
         let order: Vec<String> = schema["section_order"][&rev]
             .as_array()
@@ -422,164 +433,26 @@ impl<'a> Parser<'a> {
             .flatten()
             .filter_map(|s| s.as_str().map(str::to_string))
             .collect();
+        Ok((position, revision, rev, order))
+    }
+
+    fn run(mut self) -> Result<DiffCase> {
+        let (mut position, revision, rev, order) = self.header()?;
         let mut ended = false;
         for section in &order {
             if ended {
                 break;
             }
             self.section_mut(section);
-            let layout = &schema["sections"][section]["layouts"][&rev];
-            let evidence = layout["evidence"].as_str().unwrap_or_default();
-            let verified = matches!(
-                evidence,
-                "records_verified" | "two_winding_records_verified" | "manual_layout"
-            );
-            let mut opened = None;
-            loop {
-                position = self.skip_headers(position);
-                // Q where a section would start ends the file: PSS/E reads the
-                // sections after it as empty (SyntheticUSA stops before
-                // INDUCTION MACHINE).
-                let at_start = *opened.get_or_insert(position) == position;
-                if position >= self.lines.len() {
-                    return self.fail(
-                        section,
-                        position,
-                        "Unexpected EOF before section terminator",
-                    );
-                }
-                let items = if section == "SYSTEM-WIDE" || verified {
-                    Some(self.tokens(position, section)?)
-                } else {
-                    None
-                };
-                let structural = self.structural(position);
-                if structural == "0" {
-                    position += 1;
-                    break;
-                }
-                if structural.eq_ignore_ascii_case("q") {
-                    if at_start && !self.lenient {
-                        ended = true;
-                        break;
-                    }
-                    if self.lenient {
-                        self.diagnostics.push(Diagnostic {
-                            section: section.clone(),
-                            line_number: position + 1,
-                            message: "File ends before this section".into(),
-                            raw_lines: vec![],
-                        });
-                        ended = true;
-                        break;
-                    }
-                    return self.fail(section, position, "Early Q before section terminator");
-                }
-                if section == "SYSTEM-WIDE" {
-                    self.system_record(position)?;
-                    position += 1;
-                    continue;
-                }
-                let start = position;
-                if !verified {
-                    while position < self.lines.len() {
-                        let s = self.structural(position);
-                        if s == "0" || s.eq_ignore_ascii_case("q") {
-                            break;
-                        }
-                        position += 1;
-                    }
-                    self.diagnostics.push(Diagnostic {
-                        section: section.clone(),
-                        line_number: start + 1,
-                        message: "Unsupported populated section layout".into(),
-                        raw_lines: self.lines[start..position].to_vec(),
-                    });
-                    continue;
-                }
-                let items = items.unwrap_or_default();
-                let mut record_layout = layout;
-                if section == "TRANSFORMER" {
-                    if items.len() < 3 {
-                        return self.fail(
-                            section,
-                            start,
-                            "Missing transformer variant identifier K",
-                        );
-                    }
-                    let k = self.value(&items[2], "integer", section, start)?;
-                    record_layout = &layout["variants"][0];
-                    let zero = Value::Number(Number::parse_integer("0").unwrap());
-                    if k != zero {
-                        // The three-winding layout is provisional: skip its
-                        // physical envelope and never decode its fields.
-                        let first_width = record_layout["lines"][0]["fields"]
-                            .as_array()
-                            .map_or(0, Vec::len);
-                        position += 1;
-                        for _ in 0..4 {
-                            position = self.skip_headers(position);
-                            if position >= self.lines.len() {
-                                break;
-                            }
-                            let candidate = self.structural(position);
-                            if candidate == "0" || candidate.eq_ignore_ascii_case("q") {
-                                break;
-                            }
-                            let width = tokenize(&self.lines[position]).map_or(0, |t| t.len());
-                            if width == first_width {
-                                break;
-                            }
-                            position += 1;
-                        }
-                        self.diagnostics.push(Diagnostic {
-                            section: section.clone(),
-                            line_number: start + 1,
-                            message: "Unsupported three-winding transformer".into(),
-                            raw_lines: self.lines[start..position.min(self.lines.len())].to_vec(),
-                        });
-                        continue;
-                    }
-                }
-                let mut fields = Vec::new();
-                let mut raw = Vec::new();
-                let line_layouts: &[Json] =
-                    record_layout["lines"].as_array().map_or(&[], Vec::as_slice);
-                for (offset, line_layout) in line_layouts.iter().enumerate() {
-                    if offset > 0 {
-                        position = self.skip_headers(position);
-                    }
-                    if position >= self.lines.len() {
-                        return self.fail(section, position, "Missing continuation line: EOF");
-                    }
-                    let continuation = self.tokens(position, section)?;
-                    if continuation.len() == 1
-                        && matches!(continuation[0].as_str(), "0" | "Q" | "q")
-                    {
-                        return self.fail(
-                            section,
-                            position,
-                            "Missing continuation line before terminator",
-                        );
-                    }
-                    fields.extend(self.decode(&continuation, line_layout, section, position)?);
-                    raw.push(self.lines[position].clone());
-                    position += 1;
-                }
-                let key = effective_keys(section, &rev)
-                    .iter()
-                    .map(|name| {
-                        fields
-                            .iter()
-                            .find(|(n, _)| n == name)
-                            .map(|(_, v)| v.clone())
-                            .unwrap_or(Value::Text(String::new()))
-                    })
-                    .collect();
-                self.add(section, key, fields, raw, start)?;
-            }
+            (position, ended) = self.read_section(section, &rev, position, None)?;
         }
-        position = self.skip_headers(position);
+        self.finish(position, revision)
+    }
+
+    /// Check that the file ends with Q after `position`, and hand over what
+    /// was read.
+    fn finish(self, position: usize, revision: i64) -> Result<DiffCase> {
+        let position = self.skip_headers(position);
         let final_q = position < self.lines.len() && {
             let t = self.tokens(position, "FILE")?;
             t.len() == 1 && (t[0] == "Q" || t[0] == "q")
@@ -587,7 +460,7 @@ impl<'a> Parser<'a> {
         if !final_q {
             return self.fail("FILE", position, "Missing final Q terminator");
         }
-        position = self.skip_headers(position + 1);
+        let position = self.skip_headers(position + 1);
         if position < self.lines.len() {
             return self.fail("FILE", position, "Unexpected content after final Q");
         }
@@ -597,6 +470,170 @@ impl<'a> Parser<'a> {
             sections: self.sections,
             diagnostics: self.diagnostics,
         })
+    }
+
+    /// Read one section's records from `position`: to its terminator, or
+    /// only up to line `stop` when given (a part of a section read on its
+    /// own, see [`parse_in_parts`]). Returns where reading stopped, and
+    /// whether a Q ended the file there.
+    fn read_section(
+        &mut self,
+        section: &str,
+        rev: &str,
+        mut position: usize,
+        stop: Option<usize>,
+    ) -> Result<(usize, bool)> {
+        let schema = schema();
+        let layout = &schema["sections"][section]["layouts"][rev];
+        let evidence = layout["evidence"].as_str().unwrap_or_default();
+        let verified = matches!(
+            evidence,
+            "records_verified" | "two_winding_records_verified" | "manual_layout"
+        );
+        let keys = effective_keys(section, rev);
+        let mut opened = None;
+        loop {
+            position = self.skip_headers(position);
+            if stop.is_some_and(|stop| position >= stop) {
+                return Ok((position, false));
+            }
+            // Q where a section would start ends the file: PSS/E reads the
+            // sections after it as empty (SyntheticUSA stops before
+            // INDUCTION MACHINE).
+            let at_start = *opened.get_or_insert(position) == position;
+            if position >= self.lines.len() {
+                return self.fail(
+                    section,
+                    position,
+                    "Unexpected EOF before section terminator",
+                );
+            }
+            let items = if section == "SYSTEM-WIDE" || verified {
+                Some(self.tokens(position, section)?)
+            } else {
+                None
+            };
+            let structural = self.structural(position);
+            if structural == "0" {
+                return Ok((position + 1, false));
+            }
+            if structural.eq_ignore_ascii_case("q") {
+                if at_start && !self.lenient {
+                    return Ok((position, true));
+                }
+                if self.lenient {
+                    self.diagnostics.push(Diagnostic {
+                        section: section.to_string(),
+                        line_number: position + 1,
+                        message: "File ends before this section".into(),
+                        raw_lines: vec![],
+                    });
+                    return Ok((position, true));
+                }
+                return self.fail(section, position, "Early Q before section terminator");
+            }
+            if section == "SYSTEM-WIDE" {
+                self.system_record(position)?;
+                position += 1;
+                continue;
+            }
+            let start = position;
+            if !verified {
+                while position < self.lines.len() {
+                    let s = self.structural(position);
+                    if s == "0" || s.eq_ignore_ascii_case("q") {
+                        break;
+                    }
+                    position += 1;
+                }
+                self.diagnostics.push(Diagnostic {
+                    section: section.to_string(),
+                    line_number: start + 1,
+                    message: "Unsupported populated section layout".into(),
+                    raw_lines: self.lines[start..position].to_vec(),
+                });
+                continue;
+            }
+            let mut items = items.unwrap_or_default();
+            let mut record_layout = layout;
+            if section == "TRANSFORMER" {
+                if items.len() < 3 {
+                    return self.fail(section, start, "Missing transformer variant identifier K");
+                }
+                let k = self.value(&items[2], "integer", section, start)?;
+                record_layout = &layout["variants"][0];
+                let zero = Value::Number(Number::parse_integer("0").unwrap());
+                if k != zero {
+                    // The three-winding layout is provisional: skip its
+                    // physical envelope and never decode its fields.
+                    let first_width = record_layout["lines"][0]["fields"]
+                        .as_array()
+                        .map_or(0, Vec::len);
+                    position += 1;
+                    for _ in 0..4 {
+                        position = self.skip_headers(position);
+                        if position >= self.lines.len() {
+                            break;
+                        }
+                        let candidate = self.structural(position);
+                        if candidate == "0" || candidate.eq_ignore_ascii_case("q") {
+                            break;
+                        }
+                        let width = tokenize(&self.lines[position]).map_or(0, |t| t.len());
+                        if width == first_width {
+                            break;
+                        }
+                        position += 1;
+                    }
+                    self.diagnostics.push(Diagnostic {
+                        section: section.to_string(),
+                        line_number: start + 1,
+                        message: "Unsupported three-winding transformer".into(),
+                        raw_lines: self.lines[start..position.min(self.lines.len())].to_vec(),
+                    });
+                    continue;
+                }
+            }
+            let mut fields = Vec::new();
+            let mut raw = Vec::new();
+            let line_layouts: &[Json] =
+                record_layout["lines"].as_array().map_or(&[], Vec::as_slice);
+            for (offset, line_layout) in line_layouts.iter().enumerate() {
+                if offset > 0 {
+                    position = self.skip_headers(position);
+                }
+                if position >= self.lines.len() {
+                    return self.fail(section, position, "Missing continuation line: EOF");
+                }
+                // The first line's tokens were read above.
+                let continuation = if offset == 0 {
+                    std::mem::take(&mut items)
+                } else {
+                    self.tokens(position, section)?
+                };
+                if continuation.len() == 1 && matches!(continuation[0].as_str(), "0" | "Q" | "q") {
+                    return self.fail(
+                        section,
+                        position,
+                        "Missing continuation line before terminator",
+                    );
+                }
+                fields.extend(self.decode(&continuation, line_layout, section, position)?);
+                raw.push(self.lines[position].clone());
+                position += 1;
+            }
+            let key = keys
+                .iter()
+                .map(|name| {
+                    fields
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or(Value::Text(String::new()))
+                })
+                .collect();
+            self.add(section, key, fields, raw, start)?;
+        }
     }
 }
 
@@ -644,17 +681,212 @@ fn parse(name: &str, bytes: &[u8], lenient: bool) -> Result<DiffCase> {
     if text.ends_with('\n') {
         lines.pop();
     }
-    Parser {
+    let fresh = || Parser {
         name,
-        lines,
+        lines: &lines,
         sections: Vec::new(),
         section_index: BTreeMap::new(),
         keys: BTreeMap::new(),
         diagnostics: Vec::new(),
         system_keys: HashSet::new(),
         lenient,
+    };
+    if lines.len() >= PARALLEL_FROM_LINES {
+        let start = std::time::Instant::now();
+        if let Some(case) = parse_in_parts(&fresh, PART_RECORDS) {
+            log::debug!(
+                "Read {name} in parts ({:.0} ms)",
+                start.elapsed().as_secs_f64() * 1e3
+            );
+            return Ok(case);
+        }
+        log::debug!("{name} can't be read in parts; reading it in one go");
     }
-    .run()
+    fresh().run()
+}
+
+/// Files with at least this many lines are read in parts on several
+/// threads (about 5,000 buses).
+const PARALLEL_FROM_LINES: usize = 20_000;
+
+/// Records per part when a section is split.
+const PART_RECORDS: usize = 5_000;
+
+/// Read a large file's sections, and parts of its large sections, on
+/// several threads. The parts are found first by their terminator lines,
+/// then each is read by the same code as a whole-file read, and the
+/// results are put together in file order. Anything unusual (an error, a
+/// repeated key, a Q inside a section, a part ending somewhere else than
+/// expected) gives None, and the file is read again in one go so that the
+/// result, errors and diagnostics included, is exactly the one-thread one.
+fn parse_in_parts<'a>(
+    fresh: &(dyn Fn() -> Parser<'a> + Sync),
+    part_records: usize,
+) -> Option<DiffCase> {
+    let mut main = fresh();
+    let (mut position, revision, rev, order) = main.header().ok()?;
+    let lines = main.lines;
+    let schema = schema();
+
+    // Where each section starts and ends; one-line records may be split.
+    struct Part<'s> {
+        section: &'s str,
+        start: usize,
+        /// Where the next part of the same section starts.
+        stop: Option<usize>,
+        /// Where reading must end: the next part's start, or the line
+        /// after the section's terminator.
+        end: usize,
+    }
+    let mut parts: Vec<Part> = Vec::new();
+    let mut sections: Vec<&str> = Vec::new();
+    let mut ended_at = None;
+    for section in &order {
+        sections.push(section);
+        let start = main.skip_headers(position);
+        if start >= lines.len() {
+            return None;
+        }
+        if main.structural_is(start, "q") {
+            ended_at = Some((section.as_str(), start));
+            break;
+        }
+        let layout = &schema["sections"][section.as_str()]["layouts"][&rev];
+        let one_line = section != "SYSTEM-WIDE"
+            && section != "TRANSFORMER"
+            && layout["lines"].as_array().is_some_and(|l| l.len() == 1)
+            && matches!(
+                layout["evidence"].as_str(),
+                Some("records_verified" | "two_winding_records_verified" | "manual_layout")
+            );
+        // Every line up to the terminator.
+        let mut records = Vec::new();
+        let mut p = start;
+        let terminator = loop {
+            p = main.skip_headers(p);
+            if p >= lines.len() || main.structural_is(p, "q") {
+                return None;
+            }
+            if main.structural_is(p, "0") {
+                break p;
+            }
+            if one_line {
+                records.push(p);
+            }
+            p += 1;
+        };
+        let cuts: Vec<usize> = records
+            .iter()
+            .step_by(part_records)
+            .skip(1)
+            .copied()
+            .collect();
+        let starts: Vec<usize> = std::iter::once(start).chain(cuts.iter().copied()).collect();
+        for (k, &from) in starts.iter().enumerate() {
+            let stop = starts.get(k + 1).copied();
+            parts.push(Part {
+                section,
+                start: from,
+                stop,
+                end: stop.unwrap_or(terminator + 1),
+            });
+        }
+        position = terminator + 1;
+    }
+
+    // Read the parts, each on its own parser, a few threads at a time.
+    let workers = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let read: Vec<Vec<(usize, Option<Parser>)>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers.min(parts.len()).max(1))
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut out = Vec::new();
+                    loop {
+                        let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(part) = parts.get(k) else { break };
+                        let mut parser = fresh();
+                        parser.section_mut(part.section);
+                        let ok =
+                            match parser.read_section(part.section, &rev, part.start, part.stop) {
+                                Ok((at, false)) => at == part.end,
+                                _ => false,
+                            };
+                        out.push((k, ok.then_some(parser)));
+                    }
+                    out
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap_or_default())
+            .collect()
+    });
+    let mut done: Vec<Option<Parser>> = (0..parts.len()).map(|_| None).collect();
+    for (k, parser) in read.into_iter().flatten() {
+        done[k] = Some(parser?);
+    }
+    if done.iter().any(Option::is_none) {
+        return None;
+    }
+
+    // Put them together in file order, as a one-thread read would have.
+    let mut done = done.into_iter().flatten();
+    for (k, section) in sections.iter().enumerate() {
+        main.section_mut(section);
+        if ended_at.is_some() && k == sections.len() - 1 {
+            break;
+        }
+        // Keys only repeat within a section. A section read whole was read
+        // exactly as in one go, repeated keys and all; a split one must not
+        // repeat a key across its parts.
+        let count = parts.iter().filter(|p| p.section == *section).count();
+        for _ in 0..count {
+            let part = done.next()?;
+            if count > 1
+                && part
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message == "Duplicate record key" || d.message == REPEATED_KEY)
+            {
+                return None;
+            }
+            for (name, records) in part.sections {
+                for record in records {
+                    if count > 1
+                        && !main
+                            .keys
+                            .entry(name.clone())
+                            .or_default()
+                            .insert(record.key.clone())
+                    {
+                        return None;
+                    }
+                    main.section_mut(&name).push(record);
+                }
+            }
+            main.diagnostics.extend(part.diagnostics);
+            // Settings are unique across the whole file too.
+            for tag in part.system_keys {
+                if !main.system_keys.insert(tag) {
+                    return None;
+                }
+            }
+        }
+    }
+    if let Some((section, at)) = ended_at {
+        if main.lenient {
+            main.diagnostics.push(Diagnostic {
+                section: section.to_string(),
+                line_number: at + 1,
+                message: "File ends before this section".into(),
+                raw_lines: vec![],
+            });
+        }
+        position = at;
+    }
+    main.finish(position, revision).ok()
 }
 
 /// Read and parse a RAW file from disk.
@@ -674,4 +906,116 @@ pub fn parse_path(path: &std::path::Path) -> Result<DiffCase> {
         reason,
     })?;
     parse_bytes(&name, &bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Read `bytes` in one go and in parts of `part_records` records; the
+    /// parts must give exactly the same case, or nothing.
+    fn same_in_parts(name: &str, bytes: &[u8], lenient: bool, part_records: usize) -> bool {
+        let text = decode_cp1252(bytes).unwrap();
+        let mut lines: Vec<String> = text
+            .split('\n')
+            .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+            .collect();
+        if text.ends_with('\n') {
+            lines.pop();
+        }
+        let fresh = || Parser {
+            name,
+            lines: &lines,
+            sections: Vec::new(),
+            section_index: BTreeMap::new(),
+            keys: BTreeMap::new(),
+            diagnostics: Vec::new(),
+            system_keys: HashSet::new(),
+            lenient,
+        };
+        let whole = fresh().run();
+        match parse_in_parts(&fresh, part_records) {
+            Some(parts) => {
+                assert_eq!(
+                    format!("{parts:?}"),
+                    format!(
+                        "{:?}",
+                        whole.expect("parts read a file the whole read refused")
+                    ),
+                    "{name}"
+                );
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn fixtures() -> Vec<std::path::PathBuf> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut files = Vec::new();
+        for dir in ["tests/fixtures", "../rs-power/tests/fixtures/raw"] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap().flatten() {
+                let path = entry.path();
+                if path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("raw"))
+                {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn reading_in_parts_matches_reading_in_one_go() {
+        let mut split = 0;
+        for path in fixtures() {
+            let bytes = std::fs::read(&path).unwrap();
+            let name = path.display().to_string();
+            for lenient in [false, true] {
+                for part_records in [1, 2, 7] {
+                    if same_in_parts(&name, &bytes, lenient, part_records) {
+                        split += 1;
+                    }
+                }
+            }
+        }
+        // Most fixtures are read in parts; the rest fall back.
+        assert!(split > 20, "{split}");
+    }
+
+    #[test]
+    fn a_repeated_key_falls_back_to_one_go() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus.raw");
+        let text = std::fs::read_to_string(path).unwrap();
+        // Repeat the first bus line.
+        let mut lines: Vec<&str> = text.lines().collect();
+        let first_bus = 3 + lines[3..]
+            .iter()
+            .position(|l| !l.trim_start().starts_with('@') && !l.trim().is_empty())
+            .unwrap();
+        lines.insert(first_bus + 1, lines[first_bus]);
+        let bytes = lines.join("\n");
+        assert!(!same_in_parts("dup.raw", bytes.as_bytes(), true, 1));
+        assert!(!same_in_parts("dup.raw", bytes.as_bytes(), false, 1));
+    }
+
+    /// `STANNUM_LARGE_CASES=<folder> cargo test --release -p stannum-core
+    /// parts_match_on_large -- --ignored`
+    #[test]
+    #[ignore = "needs the large RAW cases"]
+    fn parts_match_on_large_cases() {
+        let dir = std::path::PathBuf::from(std::env::var("STANNUM_LARGE_CASES").unwrap());
+        // (The East-West case is revision 34, which this reader doesn't
+        // take.)
+        for file in ["SyntheticUSA.RAW"] {
+            let bytes = std::fs::read(dir.join(file)).unwrap();
+            for lenient in [false, true] {
+                assert!(same_in_parts(file, &bytes, lenient, PART_RECORDS), "{file}");
+            }
+        }
+    }
 }

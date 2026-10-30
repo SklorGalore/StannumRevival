@@ -11,6 +11,10 @@
 //! `STANNUM_BUDGET_BUSES` sets the case size (12,000 by default), and
 //! `STANNUM_BUDGET_CACHE` names a folder to keep the built case in and reuse.
 
+// The desktop app and the CLI use this allocator; time what they'd take.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use serde_json::{Value, json};
 use stannum_core::commands::Session;
 use stannum_core::power::SolveSettings;
@@ -37,13 +41,11 @@ const BUDGETS: &[(&str, f64, f64)] = &[
     // Sent as columns without source fields (see `topology_wire`): 2.3 MB
     // at 12k buses, from 14 MB as one object per row. The case is a Stannum
     // case, so the topology and the records are read from its RAW records,
-    // as for a RAW file, not from the power flow model as for MATPOWER
-    // (0.06 s at 12k). That path is slow on large cases: topology 0.46 s
-    // at 12k and 4-8 s at 80k, records 0.8 s and 8-12 s. These budgets
-    // hold it where it is until it's made faster.
-    ("topology_snapshot", 1.5, 3.5),
+    // as for a RAW file (0.35 s and 0.42 s at 12k), with the readers
+    // working on every core.
+    ("topology_snapshot", 0.5, 3.5),
     ("topology_source", 0.25, 0.1),
-    ("case_records", 2.5, 0.1),
+    ("case_records", 0.5, 0.1),
     ("record_table (largest)", 0.5, 4.5),
     // Tables read a page at a time: the first page of a new order sorts
     // and filters the whole table; the next pages reuse that order.

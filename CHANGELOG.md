@@ -73,9 +73,13 @@ section into the next version's when a release is cut (see
   bus, and the 80,000-bus case no longer solved with reactive limits on. The
   large-case timing test keeps its case as `.stnb` and solves with reactive
   limits on again.
-- **Reading a RAW file's records is about 45% faster** (the Records tab,
-  case comparison): the reader no longer copies the field layout for every
-  record.
+- **The Records tab and the topology open much faster on large RAW and
+  Stannum cases.** Records are read on every core, in parts, and no longer
+  copy their field layout one by one; the topology reader decodes its
+  records on every core too; and the app and the command line use a faster
+  memory allocator (mimalloc). On an 80,000-bus Stannum case, Records
+  opens in about 3 s instead of 12–18 s, the topology in about 3 s instead
+  of 4–8 s, and exporting it takes 5–6 s instead of 14–18 s.
 - **Map places for missing buses come from line lengths.** A bus the
   coordinates file and the case leave out is now put where its lines'
   lengths say: the RAW `LEN`, or the line's reactance where the case gives
