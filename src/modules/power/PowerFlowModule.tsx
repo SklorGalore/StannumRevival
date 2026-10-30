@@ -797,6 +797,8 @@ function SolvePanel({
         />
         Adjust DC converter taps
       </label>
+      {/* Solve stays in reach when the settings above scroll (short windows). */}
+      <div className="sticky -bottom-3 z-10 -mx-3 px-3 py-2 bg-white flex flex-col gap-2 border-t border-slate-100">
       {busy === "solve" ? (
         <Button className="py-2 text-sm" onClick={onCancelSolve} data-testid="cancel-solve" title="Stop this solve and keep the previous results">
           <X size={14} /> Cancel solve
@@ -809,6 +811,7 @@ function SolvePanel({
       <Button onClick={onSensitivities} disabled={!!busy}>
         <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
       </Button>
+      </div>
       <div className="mt-2 pt-3 border-t border-slate-200 flex flex-col gap-1.5">
         <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export MATPOWER</p>
         <Button variant="ghost" className="justify-start" onClick={() => onExport(false)} disabled={!!busy}>
@@ -1481,7 +1484,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
         }
       >
         Open a MATPOWER (.m) or PSS/E RAW (revisions 23–35) case to run AC or DC power flow, check operating limits and
-        calculate sensitivities. Powered by rs-power.
+        calculate sensitivities.
       </EmptyState>
     );
   }

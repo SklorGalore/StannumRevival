@@ -46,7 +46,7 @@ interface LayerState {
 }
 
 export const DEFAULT_LAYERS: Record<LayerId, boolean> = {
-  critical: true,
+  critical: false,
   islands: false,
   merged: false,
   path: true,

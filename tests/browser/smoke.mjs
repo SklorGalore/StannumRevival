@@ -1290,7 +1290,7 @@ await page.getByRole("button", { name: "Clear all" }).click();
 await page.getByTestId("study-badge").waitFor({ state: "detached" });
 const asked = dialogs.length;
 await page.getByRole("button", { name: "Close case" }).click();
-await page.getByText("No case open.").waitFor();
+await page.getByText("No case open", { exact: true }).waitFor();
 assert.match(dialogs[asked] ?? "", /moved\.stannum has changes that aren't saved/);
 const recent = page.getByTestId("recent-files").first();
 await recent.getByText("moved.stannum").waitFor();
@@ -1368,7 +1368,7 @@ await shot("diff-working");
   // Played back on an empty window, it opens the case, takes the line out
   // and solves, and the app shows all of it.
   await page.getByRole("button", { name: "Close case" }).click();
-  await page.getByText("No case open.").waitFor();
+  await page.getByText("No case open", { exact: true }).waitFor();
   await queue(runFile);
   await command("run file", /Run a run file/);
   await page.getByTestId("run-file-notice").getByText(/^Ran case9_outage\.stnrun: 4 steps in \d+ ms\.$/).waitFor();

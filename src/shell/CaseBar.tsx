@@ -61,7 +61,7 @@ export function CaseBar() {
         </div>
       ) : (
         <span role="status" className="text-sm text-slate-500">
-          {studyOpening ? "Opening study…" : opening ? "Opening case…" : "No case open. Open a PSS/E RAW or MATPOWER file or a Stannum study, or drop one on the window."}
+          {studyOpening ? "Opening study…" : opening ? "Opening case…" : "No case open"}
         </span>
       )}
       {summary && edits > 0 && (
@@ -85,7 +85,7 @@ export function CaseBar() {
       )}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
         <StudyFileButton narrow={narrow} />
-        <button
+        {summary && <button
           type="button"
           onClick={() => setSplit(split ? null : SPLIT_PARTNER[module])}
           aria-pressed={!!split}
@@ -95,7 +95,7 @@ export function CaseBar() {
           title={split ? "Back to one module at a time" : "Show two modules side by side, with linked selection"}
         >
           <Columns2 size={13} aria-hidden="true" /> <span className={narrow ? "sr-only" : ""}>Side by side</span>
-        </button>
+        </button>}
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
