@@ -5453,7 +5453,7 @@
       "type": "object"
     },
     "SolveSettings": {
-      "description": "How to solve. Fields left out take their defaults: AC with the automatic\nmethod from the last solution, to 2 MVA, without reactive limits, with\nevery control on.",
+      "description": "How to solve. Fields left out take their defaults: AC with the automatic\nmethod from the last solution, to 2 MVA, with reactive limits held and\nevery control on.",
       "properties": {
         "adjust_dc_taps": {
           "default": true,

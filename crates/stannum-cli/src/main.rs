@@ -6,10 +6,13 @@
 //! stannum-cli check study.stnrun
 //! stannum-cli commands
 //! stannum-cli convert case.raw case.stn
+//! stannum-cli mcp [--attach [--pid N]]
 //! ```
 //!
 //! Exit codes: 0 when every line ran, 1 when a line failed or the run was
 //! cancelled, 2 when the file or the command line is wrong.
+
+mod mcp;
 
 use stannum_core::commands::{RunOptions, Session};
 use stannum_core::{logbook, run_file};
@@ -30,6 +33,11 @@ Usage:
       Convert a case: RAW, MATPOWER or Stannum (.stn, .stnb) in; a Stannum
       case (.stn text or .stnb binary, format preview) or PSS/E RAW 35
       (.raw) out.
+  stannum-cli mcp [--attach] [--pid <pid>]
+      Serve Stannum to an AI client (Claude and others) as a Model Context
+      Protocol server on stdin and stdout. On its own it keeps a session of
+      its own; --attach drives the running app instead, so the person at
+      the window sees what it does (--pid picks one app of several).
 
 A run file holds one command per line, then its arguments as name=value:
   open_case path=case30.m
@@ -44,6 +52,8 @@ struct Args {
     keep_going: bool,
     json: bool,
     verbose: bool,
+    attach: bool,
+    pid: Option<u32>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -54,9 +64,21 @@ fn parse_args() -> Result<Args, String> {
         keep_going: false,
         json: false,
         verbose: false,
+        attach: false,
+        pid: None,
     };
-    for arg in std::env::args().skip(1) {
+    let mut rest = std::env::args().skip(1);
+    while let Some(arg) = rest.next() {
         match arg.as_str() {
+            "--attach" => args.attach = true,
+            "--pid" => {
+                let pid = rest.next().ok_or("--pid needs a process id.")?;
+                args.pid = Some(
+                    pid.parse()
+                        .map_err(|_| format!("--pid: {pid} isn't a process id."))?,
+                );
+                args.attach = true;
+            }
             "--keep-going" | "-k" => args.keep_going = true,
             "--json" => args.json = true,
             "--verbose" | "-v" => args.verbose = true,
@@ -99,6 +121,7 @@ fn main() -> ExitCode {
             commands();
             Ok(true)
         }
+        "mcp" => serve_mcp(&args),
         "version" => {
             println!("stannum-cli {}", env!("CARGO_PKG_VERSION"));
             Ok(true)
@@ -117,6 +140,25 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Serve MCP until the client closes stdin.
+fn serve_mcp(args: &Args) -> Result<bool, String> {
+    use std::sync::Arc;
+    let backend: Arc<dyn mcp::backend::Backend> = if args.attach {
+        let app = mcp::backend::Attached::connect(args.pid, None)?;
+        if let Some(info) = mcp::backend::Backend::app(&app) {
+            eprintln!(
+                "stannum-cli mcp: attached to {} {} (pid {}).",
+                info.app, info.version, info.pid
+            );
+        }
+        Arc::new(app)
+    } else {
+        Arc::new(mcp::backend::Local::new())
+    };
+    mcp::serve(backend)?;
+    Ok(true)
 }
 
 /// Read a case and write it as a Stannum case or RAW 35, by the

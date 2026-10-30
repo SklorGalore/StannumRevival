@@ -10,6 +10,15 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
+  Stannum to Claude and other Model Context Protocol clients: open a case,
+  solve, find violations, page through results, run N-1 or the NERC planning
+  events, look at topology, compare RAW files and export, by asking in plain
+  words. `--attach` drives the running app instead, so the window shows
+  every case and result, and the assistant can select elements and draw
+  one-lines around them. See
+  [AI assistants (MCP)](https://sklorgalore.github.io/StannumRevival/guide/ai-assistants/).
+
 - **NERC TPL-001 planning events.** Contingencies can run the planning events
   Stannum generates from the case instead of every branch and generator: the
   base case (P0), each generator, line, transformer, shunt and DC line pole
@@ -65,6 +74,8 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- A sample case a script opened while attached (`open_sample`) now shows in
+  the window; before, the window kept saying no case was open.
 - RAW revision 35 cases no longer warn that ordinary generators are wind
   machines: the wind-machine flag was read two columns early (from F4).
 - The version at the foot of the module rail keeps a pre-release suffix

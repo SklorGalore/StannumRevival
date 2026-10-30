@@ -52,6 +52,7 @@ export default defineConfig({
             { label: "Case diff", slug: "guide/case-diff" },
             { label: "Run files", slug: "guide/run-files" },
             { label: "Python", slug: "guide/python" },
+            { label: "AI assistants (MCP)", slug: "guide/ai-assistants" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
           ],
         },
