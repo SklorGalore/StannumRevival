@@ -68,6 +68,7 @@ Close the case with the **×** at the right end of the bar.
 ## Import warnings
 
 Converting a RAW file to the power flow model can approximate or skip data.
-Those warnings are listed, with the line they come from, under the **Import
-warnings** tab of [Power flow](/StannumRevival/guide/power-flow/), and in the
+Those warnings are listed, with the line they come from, under **Import
+warnings** in [Power flow](/StannumRevival/guide/power-flow/) (a note under the
+Overview opens it), and in the
 [log](/StannumRevival/guide/log/).

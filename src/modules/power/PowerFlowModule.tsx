@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
+import { ChevronRight, Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
-import { api, DC_GRID_FILTERS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
+import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   AreaRow,
   FactsRow,
@@ -32,6 +32,7 @@ import {
   inputClass,
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
+import { OverflowMenu } from "../../ui/OverflowMenu";
 import { SensitivityView } from "./SensitivityView";
 import { VscGridsTab } from "./VscGridsTab";
 import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
@@ -72,6 +73,9 @@ type Tab =
   | "contingencies"
   | "study"
   | "warnings";
+
+/** Tabs with nothing to solve: the solve settings fold to their narrow rail there. */
+const QUIET_TABS = new Set<Tab>(["contingencies", "study", "vsc", "warnings"]);
 
 
 const busColumns: Column<BusRow>[] = [
@@ -616,6 +620,20 @@ function SolvePanel({
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
   const exportRaw = useStudyFile((s) => s.exportRaw);
   const exportStn = useStudyFile((s) => s.exportStn);
+  // The settings people rarely touch fold away; the fold says how many differ from the defaults.
+  const d = DEFAULT_SOLVE_SETTINGS;
+  const changed = [
+    settings.max_iterations !== d.max_iterations,
+    settings.decoupled_iterations !== d.decoupled_iterations,
+    settings.start !== d.start,
+    settings.switch_shunts !== d.switch_shunts,
+    settings.adjust_transformer_taps !== d.adjust_transformer_taps,
+    (settings.adjust_phase_shifters !== false) !== d.adjust_phase_shifters,
+    settings.area_interchange !== d.area_interchange,
+    settings.dc_model !== d.dc_model,
+    settings.adjust_dc_taps !== d.adjust_dc_taps,
+  ].filter(Boolean).length;
+  const [moreOpen, setMoreOpen] = useState(changed > 0);
   return (
     <aside aria-label="Solve settings" className="w-60 shrink-0 border-r border-slate-200 bg-white p-3 flex flex-col gap-3 overflow-y-auto">
       <div className="flex items-center justify-between">
@@ -672,47 +690,6 @@ function SolvePanel({
           title={`${sig(tolerancePu(settings.tolerance_mva, baseMva))} p.u. on the ${baseMva} MVA base`}
         />
       </Field>
-      {method !== "fixed_slope" && method !== "fast_decoupled_xb" && method !== "fast_decoupled_bx" && (
-        <Field label="Newton iterations per pass">
-          <input
-            className={inputClass}
-            type="number"
-            min={0}
-            step={1}
-            value={settings.max_iterations}
-            disabled={!ac}
-            onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
-          />
-        </Field>
-      )}
-      {method !== "newton" && (
-        <Field label="Decoupled iterations per pass">
-          <input
-            className={inputClass}
-            type="number"
-            min={0}
-            step={1}
-            value={settings.decoupled_iterations}
-            disabled={!ac}
-            data-testid="decoupled-iterations"
-            onChange={(e) =>
-              setSettings({ ...settings, decoupled_iterations: Math.max(0, Math.round(Number(e.target.value))) })
-            }
-          />
-        </Field>
-      )}
-      <label
-        className="flex items-center gap-2 text-xs text-slate-700"
-        title="Without it, each solve starts where the last one ended (the case voltages for the first solve)."
-      >
-        <input
-          type="checkbox"
-          checked={settings.start === "flat" && ac}
-          disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, start: e.target.checked ? "flat" : "last" })}
-        />
-        Flat start (1 p.u.)
-      </label>
       <label className="flex items-center gap-2 text-xs text-slate-700">
         <input
           type="checkbox"
@@ -722,137 +699,180 @@ function SolvePanel({
         />
         Enforce generator Q limits
       </label>
-      <label
-        className="flex items-center gap-2 text-xs text-slate-700"
-        title={LOCKED_HINT("Switched shunts", "susceptance")}
-      >
-        <input
-          type="checkbox"
-          checked={settings.switch_shunts && ac}
-          disabled={!ac}
-          data-testid="switch-shunts"
-          onChange={(e) => setSettings({ ...settings, switch_shunts: e.target.checked })}
-        />
-        Move switched shunts
-      </label>
-      <label
-        className="flex items-center gap-2 text-xs text-slate-700"
-        title={LOCKED_HINT("Transformer taps", "ratio")}
-      >
-        <input
-          type="checkbox"
-          checked={settings.adjust_transformer_taps && ac}
-          disabled={!ac}
-          data-testid="adjust-taps"
-          onChange={(e) => setSettings({ ...settings, adjust_transformer_taps: e.target.checked })}
-        />
-        Move transformer taps
-      </label>
-      <label
-        className="flex items-center gap-2 text-xs text-slate-700"
-        title={LOCKED_HINT("Phase shifters", "angle")}
-      >
-        <input
-          type="checkbox"
-          checked={settings.adjust_phase_shifters !== false && ac}
-          disabled={!ac}
-          data-testid="adjust-phase-shifters"
-          onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
-        />
-        Move phase shifters
-      </label>
-      <Field label="Area interchange">
-        <select
-          className={inputClass}
-          value={settings.area_interchange}
-          disabled={!ac}
-          data-testid="area-interchange"
-          onChange={(e) => setSettings({ ...settings, area_interchange: e.target.value as InterchangeChoice })}
-          title={INTERCHANGE_CHOICES.find((c) => c.value === settings.area_interchange)?.about}
-        >
-          {INTERCHANGE_CHOICES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="DC line model">
-        <select
-          className={inputClass}
-          value={settings.dc_model}
-          disabled={!ac}
-          onChange={(e) => setSettings({ ...settings, dc_model: e.target.value as SolveSettings["dc_model"] })}
-        >
-          <option value="detailed">Detailed converters</option>
-          <option value="simplified">Simplified (MATPOWER)</option>
-        </select>
-      </Field>
-      <label className="flex items-center gap-2 text-xs text-slate-700">
-        <input
-          type="checkbox"
-          checked={settings.adjust_dc_taps && ac && settings.dc_model === "detailed"}
-          disabled={!ac || settings.dc_model !== "detailed"}
-          onChange={(e) => setSettings({ ...settings, adjust_dc_taps: e.target.checked })}
-        />
-        Adjust DC converter taps
-      </label>
+      <details className="group -mx-3 px-3 border-y border-slate-100" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)} data-testid="more-solve-settings">
+        <summary className="flex items-center gap-1 cursor-pointer select-none py-2 text-xs font-medium text-slate-600 hover:text-slate-800 list-none">
+          <ChevronRight size={12} className="transition-transform group-open:rotate-90" aria-hidden="true" />
+          More settings
+          {changed > 0 && <span className="ml-auto rounded-full bg-amber-50 px-1.5 text-[10px] text-amber-800 ring-1 ring-inset ring-amber-200">{changed} changed</span>}
+        </summary>
+        <div className="flex flex-col gap-3 pb-3">
+          {method !== "fixed_slope" && method !== "fast_decoupled_xb" && method !== "fast_decoupled_bx" && (
+            <Field label="Newton iterations per pass">
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                step={1}
+                value={settings.max_iterations}
+                disabled={!ac}
+                onChange={(e) => setSettings({ ...settings, max_iterations: Math.max(0, Math.round(Number(e.target.value))) })}
+              />
+            </Field>
+          )}
+          {method !== "newton" && (
+            <Field label="Decoupled iterations per pass">
+              <input
+                className={inputClass}
+                type="number"
+                min={0}
+                step={1}
+                value={settings.decoupled_iterations}
+                disabled={!ac}
+                data-testid="decoupled-iterations"
+                onChange={(e) =>
+                  setSettings({ ...settings, decoupled_iterations: Math.max(0, Math.round(Number(e.target.value))) })
+                }
+              />
+            </Field>
+          )}
+          <label
+            className="flex items-center gap-2 text-xs text-slate-700"
+            title="Without it, each solve starts where the last one ended (the case voltages for the first solve)."
+          >
+            <input
+              type="checkbox"
+              checked={settings.start === "flat" && ac}
+              disabled={!ac}
+              onChange={(e) => setSettings({ ...settings, start: e.target.checked ? "flat" : "last" })}
+            />
+            Flat start (1 p.u.)
+          </label>
+          <label
+            className="flex items-center gap-2 text-xs text-slate-700"
+            title={LOCKED_HINT("Switched shunts", "susceptance")}
+          >
+            <input
+              type="checkbox"
+              checked={settings.switch_shunts && ac}
+              disabled={!ac}
+              data-testid="switch-shunts"
+              onChange={(e) => setSettings({ ...settings, switch_shunts: e.target.checked })}
+            />
+            Move switched shunts
+          </label>
+          <label
+            className="flex items-center gap-2 text-xs text-slate-700"
+            title={LOCKED_HINT("Transformer taps", "ratio")}
+          >
+            <input
+              type="checkbox"
+              checked={settings.adjust_transformer_taps && ac}
+              disabled={!ac}
+              data-testid="adjust-taps"
+              onChange={(e) => setSettings({ ...settings, adjust_transformer_taps: e.target.checked })}
+            />
+            Move transformer taps
+          </label>
+          <label
+            className="flex items-center gap-2 text-xs text-slate-700"
+            title={LOCKED_HINT("Phase shifters", "angle")}
+          >
+            <input
+              type="checkbox"
+              checked={settings.adjust_phase_shifters !== false && ac}
+              disabled={!ac}
+              data-testid="adjust-phase-shifters"
+              onChange={(e) => setSettings({ ...settings, adjust_phase_shifters: e.target.checked })}
+            />
+            Move phase shifters
+          </label>
+          <Field label="Area interchange">
+            <select
+              className={inputClass}
+              value={settings.area_interchange}
+              disabled={!ac}
+              data-testid="area-interchange"
+              onChange={(e) => setSettings({ ...settings, area_interchange: e.target.value as InterchangeChoice })}
+              title={INTERCHANGE_CHOICES.find((c) => c.value === settings.area_interchange)?.about}
+            >
+              {INTERCHANGE_CHOICES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="DC line model">
+            <select
+              className={inputClass}
+              value={settings.dc_model}
+              disabled={!ac}
+              onChange={(e) => setSettings({ ...settings, dc_model: e.target.value as SolveSettings["dc_model"] })}
+            >
+              <option value="detailed">Detailed converters</option>
+              <option value="simplified">Simplified (MATPOWER)</option>
+            </select>
+          </Field>
+          <label className="flex items-center gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={settings.adjust_dc_taps && ac && settings.dc_model === "detailed"}
+              disabled={!ac || settings.dc_model !== "detailed"}
+              onChange={(e) => setSettings({ ...settings, adjust_dc_taps: e.target.checked })}
+            />
+            Adjust DC converter taps
+          </label>
+        </div>
+      </details>
       {/* Solve stays in reach when the settings above scroll (short windows). */}
       <div className="sticky -bottom-3 z-10 -mx-3 px-3 py-2 bg-white flex flex-col gap-2 border-t border-slate-100">
-      {busy === "solve" ? (
-        <Button className="py-2 text-sm" onClick={onCancelSolve} data-testid="cancel-solve" title="Stop this solve and keep the previous results">
-          <X size={14} /> Cancel solve
-        </Button>
-      ) : (
-        <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
-          <Play size={14} /> Solve
-        </Button>
-      )}
-      <Button onClick={onSensitivities} disabled={!!busy}>
-        <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
-      </Button>
-      </div>
-      <div className="mt-2 pt-3 border-t border-slate-200 flex flex-col gap-1.5">
-        <p className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export MATPOWER</p>
-        <Button variant="ghost" className="justify-start" onClick={() => onExport(false)} disabled={!!busy}>
-          <Download size={13} /> Input case…
-        </Button>
-        <Button variant="ghost" className="justify-start" onClick={() => onExport(true)} disabled={!!busy || !report}>
-          <Download size={13} /> Solved case…
-        </Button>
-        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export PSS/E RAW</p>
-        {([35, 33] as const).map((revision) => (
-          <Button
-            key={revision}
-            variant="ghost"
-            className="justify-start"
-            onClick={() => void exportRaw(revision)}
-            disabled={!!busy}
-            title="The case with its Records edits and study edits, every record included"
-          >
-            <Download size={13} /> Revision {revision}…
+        {busy === "solve" ? (
+          <Button className="py-2 text-sm" onClick={onCancelSolve} data-testid="cancel-solve" title="Stop this solve and keep the previous results">
+            <X size={14} /> Cancel solve
           </Button>
-        ))}
-        <p className="mt-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase">Export Stannum case</p>
-        <Button
-          variant="ghost"
-          className="justify-start"
-          onClick={() => void exportStn(true)}
-          disabled={!!busy}
-          title="The case with its Records edits and study edits, as an open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is (format preview)"
-        >
-          <Download size={13} /> Binary .stnb (preview)…
-        </Button>
-        <Button
-          variant="ghost"
-          className="justify-start"
-          onClick={() => void exportStn(false)}
-          disabled={!!busy}
-          title="The same case as text, one record per line: readable, and diffs well in version control (format preview)"
-        >
-          <Download size={13} /> Text .stn (preview)…
+        ) : (
+          <Button variant="primary" className="py-2 text-sm" onClick={onSolve} disabled={!!busy}>
+            <Play size={14} /> Solve
+          </Button>
+        )}
+        <Button onClick={onSensitivities} disabled={!!busy}>
+          <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
         </Button>
       </div>
+      <OverflowMenu
+        label="Export case"
+        showLabel
+        className="justify-center border border-slate-200 text-slate-600"
+        items={[
+          { id: "m-in", icon: <Download size={13} />, label: "MATPOWER, input case…", disabled: !!busy, onClick: () => onExport(false) },
+          { id: "m-out", icon: <Download size={13} />, label: "MATPOWER, solved case…", disabled: !!busy || !report, onClick: () => onExport(true) },
+          ...([35, 33] as const).map((revision) => ({
+            id: `raw${revision}`,
+            icon: <Download size={13} />,
+            label: `PSS/E RAW, revision ${revision}…`,
+            disabled: !!busy,
+            title: "The case with its Records edits and study edits, every record included",
+            onClick: () => void exportRaw(revision),
+          })),
+          {
+            id: "stnb",
+            icon: <Download size={13} />,
+            label: "Stannum case, binary .stnb (preview)…",
+            disabled: !!busy,
+            title:
+              "The case with its Records edits and study edits, as an open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is (format preview)",
+            onClick: () => void exportStn(true),
+          },
+          {
+            id: "stn",
+            icon: <Download size={13} />,
+            label: "Stannum case, text .stn (preview)…",
+            disabled: !!busy,
+            title: "The same case as text, one record per line: readable, and diffs well in version control (format preview)",
+            onClick: () => void exportStn(false),
+          },
+        ]}
+      />
     </aside>
   );
 }
@@ -864,11 +884,16 @@ function Overview({
   report,
   passing,
   onJump,
+  warnings,
+  onWarnings,
 }: {
   report: SolveReport;
   /** Buses passing the filter chips, or null when no filter applies. */
   passing: Set<number> | null;
   onJump: (j: Jump) => void;
+  /** How many import warnings the case has; they open on demand. */
+  warnings: number;
+  onWarnings: () => void;
 }) {
   // The charts follow the filter chips; the checks above always cover the whole case.
   const chartBuses = useMemo(() => (passing ? report.buses.filter((b) => passing.has(b.id)) : report.buses), [report, passing]);
@@ -1036,6 +1061,15 @@ function Overview({
           </div>
         </Panel>
       </div>
+      {warnings > 0 && (
+        <p className="text-[11px] text-slate-500">
+          The import noted{" "}
+          <button type="button" className="text-teal-700 underline" onClick={onWarnings} data-testid="show-import-warnings">
+            {count(warnings)} value{warnings === 1 ? "" : "s"}
+          </button>{" "}
+          in the file that Stannum ignored or approximated.
+        </p>
+      )}
     </div>
   );
 }
@@ -1249,7 +1283,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   // Solve settings fold away in a narrow pane (side by side) unless asked for.
   const [rootRef, width] = useWidth<HTMLDivElement>(1200);
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null);
-  const showSettings = settingsOpen ?? width >= 960;
+  const showSettings = settingsOpen ?? (width >= 960 && !QUIET_TABS.has(tab));
   // The inspector takes a column only where the tables keep room beside it.
   const showInspector = width >= 900;
   const split = useWorkspace((s) => s.split);
@@ -1407,6 +1441,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("study");
   }, [studyShowRequest]);
 
+  // "Show import warnings" and "Attach VSC DC grids" from the command palette.
+  const powerTabRequest = useWorkspace((s) => s.powerTabRequest);
+  useEffect(() => {
+    if (powerTabRequest) setTab(powerTabRequest.tab);
+  }, [powerTabRequest]);
+
   // "Solve power flow" from the command palette.
   const solveRequest = useWorkspace((s) => s.solveRequest);
   const lastSolveRequest = useRef(solveRequest);
@@ -1457,13 +1497,16 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.facts?.length
         ? [{ id: "facts" as const, label: "FACTS", count: report.facts.length, disabled: false }]
         : []),
-      { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
-      { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
+      // On-demand tabs show only once they have something, or while open.
+      ...(dcGrids || tab === "vsc" ? [{ id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false }] : []),
+      ...(sensitivity ? [{ id: "sensitivities" as const, label: "Sensitivities", disabled: false }] : []),
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
-      { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
+      ...(tab === "warnings" && warnings.length
+        ? [{ id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: false }]
+        : []),
     ],
-    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, tab]
   );
 
   if (!summary) {
@@ -1623,7 +1666,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               />
             )}
             <div className="flex-1 min-h-0">
-              {tab === "overview" && report && <Overview report={report} passing={passing} onJump={onJump} />}
+              {tab === "overview" && report && (
+                <Overview report={report} passing={passing} onJump={onJump} warnings={warnings.length} onWarnings={() => setTab("warnings")} />
+              )}
               {tab === "buses" && report && (
                 <TableTab
                   key={`buses-${jump.n}`}
