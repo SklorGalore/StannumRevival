@@ -64,6 +64,9 @@ section into the next version's when a release is cut (see
   bus, and the 80,000-bus case no longer solved with reactive limits on. The
   large-case timing test keeps its case as `.stnb` and solves with reactive
   limits on again.
+- **Reading a RAW file's records is about 45% faster** (the Records tab,
+  case comparison): the reader no longer copies the field layout for every
+  record.
 - **The desktop app only reads and writes files you choose.** Opening,
   saving and exporting accept files picked in a dialog, dropped on the
   window, found next to an opened study, or chosen in an earlier session

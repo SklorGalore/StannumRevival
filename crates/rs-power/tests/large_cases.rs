@@ -176,15 +176,18 @@ fn synthetic_usa_voltage_controls() {
     )
     .unwrap();
     assert_eq!(result.status, SolveStatus::Converged);
-    // With the shunts and taps working, no bus is more than 0.05 p.u. from
-    // the saved PowerWorld solution.
+    // With the shunts and taps working, and generators returning from
+    // their limits, buses are 0.0003 p.u. from the saved PowerWorld
+    // solution on average (0.0009 when only remote-regulating generators
+    // returned). One area around bus 66083 sits about 0.05 p.u. above it
+    // either way.
     let (mean, angle) = voltage_error(&imported.case, &result.case);
-    assert!(mean < 0.001, "{mean}");
+    assert!(mean < 0.0005, "{mean}");
     assert!(angle < 2.0, "{angle}");
     let worst = (imported.case.buses.iter().zip(&result.case.buses))
         .map(|(a, b)| (a.vm - b.vm).abs())
         .fold(0.0, f64::max);
-    assert!(worst < 0.05, "{worst}");
+    assert!(worst < 0.06, "{worst}");
 }
 
 #[test]

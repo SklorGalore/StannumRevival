@@ -1329,11 +1329,11 @@ fn newton(
         for _ in 0..=LINE_SEARCH_HALVINGS {
             if try_step(&mut trial, &va, &vm, &dx, layout, t) {
                 trial_terminals.clone_from_slice(terminals);
-                if let Ok((g, r)) = pass.evaluate(&trial, &mut trial_terminals) {
-                    if sum_of_squares(&g) < before * (1.0 - 1e-4 * t) {
-                        reached = Some((g, r));
-                        break;
-                    }
+                if let Ok((g, r)) = pass.evaluate(&trial, &mut trial_terminals)
+                    && sum_of_squares(&g) < before * (1.0 - 1e-4 * t)
+                {
+                    reached = Some((g, r));
+                    break;
                 }
             }
             t *= 0.5;

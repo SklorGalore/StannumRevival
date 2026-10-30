@@ -138,7 +138,9 @@ impl<'a> Parser<'a> {
         section: &str,
         index: usize,
     ) -> Result<Vec<(String, Value)>> {
-        let definitions = layout["fields"].as_array().cloned().unwrap_or_default();
+        // Borrowed: cloning the field list copied every field's definition
+        // for every record, nearly half the time of reading a large case.
+        let definitions: &[Json] = layout["fields"].as_array().map_or(&[], Vec::as_slice);
         let valid = match layout.get("trailing_group") {
             Some(group) if !group.is_null() => {
                 let start = group["start_index"].as_u64().unwrap_or(0) as i64;
@@ -161,7 +163,7 @@ impl<'a> Parser<'a> {
         }
         items
             .iter()
-            .zip(&definitions)
+            .zip(definitions)
             .map(|(token, definition)| {
                 let name = definition["name"].as_str().unwrap_or_default().to_string();
                 Ok((
@@ -541,10 +543,8 @@ impl<'a> Parser<'a> {
                 }
                 let mut fields = Vec::new();
                 let mut raw = Vec::new();
-                let line_layouts = record_layout["lines"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default();
+                let line_layouts: &[Json] =
+                    record_layout["lines"].as_array().map_or(&[], Vec::as_slice);
                 for (offset, line_layout) in line_layouts.iter().enumerate() {
                     if offset > 0 {
                         position = self.skip_headers(position);
