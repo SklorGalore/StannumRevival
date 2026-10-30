@@ -8,14 +8,15 @@ pass CI.
 
 | Branch | Purpose | Made from | Merges into |
 |---|---|---|---|
-| `main` | Released code; every merge is a release | — | `development` (back-merge after each release) |
+| `main` | Released code; one squashed commit per release | — | `development` (back-merge after each release) |
 | `development` | The next release, as it is built | — | `release/vX.Y.Z` is cut from it |
 | any other name, e.g. `feature/topology-filters`, `fix/export-blank`, `claude/…` | One change each, short-lived | `development` | `development` by pull request |
 | `release/vX.Y.Z` | One release being stabilised: version bump and fixes only | `development` | `main` by pull request |
 | `hotfix/vX.Y.Z` | An urgent fix to the released code | `main` | `main` by pull request |
 
 Releases are tags on `main` named `vMAJOR.MINOR.PATCH` (for example `v0.3.0`),
-on the merge commit of a release or hotfix branch. Only the maintainer can
+on the squashed commit of a release or hotfix branch, so `main` has one
+commit per release. Only the maintainer can
 create release tags, and they can't be moved or deleted.
 `scripts/release/start-release.ps1` and `finish-release.ps1` do the branch,
 tag and back-merge steps; see [docs/releasing.md](docs/releasing.md).
@@ -28,8 +29,10 @@ tag and back-merge steps; see [docs/releasing.md](docs/releasing.md).
 3. CI must pass: **Rust core and desktop shell** and **Frontend build and
    browser smoke test**. Review conversations must be resolved.
 4. Merge with **Create a merge commit** (the default) or **Squash and merge**.
-   Rebase merging is off. Release, hotfix and back-merge PRs (into `main`, or
-   from `main` into `development`) always use a merge commit.
+   Rebase merging is off. Release and hotfix PRs into `main` are always
+   squashed (the only method `main` allows). Back-merge PRs from
+   `backmerge/vX.Y.Z` into `development` always use a merge commit, so
+   `development` keeps `main`'s commits.
    Use a merge commit for anything that pulls a subtree into `crates/`, so
    `git subtree` can still find the upstream history.
 5. The branch is deleted after merging.

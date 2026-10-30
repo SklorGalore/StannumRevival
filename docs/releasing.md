@@ -51,27 +51,32 @@ when a release or hotfix merges.
 3. Every push to the release branch builds release-candidate installers as
    workflow artifacts. Try them. Fixes go into the release branch by pull
    request; nothing else does.
-4. Merge the release pull request into `main` with **Create a merge
-   commit**.
+4. Merge the release pull request into `main` with **Squash and merge**,
+   so every release is one commit on `main`. The `main` ruleset allows
+   only squash.
 5. Tag it and merge `main` back into `development`:
 
    ```powershell
    pwsh scripts/release/finish-release.ps1 -Version 0.4.0
    ```
 
-   This tags the merge commit on `main` as `v0.4.0` and pushes the tag
+   This tags the release's commit on `main` as `v0.4.0` and pushes the tag
    (tags matching `v*` are protected by the `release tags` ruleset, so only
-   admins can create them), then opens a pull request from `main` into
-   `development` so the bump and any release fixes reach `development`.
-   Merge that one with a merge commit too.
+   admins can create them). Then it merges that commit into `development`
+   on a `backmerge/v0.4.0` branch and opens its pull request into
+   `development`, so the bump and any release fixes reach `development`.
 
-   Check `CHANGELOG.md` in that pull request first. The release branch
-   renamed the old **Unreleased** notes to `## 0.4.0`, and git applies that
-   rename on `development` too, so any line a feature PR added under
-   **Unreleased** after the release was cut ends up inside the `0.4.0`
-   section without a conflict. If the diff shows such lines, merge the
-   back-merge pull request and then open a small PR into `development` that
-   moves them back under **Unreleased**.
+   Merge the back-merge pull request with **Create a merge commit**, not
+   squash. `development` has to hold `main`'s commit, or the next release
+   branch would show this release's changes again and conflict with `main`.
+   `main` itself stays one commit per release.
+
+   Git can't tell which **Unreleased** lines in `CHANGELOG.md` were
+   released, so the script writes `main`'s changelog and puts back under
+   **Unreleased** any line that `development` added there after the
+   release was cut. Any other conflict stops the script on the
+   `backmerge/` branch, to be resolved by hand. If the tag is already
+   pushed, `-NoTag` does the back-merge alone.
 6. Wait for the **Release** workflow. Its first job fails fast if the tag,
    the three version fields and the changelog don't agree, or if
    `THIRD-PARTY-LICENSES.txt` no longer matches the dependencies (run
