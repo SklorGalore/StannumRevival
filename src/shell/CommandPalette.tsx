@@ -114,7 +114,7 @@ export function paletteCommands(): Command[] {
         keywords: "export raw file save write psse convert revision version",
         run: () => void studyFile.exportRaw(revision),
       });
-    for (const binary of [false, true])
+    for (const binary of [true, false])
       list.push({
         id: binary ? "export-stnb" : "export-stn",
         title: binary ? "Export case as binary Stannum case (.stnb, preview)…" : "Export case as Stannum case (.stn, preview)…",

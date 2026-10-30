@@ -264,6 +264,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const binary = /\.stnb$/i.test(summary.name);
     const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     // RAW and Stannum cases save as either; the extension picks the format.
+    // A Stannum case keeps its form; otherwise binary is offered first.
     const raw = { name: "PSS/E RAW", extensions: ["raw", "RAW"] };
     const stnFilter = { name: "Stannum case (preview)", extensions: ["stn"] };
     const stnbFilter = { name: "Binary Stannum case (preview)", extensions: ["stnb"] };
@@ -275,7 +276,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ? [stnbFilter, stnFilter, raw]
           : stn
             ? [stnFilter, stnbFilter, raw]
-            : [raw, stnFilter, stnbFilter]
+            : [raw, stnbFilter, stnFilter]
     );
     if (!path) return false;
     const saved = await api.saveCaseAs(path);
