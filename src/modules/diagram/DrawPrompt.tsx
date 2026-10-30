@@ -87,7 +87,7 @@ export function DrawPrompt() {
             <p className="text-slate-500">Solve the case and this offers its worst violation too.</p>
           )}
           <p className="text-slate-500">
-            To draw by hand instead, drag symbols from Components, on the left, onto the canvas.
+            To draw by hand instead, open Components with the panel button on the left and drag symbols onto the canvas.
           </p>
         </div>
       </div>

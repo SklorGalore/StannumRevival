@@ -73,6 +73,16 @@ const shot = async (name) => {
   await page.screenshot({ path: `${STANNUM_SHOTS}/${name}.png` });
 };
 const queue = (path) => page.evaluate((p) => window.__dialogQueue.push(p), path);
+// The diagram's file and view actions live in its File and View menus.
+const diagramMenu = async (menu, item) => {
+  await page.getByRole("button", { name: menu, exact: true }).click();
+  await page.getByRole("menuitem", { name: item }).click();
+};
+// With a case open the components palette starts folded.
+const showComponents = async () => {
+  const show = page.getByRole("button", { name: "Show components" });
+  if (await show.count()) await show.click();
+};
 
 // Power flow on a MATPOWER case.
 await queue(STANNUM_MATPOWER);
@@ -348,10 +358,10 @@ const legend = page.getByTestId("voltage-legend");
 assert.equal(await legend.innerText(), "138 kV\n69 kV", "legend lists the drawing's voltages");
 
 // Print style, then undo after deleting everything.
-await page.getByRole("button", { name: "Print style" }).click();
+await diagramMenu("View", "Print style");
 assert.equal(await legend.count(), 0, "no voltage legend in print style");
 await shot("diagram-print");
-await page.getByRole("button", { name: "Print style" }).click();
+await diagramMenu("View", "Print style");
 const nodeCount = await page.locator(".react-flow__node").count();
 await page.locator(".react-flow__pane").click({ position: { x: 5, y: 5 } });
 await page.keyboard.press("Control+a");
@@ -387,7 +397,7 @@ await dragBy(flowText, -60, 0);
 await page.waitForFunction((x) => document.querySelector("text.edge-label").getAttribute("x") !== x, flowX);
 await shot("diagram-labels");
 await queue("/tmp/labels.svg");
-await page.getByRole("button", { name: "Export", exact: true }).click();
+await diagramMenu("File", "Export…");
 await page.locator("div.fixed button").filter({ hasText: /^SVG$/ }).click();
 await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.svg"]);
@@ -395,19 +405,19 @@ const svgOut = await page.evaluate(() => window.__files["/tmp/labels.svg"]);
 assert(svgOut.includes(`transform="${movedLabel}"`), "exported SVG keeps the moved label");
 // PDF export loads jsPDF on demand; check it still writes a PDF.
 await queue("/tmp/labels.pdf");
-await page.getByRole("button", { name: "Export", exact: true }).click();
+await diagramMenu("File", "Export…");
 await page.locator("div.fixed button").filter({ hasText: /^PDF$/ }).click();
 await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.pdf"]);
 assert((await page.evaluate(() => window.__files["/tmp/labels.pdf"])).startsWith("%PDF-"), "PDF export writes a PDF");
 await queue("/tmp/labels.sld");
-await page.getByRole("button", { name: "Save As", exact: true }).click();
+await diagramMenu("File", "Save as…");
 await page.waitForFunction(() => window.__files["/tmp/labels.sld"]);
 // Saved, so New asks nothing.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("File", "New");
 await page.locator(".react-flow__node-generator").first().waitFor({ state: "detached" });
 await queue("/tmp/labels.sld");
-await page.getByRole("button", { name: "Open", exact: true }).click();
+await diagramMenu("File", "Open…");
 await page.locator(".react-flow__node-generator").first().waitFor();
 assert.equal(await labelAt(), movedLabel, "a saved drawing reopens with the label where it was put");
 await page.locator(".react-flow__node-generator").first().click({ position: { x: 20, y: 30 } });
@@ -507,9 +517,11 @@ await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor()
 
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("File", "New");
 const pane = page.locator(".react-flow__pane");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
 const load = page.locator(".react-flow__node-load");
 await load.hover();
@@ -525,6 +537,7 @@ await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
 
 // Wire routing: a wire drawn past a symbol goes around it and its label.
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: 330, y: 300 } });
 await load.hover();
 const loadTerminal = await load.locator(".react-flow__handle").boundingBox();
@@ -613,11 +626,14 @@ assert.equal(await page.evaluate(() => document.querySelector(".react-flow__edge
 // On a fresh drawing, a generator dropped on the bar and a load dragged up to
 // it sit on the bus and are wired to it with no visible line.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("File", "New");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
 const paneBox = await pane.boundingBox();
 const barNow = await page.locator(".react-flow__node-bus").boundingBox();
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, {
   targetPosition: { x: barNow.x - paneBox.x + 40, y: barNow.y - paneBox.y + 20 },
 });
@@ -663,7 +679,8 @@ await page.waitForFunction(() =>
 // symbols dropped beside it turn to face it and sit on it, and a wire released
 // on the bar gets a tap on the side it comes from.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("File", "New");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 400, y: 150 } });
 const vbus = page.locator(".react-flow__node-bus");
 await vbus.click();
@@ -675,7 +692,9 @@ await page.waitForFunction(() => {
 const vb = await vbus.boundingBox();
 const vx = vb.x - paneBox.x;
 const vy = vb.y - paneBox.y;
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: vx + 20, y: vy + 60 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: vx - 20, y: vy + 120 } });
 await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 2);
 const sideLoad = await load.boundingBox();
@@ -683,6 +702,7 @@ assert(sideLoad.width > sideLoad.height, "load turned to face the vertical bus")
 assert(Math.abs(sideLoad.x - (vb.x + vb.width)) < 3, `load sits on the right of the bar (${sideLoad.x} vs ${vb.x + vb.width})`);
 const sideGen = await page.locator(".react-flow__node-generator").boundingBox();
 assert(Math.abs(sideGen.x + sideGen.width - vb.x) < 3, "generator sits on the left of the bar");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Circuit Breaker" }).dragTo(pane, { targetPosition: { x: vx + 200, y: vy + 160 } });
 const cb = page.locator(".react-flow__node-circuitBreaker");
 await cb.click();
@@ -1107,7 +1127,7 @@ if (STANNUM_VIOLATIONS) {
 
   // An empty drawing offers to draw around the worst violation.
   // The dialog handler at the top answers yes.
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await diagramMenu("File", "New");
   const prompt = page.getByTestId("draw-prompt");
   await prompt.waitFor();
   await prompt.getByRole("button", { name: new RegExp(`worst violation: ${worst}(?!\\d)`) }).waitFor();
