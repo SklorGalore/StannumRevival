@@ -855,12 +855,21 @@ function SolvePanel({
             onClick: () => void exportRaw(revision),
           })),
           {
+            id: "stnb",
+            icon: <Download size={13} />,
+            label: "Stannum case, binary .stnb (preview)…",
+            disabled: !!busy,
+            title:
+              "The case with its Records edits and study edits, as an open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is (format preview)",
+            onClick: () => void exportStn(true),
+          },
+          {
             id: "stn",
             icon: <Download size={13} />,
-            label: "Stannum case (.stn, preview)…",
+            label: "Stannum case, text .stn (preview)…",
             disabled: !!busy,
-            title: "The case with its Records edits and study edits, as an open Stannum case file (format preview)",
-            onClick: () => void exportStn(),
+            title: "The same case as text, one record per line: readable, and diffs well in version control (format preview)",
+            onClick: () => void exportStn(false),
           },
         ]}
       />

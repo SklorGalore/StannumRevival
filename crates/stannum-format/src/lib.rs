@@ -1,4 +1,5 @@
-//! Stannum's open text formats: cases (`.stn`) and study lists (`.stnl`).
+//! Stannum's open formats: cases as text (`.stn`) or columns (`.stnb`),
+//! and study lists (`.stnl`).
 //!
 //! Both are one record per line, `table id field=value ...`, checked against
 //! a published schema (`schema/stannum-case.toml`, `schema/stannum-lists.toml`)
@@ -13,6 +14,7 @@
 //! assert_eq!(stannum_format::write(&doc).unwrap(), "stannum-case 0.1\n\n# bus\nbus 101 number=101 kv=230\n");
 //! ```
 
+mod binary;
 mod carry;
 mod document;
 mod reference;
@@ -20,6 +22,10 @@ mod schema;
 mod text;
 mod value;
 
+pub use binary::{
+    BinaryError, BinaryOptions, Manifest, ManifestTable, is_binary, read_binary, read_manifest,
+    write_binary,
+};
 pub use document::{Document, Record, Table};
 pub use reference::reference_markdown;
 pub use schema::{FieldDef, FieldType, ItemType, Schema, TableDef, Version};
@@ -47,6 +53,11 @@ pub fn lists_schema() -> &'static Schema {
 /// Read a `.stn` case.
 pub fn read_case(text: &str) -> Result<Document, ReadError> {
     read(text, case_schema())
+}
+
+/// Read a `.stnb` case.
+pub fn read_case_binary(bytes: &[u8]) -> Result<Document, BinaryError> {
+    read_binary(bytes, case_schema())
 }
 
 /// Read a `.stnl` lists file.

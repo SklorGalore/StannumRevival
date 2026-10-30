@@ -340,6 +340,69 @@ fn typed(syntax: &Syntax, ty: &FieldType, column: usize) -> Result<Value, (usize
     Ok(Value::List(out))
 }
 
+/// Tables a reader keeps without knowing them: extensions (`x.`) and the
+/// names reserved for sequence and dynamics data (`seq.`, `dyn.`).
+pub(crate) fn kept_table(name: &str) -> bool {
+    ["x.", "seq.", "dyn."].iter().any(|p| name.starts_with(p))
+}
+
+/// A value written as text, for a field the schema doesn't know: as the
+/// text reader would keep it. None when it isn't one value.
+pub(crate) fn untyped_from_text(text: &str) -> Option<Value> {
+    let mut c = Cursor {
+        line: text,
+        at: 0,
+        number: 0,
+    };
+    let syntax = c.value(0).ok()?;
+    (c.at == text.len()).then(|| untyped(&syntax))
+}
+
+/// What the text reader checks beyond a value's type: enum words, typed
+/// references, tuple lengths. For values that arrive already typed.
+pub(crate) fn check_value(value: &Value, ty: &FieldType) -> Result<(), String> {
+    let word = |v: &Value, values: &[String]| match v.as_str() {
+        Some(s) => word_in(s, values).map(|_| ()),
+        None => Err("expected a word".to_string()),
+    };
+    let item = |v: &Value, it: &ItemType| match it {
+        ItemType::Enum(values) => word(v, values),
+        ItemType::Status => word(v, &["on".into(), "off".into()]),
+        ItemType::Element => element(v.as_str().unwrap_or_default()).map(|_| ()),
+        _ => Ok(()),
+    };
+    match ty {
+        FieldType::Enum(values) => word(value, values),
+        FieldType::Status => word(value, &["on".into(), "off".into()]),
+        FieldType::Element => element(value.as_str().unwrap_or_default()).map(|_| ()),
+        FieldType::Float => match value {
+            Value::Float(f) if f.is_nan() => Err("NaN isn't a number here".into()),
+            _ => Ok(()),
+        },
+        FieldType::List { items, min } => {
+            for v in value.as_list().unwrap_or_default() {
+                if items.len() == 1 {
+                    item(v, &items[0])?;
+                    continue;
+                }
+                let parts = v.as_list().unwrap_or_default();
+                if parts.len() < *min || parts.len() > items.len() {
+                    return Err(format!(
+                        "expected {min} to {} values in each tuple, not {}",
+                        items.len(),
+                        parts.len()
+                    ));
+                }
+                for (p, it) in parts.iter().zip(items) {
+                    item(p, it)?;
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn untyped(syntax: &Syntax) -> Value {
     match syntax {
         Syntax::Bare(s) => Value::Raw(s.clone()),
@@ -350,6 +413,98 @@ fn untyped(syntax: &Syntax) -> Value {
 
 // ---------------------------------------------------------------------------
 // Reading.
+
+/// Lines read on one thread at a time.
+const LINES: usize = 8192;
+
+/// One line of a case file, read on its own.
+enum Event {
+    Blank,
+    Comment(String),
+    /// A line that isn't a record.
+    Bad(Issue),
+    Record {
+        table: String,
+        /// None when the table is unknown.
+        record: Option<Record>,
+        /// The comment at the end of the line.
+        comment: Option<String>,
+        issues: Vec<Issue>,
+    },
+}
+
+/// Read a line (`number`, one-based) without what comes before it: comments
+/// and the table's place are settled by the caller. `strict` refuses names
+/// the schema doesn't have (files no newer than it).
+fn line_event(raw: &str, number: usize, schema: &'static Schema, strict: bool) -> Event {
+    let line = raw.trim_end_matches('\r');
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() {
+        return Event::Blank;
+    }
+    if trimmed.starts_with('#') {
+        return Event::Comment(comment_text(trimmed));
+    }
+    let parsed = match record_line(line, number) {
+        Ok(l) => l,
+        Err(e) => return Event::Bad(e),
+    };
+    let mut issues = Vec::new();
+    let def = schema.table(&parsed.table);
+    if def.is_none() && !kept_table(&parsed.table) && strict {
+        issues.push(issue(
+            number,
+            1,
+            format!("unknown table `{}`", parsed.table),
+        ));
+        return Event::Record {
+            table: parsed.table,
+            record: None,
+            comment: None,
+            issues,
+        };
+    }
+    let mut record = Record::new(parsed.id);
+    record.line = number;
+    let mut names: HashSet<&str> = HashSet::new();
+    for (name, column, syntax) in &parsed.fields {
+        if !names.insert(name) {
+            issues.push(issue(number, *column, format!("`{name}` is given twice")));
+            continue;
+        }
+        let field = def.and_then(|d| d.field(name));
+        let value = match field {
+            Some(f) => match typed(syntax, &f.ty, column + name.len() + 1) {
+                Ok(v) => v,
+                Err((col, e)) => {
+                    issues.push(issue(number, col, format!("{name}: {e}")));
+                    // Kept untyped so it isn't also reported missing;
+                    // the file is refused either way.
+                    untyped(syntax)
+                }
+            },
+            None => {
+                let extension = name.starts_with("x.");
+                if def.is_some() && !extension && strict {
+                    issues.push(issue(
+                        number,
+                        *column,
+                        format!("`{}` has no field `{name}`", parsed.table),
+                    ));
+                    continue;
+                }
+                untyped(syntax)
+            }
+        };
+        record.fields.push((name.clone(), value));
+    }
+    Event::Record {
+        table: parsed.table,
+        record: Some(record),
+        comment: parsed.comment,
+        issues,
+    }
+}
 
 /// Read a file against `schema`. Every problem is reported, with its line
 /// and column; nothing is returned unless the file is entirely good.
@@ -404,98 +559,77 @@ pub fn read(text: &str, schema: &'static Schema) -> Result<Document, ReadError> 
     }
     let mut doc = Document::new(schema);
     doc.version = version;
+    let strict = version.major == ours.major && version.minor <= ours.minor;
+    // Lines are read in chunks side by side; comments, the preamble and
+    // table order are then settled in file order.
+    let rest: Vec<(usize, &str)> = lines.collect();
+    let events: Vec<Vec<Event>> = std::thread::scope(|s| {
+        let tasks: Vec<_> = rest
+            .chunks(LINES)
+            .map(|chunk| {
+                let read = move || {
+                    chunk
+                        .iter()
+                        .map(|(i, raw)| line_event(raw, i + 1, schema, strict))
+                        .collect()
+                };
+                if rest.len() > LINES {
+                    Ok(s.spawn(read))
+                } else {
+                    Err(read())
+                }
+            })
+            .collect();
+        tasks
+            .into_iter()
+            .map(|t| match t {
+                Err(done) => done,
+                Ok(h) => h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)),
+            })
+            .collect()
+    });
     let mut pending: Vec<String> = Vec::new();
     let mut seen_record = false;
-    // Where each table's records are, and the first record of each table.
+    // The tables whose first record has been read.
     let mut started: HashSet<String> = HashSet::new();
-    for (i, raw) in lines {
-        let number = i + 1;
-        let line = raw.trim_end_matches('\r');
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() {
-            if !seen_record {
-                doc.preamble.append(&mut pending);
-            } else {
-                pending.clear();
+    for event in events.into_iter().flatten() {
+        match event {
+            Event::Blank => {
+                if !seen_record {
+                    doc.preamble.append(&mut pending);
+                } else {
+                    pending.clear();
+                }
             }
-            continue;
-        }
-        if trimmed.starts_with('#') {
-            pending.push(comment_text(trimmed));
-            continue;
-        }
-        let parsed = match record_line(line, number) {
-            Ok(l) => l,
-            Err(e) => {
+            Event::Comment(c) => pending.push(c),
+            Event::Bad(e) => {
                 issues.push(e);
                 pending.clear();
-                continue;
             }
-        };
-        seen_record = true;
-        // A `# table` line just above a table's first record marks the
-        // table; it isn't the record's comment.
-        if started.insert(parsed.table.clone())
-            && pending.first().is_some_and(|c| c == &parsed.table)
-        {
-            pending.remove(0);
-        }
-        let mut record = Record::new(parsed.id);
-        record.line = number;
-        record.comments = std::mem::take(&mut pending);
-        record.comments.extend(parsed.comment);
-        let def = schema.table(&parsed.table);
-        let reserved = ["seq.", "dyn."].iter().any(|p| parsed.table.starts_with(p));
-        if def.is_none()
-            && !parsed.table.starts_with("x.")
-            && !reserved
-            && version.major == ours.major
-            && version.minor <= ours.minor
-        {
-            issues.push(issue(
-                number,
-                1,
-                format!("unknown table `{}`", parsed.table),
-            ));
-            continue;
-        }
-        let mut names: HashSet<&str> = HashSet::new();
-        for (name, column, syntax) in &parsed.fields {
-            if !names.insert(name) {
-                issues.push(issue(number, *column, format!("`{name}` is given twice")));
-                continue;
-            }
-            let field = def.and_then(|d| d.field(name));
-            let value = match field {
-                Some(f) => match typed(syntax, &f.ty, column + name.len() + 1) {
-                    Ok(v) => v,
-                    Err((col, e)) => {
-                        issues.push(issue(number, col, format!("{name}: {e}")));
-                        // Kept untyped so it isn't also reported missing;
-                        // the file is refused either way.
-                        untyped(syntax)
+            Event::Record {
+                table,
+                record,
+                comment,
+                issues: mut found,
+            } => {
+                seen_record = true;
+                // A `# table` line just above a table's first record marks
+                // the table; it isn't the record's comment.
+                if !started.contains(&table) {
+                    started.insert(table.clone());
+                    if pending.first().is_some_and(|c| c == &table) {
+                        pending.remove(0);
                     }
-                },
-                None => {
-                    let extension = name.starts_with("x.");
-                    if def.is_some()
-                        && !extension
-                        && version.minor <= ours.minor
-                        && version.major == ours.major
-                    {
-                        issues.push(issue(
-                            number,
-                            *column,
-                            format!("`{}` has no field `{name}`", parsed.table),
-                        ));
-                        continue;
-                    }
-                    untyped(syntax)
                 }
-            };
-            record.fields.push((name.clone(), value));
+                issues.append(&mut found);
+                let comments = std::mem::take(&mut pending);
+                if let Some(mut record) = record {
+                    record.comments = comments;
+                    record.comments.extend(comment);
+                    doc.table_mut(&table).records.push(record);
+                }
+            }
         }
-        doc.table_mut(&parsed.table).records.push(record);
     }
     check(&doc, &mut issues);
     if issues.is_empty() {
@@ -508,9 +642,11 @@ pub fn read(text: &str, schema: &'static Schema) -> Result<Document, ReadError> 
 }
 
 /// Ids unique per kind, required fields present, references resolved.
-fn check(doc: &Document, issues: &mut Vec<Issue>) {
+pub(crate) fn check(doc: &Document, issues: &mut Vec<Issue>) {
     let schema = doc.schema;
-    let mut ids: HashMap<(&str, &str), usize> = HashMap::new();
+    let records = doc.tables.iter().map(|t| t.records.len()).sum();
+    let mut ids: HashMap<(&str, &str), usize, std::hash::BuildHasherDefault<crate::schema::Fnv>> =
+        HashMap::with_capacity_and_hasher(records, Default::default());
     for table in &doc.tables {
         let Some(def) = schema.table(&table.name) else {
             continue;
@@ -546,9 +682,11 @@ fn check(doc: &Document, issues: &mut Vec<Issue>) {
             .table(table)
             .is_some_and(|t| ids.contains_key(&(t.kind.as_str(), id)))
     };
-    for table in &doc.tables {
+    // References are checked table by table, large tables side by side.
+    let refs = |table: &Table| -> Vec<Issue> {
+        let mut issues = Vec::new();
         let Some(def) = schema.table(&table.name) else {
-            continue;
+            return issues;
         };
         for r in &table.records {
             for (name, value) in &r.fields {
@@ -583,7 +721,30 @@ fn check(doc: &Document, issues: &mut Vec<Issue>) {
                 }
             }
         }
-    }
+        issues
+    };
+    let found: Vec<Vec<Issue>> = std::thread::scope(|s| {
+        let refs = &refs;
+        let tasks: Vec<_> = doc
+            .tables
+            .iter()
+            .map(|t| {
+                if t.records.len() >= 4096 {
+                    Ok(s.spawn(move || refs(t)))
+                } else {
+                    Err(refs(t))
+                }
+            })
+            .collect();
+        tasks
+            .into_iter()
+            .map(|t| match t {
+                Err(done) => done,
+                Ok(h) => h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)),
+            })
+            .collect()
+    });
+    issues.extend(found.into_iter().flatten());
 }
 
 // ---------------------------------------------------------------------------
@@ -602,6 +763,23 @@ pub fn write(doc: &Document) -> Result<String, String> {
     for c in &doc.preamble {
         push_comment(&mut out, c);
     }
+    for (table, records) in canonical_tables(doc) {
+        let def = schema.table(&table.name);
+        out.push('\n');
+        push_comment(&mut out, &table.name);
+        for r in records {
+            write_record(&mut out, &table.name, def, r)?;
+        }
+    }
+    Ok(out)
+}
+
+/// The tables and records in canonical order: the schema's tables in
+/// schema order, then other tables by name; records by the table's order
+/// fields, then id. Empty tables are left out.
+pub(crate) fn canonical_tables(doc: &Document) -> Vec<(&Table, Vec<&Record>)> {
+    let schema = doc.schema;
+    let mut out = Vec::new();
     let mut tables: Vec<&Table> = doc
         .tables
         .iter()
@@ -617,11 +795,8 @@ pub fn write(doc: &Document) -> Result<String, String> {
         key(a).cmp(&key(b))
     });
     for table in tables {
-        let def = schema.table(&table.name);
-        out.push('\n');
-        push_comment(&mut out, &table.name);
         let mut records: Vec<&Record> = table.records.iter().collect();
-        if let Some(def) = def
+        if let Some(def) = schema.table(&table.name)
             && !def.order.is_empty()
         {
             records.sort_by(|a, b| {
@@ -638,11 +813,9 @@ pub fn write(doc: &Document) -> Result<String, String> {
                 Value::Str(a.id.clone()).sort_cmp(&Value::Str(b.id.clone()))
             });
         }
-        for r in records {
-            write_record(&mut out, &table.name, def, r)?;
-        }
+        out.push((table, records));
     }
-    Ok(out)
+    out
 }
 
 fn push_comment(out: &mut String, c: &str) {

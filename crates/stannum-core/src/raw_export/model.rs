@@ -35,7 +35,7 @@ fn rec(fields: Vec<(&str, super::Value)>) -> Item {
     Item::Rec(Rec::new(
         fields
             .into_iter()
-            .map(|(n, v)| (n.to_string(), v))
+            .map(|(n, v)| (n.to_string().into(), v))
             .collect::<Fields>(),
     ))
 }
@@ -464,11 +464,14 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         let blocks: Vec<(String, String, String)> = (1..=8)
             .map(|g| (format!("S{g}"), format!("N{g}"), format!("B{g}")))
             .collect();
-        let mut rec_fields: Fields = fields.drain(..).map(|(n, v)| (n.to_string(), v)).collect();
+        let mut rec_fields: Fields = fields
+            .drain(..)
+            .map(|(n, v)| (n.to_string().into(), v))
+            .collect();
         for ((st, nn, bb), (steps, b)) in blocks.iter().zip(&s.blocks) {
-            rec_fields.push((st.clone(), int(1)));
-            rec_fields.push((nn.clone(), int(i64::from(*steps))));
-            rec_fields.push((bb.clone(), num(*b)));
+            rec_fields.push((st.clone().into(), int(1)));
+            rec_fields.push((nn.clone().into(), int(i64::from(*steps))));
+            rec_fields.push((bb.clone().into(), num(*b)));
         }
         push("SWITCHED SHUNT", Item::Rec(Rec::new(rec_fields)));
     }
@@ -677,11 +680,11 @@ fn dc_lines(
             ("CCCACC", num(l.ccc_acceleration)),
         ]
         .into_iter()
-        .map(|(n, v)| (n.to_string(), v))
+        .map(|(n, v)| (n.to_string().into(), v))
         .collect();
         for (end, c) in [("R", &l.rectifier), ("I", &l.inverter)] {
             for (n, v) in names.iter().zip(converter(c)) {
-                fields.push((format!("{}{end}", &n[..n.len() - 1]), v));
+                fields.push((format!("{}{end}", &n[..n.len() - 1]).into(), v));
             }
         }
         push("TWO-TERMINAL DC", Item::Rec(Rec::new(fields)));

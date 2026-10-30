@@ -32,7 +32,8 @@ use std::time::Instant;
 pub enum CaseFormat {
     Matpower,
     Raw,
-    /// A Stannum case file (.stn), read as the RAW 35 text it converts to.
+    /// A Stannum case file (.stn text or .stnb binary), read as the RAW 35
+    /// text it converts to.
     Stn,
 }
 
@@ -61,6 +62,72 @@ pub struct CaseId(pub u64);
 impl std::fmt::Display for CaseId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// A case's text: MATPOWER or RAW as read or as edited, or for a Stannum
+/// case, RAW revision 35 written from it the first time something needs it
+/// (topology, Records, case diff, saving). Opening a Stannum case reads it
+/// straight into the power flow model, without the text. Cheap to clone.
+#[derive(Clone)]
+pub struct CaseText(Arc<CaseTextInner>);
+
+struct CaseTextInner {
+    text: OnceLock<Vec<u8>>,
+    /// The Stannum case and its file name, to write the text from.
+    source: Option<(Arc<stannum_format::Document>, String)>,
+}
+
+impl CaseText {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(Arc::new(CaseTextInner {
+            text: OnceLock::from(bytes),
+            source: None,
+        }))
+    }
+
+    fn from_stn(doc: Arc<stannum_format::Document>, name: String) -> Self {
+        Self(Arc::new(CaseTextInner {
+            text: OnceLock::new(),
+            source: Some((doc, name)),
+        }))
+    }
+
+    pub fn get(&self) -> &[u8] {
+        self.0.text.get_or_init(|| {
+            let Some((doc, name)) = &self.0.source else {
+                return Vec::new();
+            };
+            let start = Instant::now();
+            match crate::stn::to_raw(doc, name) {
+                Ok(text) => {
+                    log::debug!("Wrote {name} as RAW text ({:.0} ms)", elapsed_ms(start));
+                    text.into_bytes()
+                }
+                Err(e) => {
+                    log::warn!("{name} can't be written as RAW text: {e}");
+                    Vec::new()
+                }
+            }
+        })
+    }
+
+    /// Write the text now, on a thread of its own, so whatever needs it
+    /// first doesn't wait as long.
+    fn prepare(&self) {
+        if self.0.text.get().is_none() {
+            let text = self.clone();
+            std::thread::spawn(move || {
+                text.get();
+            });
+        }
+    }
+}
+
+impl std::ops::Deref for CaseText {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.get()
     }
 }
 
@@ -104,7 +171,7 @@ pub struct OpenCase {
     /// The file's records as tables, read the first time they're asked for.
     pub records: Option<Result<Arc<Records>, String>>,
     /// The case's text as opened, or as edited in Records since.
-    pub bytes: Vec<u8>,
+    pub bytes: CaseText,
     /// Cells edited in Records since the file was opened or saved.
     pub record_edits: usize,
     /// A Stannum case's file as read (or last saved): what only it holds,
@@ -319,59 +386,76 @@ fn file_name(path: &Path) -> String {
 
 impl OpenCase {
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Self {
-        let name = file_name(path);
         if crate::stn::is_stn(bytes) {
-            let start = Instant::now();
-            return match crate::stn::open(&name, bytes) {
-                Ok((doc, raw, lines)) => {
-                    log::info!(
-                        "Read {name} as a Stannum case ({:.0} ms)",
-                        elapsed_ms(start)
-                    );
-                    let mut case =
-                        Self::from_case_bytes(path, CaseFormat::Stn, raw.as_bytes(), Some(&lines));
-                    case.stn_source = Some(Arc::new(doc));
-                    case
-                }
-                Err(e) => {
-                    let mut case = Self::from_case_bytes(path, CaseFormat::Stn, b"", None);
-                    case.power = Err(e);
-                    case
-                }
-            };
+            return Self::from_stn(path, bytes);
         }
         let format = match path.extension().and_then(|e| e.to_str()) {
             Some(e) if e.eq_ignore_ascii_case("m") => CaseFormat::Matpower,
             _ => CaseFormat::Raw,
         };
-        Self::from_case_bytes(path, format, bytes, None)
+        Self::from_case_bytes(path, format, bytes)
     }
 
-    /// A case from bytes in its working form: MATPOWER or RAW text (a
-    /// Stannum case already converted to RAW). For a Stannum case, `lines`
-    /// gives each element's line in the .stn file, for the warnings; lines
-    /// of the RAW text mean nothing to the user, so other warnings get none.
-    fn from_case_bytes(
-        path: &Path,
-        format: CaseFormat,
-        bytes: &[u8],
-        lines: Option<&std::collections::HashMap<String, usize>>,
-    ) -> Self {
+    /// A Stannum case (`.stn` or `.stnb`), read straight into the power
+    /// flow model. Its RAW text is written on a thread of its own, for
+    /// what needs it later.
+    fn from_stn(path: &Path, bytes: &[u8]) -> Self {
         let name = file_name(path);
+        let start = Instant::now();
+        let doc = match crate::stn::read_file(&name, bytes) {
+            Ok(doc) => Arc::new(doc),
+            Err(e) => {
+                return Self::from_power(
+                    path,
+                    CaseFormat::Stn,
+                    CaseText::new(Vec::new()),
+                    Err(e),
+                    start,
+                );
+            }
+        };
+        log::info!(
+            "Read {name} as a Stannum case ({:.0} ms)",
+            elapsed_ms(start)
+        );
+        let start = Instant::now();
+        // Warnings point at the .stn file's own lines; a .stnb file has rows, not lines.
+        let binary = stannum_format::is_binary(bytes);
+        let power = crate::stn::raw_sections(&doc).and_then(|(sections, lines)| {
+            let mut power = power::load_sections(sections)?;
+            for w in &mut power.warnings {
+                w.line = if binary {
+                    0
+                } else {
+                    lines.get(w.line).copied().unwrap_or(0)
+                };
+            }
+            Ok(power)
+        });
+        let text = CaseText::from_stn(doc.clone(), name);
+        let mut case = Self::from_power(path, CaseFormat::Stn, text.clone(), power, start);
+        case.stn_source = Some(doc);
+        text.prepare();
+        case
+    }
+
+    /// A case from bytes in its working form: MATPOWER or RAW text.
+    fn from_case_bytes(path: &Path, format: CaseFormat, bytes: &[u8]) -> Self {
         let text = decode_text(bytes);
         let start = Instant::now();
-        let mut power = power::load(&text, format == CaseFormat::Matpower);
-        if format == CaseFormat::Stn
-            && let Ok(p) = &mut power
-        {
-            for w in &mut p.warnings {
-                w.line = w
-                    .element
-                    .as_ref()
-                    .and_then(|e| lines?.get(e).copied())
-                    .unwrap_or(0);
-            }
-        }
+        let power = power::load(&text, format == CaseFormat::Matpower);
+        Self::from_power(path, format, CaseText::new(bytes.to_vec()), power, start)
+    }
+
+    /// A case from its text and its power flow model, read since `start`.
+    fn from_power(
+        path: &Path,
+        format: CaseFormat,
+        bytes: CaseText,
+        power: Result<PowerCase, String>,
+        start: Instant,
+    ) -> Self {
+        let name = file_name(path);
         match &power {
             Ok(p) => {
                 let c = power::counts(&p.case);
@@ -408,7 +492,7 @@ impl OpenCase {
             report: None,
             trip: None,
             records: None,
-            bytes: bytes.to_vec(),
+            bytes,
             record_edits: 0,
             stn_source: None,
         };
@@ -1044,8 +1128,9 @@ impl OpenCase {
     }
 
     /// Write the case, with its Records edits and the study's edits, as a
-    /// Stannum case file (.stn). RAW 33 and 35 cases are converted record by
-    /// record; anything else from the power flow model.
+    /// Stannum case file: `.stnb` (binary) when `path` ends so, else `.stn`
+    /// (text). RAW 33 and 35 cases are converted record by record; anything
+    /// else from the power flow model.
     pub fn export_stn(&mut self, path: &Path) -> Result<crate::stn::StnExport, Error> {
         let start = Instant::now();
         let from_records = if self.format.is_raw() {
@@ -1078,8 +1163,8 @@ impl OpenCase {
         if let Some(source) = &self.stn_source {
             doc.carry_from(source);
         }
-        let text = crate::stn::write(&doc)?;
-        std::fs::write(path, text).map_err(|e| Error::file(path, e))?;
+        let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+        std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
         log::info!(
             "Exported {} as a Stannum case to {} ({} records, {:.0} ms)",
             self.name,
@@ -1304,7 +1389,7 @@ impl OpenCase {
             ));
         }
         if self.edits.is_empty() {
-            return Ok(self.bytes.clone());
+            return Ok(self.bytes.to_vec());
         }
         self.records()?;
         let Some(Ok(records)) = self.records.as_ref() else {
@@ -1334,12 +1419,12 @@ impl OpenCase {
     /// Save the case, with its edits, to a new file, and carry on with that file.
     ///
     /// A RAW or Stannum case is saved as a Stannum case file when `path`
-    /// ends in `.stn`, and as RAW otherwise.
+    /// ends in `.stn` (text) or `.stnb` (binary), and as RAW otherwise.
     pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, Error> {
         let to_stn = path
             .extension()
             .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("stn"));
+            .is_some_and(|e| e.eq_ignore_ascii_case("stn") || e.eq_ignore_ascii_case("stnb"));
         let format = match (to_stn, self.format) {
             (true, CaseFormat::Matpower) => {
                 return Err(Error::unsupported(
@@ -1355,10 +1440,11 @@ impl OpenCase {
             if let Some(source) = &self.stn_source {
                 doc.carry_from(source);
             }
-            std::fs::write(path, crate::stn::write(&doc)?).map_err(|e| Error::file(path, e))?;
+            let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+            std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
             self.stn_source = Some(Arc::new(doc));
         } else {
-            std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;
+            std::fs::write(path, self.bytes.get()).map_err(|e| Error::file(path, e))?;
             self.stn_source = None;
         }
         log::info!("Saved {} as {}", self.name, path.display());
@@ -1809,7 +1895,7 @@ pub struct RecordsJob {
     version: u64,
     name: String,
     format: CaseFormat,
-    bytes: Vec<u8>,
+    bytes: CaseText,
     power: Result<Arc<PowerCase>, String>,
 }
 
@@ -1865,7 +1951,7 @@ pub struct RecordEditJob {
     path: PathBuf,
     format: CaseFormat,
     name: String,
-    bytes: Vec<u8>,
+    bytes: CaseText,
     records: Arc<Records>,
     power: Result<Arc<PowerCase>, String>,
     study_edits: Vec<Edit>,
@@ -1912,7 +1998,7 @@ impl RecordEditJob {
                 (text.into_bytes(), None)
             }
         };
-        let mut next = OpenCase::from_case_bytes(&self.path, self.format, &bytes, None);
+        let mut next = OpenCase::from_case_bytes(&self.path, self.format, &bytes);
         if let (Ok(_), Err(e)) = (&self.power, &next.power) {
             return Err(format!("The edited case can't be solved: {e}").into());
         }

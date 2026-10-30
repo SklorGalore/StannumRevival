@@ -126,13 +126,14 @@ export function paletteCommands(): Command[] {
         keywords: "export raw file save write psse convert revision version",
         run: () => void studyFile.exportRaw(revision),
       });
-    list.push({
-      id: "export-stn",
-      title: "Export case as Stannum case (.stn, preview)…",
-      icon: <Download size={14} />,
-      keywords: "export stn stannum open format file save write convert",
-      run: () => void studyFile.exportStn(),
-    });
+    for (const binary of [true, false])
+      list.push({
+        id: binary ? "export-stnb" : "export-stn",
+        title: binary ? "Export case as binary Stannum case (.stnb, preview)…" : "Export case as Stannum case (.stn, preview)…",
+        icon: <Download size={14} />,
+        keywords: binary ? "export stnb stannum binary arrow columnar large fast file save write convert" : "export stn stannum open text format file save write convert",
+        run: () => void studyFile.exportStn(binary),
+      });
   }
   if (summary?.power.available)
     list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });

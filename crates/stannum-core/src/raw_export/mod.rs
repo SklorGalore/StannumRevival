@@ -36,7 +36,14 @@ pub struct RawExport {
     pub notes: Vec<String>,
 }
 
-pub(crate) type Fields = Vec<(String, Value)>;
+pub(crate) type Fields = Vec<(Name, Value)>;
+
+/// A field's name: mostly fixed, so not allocated.
+pub(crate) type Name = std::borrow::Cow<'static, str>;
+
+fn named(fields: Vec<(String, Value)>) -> Fields {
+    fields.into_iter().map(|(n, v)| (n.into(), v)).collect()
+}
 
 /// One record: its fields, and its lines when they can be written as read.
 #[derive(Clone, Debug)]
@@ -71,7 +78,7 @@ impl Rec {
         self.lines = None;
         match self.fields.iter_mut().find(|(n, _)| n == name) {
             Some((_, v)) => *v = value,
-            None => self.fields.push((name.to_string(), value)),
+            None => self.fields.push((name.to_string().into(), value)),
         }
     }
 
@@ -174,15 +181,13 @@ impl Notes {
 }
 
 pub(crate) fn int(v: i64) -> Value {
-    Value::Number(Number::parse_integer(&v.to_string()).expect("an integer"))
+    Value::Number(Number::from_i64(v))
 }
 
 /// A number as RAW text: the shortest form that reads back the same.
+/// Rust prints -0 as "-0"; RAW readers don't need the sign.
 pub(crate) fn num(v: f64) -> Value {
-    let v = if v.is_finite() { v } else { 0.0 };
-    // Rust prints -0 as "-0"; RAW readers don't need the sign.
-    let v = if v == 0.0 { 0.0 } else { v };
-    Value::Number(Number::parse_number(&format!("{v:?}")).expect("a finite number"))
+    Value::Number(Number::from_f64(v))
 }
 
 pub(crate) fn text(s: &str) -> Value {
@@ -191,7 +196,7 @@ pub(crate) fn text(s: &str) -> Value {
 
 pub(crate) fn value_f64(v: &Value) -> f64 {
     match v {
-        Value::Number(n) => n.to_string().parse().unwrap_or(0.0),
+        Value::Number(n) => n.to_f64(),
         Value::Text(t) => t.trim().parse().unwrap_or(0.0),
     }
 }
@@ -266,13 +271,13 @@ fn from_diff(case: DiffCase, tail: Vec<String>) -> Doc {
         for r in records {
             if section == CASE_DETAILS {
                 match r.key.first().and_then(Value::as_text) {
-                    Some("CASE IDENTIFICATION") => ident = r.fields,
+                    Some("CASE IDENTIFICATION") => ident = named(r.fields),
                     Some("TITLE 1") => titles[0] = r.raw_lines.concat(),
                     Some("TITLE 2") => titles[1] = r.raw_lines.concat(),
                     _ => placed.entry("SYSTEM-WIDE".into()).or_default().push((
                         r.line_number,
                         Item::Rec(Rec {
-                            fields: r.fields,
+                            fields: named(r.fields),
                             lines: Some(r.raw_lines),
                         }),
                     )),
@@ -282,7 +287,7 @@ fn from_diff(case: DiffCase, tail: Vec<String>) -> Doc {
             placed.entry(section.clone()).or_default().push((
                 r.line_number,
                 Item::Rec(Rec {
-                    fields: r.fields,
+                    fields: named(r.fields),
                     lines: Some(r.raw_lines),
                 }),
             ));
@@ -401,6 +406,18 @@ pub(crate) fn quote(s: &str) -> String {
     }
 }
 
+/// [`token`], written onto `out`. Plain numbers, most of a file, are
+/// written without a string of their own.
+fn push_token(out: &mut String, value: &Value, kind: &str) {
+    match (value, kind) {
+        (Value::Number(n), k) if k != "integer" && k != "string" => {
+            use std::fmt::Write as _;
+            let _ = write!(out, "{n}");
+        }
+        _ => out.push_str(&token(value, kind)),
+    }
+}
+
 pub(crate) fn token(value: &Value, kind: &str) -> String {
     match (value, kind) {
         (Value::Text(s), "string") => quote(s),
@@ -418,13 +435,45 @@ pub(crate) fn token(value: &Value, kind: &str) -> String {
     }
 }
 
-fn write_rec(out: &mut Vec<String>, section: &str, revision: i64, rec: &Rec) -> Result<(), String> {
+fn write_rec(
+    out: &mut Vec<String>,
+    section: &str,
+    revision: i64,
+    rec: &Rec,
+    layouts: &mut [Option<Option<Layout>>; 2],
+) -> Result<(), String> {
     if let Some(lines) = &rec.lines {
         out.extend(lines.iter().cloned());
         return Ok(());
     }
+    rec_lines(section, revision, rec, layouts, |fields| {
+        let mut text = String::with_capacity(fields.len() * 8);
+        for (j, (value, kind)) in fields.iter().enumerate() {
+            if j > 0 {
+                text.push(',');
+            }
+            push_token(&mut text, value, kind);
+        }
+        out.push(text);
+    })
+}
+
+/// A record's fields laid out as its lines in `revision`, each line given
+/// to `line` as (value, kind) pairs, with defaults for the fields the record
+/// leaves out. The layouts are read from the schema once per section (and
+/// per transformer kind) into `layouts`.
+pub(crate) fn rec_lines(
+    section: &str,
+    revision: i64,
+    rec: &Rec,
+    layouts: &mut [Option<Option<Layout>>; 2],
+    mut line: impl FnMut(&[(std::borrow::Cow<'_, Value>, &str)]),
+) -> Result<(), String> {
     let three_winding = section == "TRANSFORMER" && !is_zero(rec.get("K"));
-    let layout = layout(section, revision, three_winding)
+    // Read from the schema once per section (and per transformer kind).
+    let layout = layouts[usize::from(three_winding)]
+        .get_or_insert_with(|| layout(section, revision, three_winding))
+        .as_ref()
         .ok_or_else(|| format!("RAW {revision} {section} records have no known layout."))?;
     // Blocks at the end: write as many as the record has, at least one.
     let groups = layout.group.map(|(start, width)| {
@@ -440,20 +489,31 @@ fn write_rec(out: &mut Vec<String>, section: &str, revision: i64, rec: &Rec) -> 
             .map_or(1, |g| g + 1);
         start + present * width
     });
-    for (i, line) in layout.lines.iter().enumerate() {
+    let mut fields = Vec::new();
+    let mut hint = 0;
+    for (i, names) in layout.lines.iter().enumerate() {
         let width = if i == 0 {
-            groups.unwrap_or(line.len())
+            groups.unwrap_or(names.len())
         } else {
-            line.len()
+            names.len()
         };
-        let tokens: Vec<String> = line[..width]
-            .iter()
-            .map(|(name, kind)| match rec.get(name) {
-                Some(v) => token(v, kind),
-                None => token(&default(name, kind), kind),
-            })
-            .collect();
-        out.push(tokens.join(","));
+        fields.clear();
+        for (name, kind) in &names[..width] {
+            // Records mostly hold their fields in layout order: look from
+            // after the last one found first.
+            let found = (hint..rec.fields.len())
+                .chain(0..hint)
+                .find(|&k| rec.fields[k].0 == *name);
+            if let Some(k) = found {
+                hint = k + 1;
+            }
+            let value = match found.map(|k| &rec.fields[k].1) {
+                Some(v) => std::borrow::Cow::Borrowed(v),
+                None => std::borrow::Cow::Owned(default(name, kind)),
+            };
+            fields.push((value, kind.as_str()));
+        }
+        line(&fields);
     }
     Ok(())
 }
@@ -515,9 +575,10 @@ fn write(doc: &Doc, source_name: &str) -> Result<String, String> {
         if section != "SYSTEM-WIDE" {
             out.extend(header_lines(section, revision));
         }
+        let mut layouts = [None, None];
         for item in doc.items(section) {
             match item {
-                Item::Rec(rec) => write_rec(&mut out, section, revision, rec)?,
+                Item::Rec(rec) => write_rec(&mut out, section, revision, rec, &mut layouts)?,
                 Item::Lines(lines) => out.extend(lines.iter().cloned()),
             }
         }
