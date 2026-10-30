@@ -10,9 +10,9 @@ import { shortVersion } from "../lib/version/shortVersion";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
-  { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC/DC power flow and sensitivities (rs-power)" },
+  { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC and DC power flow, sensitivities and contingencies" },
   { id: "records", label: "Records", icon: <Sheet size={18} />, hint: "Every record in the open case as a table: all fields, sort and filter" },
-  { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Exact RAW case comparison (case-diff)" },
+  { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Compare two RAW cases record by record, or a case with its file" },
 ];
 
 /** The Stannum mark. Below 40 px it switches to the heavier small-size drawing. */
@@ -98,7 +98,7 @@ function ThemeButton() {
       aria-label={`Theme: ${THEME_LABEL[preference]}`}
     >
       <Icon size={16} />
-      {THEME_LABEL[preference]}
+      Theme
     </button>
   );
 }
