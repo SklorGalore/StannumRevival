@@ -4,7 +4,7 @@ import { arrowSize, mapOverlay } from "./overlay";
 import type { BranchRow, BusCoordinates, BusRow, CaseNetwork, NetworkBus, SolveReport } from "../analysis/types";
 import type { LayerMarks } from "../diagram/layers";
 
-const bus = (id: number, base_kv: number): NetworkBus => ({ id, name: `B${id}`, base_kv, area: 1, kind: "PQ", pd: 0, qd: 0, gs: 0, bs: 0, star: false });
+const bus = (id: number, base_kv: number): NetworkBus => ({ id, name: `B${id}`, base_kv, area: 1, zone: 1, owner: 1, kind: "PQ", pd: 0, qd: 0, gs: 0, bs: 0, star: false });
 const element = (from: number, to: number) => `line:${from}:${to}:1`;
 const branch = (from: number, to: number) => ({
   index: 0,

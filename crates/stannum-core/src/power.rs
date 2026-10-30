@@ -50,6 +50,9 @@ pub struct PowerCase {
     /// Each branch's RAW `LEN`, in `case.branches` order, for placing buses
     /// on the map; 0 where not given. Empty for MATPOWER.
     pub branch_lengths: Vec<f64>,
+    /// Each RAW bus's `OWNER`, by bus number. Empty for MATPOWER, which has
+    /// no owners.
+    pub bus_owners: std::collections::BTreeMap<u32, u32>,
 }
 
 /// A MATPOWER bus's GS and BS as one fixed shunt, `shunt:<bus>:1`.
@@ -123,6 +126,7 @@ pub fn from_case(case: Case) -> PowerCase {
         shunts,
         multi_section_lines: Vec::new(),
         branch_lengths: Vec::new(),
+        bus_owners: Default::default(),
     }
 }
 
@@ -186,6 +190,7 @@ fn from_import(import: rs_power::RawImport) -> PowerCase {
         shunts: import.shunts,
         multi_section_lines: import.multi_section_lines,
         branch_lengths: import.branch_lengths,
+        bus_owners: import.bus_owners,
         case: import.case,
         warnings: import
             .warnings

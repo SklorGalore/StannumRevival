@@ -94,7 +94,14 @@ connections, equipment, diagnostics) in a drawer under the drawing. See
 ## Generating from the case
 
 **From case** draws a one-line of the open case (MATPOWER or RAW): the whole
-case, one area, or the buses within a few hops of a chosen bus.
+case, one area, one zone, one owner (RAW cases), or the buses within a few
+hops of a chosen bus.
+
+**Add filter** under the choices narrows any of them by base kV, area, zone
+or owner, for example "Base kV ≥ 230" or "Owner is 4". Every filter must
+pass. Around a bus, the drawing grows only through buses that pass, so "Base
+kV = 345" three hops out draws the 345 kV network near the bus; the studied
+bus is always drawn. The dialog counts the buses before you generate.
 
 - Buses, generators, loads, lines and transformers are laid out top to bottom
   with right-angle wiring (ELK layered layout, run in the background).
