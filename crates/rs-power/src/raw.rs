@@ -106,6 +106,10 @@ pub struct RawImport {
     /// Revision 34-35 system switching devices, in file order. Each also
     /// solves as a branch of `case`.
     pub switching_devices: Vec<SwitchingDevice>,
+    /// The `LEN` each non-transformer branch record gives, in the file's own
+    /// units, one per entry of `case.branches`. Zero when the field is blank,
+    /// zero or unreadable, and for transformers and switching devices.
+    pub branch_lengths: Vec<f64>,
     /// Every fixed and switched shunt record, in file order, with what it
     /// added to its bus's `gs` and `bs`. Lets a contingency take one out.
     pub shunts: Vec<ShuntSource>,
@@ -1037,6 +1041,7 @@ fn convert(
             reactive_share,
         });
     }
+    let mut line_lengths: Vec<(usize, f64)> = Vec::new();
     for r in section("branch") {
         let from = r.id(0)?;
         let to = r.integer(1, true)?;
@@ -1067,6 +1072,21 @@ fn convert(
                     format!("branch references unknown bus {id}; branch retained"),
                 )?;
             }
+        }
+        // LEN follows the status and, from revision 31, the metered end.
+        // Only the map reads it, so a bad value is dropped, not an error.
+        let len_col = if rev >= 34 {
+            25
+        } else if rev >= 31 {
+            15
+        } else if rev >= 28 {
+            14
+        } else {
+            16
+        };
+        let length = r.optional(len_col, 0.0).unwrap_or(0.0);
+        if length.is_finite() && length > 0.0 {
+            line_lengths.push((case.branches.len(), length));
         }
         branch_sources.push(BranchSource {
             kind: BranchKind::Line,
@@ -1284,6 +1304,10 @@ fn convert(
         case.branches.len(),
         ctx.warnings.len()
     );
+    let mut branch_lengths = vec![0.0; case.branches.len()];
+    for (i, length) in line_lengths {
+        branch_lengths[i] = length;
+    }
     Ok(RawImport {
         case,
         revision: rev,
@@ -1301,6 +1325,7 @@ fn convert(
         areas,
         area_loads,
         switching_devices,
+        branch_lengths,
         shunts,
         multi_section_lines,
     })

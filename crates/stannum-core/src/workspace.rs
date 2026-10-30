@@ -570,6 +570,7 @@ impl OpenCase {
             self.coordinates.as_ref(),
             &crate::geo::case_places(&power.substations),
             &power.case,
+            &crate::geo::spans(&power.elements.branches, &power.branch_lengths),
             &self.name,
         )
     }
@@ -937,16 +938,18 @@ impl OpenCase {
             Some(&loaded),
             &crate::geo::case_places(&power.substations),
             &power.case,
+            &crate::geo::spans(&power.elements.branches, &power.branch_lengths),
             &self.name,
         )
         .expect("a file always resolves")
         .summary;
         log::info!(
-            "Attached {}: {} buses placed from the file, {} from the case, {} estimated from neighbours, {} without a place",
+            "Attached {}: {} buses placed from the file, {} from the case, {} estimated (from {}), {} without a place",
             summary.name,
             summary.from_file,
             summary.from_case,
             summary.estimated,
+            summary.estimated_from,
             summary.missing
         );
         if summary.unknown_buses > 0 {

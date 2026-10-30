@@ -48,9 +48,22 @@ fn attaches_places_and_estimates_buses() {
         json!(["file", "file", "file", "estimated", "estimated"])
     );
     assert_eq!(c["substation"][1], "Waco");
-    // Bus 4 hangs off bus 2 only, and bus 5 off bus 4.
+    // Bus 4 is bus 2's transformer low side, so it shares its place. Bus 5
+    // hangs off bus 4 by a 69 kV line, one reactance-scaled length out, on
+    // the side away from Dallas and Tyler.
+    assert_eq!(summary["estimated_from"], "reactance");
     assert_eq!(c["latitude"][3], c["latitude"][1]);
-    assert_eq!(c["longitude"][4], c["longitude"][1]);
+    assert_eq!(c["longitude"][3], c["longitude"][1]);
+    let at = |i: usize| {
+        (
+            c["latitude"][i].as_f64().unwrap(),
+            c["longitude"][i].as_f64().unwrap(),
+        )
+    };
+    let (waco, spur) = (at(1), at(4));
+    let km = (spur.0 - waco.0).hypot((spur.1 - waco.1) * waco.0.to_radians().cos()) * 111.195;
+    assert!(km > 1.0 && km < 100.0, "{km} km");
+    assert!(spur.0 < waco.0, "{spur:?}");
 
     let bus4 = invoke(&s, "element_detail", json!({ "element": "bus:4" }));
     let location = bus4["data"]

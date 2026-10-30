@@ -80,6 +80,14 @@ function placesTitle(c: CoordinatesSummary | null): string {
   return `Bus places from ${c.path}${fromCase ? `, and ${fromCase}` : ""}. Attach another file`;
 }
 
+/** What the inspector says about a site no source places. */
+function estimatedNote(from: CoordinatesSummary["estimated_from"]): string {
+  const why = "no coordinates file or case substation places it";
+  if (from === "lengths") return `Estimated from its lines' lengths: ${why}.`;
+  if (from === "reactance") return `Estimated from its lines' reactance, which grows with length: ${why}.`;
+  return `Placed from its neighbours: ${why}.`;
+}
+
 /** The Diagram toolbar while the Map style is shown. */
 export function MapToolbar() {
   const focus = useDrawingStyle((s) => s.focus);
@@ -383,12 +391,13 @@ function MapSection({ element, data, onPick }: { element: string; data: MapData;
   const siteIndex = element.startsWith("bus:") ? data.model.busSite.get(Number(element.slice(4))) : undefined;
   const site = siteIndex !== undefined ? data.model.sites[siteIndex] : null;
   const kv = new Map(data.net.buses.map((b) => [b.id, b.base_kv]));
+  const estimatedFrom = useWorkspace((s) => s.caseSummary?.coordinates?.estimated_from ?? "neighbours");
   return (
     <InspectorSection id="map" title="Map">
       {site ? (
         <>
           <p className="mb-1.5 font-medium text-slate-800">{siteLabel(site, data.net)}</p>
-          {site.estimated && <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-amber-900">Placed from its neighbours: no coordinates file or case substation places it.</p>}
+          {site.estimated && <p className="mb-1.5 rounded bg-amber-50 px-2 py-1 text-amber-900">{estimatedNote(estimatedFrom)}</p>}
           {site.buses.length > 1 && (
             <div className="mb-1.5">
               <p className="text-slate-500 mb-1">{site.buses.length} buses here</p>

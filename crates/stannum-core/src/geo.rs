@@ -24,10 +24,15 @@
 //! node records name the buses inside. Where both sources place a bus, the
 //! side file wins, so a CSV can correct or fill in a case's own places.
 //!
-//! A bus neither source places is placed at the average of its neighbours that
-//! have a place, working outward from the placed buses, and is marked as
-//! estimated. Buses with no placed bus anywhere in their island stay without
-//! coordinates.
+//! A bus neither source places is estimated from the branches that reach it
+//! (see [`estimate`]): a transformer's other side shares its place, and a
+//! line's length, or its reactance where it has none, says how far away it
+//! is. It is marked as estimated. Buses with no placed bus anywhere in their
+//! island stay without coordinates.
+
+mod estimate;
+
+pub use estimate::Span;
 
 use rs_power::Case;
 use serde::Serialize;
@@ -225,19 +230,21 @@ pub fn case_places(substations: &[rs_power::RawSubstation]) -> HashMap<u32, Plac
 
 /// Where every bus of `case` goes: from the side file if one is attached,
 /// else from the case's own places (`from_case`, see [`case_places`]), else
-/// estimated. None when neither source places any bus. `case_name` names
-/// the source in the summary when no file is attached.
+/// estimated. None when neither source places any bus. `spans` says what
+/// each branch of `case` tells about distance (see [`spans`]). `case_name`
+/// names the source in the summary when no file is attached.
 pub fn resolve(
     file: Option<&LoadedCoordinates>,
     from_case: &HashMap<u32, Place>,
     case: &Case,
+    spans: &[Span],
     case_name: &str,
 ) -> Option<BusCoordinates> {
     if file.is_none() && from_case.is_empty() {
         return None;
     }
     let empty = CoordinateFile::default();
-    let mut c = place_buses(file.map_or(&empty, |f| &f.file), from_case, case);
+    let mut c = place_buses(file.map_or(&empty, |f| &f.file), from_case, case, spans);
     let s = &mut c.summary;
     match file {
         Some(f) => {
@@ -258,6 +265,25 @@ pub fn resolve(
     Some(c)
 }
 
+/// What each branch of a case says about distance, in branch order:
+/// transformers and switches share a place, lines carry their RAW `LEN`
+/// (`lengths`, in branch order; empty or 0 where not given).
+pub fn spans(elements: &[crate::elements::BranchElement], lengths: &[f64]) -> Vec<Span> {
+    elements
+        .iter()
+        .enumerate()
+        .map(|(k, e)| {
+            if e.element.starts_with("line:") {
+                Span::Line {
+                    length: lengths.get(k).copied().unwrap_or(0.0),
+                }
+            } else {
+                Span::Site
+            }
+        })
+        .collect()
+}
+
 /// What the app shows about where the case's bus places come from.
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct CoordinatesSummary {
@@ -276,6 +302,12 @@ pub struct CoordinatesSummary {
     pub case_substations: usize,
     /// Buses placed from their neighbours.
     pub estimated: usize,
+    /// How those were placed: "lengths" (from the lines' lengths, scaled by
+    /// the lines whose ends are placed), "reactance" (the same, from line
+    /// reactance where the case gives no lengths) or "neighbours" (at the
+    /// average of placed neighbours, with too few placed lines to scale).
+    #[schemars(extend("enum" = ["lengths", "reactance", "neighbours"]))]
+    pub estimated_from: &'static str,
     /// Buses with no place at all (no placed bus in their island).
     pub missing: usize,
     /// Rows naming buses this case doesn't have.
@@ -319,6 +351,7 @@ fn place_buses(
     file: &CoordinateFile,
     from_case: &HashMap<u32, Place>,
     case: &Case,
+    spans: &[Span],
 ) -> BusCoordinates {
     let n = case.buses.len();
     let index: HashMap<u32, usize> = case
@@ -344,47 +377,12 @@ fn place_buses(
     let from_file = source.iter().filter(|s| **s == "file").count();
     let from_case = source.iter().filter(|s| **s == "case").count();
 
-    // Neighbours by branch, in or out of service: geography doesn't change
-    // with switching.
-    let mut neighbours: Vec<Vec<usize>> = vec![vec![]; n];
-    for br in &case.branches {
-        if let (Some(&f), Some(&t)) = (index.get(&br.from), index.get(&br.to))
-            && f != t
-        {
-            neighbours[f].push(t);
-            neighbours[t].push(f);
-        }
-    }
-    // Ring by ring outward: each round places every bus with a placed
-    // neighbour at their average, so a bus's estimate only uses buses
-    // closer to the file's places than it is.
-    let mut frontier: Vec<usize> = (0..n)
-        .filter(|&i| place[i].is_none() && neighbours[i].iter().any(|&j| place[j].is_some()))
-        .collect();
-    while !frontier.is_empty() {
-        let placed: Vec<(usize, (f64, f64))> = frontier
-            .iter()
-            .map(|&i| {
-                let known: Vec<(f64, f64)> =
-                    neighbours[i].iter().filter_map(|&j| place[j]).collect();
-                let k = known.len() as f64;
-                let lat = known.iter().map(|p| p.0).sum::<f64>() / k;
-                let lon = known.iter().map(|p| p.1).sum::<f64>() / k;
-                (i, (lat, lon))
-            })
-            .collect();
-        for &(i, p) in &placed {
-            place[i] = Some(p);
+    // Branches in or out of service: geography doesn't change with switching.
+    let method = estimate::estimate(&mut place, case, spans);
+    for i in 0..n {
+        if source[i] == "none" && place[i].is_some() {
             source[i] = "estimated";
         }
-        let mut next: Vec<usize> = placed
-            .iter()
-            .flat_map(|&(i, _)| neighbours[i].iter().copied())
-            .filter(|&j| place[j].is_none())
-            .collect();
-        next.sort_unstable();
-        next.dedup();
-        frontier = next;
     }
 
     let estimated = source.iter().filter(|s| **s == "estimated").count();
@@ -401,6 +399,7 @@ fn place_buses(
         from_case,
         case_substations: 0,
         estimated,
+        estimated_from: method.label(),
         missing: n - from_file - from_case - estimated,
         unknown_buses,
         problems: file
