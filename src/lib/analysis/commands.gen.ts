@@ -947,11 +947,18 @@ export type NetworkBus = {
   id: number;
   kind: "PQ" | "PV" | "Ref" | "Isolated";
   name: string;
+  /**
+   * Owner from the RAW bus record; 0 when the case has no owners
+   * (MATPOWER).
+   */
+  owner: number;
   /** Load at the bus in MW / MVAr (rs-power aggregates loads per bus). */
   pd: number;
   qd: number;
   /** The star point of a three-winding transformer, not a real bus. */
   star: boolean;
+  /** Loss zone. */
+  zone: number;
 };
 
 /**

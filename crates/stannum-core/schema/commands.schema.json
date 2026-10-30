@@ -3921,6 +3921,12 @@
         "name": {
           "type": "string"
         },
+        "owner": {
+          "description": "Owner from the RAW bus record; 0 when the case has no owners\n(MATPOWER).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "pd": {
           "description": "Load at the bus in MW / MVAr (rs-power aggregates loads per bus).",
           "format": "double",
@@ -3933,6 +3939,12 @@
         "star": {
           "description": "The star point of a three-winding transformer, not a real bus.",
           "type": "boolean"
+        },
+        "zone": {
+          "description": "Loss zone.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -3940,6 +3952,8 @@
         "name",
         "base_kv",
         "area",
+        "zone",
+        "owner",
         "kind",
         "pd",
         "qd",

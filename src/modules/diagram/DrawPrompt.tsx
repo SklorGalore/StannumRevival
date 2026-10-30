@@ -80,7 +80,7 @@ export function DrawPrompt() {
               className="justify-start"
               onClick={() => setOther(true)}
             >
-              <Wand2 size={13} /> Choose a bus, an area or the whole case…
+              <Wand2 size={13} /> Choose a bus, an area, zone or owner, or the whole case…
             </Button>
           </div>
           {!worst && !report && (

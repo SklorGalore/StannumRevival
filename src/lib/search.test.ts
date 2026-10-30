@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { paletteElements, searchElements } from "./search";
 import type { CaseNetwork } from "./analysis/types";
 
-const bus = (id: number, name: string) => ({ id, name, base_kv: 138, area: 1, kind: "PQ" as const, pd: 0, qd: 0, gs: 0, bs: 0, star: false });
+const bus = (id: number, name: string) => ({ id, name, base_kv: 138, area: 1, zone: 1, owner: 1, kind: "PQ" as const, pd: 0, qd: 0, gs: 0, bs: 0, star: false });
 const branch = (index: number, from: number, to: number, circuit = "1") => ({
   index, element: `line:${Math.min(from, to)}:${Math.max(from, to)}:${circuit}`, circuit, winding: 0, from, to,
   online: true, transformer: false, rate_a: 100, tap: 1, shift: 0,

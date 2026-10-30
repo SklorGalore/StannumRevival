@@ -116,6 +116,10 @@ pub struct RawImport {
     /// Multi-section line groupings whose sections were all found, in file
     /// order.
     pub multi_section_lines: Vec<MultiSectionLine>,
+    /// Each bus record's `OWNER`, by bus number; 1 where the record has
+    /// none (revision 23). Three-winding transformer star points are left
+    /// out.
+    pub bus_owners: std::collections::BTreeMap<u32, u32>,
 }
 
 /// Which RAW section a shunt record came from.
@@ -791,6 +795,7 @@ fn convert(
         )?;
     }
     let mut buses = vec![];
+    let mut bus_owners = std::collections::BTreeMap::new();
     for r in bus_rows {
         let (kind, name, kv, area, zone, vm, va) = if rev == 23 {
             (1, 9, 10, 6, 11, 7, 8)
@@ -803,6 +808,12 @@ fn convert(
         if id == 0 {
             return Err(r.error("bus ID must be positive"));
         }
+        let owner = match rev {
+            23 => 1.0,
+            24..=30 => r.optional(10, 1.0).unwrap_or(1.0),
+            _ => r.optional(6, 1.0).unwrap_or(1.0),
+        };
+        bus_owners.insert(id, if owner >= 1.0 { owner as u32 } else { 1 });
         let b = Bus {
             id,
             kind: match r.id(kind)? {
@@ -1328,6 +1339,7 @@ fn convert(
         branch_lengths,
         shunts,
         multi_section_lines,
+        bus_owners,
     })
 }
 

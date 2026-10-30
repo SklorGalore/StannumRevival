@@ -759,3 +759,24 @@ fn line_lengths_are_read_per_revision() {
     let imported = parse_raw_with_options(text35, &RawOptions::default()).unwrap();
     assert_eq!(imported.branch_lengths, [38.5]);
 }
+
+#[test]
+fn bus_owners_by_revision() {
+    let options = RawOptions::default();
+    let owners = |text: &str| {
+        let mut o: Vec<(u32, u32)> = parse_raw_with_options(text, &options)
+            .unwrap()
+            .bus_owners
+            .into_iter()
+            .collect();
+        o.sort();
+        o
+    };
+    // Revisions 31 and later: OWNER is the seventh field.
+    let v33 = raw(&["10,'A',230,3,1,1,4,1,0,1.1,.9\n20,'B',115,1,1,1,9,1,0,1.1,.9\n"]);
+    assert_eq!(owners(&v33), [(10, 4), (20, 9)]);
+    // Revision 30 and before: OWNER comes last, after VA. Blank means 1.
+    let v30 = raw(&["10,'A',230,3,0,0,1,1,1,0,5\n20,'B',115,1,0,0,1,1,1,0\n"])
+        .replacen("0,100,33", "0,100,30", 1);
+    assert_eq!(owners(&v30), [(10, 5), (20, 1)]);
+}
