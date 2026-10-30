@@ -1,5 +1,4 @@
-import { GitCompareArrows, Monitor, Moon, PencilRuler, Sheet, Sun, Zap } from "lucide-react";
-import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
+import { GitCompareArrows, PencilRuler, Sheet, Zap } from "lucide-react";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
 import logoUrl from "../assets/stannum-logo.svg";
@@ -57,7 +56,6 @@ export function ModuleRail() {
           {m.label}
         </button>
       ))}
-      <ThemeButton />
       <VersionButton />
     </nav>
   );
@@ -72,33 +70,13 @@ function VersionButton() {
     <button
       type="button"
       onClick={() => void check()}
-      className="relative mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/70 hover:bg-white/5 hover:text-teal-50"
+      className="relative mt-auto mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/70 hover:bg-white/5 hover:text-teal-50"
       title={waiting ? `Stannum ${__APP_VERSION__}. Stannum ${update.version} is available: click to see it.` : `Stannum ${__APP_VERSION__}. Click to check for updates.`}
       aria-label={waiting ? `Stannum ${__APP_VERSION__}, update ${update.version} available` : `Stannum ${__APP_VERSION__}, check for updates`}
       data-testid="version-button"
     >
       {shortVersion(__APP_VERSION__)}
       {waiting && <span className="absolute -right-0.5 top-0 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
-    </button>
-  );
-}
-
-const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" } as const;
-
-/** Cycles System → Light → Dark. */
-function ThemeButton() {
-  const preference = useTheme((s) => s.preference);
-  const setPreference = useTheme((s) => s.setPreference);
-  const Icon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
-  return (
-    <button
-      className="mt-auto mx-2 mb-1 flex flex-col items-center gap-1 rounded-lg py-2 text-[10.5px] font-medium text-teal-100/70 hover:bg-white/5 hover:text-white"
-      onClick={() => setPreference(NEXT_PREFERENCE[preference])}
-      title={`Theme: ${THEME_LABEL[preference]}. Click for ${THEME_LABEL[NEXT_PREFERENCE[preference]]}.`}
-      aria-label={`Theme: ${THEME_LABEL[preference]}`}
-    >
-      <Icon size={16} />
-      Theme
     </button>
   );
 }

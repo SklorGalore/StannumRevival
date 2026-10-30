@@ -7,6 +7,8 @@ import {
   BellOff,
   Circle,
   Columns2,
+  AlertTriangle,
+  Cable,
   CornerDownLeft,
   FileCode2,
   FlaskConical,
@@ -106,6 +108,16 @@ export function paletteCommands(): Command[] {
     list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
     if (studyPath)
       list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+    if (summary.power.available)
+      for (const solved of [false, true])
+        if (!solved || w.solveReport)
+          list.push({
+            id: `export-matpower${solved ? "-solved" : ""}`,
+            title: solved ? "Export case as MATPOWER, with the latest results…" : "Export case as MATPOWER…",
+            icon: <Download size={14} />,
+            keywords: "export matpower m file save write convert",
+            run: () => void studyFile.exportMatpower(solved),
+          });
     for (const revision of [35, 33] as const)
       list.push({
         id: `export-raw-${revision}`,
@@ -172,6 +184,21 @@ export function paletteCommands(): Command[] {
       run: () => w.setLinked(!linked),
     });
     if (summary.power.available) {
+      if (summary.power.info?.warnings.length)
+        list.push({
+          id: "import-warnings",
+          title: `Show import warnings (${summary.power.info.warnings.length.toLocaleString()})`,
+          icon: <AlertTriangle size={14} />,
+          keywords: "raw import warnings ignored approximated notes file",
+          run: () => w.showPowerTab("warnings"),
+        });
+      list.push({
+        id: "vsc-grids",
+        title: "Attach VSC DC grids…",
+        icon: <Cable size={14} />,
+        keywords: "vsc dc grid hvdc multi-terminal mtdc converter dcgrid json attach",
+        run: () => w.showPowerTab("vsc"),
+      });
       list.push({
         id: "coordinates",
         title: summary.coordinates?.path ? "Attach other bus coordinates…" : "Attach bus coordinates…",

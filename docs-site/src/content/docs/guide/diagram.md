@@ -211,11 +211,14 @@ edits. The drawing's own fields (rotation, label position, the symbol's
 drawing values) are folded into its **Drawing** section. Symbols drawn by hand
 show those fields directly. A selected element this drawing doesn't include
 is inspected too, with **Draw around** to bring it in. The symbol palette on
-the left collapses to give the drawing more room.
+the left starts folded while a case is open (drawings come from the case);
+open it with the panel button to draw by hand.
 
 ## Saving and exporting
 
-Diagrams save as `.sld` files (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG,
-PNG or PDF with a title block. **Print style** draws everything in black.
+The toolbar's **File** menu holds New, Open, Save, Save as and Export; the
+**View** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
+(<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG, PNG or PDF with a title block.
+**Print style** draws everything in black.
 
 ![Print style](../../../assets/screens/diagram-print.png)

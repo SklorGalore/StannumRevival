@@ -1,6 +1,5 @@
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { Toolbar } from "../../components/layout/Toolbar";
-import { StatusBar } from "../../components/layout/StatusBar";
 import { ComponentPalette } from "../../components/palette/ComponentPalette";
 import { DiagramCanvas } from "../../components/canvas/DiagramCanvas";
 import { PropertiesPanel, selectedCaseElement } from "../../components/properties/PropertiesPanel";
@@ -161,13 +160,15 @@ function Inner({ active }: { active: boolean }) {
   const blank = useDiagramStore((s) => s.nodes.length === 0);
   // Print style and exports are black on white whatever the app theme.
   const dark = useDarkCanvas();
-  // A drawing generated from the open case is studied, not built by hand:
+  // With a case open, drawings are generated from it, not built by hand:
   // keep the components palette folded away unless asked for.
   const openName = useWorkspace((s) => s.caseSummary?.name);
   const generated = useDiagramStore((s) => !!s.metadata.caseName && s.metadata.caseName === openName);
-  const [paletteChoice, setPaletteChoice] = useState<{ generated: boolean; open: boolean } | null>(null);
-  const paletteOpen = paletteChoice && paletteChoice.generated === generated ? paletteChoice.open : !generated;
-  const setPalette = (open: boolean) => setPaletteChoice({ generated, open });
+  // A choice to show or hide it lasts until the drawing's kind changes.
+  const kind = generated ? "generated" : openName ? "case open" : "no case";
+  const [paletteChoice, setPaletteChoice] = useState<{ kind: string; open: boolean } | null>(null);
+  const paletteOpen = paletteChoice && paletteChoice.kind === kind ? paletteChoice.open : kind === "no case";
+  const setPalette = (open: boolean) => setPaletteChoice({ kind, open });
   // Layers (topology findings, filters and colours) are drawn on every
   // style; the one-line needs them only when it is drawn from the case.
   useLayerSync(active && (network || generated));
@@ -273,7 +274,6 @@ function Inner({ active }: { active: boolean }) {
         )}
       </div>
       {tablesOpen && <TablesDrawer />}
-      {!network && <StatusBar />}
     </div>
   );
 }

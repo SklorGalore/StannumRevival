@@ -54,6 +54,8 @@ interface StudyFileState {
    * `revision` (asking where), then say what the file couldn't keep.
    */
   exportRaw: (revision: 33 | 35) => Promise<boolean>;
+  /** Write the case, or with `solved` the latest solve, as a MATPOWER file. */
+  exportMatpower: (solved: boolean) => Promise<boolean>;
   /** Write the case as a Stannum case file (.stn, or .stnb when `binary`; format preview). */
   exportStn: (binary: boolean) => Promise<boolean>;
 }
@@ -165,6 +167,24 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
           lines: done.notes.length ? done.notes : ["Every record of the case is in the file."],
         },
       });
+      return true;
+    } catch (e) {
+      set({ notice: null, error: `Couldn't export ${fileName(path)}: ${toStannumError(e).message}` });
+      return false;
+    }
+  },
+
+  async exportMatpower(solved) {
+    const summary = useWorkspace.getState().caseSummary;
+    if (!summary) return false;
+    // MATPOWER function names start with a letter and hold only word characters.
+    const stem = summary.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
+    const name = /^[A-Za-z]/.test(stem) ? stem : `case_${stem}`;
+    const path = await pickSavePath(`${name}${solved ? "_solved" : ""}.m`, [{ name: "MATPOWER", extensions: ["m"] }]);
+    if (!path) return false;
+    try {
+      await api.exportMatpower(path, solved);
+      set({ error: null, notice: { tone: "info", title: `Exported ${fileName(path)} as MATPOWER${solved ? " with the latest solve" : ""}`, lines: [] } });
       return true;
     } catch (e) {
       set({ notice: null, error: `Couldn't export ${fileName(path)}: ${toStannumError(e).message}` });

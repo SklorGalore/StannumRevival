@@ -8,7 +8,10 @@ description: Solve settings, the overview and its checks, result tables, filters
 ## Solve settings
 
 The settings panel on the left (hide it with the button at its top right)
-holds:
+shows Model, AC method, tolerance and Q limits. The rest fold under **More
+settings**, which says how many differ from the defaults. On tabs with nothing
+to solve (Contingencies, Study, VSC grids, Import warnings) the panel folds to
+a narrow strip with **Solve** in it. The settings are:
 
 | Setting | Meaning | Default |
 | --- | --- | --- |
@@ -94,7 +97,8 @@ The models behind these numbers are in [HVDC](/StannumRevival/manual/hvdc/overvi
 
 ## VSC grids
 
-**VSC grids** adds meshed and multi-terminal VSC DC grids that aren't in the
+**VSC grids** (from **Attach VSC DC grids…** on the Ready to solve screen or
+in Ctrl+K; the tab stays once a file is attached) adds meshed and multi-terminal VSC DC grids that aren't in the
 case file. **Attach DC grid file…** reads a [Stannum DC grid
 file](/StannumRevival/reference/dc-grid-file/), checks it against the case,
 and every AC solve after that includes its grids. Before the first solve,
@@ -132,7 +136,9 @@ layer](/StannumRevival/guide/topology/#colour-by-result).
 
 ## Import warnings
 
-For RAW files, **Import warnings** lists everything the conversion
+For RAW files, **Import warnings** opens from the note under the Overview,
+the link on the Ready to solve screen, or **Ctrl+K → Show import warnings**.
+It lists everything the conversion
 approximated or skipped. Warnings with the same message are grouped, most
 frequent first, with how many there are and which lines of the file they come
 from. Open a group to list each record with its line number and the branch or
@@ -142,13 +148,14 @@ common warning, not a line per record.
 
 ## Export MATPOWER
 
-**Input case…** writes the case as loaded (with study edits applied);
-**Solved case…** writes the latest solved case. Both are MATPOWER version 2
+The **Export case** menu under Solve (and Ctrl+K) holds every export.
+**MATPOWER, input case…** writes the case as loaded (with study edits applied);
+**MATPOWER, solved case…** writes the latest solved case. Both are MATPOWER version 2
 files that MATPOWER's `loadcase` reads.
 
 ## Export PSS/E RAW
 
-**Revision 35…** and **Revision 33…** under **Export PSS/E RAW** (also
+**PSS/E RAW, revision 35…** and **revision 33…** in **Export case** (also
 **Ctrl+K → Export case as PSS/E RAW 35…/33…**) write the open case as a
 complete RAW file, with its Records edits and study edits written in. A bar
 under the case bar then says how many records were written and lists
