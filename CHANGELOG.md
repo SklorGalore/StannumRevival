@@ -8,6 +8,8 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 1.0.0-rc.1 - 2026-10-30
+
 ### Added
 
 - **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
