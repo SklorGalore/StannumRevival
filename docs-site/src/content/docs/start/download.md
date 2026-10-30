@@ -38,7 +38,7 @@ What changed in each version is in the release notes on the same page, and in
 ## Updates
 
 Stannum checks for a newer release a few seconds after it starts. When there
-is one, a bar under the case bar says so, with the first lines of what's new:
+is one, a bar under the toolbar says so, with the first lines of what's new:
 
 - **Install and restart** downloads the update, installs it and opens the
   new version. If the open case has edits or a study that isn't saved,

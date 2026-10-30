@@ -148,17 +148,17 @@ common warning, not a line per record.
 
 ## Export MATPOWER
 
-The **Export case** menu under Solve (and Ctrl+K) holds every export.
-**MATPOWER, input case…** writes the case as loaded (with study edits applied);
-**MATPOWER, solved case…** writes the latest solved case. Both are MATPOWER version 2
+**File → Export case** (and Ctrl+K) holds every export.
+**MATPOWER…** writes the case as loaded (with study edits applied);
+**MATPOWER, with the latest results…** writes the latest solved case. Both are MATPOWER version 2
 files that MATPOWER's `loadcase` reads.
 
 ## Export PSS/E RAW
 
-**PSS/E RAW, revision 35…** and **revision 33…** in **Export case** (also
+**PSS/E RAW 35…** and **PSS/E RAW 33…** in **File → Export case** (also
 **Ctrl+K → Export case as PSS/E RAW 35…/33…**) write the open case as a
 complete RAW file, with its Records edits and study edits written in. A bar
-under the case bar then says how many records were written and lists
+under the toolbar then says how many records were written and lists
 anything the file couldn't keep, such as fields revision 33 has no place
 for. See [Writing RAW](/StannumRevival/reference/psse-raw/#writing-raw) for
 what each conversion does.

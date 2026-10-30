@@ -4,6 +4,9 @@ import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from ".
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
 import { addRecent } from "../lib/study/recent";
 
+/** Power flow tabs other parts of the app can open. */
+export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "study";
+
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 
 /** One bus or piece of equipment selected across every module. */
@@ -93,9 +96,12 @@ interface WorkspaceState {
   /** Incremented to ask Power flow to solve with its current settings. */
   solveRequest: number;
   requestSolve: () => void;
-  /** Asks Power flow to open one of its on-demand tabs (Ctrl+K). */
-  powerTabRequest: { tab: "warnings" | "vsc"; n: number } | null;
-  showPowerTab: (tab: "warnings" | "vsc") => void;
+  /** Incremented to ask Power flow to calculate sensitivities (toolbar, menu, Ctrl+K). */
+  sensitivityRequest: number;
+  requestSensitivities: () => void;
+  /** Asks Power flow to open one of its tabs (toolbar, menu, Ctrl+K). */
+  powerTabRequest: { tab: PowerTabRequest; n: number } | null;
+  showPowerTab: (tab: PowerTabRequest) => void;
   /** The Ctrl+K search and command palette. */
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
@@ -238,6 +244,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focus: (element) => set({ selection: { element, from: "search" } }),
   solveRequest: 0,
   requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, ...showing(s, "power") })),
+  sensitivityRequest: 0,
+  requestSensitivities: () => set((s) => ({ sensitivityRequest: s.sensitivityRequest + 1, ...showing(s, "power") })),
   powerTabRequest: null,
   showPowerTab: (tab) => set((s) => ({ powerTabRequest: { tab, n: (s.powerTabRequest?.n ?? 0) + 1 }, ...showing(s, "power") })),
   paletteOpen: false,

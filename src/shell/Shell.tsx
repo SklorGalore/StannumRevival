@@ -3,6 +3,7 @@ import { ArrowLeftRight, X } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
+import { MenuBar } from "./MenuBar";
 import { StudyNoticeBar } from "./StudyFileControls";
 import { RunFileBar } from "./RunFileBar";
 import { UpdateBar } from "./UpdateBar";
@@ -210,6 +211,7 @@ export function Shell() {
       </a>
       <ModuleRail />
       <div className="flex-1 min-w-0 flex flex-col">
+        <MenuBar />
         <CaseBar />
         <StudyNoticeBar />
         <CrashNoticeBar />

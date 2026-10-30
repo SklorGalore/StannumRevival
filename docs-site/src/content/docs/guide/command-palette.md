@@ -4,7 +4,7 @@ description: Find any bus, branch, generator or DC line in the open case, or run
 ---
 
 Press <kbd>Ctrl</kbd>+<kbd>K</kbd> (<kbd>Cmd</kbd>+<kbd>K</kbd> on macOS) from
-anywhere, or click **Find in case** in the case bar.
+anywhere, or click **Find in case** in the toolbar.
 
 ![The palette finding bus 170 by number](../../../assets/screens/palette-bus.png)
 
@@ -24,10 +24,12 @@ branch, transformer, generator and DC line in the open case.
 
 ## Run a command
 
-The same box runs commands. Type a few letters of any of these:
+The same box runs commands: everything in the menu bar's menus and the
+toolbar is here too. Type a few letters of any of these:
 
 - **Open case…** / **Open another case…** and **Close case**
-- **Solve power flow**
+- **Save case as…** and the **Export case as…** commands
+- **Solve power flow**, **Calculate sensitivities** and **Show contingencies**
 - **Go to** Diagram, Power flow or Case diff
 - **Show topology tables** and **Show layers**, which open them in the Diagram
 - **Open … side by side** and **Close side by side**
