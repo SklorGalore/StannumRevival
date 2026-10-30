@@ -53,7 +53,7 @@ section into the next version's when a release is cut (see
   lengths say: the RAW `LEN`, or the line's reactance where the case gives
   none, scaled to kilometres by the lines whose ends are placed. A bus
   behind a transformer sits exactly on its placed side. Hiding half the
-  substations of a synthetic 2,000-bus case, the estimates land 5.6 km from
+  substations of a synthetic 2,000-bus case, the estimates land 5.5 km from
   the true places on average, against 17.8 km for neighbour averages. Too few placed lines
   to scale by, and buses go at their neighbours' average as before.
 

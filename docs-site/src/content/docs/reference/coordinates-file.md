@@ -127,6 +127,6 @@ The coordinates summary says which was used (`estimated_from`: `lengths`,
 `reactance` or `neighbours`), and so does the inspector's Map section.
 
 On a synthetic 2,000-bus case, hiding the places of half its substations,
-the estimates land 5.6 km from the true places on average, against 17.8 km
+the estimates land 5.5 km from the true places on average, against 17.8 km
 for neighbour averages. Synthetic lines have reactance in proportion to
 length, so expect real cases to do somewhat worse.
