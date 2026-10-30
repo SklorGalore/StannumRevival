@@ -133,7 +133,14 @@ fn a_large_case_stays_within_budget() {
 
     let s = Arc::new(Session::new());
     let mut out = Vec::new();
-    let settings = serde_json::to_value(SolveSettings::default()).unwrap();
+    // Q limits off: this test times commands, and the synthetic 80,000-bus
+    // case doesn't converge with them on (the default since 0.5). Real 80k
+    // cases do; making the synthetic one solve with them is its own work.
+    let settings = serde_json::to_value(SolveSettings {
+        enforce_q_limits: false,
+        ..SolveSettings::default()
+    })
+    .unwrap();
 
     run(
         &s,

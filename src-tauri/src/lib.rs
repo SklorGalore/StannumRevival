@@ -1,26 +1,55 @@
 mod analysis;
 mod attach;
+mod file_access;
 mod splash;
 
 use base64::{engine::general_purpose, Engine as _};
 use tauri::Manager;
 
+use std::path::PathBuf;
+
+/// Write a text file the person chose (see [`file_access`]).
 #[tauri::command]
-async fn save_diagram(path: String, content: String) -> Result<(), String> {
+async fn save_diagram(
+    app: tauri::AppHandle,
+    access: tauri::State<'_, file_access::Shared>,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    file_access::check(&app, &access, &path)?;
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// Read a text file the person chose (see [`file_access`]).
 #[tauri::command]
-async fn load_diagram(path: String) -> Result<String, String> {
+async fn load_diagram(
+    app: tauri::AppHandle,
+    access: tauri::State<'_, file_access::Shared>,
+    path: String,
+) -> Result<String, String> {
+    file_access::check(&app, &access, &path)?;
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
+/// Write an image or PDF export the person chose (see [`file_access`]).
 #[tauri::command]
-async fn save_binary(path: String, data_b64: String) -> Result<(), String> {
+async fn save_binary(
+    app: tauri::AppHandle,
+    access: tauri::State<'_, file_access::Shared>,
+    path: String,
+    data_b64: String,
+) -> Result<(), String> {
+    file_access::check(&app, &access, &path)?;
     let bytes = general_purpose::STANDARD
         .decode(&data_b64)
         .map_err(|e| e.to_string())?;
     std::fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
+/// Take over the Recent list kept by versions before the file check, once.
+#[tauri::command]
+fn adopt_recent_files(access: tauri::State<'_, file_access::Shared>, paths: Vec<PathBuf>) -> bool {
+    file_access::adopt_recent(&access, &paths)
 }
 
 /// Open the Windows 11 snap layouts flyout, as hovering the system maximize
@@ -95,11 +124,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .manage(analysis::SharedSession::default())
         .manage(splash::Splash::default())
         .setup(|app| {
+            let access = file_access::start(app.handle());
+            app.manage(access);
             analysis::stream_log(app.handle().clone());
             // Scripts reach the window's own session (stannum.attach()).
             let session = app.state::<analysis::SharedSession>().0.clone();
@@ -122,6 +153,12 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            // Files dropped on the window may be opened.
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(access) = window.try_state::<file_access::Shared>() {
+                    file_access::dropped(&access, paths);
+                }
+            }
             // Closing the splash early still brings up the app.
             if window.label() == splash::SPLASH {
                 if let tauri::WindowEvent::Destroyed = event {
@@ -136,6 +173,7 @@ pub fn run() {
             splash::app_ready,
             show_snap_layouts,
             updates_enabled,
+            adopt_recent_files,
             analysis::stannum_command,
             attach::attach_ui_reply,
             attach::attach_status,

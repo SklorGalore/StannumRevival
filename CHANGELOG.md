@@ -48,6 +48,14 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **The desktop app only reads and writes files you choose.** Opening,
+  saving and exporting accept files picked in a dialog, dropped on the
+  window, found next to an opened study, or chosen in an earlier session
+  (so Recent files keep working); anything else is refused. The window also
+  has a content security policy now, and web links open through Tauri's
+  opener plugin, limited to Stannum's releases page. Scripts, run files and
+  the command line are unchanged.
+
 - **Enforce generator Q limits** is on by default in the app, run files
   and Python, as real cases are solved in PSS/E and PowerWorld. With it off,
   SyntheticUSA showed a 25 Mvar unit pushing 3,500 Mvar and a 1,584% branch;

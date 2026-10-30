@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for Stannum",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",
@@ -11,14 +13,17 @@
     "core:window:allow-start-dragging",
     "dialog:allow-open",
     "dialog:allow-save",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file",
-    "fs:allow-write-file",
-    "fs:allow-create",
-    "fs:scope-document-recursive",
-    "fs:scope-download-recursive",
-    "fs:scope-desktop-recursive",
-    "shell:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/SklorGalore/StannumRevival/releases"
+        },
+        {
+          "url": "https://github.com/SklorGalore/StannumRevival/releases/*"
+        }
+      ]
+    },
     "updater:default",
     "process:allow-restart"
   ]
