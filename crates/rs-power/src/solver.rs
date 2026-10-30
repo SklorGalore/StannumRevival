@@ -1247,12 +1247,20 @@ fn newton(
         layout.targets.len(),
         terminals.len()
     );
+    // The mismatch at the point the last step reached, worked out by the
+    // line search, so it isn't evaluated twice.
+    let mut reached: Option<(Vec<f64>, f64)> = None;
+    // Sums of squared mismatches at the last few points, for the line search.
+    let mut recent: Vec<f64> = Vec::new();
     for iteration in 0..=opt.max_iterations {
         if opt.cancelled() {
             log::info!("solve cancelled before Newton iteration {iteration}");
             return Err(Error::Cancelled);
         }
-        let (f, residual) = pass.evaluate(v, terminals)?;
+        let (f, residual) = match reached.take() {
+            Some(known) => known,
+            None => pass.evaluate(v, terminals)?,
+        };
         if residual < tolerance {
             log::info!(
                 "Newton iteration {iteration}: {}; converged (largest mismatch {:.2e} pu, tolerance {tolerance:.0e})",
@@ -1297,15 +1305,77 @@ fn newton(
             step += &format!(" (step shortened to {scale:.3} of full Newton step)");
         }
         log::info!("Newton iteration {iteration}: {mismatch_now}{step}");
-        for (k, &i) in layout.angles.iter().enumerate() {
-            va[i] += scale * dx[k];
+        // Line search: take the step only as far as it lowers the mismatch.
+        // Far from a solution, or near the edge of what the network can
+        // carry, a full step can overshoot and leave the mismatch larger
+        // than before; halving it until the mismatch falls keeps Newton
+        // going downhill. When no shorter step helps either, the full step
+        // is taken, as before the line search.
+        // Measured against the largest of the last few mismatches rather
+        // than the latest (a non-monotone line search): Newton's mismatch
+        // may rise for a step on its way to a solution, notably with
+        // detailed DC lines, whose response has corners, and cutting those
+        // steps short slows it or stalls it.
+        recent.push(sum_of_squares(&f));
+        if recent.len() > NON_MONOTONE_MEMORY {
+            recent.remove(0);
         }
-        for (k, &i) in layout.magnitudes.iter().enumerate() {
-            vm[i] += scale * dx[k + layout.angles.len()];
+        let before = recent.iter().copied().fold(0.0, f64::max);
+        let mut t = scale;
+        let mut trial = v.to_vec();
+        // Detailed DC lines keep the operating point they last saw, so a
+        // rejected step mustn't leave its own behind.
+        let mut trial_terminals = terminals.to_vec();
+        for _ in 0..=LINE_SEARCH_HALVINGS {
+            if try_step(&mut trial, &va, &vm, &dx, layout, t) {
+                trial_terminals.clone_from_slice(terminals);
+                if let Ok((g, r)) = pass.evaluate(&trial, &mut trial_terminals) {
+                    if sum_of_squares(&g) < before * (1.0 - 1e-4 * t) {
+                        reached = Some((g, r));
+                        break;
+                    }
+                }
+            }
+            t *= 0.5;
         }
-        set_voltages(v, &vm, &va)?;
+        if reached.is_some() {
+            terminals.clone_from_slice(&trial_terminals);
+            if t < scale {
+                log::info!(
+                    "  step shortened to {t:.3} of the Newton step: the full step raised the mismatch"
+                );
+            }
+            v.copy_from_slice(&trial);
+        } else {
+            log::debug!("  no shorter step lowers the mismatch; taking the full step");
+            for (k, &i) in layout.angles.iter().enumerate() {
+                va[i] += scale * dx[k];
+            }
+            for (k, &i) in layout.magnitudes.iter().enumerate() {
+                vm[i] += scale * dx[k + layout.angles.len()];
+            }
+            set_voltages(v, &vm, &va)?;
+        }
     }
     unreachable!()
+}
+
+/// Sum of the squared mismatches: what the line search makes smaller.
+fn sum_of_squares(f: &[f64]) -> f64 {
+    f.iter().map(|x| x * x).sum()
+}
+
+/// Voltages `t` of the way along the Newton step `dx` from `va`, `vm`,
+/// written into `v`; false when a magnitude would not be positive.
+fn try_step(v: &mut [C], va: &[f64], vm: &[f64], dx: &[f64], layout: &Layout, t: f64) -> bool {
+    let (mut va, mut vm) = (va.to_vec(), vm.to_vec());
+    for (k, &i) in layout.angles.iter().enumerate() {
+        va[i] += t * dx[k];
+    }
+    for (k, &i) in layout.magnitudes.iter().enumerate() {
+        vm[i] += t * dx[k + layout.angles.len()];
+    }
+    set_voltages(v, &vm, &va).is_ok()
 }
 
 /// Write magnitudes `vm` and angles `va` into `v`, refusing a non-positive
@@ -1356,6 +1426,13 @@ fn largest(values: &[f64], buses: &[usize]) -> (f64, Option<usize>) {
 /// enough, and the final solve is checked again at full tolerance. On the
 /// 80,000-bus synthetic cases this cuts Newton iterations by about a third.
 const LOOSE_TOLERANCE: f64 = 1e-2;
+
+/// How many times the line search halves a Newton step, at most, looking
+/// for one that lowers the mismatch (down to 1/64 of the step).
+const LINE_SEARCH_HALVINGS: usize = 6;
+
+/// How many of the latest mismatches a step is measured against.
+const NON_MONOTONE_MEMORY: usize = 5;
 
 /// Largest relative magnitude change a Newton step may make at any bus.
 const MAX_MAGNITUDE_STEP: f64 = 0.5;
@@ -1792,6 +1869,7 @@ fn solve_core(
         }
     }
     let mut restores = vec![0; remote.len()];
+    let mut local_restores = vec![0; kinds.len()];
     let mut stats = MethodStats::default();
     let (mut iterations, mut passes, mut tap_passes, mut vsc_passes) = (0, 0, 0, 0);
     let mut control_passes = 0;
@@ -2033,7 +2111,27 @@ fn solve_core(
                 restored.push(k);
             }
         }
-        if violations.is_empty() && restored.is_empty() {
+        // A generator bus holding its own voltage, likewise: at Qmax with
+        // its voltage above the setpoint (or at Qmin and below), it has
+        // reactive power to spare and holds the setpoint again, as PSS/E
+        // does. Switching every violation in one pass overshoots, and
+        // without this the units pushed past their setpoints by the others
+        // would stay at their limits.
+        let mut restored_local = Vec::new();
+        for i in 0..kinds.len() {
+            let Some(upper) = released[i] else { continue };
+            if remote.binary_search(&i).is_ok() || local_restores[i] >= MAX_RESTORES {
+                continue;
+            }
+            let setpoint = case.generators[net.gens[i][0]].vg;
+            let vm = v[i].norm();
+            if (upper && vm > setpoint + RESTORE_TOLERANCE)
+                || (!upper && vm < setpoint - RESTORE_TOLERANCE)
+            {
+                restored_local.push(i);
+            }
+        }
+        if violations.is_empty() && restored.is_empty() && restored_local.is_empty() {
             if loose {
                 // The limits have settled; finish the solve before the
                 // other controls look at it.
@@ -2290,7 +2388,22 @@ fn solve_core(
                 // the now fixed injection, so the bus restarts from the
                 // voltage of the bus it held.
                 v[i] = v[held[k]];
+            } else if g < setup.limited_from {
+                released[i] = Some(upper);
             }
+        }
+        if !restored_local.is_empty() {
+            log::info!(
+                "  {} at a reactive limit, with the voltage past the setpoint, return to voltage control",
+                count(restored_local.len(), "generator bus", "generator buses")
+            );
+        }
+        for i in restored_local {
+            kinds[i] = BusType::Pv;
+            released[i] = None;
+            local_restores[i] += 1;
+            let setpoint = case.generators[net.gens[i][0]].vg;
+            v[i] = C::from_polar(setpoint, v[i].arg());
         }
         for k in restored {
             let i = remote[k];
@@ -2433,12 +2546,12 @@ pub(crate) const DETAIL_LINES: usize = 10;
 /// Voltage control passes before switched shunts and taps are held.
 const MAX_CONTROL_PASSES: usize = 30;
 
-/// Times a remote-regulating bus may return from a reactive limit to
-/// voltage control, so that the limit loop cannot cycle.
+/// Times a generator bus may return from a reactive limit to voltage
+/// control, so that the limit loop cannot cycle.
 const MAX_RESTORES: usize = 3;
 
-/// How far past its setpoint (per unit) a remotely held bus must be before
-/// a generator at a reactive limit takes control of it again.
+/// How far past its setpoint (per unit) a held bus must be before a
+/// generator at a reactive limit takes control of it again.
 const RESTORE_TOLERANCE: f64 = 1e-4;
 
 /// Tap passes before the DC converter taps are held where they are.

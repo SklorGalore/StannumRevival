@@ -4,10 +4,16 @@
 //! cargo run --release -p stannum-synth --example synth_case -- --buses 2000 --seed 1 --out target/synth
 //! ```
 //!
-//! Writes `<name>.m` (MATPOWER), `<name>.coords.csv` (bus coordinates),
+//! Writes `<name>.stn` (a Stannum case), `<name>.coords.csv` (bus coordinates),
 //! `<name>.report.md` and `.report.json`, and `<name>.svg` (a map of the
 //! network). `--config file.json` reads settings (see `stannum_synth::Config`);
 //! `--buses` and `--seed` override them.
+//!
+//! The case is written as a Stannum case, not MATPOWER: MATPOWER has no
+//! column for the bus a generator regulates, and the synthetic units hold
+//! their plant's high-voltage bus, not their own terminals. Written as
+//! MATPOWER they would all hold their terminals instead, and the case
+//! would no longer solve with reactive limits.
 
 use stannum_synth::{Config, generate, svg};
 use std::path::PathBuf;
@@ -73,9 +79,18 @@ fn main() {
         std::fs::write(&path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         println!("wrote {}", path.display());
     };
+    let power = stannum_core::power::from_case(s.case.clone());
+    let (doc, _) = stannum_core::stn::from_model(
+        &config.name,
+        &power,
+        format!(
+            "Synthetic case built by stannum-synth, seed {}",
+            config.seed
+        ),
+    );
     write(
-        "m",
-        rs_power::format_matpower(&s.case).expect("format the case"),
+        "stn",
+        stannum_core::stn::write(&doc).expect("write the case"),
     );
     write("coords.csv", s.coordinates_csv());
     write("report.md", s.report.markdown());

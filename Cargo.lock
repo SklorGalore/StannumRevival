@@ -4595,6 +4595,7 @@ dependencies = [
  "rs-power",
  "serde",
  "serde_json",
+ "stannum-core",
 ]
 
 [[package]]

@@ -335,6 +335,8 @@ fn solve_settings_switch_voltage_controls() {
             enforce_q_limits: true,
             switch_shunts: false,
             adjust_transformer_taps: false,
+            // The inverter transformers (COD 4) step with the DC taps.
+            adjust_dc_taps: false,
             start: stannum_core::power::StartChoice::Flat,
             ..Default::default()
         })

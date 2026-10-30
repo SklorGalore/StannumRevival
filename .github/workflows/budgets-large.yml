@@ -37,6 +37,6 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .budget-case
-          key: budget-case-${{ env.STANNUM_BUDGET_BUSES }}-${{ hashFiles('crates/stannum-synth/**', 'crates/rs-power/src/**', 'Cargo.lock') }}
+          key: budget-case-${{ env.STANNUM_BUDGET_BUSES }}-${{ hashFiles('crates/stannum-synth/**', 'crates/rs-power/src/**', 'crates/stannum-core/src/stn/**', 'crates/stannum-core/src/raw_export/**', 'crates/stannum-format/src/**', 'Cargo.lock') }}
       - name: Time and size budgets
         run: cargo test --locked --release -p stannum-core --test budgets -- --ignored --nocapture
