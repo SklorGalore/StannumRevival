@@ -64,3 +64,17 @@ export function onRecentChange(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/**
+ * The desktop app only opens files the person chose. Files on this list were
+ * chosen before that check existed, so hand them over once; the app ignores
+ * the call after its first run with the check.
+ */
+export async function adoptRecentFiles(invoke: (command: string, args: Record<string, unknown>) => Promise<unknown>) {
+  const paths = recentFiles().map((f) => f.path);
+  try {
+    await invoke("adopt_recent_files", { paths });
+  } catch {
+    // An older shell without the command: nothing to hand over.
+  }
+}

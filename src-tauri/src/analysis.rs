@@ -2,6 +2,7 @@
 //! through `stannum_command`, which hands it to `stannum_core::commands` on a
 //! blocking worker so long solves never freeze the window.
 
+use crate::file_access;
 use stannum_core::commands::Session;
 use stannum_core::logbook;
 use stannum_core::Error;
@@ -17,21 +18,33 @@ pub struct SharedSession(pub Arc<Session>);
 /// reaches the window as `{kind, message}` (see `stannum_core::error`).
 #[tauri::command]
 pub async fn stannum_command(
+    app: AppHandle,
     state: State<'_, SharedSession>,
+    access: State<'_, file_access::Shared>,
     command: String,
     args: Option<serde_json::Value>,
 ) -> Result<Response, Error> {
+    let args = args.unwrap_or_default();
+    // Only files the person chose (see `file_access`).
+    file_access::check_command(&app, &access, &command, &args)?;
+    let access = access.inner().clone();
     let session = state.0.clone();
     // Panics are caught inside invoke; this only names a worker that died.
     let command_name = command.clone();
-    tauri::async_runtime::spawn_blocking(move || session.invoke(&command, args.unwrap_or_default()))
-        .await
-        .map_err(|e| {
-            Error::internal(format!(
-                "Stannum hit an internal error in {command_name}: {e}"
-            ))
-        })?
-        .map(Response::new)
+    tauri::async_runtime::spawn_blocking(move || {
+        let answer = session.invoke(&command, args);
+        if let Ok(json) = &answer {
+            file_access::after_command(&access, &command, json);
+        }
+        answer
+    })
+    .await
+    .map_err(|e| {
+        Error::internal(format!(
+            "Stannum hit an internal error in {command_name}: {e}"
+        ))
+    })?
+    .map(Response::new)
 }
 
 /// Event that carries new log lines to the window, a batch at a time.
