@@ -2,7 +2,7 @@
 name = "stannum-cli"
 version = "0.5.0"
 edition = "2024"
-description = "Run Stannum run files without the app"
+description = "Run Stannum run files without the app, and serve Stannum to AI assistants over MCP"
 publish = false
 license.workspace = true
 

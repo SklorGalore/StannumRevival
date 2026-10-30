@@ -140,6 +140,10 @@ are:
 `--json` prints the run report, which follows the command rules above. The
 plain text output is for people and can change.
 
+`stannum-cli mcp` (the [MCP server](/StannumRevival/guide/ai-assistants/)
+for AI assistants) is a preview and not part of this promise: its tools are
+written for assistants and can change in a minor release.
+
 ### Attach
 
 A script attaches to the app with a local connection whose handshake

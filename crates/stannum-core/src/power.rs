@@ -299,7 +299,7 @@ fn decoupled_iterations() -> usize {
 }
 
 /// How to solve. Fields left out take their defaults: AC with the automatic
-/// method from the last solution, to 2 MVA, without reactive limits, with
+/// method from the last solution, to 2 MVA, with reactive limits held and
 /// every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default)]

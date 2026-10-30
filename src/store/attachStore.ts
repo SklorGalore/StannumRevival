@@ -126,7 +126,7 @@ export function answerUi(command: string, args: unknown): { ok: unknown } | { er
 }
 
 /** Commands that leave a different case (or the same one reopened). */
-const CASE_CHANGES = new Set(["open_case", "close_case", "run_file"]);
+const CASE_CHANGES = new Set(["open_case", "open_sample", "close_case", "run_file"]);
 /** Commands that change what the case holds but keep its study. */
 const CASE_EDITS = new Set(["apply_record_edits"]);
 /** Commands that change the case summary's attachments or path. */

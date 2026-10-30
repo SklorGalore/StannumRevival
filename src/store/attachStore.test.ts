@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { answerUi } from "./attachStore";
+import { describe, expect, it, vi } from "vitest";
+import { api } from "../lib/analysis/api";
+import { answerUi, catchUp } from "./attachStore";
 import { useWorkspace } from "./workspaceStore";
 
 describe("answerUi", () => {
@@ -29,5 +30,15 @@ describe("answerUi", () => {
     const got = answerUi("ui.fly", {}) as { error: { kind: string; message: string } };
     expect(got.error.kind).toBe("unknown_command");
     expect(got.error.message).toContain("ui.state");
+  });
+});
+
+describe("catchUp", () => {
+  it("adopts a sample a script opened", async () => {
+    const summary = { id: 7, name: "case9.m", path: "/tmp/case9.m", power: { available: false }, topology: { available: true } };
+    const spy = vi.spyOn(api, "caseSummary").mockResolvedValue(summary as never);
+    await catchUp("open_sample", { id: "case9" }, summary);
+    expect(useWorkspace.getState().caseSummary?.id).toBe(7);
+    spy.mockRestore();
   });
 });
