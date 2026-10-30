@@ -7,6 +7,8 @@ import {
   BellOff,
   Circle,
   Columns2,
+  AlertTriangle,
+  Cable,
   CornerDownLeft,
   FileCode2,
   FlaskConical,
@@ -111,7 +113,7 @@ export function paletteCommands(): Command[] {
         if (!solved || w.solveReport)
           list.push({
             id: `export-matpower${solved ? "-solved" : ""}`,
-            title: `Export ${solved ? "solved case" : "case"} as MATPOWER…`,
+            title: solved ? "Export case as MATPOWER, with the latest results…" : "Export case as MATPOWER…",
             icon: <Download size={14} />,
             keywords: "export matpower m file save write convert",
             run: () => void studyFile.exportMatpower(solved),
@@ -181,6 +183,21 @@ export function paletteCommands(): Command[] {
       run: () => w.setLinked(!linked),
     });
     if (summary.power.available) {
+      if (summary.power.info?.warnings.length)
+        list.push({
+          id: "import-warnings",
+          title: `Show import warnings (${summary.power.info.warnings.length.toLocaleString()})`,
+          icon: <AlertTriangle size={14} />,
+          keywords: "raw import warnings ignored approximated notes file",
+          run: () => w.showPowerTab("warnings"),
+        });
+      list.push({
+        id: "vsc-grids",
+        title: "Attach VSC DC grids…",
+        icon: <Cable size={14} />,
+        keywords: "vsc dc grid hvdc multi-terminal mtdc converter dcgrid json attach",
+        run: () => w.showPowerTab("vsc"),
+      });
       list.push({
         id: "coordinates",
         title: summary.coordinates?.path ? "Attach other bus coordinates…" : "Attach bus coordinates…",

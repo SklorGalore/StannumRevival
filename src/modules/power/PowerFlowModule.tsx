@@ -875,11 +875,16 @@ function Overview({
   report,
   passing,
   onJump,
+  warnings,
+  onWarnings,
 }: {
   report: SolveReport;
   /** Buses passing the filter chips, or null when no filter applies. */
   passing: Set<number> | null;
   onJump: (j: Jump) => void;
+  /** How many import warnings the case has; they open on demand. */
+  warnings: number;
+  onWarnings: () => void;
 }) {
   // The charts follow the filter chips; the checks above always cover the whole case.
   const chartBuses = useMemo(() => (passing ? report.buses.filter((b) => passing.has(b.id)) : report.buses), [report, passing]);
@@ -1047,6 +1052,15 @@ function Overview({
           </div>
         </Panel>
       </div>
+      {warnings > 0 && (
+        <p className="text-[11px] text-slate-500">
+          The import noted{" "}
+          <button type="button" className="text-teal-700 underline" onClick={onWarnings} data-testid="show-import-warnings">
+            {count(warnings)} value{warnings === 1 ? "" : "s"}
+          </button>{" "}
+          in the file that Stannum ignored or approximated.
+        </p>
+      )}
     </div>
   );
 }
@@ -1418,6 +1432,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("study");
   }, [studyShowRequest]);
 
+  // "Show import warnings" and "Attach VSC DC grids" from the command palette.
+  const powerTabRequest = useWorkspace((s) => s.powerTabRequest);
+  useEffect(() => {
+    if (powerTabRequest) setTab(powerTabRequest.tab);
+  }, [powerTabRequest]);
+
   // "Solve power flow" from the command palette.
   const solveRequest = useWorkspace((s) => s.solveRequest);
   const lastSolveRequest = useRef(solveRequest);
@@ -1468,13 +1488,16 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(report?.facts?.length
         ? [{ id: "facts" as const, label: "FACTS", count: report.facts.length, disabled: false }]
         : []),
-      { id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false },
-      { id: "sensitivities" as const, label: "Sensitivities", disabled: !sensitivity },
+      // On-demand tabs show only once they have something, or while open.
+      ...(dcGrids || tab === "vsc" ? [{ id: "vsc" as const, label: "VSC grids", count: dcGrids?.grids.length, disabled: false }] : []),
+      ...(sensitivity ? [{ id: "sensitivities" as const, label: "Sensitivities", disabled: false }] : []),
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
-      { id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: !warnings.length },
+      ...(tab === "warnings" && warnings.length
+        ? [{ id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: false }]
+        : []),
     ],
-    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, tab]
   );
 
   if (!summary) {
@@ -1634,7 +1657,9 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               />
             )}
             <div className="flex-1 min-h-0">
-              {tab === "overview" && report && <Overview report={report} passing={passing} onJump={onJump} />}
+              {tab === "overview" && report && (
+                <Overview report={report} passing={passing} onJump={onJump} warnings={warnings.length} onWarnings={() => setTab("warnings")} />
+              )}
               {tab === "buses" && report && (
                 <TableTab
                   key={`buses-${jump.n}`}

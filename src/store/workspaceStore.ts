@@ -93,6 +93,9 @@ interface WorkspaceState {
   /** Incremented to ask Power flow to solve with its current settings. */
   solveRequest: number;
   requestSolve: () => void;
+  /** Asks Power flow to open one of its on-demand tabs (Ctrl+K). */
+  powerTabRequest: { tab: "warnings" | "vsc"; n: number } | null;
+  showPowerTab: (tab: "warnings" | "vsc") => void;
   /** The Ctrl+K search and command palette. */
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
@@ -235,6 +238,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focus: (element) => set({ selection: { element, from: "search" } }),
   solveRequest: 0,
   requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, ...showing(s, "power") })),
+  powerTabRequest: null,
+  showPowerTab: (tab) => set((s) => ({ powerTabRequest: { tab, n: (s.powerTabRequest?.n ?? 0) + 1 }, ...showing(s, "power") })),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   drawRequest: null,
