@@ -49,8 +49,8 @@ attach one from the map's toolbar or the command palette (**Attach bus
 coordinates**). The case's buses are gathered into sites, one dot for each
 substation the file names (or each point, where it names none), coloured by
 the site's highest voltage. Branches are straight lines between sites, and DC
-lines are dashed. A site whose buses were all placed next to their neighbours,
-rather than by the file, is drawn hollow.
+lines are dashed. A site whose buses were all estimated from their lines' lengths,
+rather than placed by the file, is drawn hollow.
 
 ![The Map style: the whole case over state outlines](../../../assets/screens/diagram-map.png)
 

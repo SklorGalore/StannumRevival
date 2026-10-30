@@ -48,6 +48,15 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Map places for missing buses come from line lengths.** A bus the
+  coordinates file and the case leave out is now put where its lines'
+  lengths say: the RAW `LEN`, or the line's reactance where the case gives
+  none, scaled to kilometres by the lines whose ends are placed. A bus
+  behind a transformer sits exactly on its placed side. Hiding half the
+  substations of a synthetic 2,000-bus case, the estimates land 5.5 km from
+  the true places on average, against 17.8 km for neighbour averages. Too few placed lines
+  to scale by, and buses go at their neighbours' average as before.
+
 - **The desktop app only reads and writes files you choose.** Opening,
   saving and exporting accept files picked in a dialog, dropped on the
   window, found next to an opened study, or chosen in an earlier session

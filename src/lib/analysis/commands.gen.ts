@@ -383,6 +383,13 @@ export type CoordinatesSummary = {
   case_substations: number;
   /** Buses placed from their neighbours. */
   estimated: number;
+  /**
+   * How those were placed: "lengths" (from the lines' lengths, scaled by
+   * the lines whose ends are placed), "reactance" (the same, from line
+   * reactance where the case gives no lengths) or "neighbours" (at the
+   * average of placed neighbours, with too few placed lines to scale).
+   */
+  estimated_from: "lengths" | "reactance" | "neighbours";
   /** Buses placed by the case's own substation data (and not by the file). */
   from_case: number;
   /** Buses of the case placed by the file. */
