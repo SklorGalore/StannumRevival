@@ -109,7 +109,7 @@ export default defineConfig({
             { label: "Diagram file (.sld)", slug: "reference/diagram-file" },
             { label: "Run file (.stnrun)", slug: "reference/run-file" },
             { label: "Bus coordinates file", slug: "reference/coordinates-file" },
-            { label: "Case file (.stn, preview)", slug: "reference/case-file" },
+            { label: "Case file (.stn, .stnb, preview)", slug: "reference/case-file" },
             { label: "Case file tables", slug: "reference/case-file-schema" },
             { label: "Lists file (.stnl, preview)", slug: "reference/lists-file" },
             { label: "Lists file tables", slug: "reference/lists-file-schema" },

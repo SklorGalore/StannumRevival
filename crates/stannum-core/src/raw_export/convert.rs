@@ -445,7 +445,7 @@ fn decode_tokens(tokens: &[String], names: &super::LineLayout) -> Option<super::
                 "integer" => Value::Number(Number::parse_integer(t)?),
                 _ => Value::Number(Number::parse_number(t)?),
             };
-            Some((name.clone(), v))
+            Some((name.clone().into(), v))
         })
         .collect()
 }

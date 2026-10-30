@@ -837,11 +837,20 @@ function SolvePanel({
         <Button
           variant="ghost"
           className="justify-start"
-          onClick={() => void exportStn()}
+          onClick={() => void exportStn(true)}
           disabled={!!busy}
-          title="The case with its Records edits and study edits, as an open Stannum case file (format preview)"
+          title="The case with its Records edits and study edits, as an open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is (format preview)"
         >
-          <Download size={13} /> .stn (preview)…
+          <Download size={13} /> Binary .stnb (preview)…
+        </Button>
+        <Button
+          variant="ghost"
+          className="justify-start"
+          onClick={() => void exportStn(false)}
+          disabled={!!busy}
+          title="The same case as text, one record per line: readable, and diffs well in version control (format preview)"
+        >
+          <Download size={13} /> Text .stn (preview)…
         </Button>
       </div>
     </aside>

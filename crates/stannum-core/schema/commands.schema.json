@@ -763,7 +763,7 @@
         },
         {
           "const": "stn",
-          "description": "A Stannum case file (.stn), read as the RAW 35 text it converts to.",
+          "description": "A Stannum case file (.stn text or .stnb binary), read as the RAW 35\ntext it converts to.",
           "type": "string"
         }
       ]
@@ -6935,7 +6935,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write the case, with its Records and study edits, as a Stannum case\nfile (.stn, format preview). The answer lists anything converted or\nkept as RAW lines.",
+      "doc": "Write the case, with its Records and study edits, as a Stannum case\nfile (format preview): binary when `path` ends in `.stnb`, else text\n(`.stn`). The answer lists anything converted or kept as RAW lines.",
       "result": {
         "$ref": "#/$defs/StnExport"
       },

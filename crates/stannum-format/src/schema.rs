@@ -3,6 +3,33 @@
 use crate::value::Value;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+
+/// FNV-1a: names are short, and opening a case looks up fields a million
+/// times, where the default hasher's resistance to crafted keys costs more
+/// than it buys (the keys come from the schema).
+#[derive(Default)]
+pub(crate) struct Fnv(u64);
+
+impl Hasher for Fnv {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        let mut h = if self.0 == 0 {
+            0xcbf29ce484222325
+        } else {
+            self.0
+        };
+        for b in bytes {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        self.0 = h;
+    }
+}
+
+pub(crate) type NameMap<V> = HashMap<String, V, BuildHasherDefault<Fnv>>;
 use std::fmt;
 
 /// A format version, `MAJOR.MINOR`.
@@ -98,7 +125,7 @@ pub struct TableDef {
     pub singleton: bool,
     pub doc: String,
     pub fields: Vec<FieldDef>,
-    index: HashMap<String, usize>,
+    index: NameMap<usize>,
 }
 
 impl TableDef {
@@ -118,7 +145,7 @@ pub struct Schema {
     pub version: Version,
     pub doc: String,
     pub tables: Vec<TableDef>,
-    index: HashMap<String, usize>,
+    index: NameMap<usize>,
 }
 
 impl Schema {

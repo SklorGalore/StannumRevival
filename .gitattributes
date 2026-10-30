@@ -2,3 +2,7 @@
 THIRD-PARTY-LICENSES.txt text eol=lf linguist-generated=true
 # Files written by earlier releases, kept byte for byte (see tests/compat/README.md).
 tests/compat/** -text
+# Stannum case files: text with LF endings as written, binary as is.
+*.stn text eol=lf
+*.stnl text eol=lf
+*.stnb binary

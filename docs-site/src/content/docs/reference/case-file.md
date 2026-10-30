@@ -1,6 +1,6 @@
 ---
-title: Case file format (.stn)
-description: "The .stn text format: Stannum's own open case format, one record per line with named fields, stable ids and units in the names."
+title: Case file format (.stn, .stnb)
+description: "The .stn text format and its .stnb binary form: Stannum's own open case format, one record per line with named fields, stable ids and units in the names."
 ---
 
 :::caution[Preview]
@@ -181,18 +181,97 @@ update. From format 1.0, a minor version only adds optional tables and
 fields, which older readers skip, and a major version is a breaking change.
 See [Versions and compatibility](/StannumRevival/reference/versioning/).
 
+## Binary form (.stnb)
+
+A `.stnb` file holds the same case as a `.stn` file, in columns: smaller
+(about a quarter of the text's size) and readable by any
+[Apache Arrow](https://arrow.apache.org/) library without parsing. It is a
+ZIP archive whose entries are stored, not compressed:
+
+```text
+case.stnb
+├── manifest.json
+├── tables/case.arrow
+├── tables/bus.arrow
+├── tables/load.arrow
+├── ...
+└── extensions/x.psse.lines.arrow
+```
+
+`manifest.json` names the format and version, the comment lines at the top
+of the file, and each table with its entry and row count:
+
+```json
+{
+  "format": "stannum-case",
+  "version": "0.1",
+  "schema_sha256": "…",
+  "app": "Stannum 1.0.0",
+  "preamble": ["Summer peak, base case."],
+  "tables": [
+    { "name": "bus", "path": "tables/bus.arrow", "rows": 82134 },
+    { "name": "line", "path": "tables/line.arrow", "rows": 91877 }
+  ]
+}
+```
+
+Each table is one [Arrow IPC file](https://arrow.apache.org/docs/format/Columnar.html#ipc-file-format)
+with these columns, in the canonical row order:
+
+| Column | Arrow type |
+|---|---|
+| `id` | string |
+| each field in the schema, defaults filled in | int64 for `int`, float64 for `float`, bool for `bool` and on/off (`on` is true), dictionary-encoded string for choices, string for text and references, list for lists |
+| `_comment` | string: the record's comment lines joined by newlines, null when it has none |
+| each `x.` extension field | string: the value as it is written in a `.stn` file |
+
+A field with no default is null where a record leaves it out. A list of
+tuples, such as a switched shunt's `blocks`, is a list of structs with
+fields `0`, `1`, `2`; optional trailing parts are null. Tables the schema
+doesn't know (`x.`, `seq.`, `dyn.`) are under `extensions/`, with every
+field as text. Arrow buffers are compressed with Zstandard.
+
+Reading a `.stnb` file and writing it as text gives the same canonical
+`.stn` file, and the other way round. The reader makes the same checks as
+for text, naming the table and row of each problem.
+
+### Reading it from Python
+
+Only [pyarrow](https://arrow.apache.org/docs/python/) is needed:
+
+```python
+import json, zipfile
+import pyarrow.ipc as ipc
+
+with zipfile.ZipFile("texas.stnb") as z:
+    manifest = json.loads(z.read("manifest.json"))
+    buses = ipc.open_file(z.read("tables/bus.arrow")).read_all()
+
+print(buses.num_rows, buses.column("vm_pu").to_numpy().min())
+df = buses.to_pandas()   # or polars.from_arrow(buses)
+```
+
 ## Converting
 
-- **In the app**: open a `.stn` file like any case. **Save case as** saves a
-  RAW or Stannum case as either `.raw` or `.stn`, by the extension you
-  choose. **Export Stannum case** (Power flow's side panel, or **Ctrl+K**)
-  writes any open case, with its Records and study edits, as `.stn`.
-- **From the command line**: `stannum-cli convert case.raw case.stn`, or the
-  other way round. MATPOWER cases convert too.
+- **In the app**: open a `.stn` or `.stnb` file like any case. **Save case
+  as** saves a RAW or Stannum case as `.raw`, `.stn` or `.stnb`, by the
+  extension you choose. **Export Stannum case** (Power flow's side panel,
+  or **Ctrl+K**) writes any open case, with its Records and study edits, as
+  text or binary.
+- **From the command line**: `stannum-cli convert case.raw case.stn` (or
+  `case.stnb`), or the other way round. MATPOWER cases convert too.
 - **In run files and Python**: the `export_stn` command, as
-  `export_stn path=case.stn` or `case.call("export_stn", path="case.stn")`.
+  `export_stn path=case.stn` or `case.call("export_stn", path="case.stnb")`;
+  a path ending in `.stnb` writes the binary form.
 
-Saving or exporting a case that was opened from a `.stn` file keeps that
+Opening a Stannum case reads its records straight into the power flow
+model, using every processor core for large tables: at 12,000 buses on a
+four-core machine, `.stnb` opens in about 0.11 s and `.stn` in about 0.12 s,
+against 0.14 s for the same case as RAW. The case's RAW form, which
+Records, topology and case diff read, is written in the background after
+it opens.
+
+Saving or exporting a case that was opened from a Stannum file keeps that
 file's ids, comments and `x.` extensions for every record still in the
 case, matched by natural key; new records get natural ids.
 
@@ -206,13 +285,13 @@ flow model, as RAW export does, and the export says so.
 can test against:
 
 - `valid/`: files that must read, and `canonical/`: the text a reader writes
-  for each;
+  for each, with the same case as `.stnb`;
 - `invalid/`: files that must be refused, each with the problems Stannum
-  reports (line, column and message) in a `.expect` file;
+  reports (line and column, or table and row, and message) in a `.expect`
+  file, for text and for `.stnb`;
 - `raw/`: RAW and MATPOWER cases with the `.stn` file each converts to.
 
 ## Still to come
 
-The binary form (`.stnb`, columnar and fast for very large cases), applying
-lists files to the contingency module, and a reader in the Python package
-are planned for the next preview.
+Applying lists files to the contingency module, and a reader in the Python
+package, are planned for the next preview.

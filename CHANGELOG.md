@@ -21,7 +21,18 @@ section into the next version's when a release is cut (see
   `planning_event_counts` says how many events each category gives.
   Multi-section line groupings in RAW files are now read, so a planning event
   takes a multi-section line out whole.
-
+- **Binary Stannum case files (`.stnb`, preview).** The same case as a
+  `.stn` file, in columns (Apache Arrow tables in a ZIP archive): about a
+  quarter of the size, and readable with pyarrow, pandas or polars with no
+  Stannum code. Open one like any case; **Save case as** and **Export
+  Stannum case** write one when the name ends in `.stnb`, as do
+  `stannum-cli convert` and `export_stn`.
+- **Stannum cases open faster than RAW.** A `.stn` or `.stnb` case is read
+  straight into the power flow model, with large tables split across
+  processor cores: at 12,000 buses, about 0.11 s for `.stnb` and 0.12 s for
+  `.stn`, against 0.14 s for the same case as RAW.
+  Warnings about a record point at its line in a `.stn` file, also for
+  records that aren't equipment.
 - **Stannum case files (`.stn`, preview).** An open text format for whole
   cases: one record per line with named fields, stable ids beside bus
   numbers, units in the field names, comments, and a fixed order so version
@@ -46,6 +57,8 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- RAW revision 35 cases no longer warn that ordinary generators are wind
+  machines: the wind-machine flag was read two columns early (from F4).
 - The version at the foot of the module rail keeps a pre-release suffix
   (v1.0-rc.1), so a release candidate never passes for the release.
 - Sensitivities work on 80,000-bus cases. They used to hold every injection

@@ -2,7 +2,7 @@
 // saved solves, solve and contingency settings, drawing and layout, kept
 // beside a reference to the case file. See lib/study/studyFile.ts.
 import { create } from "zustand";
-import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, STN_FILTERS, toStannumError } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, STN_FILTERS, STNB_FILTERS, toStannumError } from "../lib/analysis/api";
 import { addRecent, fileName } from "../lib/study/recent";
 import {
   compareToFile,
@@ -22,7 +22,7 @@ import { caseChangeOk, onBeforeCaseChange, useWorkspace } from "./workspaceStore
 
 /** The Open dialog takes a case or a study. */
 export const OPEN_FILTERS = [
-  { name: "Case or study", extensions: ["raw", "RAW", "m", "stn", "stannum"] },
+  { name: "Case or study", extensions: ["raw", "RAW", "m", "stn", "stnb", "stannum"] },
   ...CASE_FILTERS.slice(1),
   ...STUDY_FILTERS,
 ];
@@ -54,8 +54,8 @@ interface StudyFileState {
    * `revision` (asking where), then say what the file couldn't keep.
    */
   exportRaw: (revision: 33 | 35) => Promise<boolean>;
-  /** Write the case as a Stannum case file (.stn, format preview). */
-  exportStn: () => Promise<boolean>;
+  /** Write the case as a Stannum case file (.stn, or .stnb when `binary`; format preview). */
+  exportStn: (binary: boolean) => Promise<boolean>;
 }
 
 /** Whether there is anything worth keeping: edits, saved solves or a drawing. */
@@ -151,7 +151,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
   async exportRaw(revision) {
     const summary = useWorkspace.getState().caseSummary;
     if (!summary) return false;
-    const base = summary.name.replace(/\.(raw|m|stn)$/i, "");
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     const path = await pickSavePath(`${base}_v${revision}.raw`, RAW_FILTERS);
     if (!path) return false;
     try {
@@ -172,11 +172,11 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
     }
   },
 
-  async exportStn() {
+  async exportStn(binary) {
     const summary = useWorkspace.getState().caseSummary;
     if (!summary) return false;
-    const base = summary.name.replace(/\.(raw|m|stn)$/i, "");
-    const path = await pickSavePath(`${base}.stn`, STN_FILTERS);
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
+    const path = await pickSavePath(`${base}.${binary ? "stnb" : "stn"}`, binary ? STNB_FILTERS : STN_FILTERS);
     if (!path) return false;
     try {
       const done = await api.exportStn(path);
@@ -208,7 +208,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
       );
       if (!ok || !(await w.saveCaseAs())) return false;
     }
-    const base = summary.name.replace(/\.(raw|m|stn)$/i, "");
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     const path = (!opts?.as && get().path) || (await pickSavePath(`${base}.stannum`, STUDY_FILTERS));
     if (!path) return false;
     set({ busy: "saving", error: null });
