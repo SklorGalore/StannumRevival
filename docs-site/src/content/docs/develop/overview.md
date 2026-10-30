@@ -26,7 +26,7 @@ crates/
   stannum-cli/    `stannum-cli`: runs run files without the window
 src-tauri/        Desktop shell: one command into the core, attach
 src/              The React interface
-  shell/          Module rail, case bar, Ctrl+K, log dock, split view
+  shell/          Module rail, menu bar, toolbar, Ctrl+K, log dock, split view
   modules/        Diagram, Power flow, Records, Case diff
   lib/analysis/   Typed core calls, generated types, wire decoding
   store/          Zustand stores: workspace, study, layers, log…

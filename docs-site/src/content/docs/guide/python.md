@@ -195,7 +195,7 @@ results, and Python raises `KeyboardInterrupt` as usual.
 opening a workspace of its own. The script then works on the case in the
 window, and the window shows what it does as it goes: a case it opens,
 study edits it makes, results it solves. A **Script attached** chip in the
-case bar says a script is connected.
+toolbar says a script is connected.
 
 ```python
 import stannum as sn

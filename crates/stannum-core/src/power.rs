@@ -47,6 +47,9 @@ pub struct PowerCase {
     pub shunts: Vec<rs_power::ShuntSource>,
     /// RAW multi-section line groupings; empty otherwise.
     pub multi_section_lines: Vec<rs_power::MultiSectionLine>,
+    /// Each branch's RAW `LEN`, in `case.branches` order, for placing buses
+    /// on the map; 0 where not given. Empty for MATPOWER.
+    pub branch_lengths: Vec<f64>,
 }
 
 /// A MATPOWER bus's GS and BS as one fixed shunt, `shunt:<bus>:1`.
@@ -119,6 +122,7 @@ pub fn from_case(case: Case) -> PowerCase {
         area_loads: Vec::new(),
         shunts,
         multi_section_lines: Vec::new(),
+        branch_lengths: Vec::new(),
     }
 }
 
@@ -181,6 +185,7 @@ fn from_import(import: rs_power::RawImport) -> PowerCase {
         area_loads: import.area_loads,
         shunts: import.shunts,
         multi_section_lines: import.multi_section_lines,
+        branch_lengths: import.branch_lengths,
         case: import.case,
         warnings: import
             .warnings
@@ -301,7 +306,7 @@ fn decoupled_iterations() -> usize {
 }
 
 /// How to solve. Fields left out take their defaults: AC with the automatic
-/// method from the last solution, to 2 MVA, without reactive limits, with
+/// method from the last solution, to 2 MVA, with reactive limits held and
 /// every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default)]

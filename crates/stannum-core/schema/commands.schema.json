@@ -1703,6 +1703,15 @@
           "minimum": 0,
           "type": "integer"
         },
+        "estimated_from": {
+          "description": "How those were placed: \"lengths\" (from the lines' lengths, scaled by\nthe lines whose ends are placed), \"reactance\" (the same, from line\nreactance where the case gives no lengths) or \"neighbours\" (at the\naverage of placed neighbours, with too few placed lines to scale).",
+          "enum": [
+            "lengths",
+            "reactance",
+            "neighbours"
+          ],
+          "type": "string"
+        },
         "from_case": {
           "description": "Buses placed by the case's own substation data (and not by the file).",
           "format": "uint",
@@ -1766,6 +1775,7 @@
         "from_case",
         "case_substations",
         "estimated",
+        "estimated_from",
         "missing",
         "unknown_buses",
         "problems",
@@ -5453,7 +5463,7 @@
       "type": "object"
     },
     "SolveSettings": {
-      "description": "How to solve. Fields left out take their defaults: AC with the automatic\nmethod from the last solution, to 2 MVA, without reactive limits, with\nevery control on.",
+      "description": "How to solve. Fields left out take their defaults: AC with the automatic\nmethod from the last solution, to 2 MVA, with reactive limits held and\nevery control on.",
       "properties": {
         "adjust_dc_taps": {
           "default": true,

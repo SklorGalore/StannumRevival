@@ -49,8 +49,8 @@ attach one from the map's toolbar or the command palette (**Attach bus
 coordinates**). The case's buses are gathered into sites, one dot for each
 substation the file names (or each point, where it names none), coloured by
 the site's highest voltage. Branches are straight lines between sites, and DC
-lines are dashed. A site whose buses were all placed next to their neighbours,
-rather than by the file, is drawn hollow.
+lines are dashed. A site whose buses were all estimated from their lines' lengths,
+rather than placed by the file, is drawn hollow.
 
 ![The Map style: the whole case over state outlines](../../../assets/screens/diagram-map.png)
 
@@ -216,8 +216,8 @@ open it with the panel button to draw by hand.
 
 ## Saving and exporting
 
-The toolbar's **File** menu holds New, Open, Save, Save as and Export; the
-**View** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
+The Diagram toolbar's **Drawing** menu holds New, Open, Save, Save as and
+Export; its **Canvas** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
 (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG, PNG or PDF with a title block.
 **Print style** draws everything in black.
 

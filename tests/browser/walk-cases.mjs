@@ -97,7 +97,7 @@ for (const path of cases) {
 
   await step("open", async () => {
     await page.evaluate((p) => window.__dialogQueue.push(p), path);
-    await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+    await page.getByRole("button", { name: "Open case or study…" }).click();
     await page.getByText(/ buses ·/).first().waitFor({ timeout: T });
     await shot("opened");
   });

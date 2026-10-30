@@ -10,6 +10,15 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
+  Stannum to Claude and other Model Context Protocol clients: open a case,
+  solve, find violations, page through results, run N-1 or the NERC planning
+  events, look at topology, compare RAW files and export, by asking in plain
+  words. `--attach` drives the running app instead, so the window shows
+  every case and result, and the assistant can select elements and draw
+  one-lines around them. See
+  [AI assistants (MCP)](https://sklorgalore.github.io/StannumRevival/guide/ai-assistants/).
+
 - **NERC TPL-001 planning events.** Contingencies can run the planning events
   Stannum generates from the case instead of every branch and generator: the
   base case (P0), each generator, line, transformer, shunt and DC line pole
@@ -67,6 +76,14 @@ section into the next version's when a release is cut (see
 - **Reading a RAW file's records is about 45% faster** (the Records tab,
   case comparison): the reader no longer copies the field layout for every
   record.
+- **Map places for missing buses come from line lengths.** A bus the
+  coordinates file and the case leave out is now put where its lines'
+  lengths say: the RAW `LEN`, or the line's reactance where the case gives
+  none, scaled to kilometres by the lines whose ends are placed. A bus
+  behind a transformer sits exactly on its placed side. Hiding half the
+  substations of a synthetic 2,000-bus case, the estimates land 5.5 km from
+  the true places on average, against 17.8 km for neighbour averages. Too few placed lines
+  to scale by, and buses go at their neighbours' average as before.
 - **The desktop app only reads and writes files you choose.** Opening,
   saving and exporting accept files picked in a dialog, dropped on the
   window, found next to an opened study, or chosen in an earlier session
@@ -84,6 +101,8 @@ section into the next version's when a release is cut (see
 
 ### Fixed
 
+- A sample case a script opened while attached (`open_sample`) now shows in
+  the window; before, the window kept saying no case was open.
 - RAW revision 35 cases no longer warn that ordinary generators are wind
   machines: the wind-machine flag was read two columns early (from F4).
 - The version at the foot of the module rail keeps a pre-release suffix

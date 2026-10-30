@@ -66,10 +66,11 @@ and attached by the tests on every change.
   skipped, and the log says which line and why. The rest of the file still
   attaches. A file without the three required columns isn't attached.
 - **Buses the case doesn't have** are counted and reported, then ignored.
-- **Buses the file leaves out** are placed at the average of their neighbours
-  that have a place, working outward from the buses the file places. The
-  inspector marks them **Placed: estimated**. Buses with nothing placed
-  anywhere in their island stay without a place (**Placed: nowhere**).
+- **Buses the file leaves out** are estimated from the branches that reach
+  them, working outward from the buses the file places. The inspector marks
+  them **Placed: estimated**. Buses with nothing placed anywhere in their
+  island stay without a place (**Placed: nowhere**). See
+  [How missing buses are estimated](#how-missing-buses-are-estimated).
 - **Record edits** that add, remove or reconnect buses are matched against the
   file again.
 
@@ -97,3 +98,35 @@ places goes where the file says, with the file's substation name, and the
 case's own places fill in the buses the file leaves out. Detaching the file
 goes back to the case's places.
 
+
+## How missing buses are estimated
+
+A bus no source places is put where its branches say it should be:
+
+- **Transformers and switching devices** keep both their buses at one place,
+  so a bus tied that way to a placed bus sits exactly on it, in the same
+  site. Two buses at different base voltages joined by any branch count as
+  a transformer.
+- **Lines** say how far apart their buses are: from the `LEN` a RAW branch
+  record gives, or, where a case has no lengths (MATPOWER cases, and many
+  RAW exports that leave `LEN` at 0), from the line's reactance in ohms,
+  which grows with length.
+- Lengths are turned into kilometres by the lines whose two ends are
+  already placed: the median ratio of straight distance to length. So the
+  case's length units, and the detours real lines take, don't matter.
+  Reactance gets its own ratio for each voltage level with at least five
+  placed lines.
+- Each missing bus then moves to best fit the lengths of all its lines at
+  once, the placed buses held still. A bus hanging off one placed bus is
+  put one line length away from it, on the side away from that bus's other
+  lines.
+- With fewer than three placed lines to scale lengths by, a missing bus
+  goes at the average of its placed neighbours instead.
+
+The coordinates summary says which was used (`estimated_from`: `lengths`,
+`reactance` or `neighbours`), and so does the inspector's Map section.
+
+On a synthetic 2,000-bus case, hiding the places of half its substations,
+the estimates land 5.5 km from the true places on average, against 17.8 km
+for neighbour averages. Synthetic lines have reactance in proportion to
+length, so expect real cases to do somewhat worse.
