@@ -28,3 +28,5 @@ getrandom = "0.4"
 
 [dev-dependencies]
 stannum-synth = { path = "../stannum-synth" }
+# The budgets test times commands with the app's allocator.
+mimalloc = { version = "0.1", default-features = false }

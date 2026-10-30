@@ -57,6 +57,29 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Newton line search.** Each Newton step is checked before it's taken and
+  shortened while it would leave the mismatch larger than the last few
+  iterations did, so solves near the edge of what the network can carry
+  don't overshoot and wander. Ordinary solves are unchanged.
+- **Generators return from a reactive limit.** A generator bus fixed at a
+  reactive limit holds its voltage again when that voltage moves past the
+  setpoint on the side the limit pushes (at Qmax and above the setpoint, or
+  at Qmin and below), as PSS/E does. Before, only generators holding a
+  remote bus did, so a solve could end with units at a limit on the wrong
+  side of their setpoints.
+- **Synthetic cases are written as Stannum cases (`.stn`).** MATPOWER has no
+  column for the bus a generator regulates, so the `.m` file made every
+  synthetic unit hold its own terminals instead of its plant's high-voltage
+  bus, and the 80,000-bus case no longer solved with reactive limits on. The
+  large-case timing test keeps its case as `.stnb` and solves with reactive
+  limits on again.
+- **The Records tab and the topology open much faster on large RAW and
+  Stannum cases.** Records are read on every core, in parts, and no longer
+  copy their field layout one by one; the topology reader decodes its
+  records on every core too; and the app and the command line use a faster
+  memory allocator (mimalloc). On an 80,000-bus Stannum case, Records
+  opens in about 3 s instead of 12–18 s, the topology in about 3 s instead
+  of 4–8 s, and exporting it takes 5–6 s instead of 14–18 s.
 - **Map places for missing buses come from line lengths.** A bus the
   coordinates file and the case leave out is now put where its lines'
   lengths say: the RAW `LEN`, or the line's reactance where the case gives
@@ -65,7 +88,6 @@ section into the next version's when a release is cut (see
   substations of a synthetic 2,000-bus case, the estimates land 5.5 km from
   the true places on average, against 17.8 km for neighbour averages. Too few placed lines
   to scale by, and buses go at their neighbours' average as before.
-
 - **The desktop app only reads and writes files you choose.** Opening,
   saving and exporting accept files picked in a dialog, dropped on the
   window, found next to an opened study, or chosen in an earlier session

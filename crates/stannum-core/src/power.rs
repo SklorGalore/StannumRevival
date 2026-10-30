@@ -95,31 +95,38 @@ pub struct Warning {
 pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     if is_matpower {
         let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
-        let shunts = matpower_shunts(&case);
-        Ok(PowerCase {
-            elements: Elements::from_matpower(&case),
-            dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
-            case,
-            warnings: Vec::new(),
-            lcc_lines: Vec::new(),
-            vsc_lines: Vec::new(),
-            voltage_controls: rs_power::VoltageControls::default(),
-            flow_controls: rs_power::FlowControls::default(),
-            mtdc: Vec::new(),
-            substations: Vec::new(),
-            switching_devices: Vec::new(),
-            revision: None,
-            areas: Vec::new(),
-            area_loads: Vec::new(),
-            shunts,
-            multi_section_lines: Vec::new(),
-            branch_lengths: Vec::new(),
-            bus_owners: Default::default(),
-        })
+        Ok(from_case(case))
     } else {
         let import =
             rs_power::parse_raw_with_options(text, &raw_options()).map_err(|e| e.to_string())?;
         Ok(from_import(import))
+    }
+}
+
+/// A power flow model built in memory (a synthetic case, say), read as a
+/// MATPOWER case's would be but keeping what MATPOWER has no column for,
+/// such as the bus each generator regulates.
+pub fn from_case(case: Case) -> PowerCase {
+    let shunts = matpower_shunts(&case);
+    PowerCase {
+        elements: Elements::from_matpower(&case),
+        dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
+        case,
+        warnings: Vec::new(),
+        lcc_lines: Vec::new(),
+        vsc_lines: Vec::new(),
+        voltage_controls: rs_power::VoltageControls::default(),
+        flow_controls: rs_power::FlowControls::default(),
+        mtdc: Vec::new(),
+        substations: Vec::new(),
+        switching_devices: Vec::new(),
+        revision: None,
+        areas: Vec::new(),
+        area_loads: Vec::new(),
+        shunts,
+        multi_section_lines: Vec::new(),
+        branch_lengths: Vec::new(),
+        bus_owners: Default::default(),
     }
 }
 

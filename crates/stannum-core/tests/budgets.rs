@@ -11,6 +11,10 @@
 //! `STANNUM_BUDGET_BUSES` sets the case size (12,000 by default), and
 //! `STANNUM_BUDGET_CACHE` names a folder to keep the built case in and reuse.
 
+// The desktop app and the CLI use this allocator; time what they'd take.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use serde_json::{Value, json};
 use stannum_core::commands::Session;
 use stannum_core::power::SolveSettings;
@@ -35,7 +39,10 @@ const BUDGETS: &[(&str, f64, f64)] = &[
     ("diagram_network", 0.5, 6.5),
     ("bus_coordinates", 0.5, 0.75),
     // Sent as columns without source fields (see `topology_wire`): 2.3 MB
-    // and 0.06 s at 12k buses, from 14 MB and 0.46 s as one object per row.
+    // at 12k buses, from 14 MB as one object per row. The case is a Stannum
+    // case, so the topology and the records are read from its RAW records,
+    // as for a RAW file (0.35 s and 0.42 s at 12k), with the readers
+    // working on every core.
     ("topology_snapshot", 0.5, 3.5),
     ("topology_source", 0.25, 0.1),
     ("case_records", 0.5, 0.1),
@@ -107,7 +114,10 @@ fn a_large_case_stays_within_budget() {
         ),
     };
     std::fs::create_dir_all(&dir).unwrap();
-    let case_path = dir.join(format!("synthetic_{buses}_seed1.m"));
+    // Kept as a Stannum case: MATPOWER has no column for the bus a
+    // generator regulates, and the synthetic units hold their plant's
+    // high-voltage bus, not their own terminals.
+    let case_path = dir.join(format!("synthetic_{buses}_seed1.stnb"));
     let coords_path = dir.join(format!("synthetic_{buses}_seed1.coords.csv"));
     if case_path.exists() && coords_path.exists() {
         eprintln!("reusing {}", case_path.display());
@@ -116,7 +126,10 @@ fn a_large_case_stays_within_budget() {
         let mut config = stannum_synth::Config::for_buses(buses);
         config.seed = 1;
         let synth = stannum_synth::generate(&config);
-        std::fs::write(&case_path, rs_power::format_matpower(&synth.case).unwrap()).unwrap();
+        let power = stannum_core::power::from_case(synth.case.clone());
+        let (doc, _) =
+            stannum_core::stn::from_model("synthetic", &power, "Built by stannum-synth".into());
+        std::fs::write(&case_path, stannum_core::stn::encode(&doc, true).unwrap()).unwrap();
         std::fs::write(&coords_path, synth.coordinates_csv()).unwrap();
         eprintln!(
             "built a {}-bus case in {:.0} s (ac solve converged: {})",
@@ -133,14 +146,7 @@ fn a_large_case_stays_within_budget() {
 
     let s = Arc::new(Session::new());
     let mut out = Vec::new();
-    // Q limits off: this test times commands, and the synthetic 80,000-bus
-    // case doesn't converge with them on (the default since 0.5). Real 80k
-    // cases do; making the synthetic one solve with them is its own work.
-    let settings = serde_json::to_value(SolveSettings {
-        enforce_q_limits: false,
-        ..SolveSettings::default()
-    })
-    .unwrap();
+    let settings = serde_json::to_value(SolveSettings::default()).unwrap();
 
     run(
         &s,
@@ -327,7 +333,7 @@ fn a_large_case_stays_within_budget() {
         json!({ "query": { "sort": { "field": "lost_load_mw", "descending": true } } }),
     );
     // The case as Stannum files, text and binary, written and opened again.
-    let stn = dir.join(format!("synthetic_{buses}_seed1.stn"));
+    let stn = dir.join(format!("synthetic_{buses}_seed1.export.stn"));
     run(
         &s,
         &mut out,
@@ -342,7 +348,7 @@ fn a_large_case_stays_within_budget() {
         "open_case",
         json!({ "path": stn }),
     );
-    let stnb = dir.join(format!("synthetic_{buses}_seed1.stnb"));
+    let stnb = dir.join(format!("synthetic_{buses}_seed1.export.stnb"));
     run(
         &s,
         &mut out,

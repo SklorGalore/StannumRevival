@@ -25,11 +25,18 @@ This writes five files named after the case:
 
 | File | What it holds |
 | --- | --- |
-| `.m` | The case (MATPOWER), solved: voltages and dispatch are the ac solution. |
+| `.stn` | The case as a [Stannum case](/StannumRevival/reference/case-file/), solved: voltages and dispatch are the ac solution. |
 | `.coords.csv` | Latitude and longitude of every bus (its substation's). |
 | `.report.md` | Sizes, the structural statistics below, and the ac solve. |
 | `.report.json` | The same report for scripts and tests. |
 | `.svg` | A map of substations and lines, coloured by voltage. |
+
+Each generator holds the high-voltage bus of its plant, through its step-up
+transformer, as plants do. That's why the case is written as a Stannum case:
+MATPOWER has no column for the bus a generator regulates, so in a `.m` file
+every unit would hold its own terminals, and the case would no longer solve
+with reactive limits on. **Export case as MATPOWER** writes a `.m` copy if you need
+one.
 
 `-Config settings.json` reads every setting (see `stannum_synth::Config`):
 footprint, voltage levels, load per substation, fuel mix, line quotas and

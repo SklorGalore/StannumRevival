@@ -14,6 +14,9 @@
 
 mod mcp;
 
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use stannum_core::commands::{RunOptions, Session};
 use stannum_core::{logbook, run_file};
 use std::path::PathBuf;
