@@ -4,11 +4,28 @@ import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import { caseNetwork } from "../../lib/diagram/network";
 import type { CaseNetwork } from "../../lib/analysis/types";
-import { busLabel, generateDiagram, READABLE_BUSES, selectBuses, type Scope } from "../../lib/diagram/generate";
+import {
+  busLabel,
+  DRAW_FILTER_FIELDS,
+  drawFieldValue,
+  generateDiagram,
+  READABLE_BUSES,
+  selectBuses,
+  type Grouping,
+  type Scope,
+} from "../../lib/diagram/generate";
+import { distinctValues, ruleReady, type FilterRule } from "../../lib/filters";
+import { FilterChips } from "../../ui/FilterChips";
 import { Button, ErrorBanner, Field, inputClass } from "../../ui/primitives";
 import { Modal } from "../../ui/Modal";
 
 type ScopeKind = Scope["kind"];
+
+const GROUPINGS: { kind: Grouping; label: string; one: string }[] = [
+  { kind: "area", label: "One area", one: "Area" },
+  { kind: "zone", label: "One zone", one: "Zone" },
+  { kind: "owner", label: "One owner", one: "Owner" },
+];
 
 /** Choose which part of the open case to draw, then lay it out. */
 export function GenerateDialog({ onClose, around }: { onClose: () => void; around?: number }) {
@@ -20,7 +37,8 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<ScopeKind>("all");
-  const [area, setArea] = useState(0);
+  const [group, setGroup] = useState<Record<Grouping, number>>({ area: 0, zone: 0, owner: 0 });
+  const [filters, setFilters] = useState<FilterRule[]>([]);
   const [center, setCenter] = useState("");
   const [depth, setDepth] = useState(2);
 
@@ -36,7 +54,7 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
         const big = real.length > READABLE_BUSES;
         // One-lines are mostly drawn a few hops around the bus under study.
         setKind(real.length > 20 || big ? "around" : "all");
-        setArea(real[0]?.area ?? 0);
+        setGroup({ area: real[0]?.area ?? 0, zone: real[0]?.zone ?? 0, owner: real[0]?.owner ?? 0 });
         const ref = real.find((b) => b.kind === "Ref") ?? real[0];
         setCenter(ref ? String(ref.id) : "");
         // Asked to draw around one bus, such as the shared selection.
@@ -51,26 +69,39 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
     };
   }, [caseVersion]);
 
-  const areas = useMemo(() => {
-    const counts = new Map<number, number>();
-    for (const b of net?.buses ?? []) if (!b.star) counts.set(b.area, (counts.get(b.area) ?? 0) + 1);
-    return [...counts].sort((a, b) => a[0] - b[0]);
+  // Bus counts of each area, zone and owner.
+  const groups = useMemo(() => {
+    const out = {} as Record<Grouping, [number, number][]>;
+    for (const { kind: g } of GROUPINGS) {
+      const counts = new Map<number, number>();
+      for (const b of net?.buses ?? []) if (!b.star) counts.set(b[g], (counts.get(b[g]) ?? 0) + 1);
+      out[g] = [...counts].sort((a, b) => a[0] - b[0]);
+    }
+    return out;
   }, [net]);
+  // MATPOWER cases have no owners: owner 0 on every bus.
+  const hasOwners = groups.owner.some(([o]) => o > 0);
+  const groupings = GROUPINGS.filter((g) => g.kind !== "owner" || hasOwners);
+  const fields = hasOwners ? DRAW_FILTER_FIELDS : DRAW_FILTER_FIELDS.filter((f) => f.key !== "owner");
+  const ready = filters.filter(ruleReady);
 
   const centerBus = net?.buses.find((b) => b.id === Number(center) && !b.star);
-  const scope: Scope | null =
+  const base: Scope | null =
     kind === "all"
       ? { kind }
-      : kind === "area"
-        ? { kind, area }
-        : centerBus
+      : kind === "around"
+        ? centerBus
           ? { kind, bus: centerBus.id, depth }
-          : null;
+          : null
+        : { kind, value: group[kind] };
+  const scope: Scope | null = base && (ready.length ? { ...base, filters: ready } : base);
+  const filterKey = JSON.stringify(ready);
   const count = useMemo(() => {
     if (!net || !scope) return 0;
     const chosen = selectBuses(net, scope);
     return net.buses.filter((b) => chosen.has(b.id) && !b.star).length;
-  }, [net, kind, area, centerBus?.id, depth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [net, kind, group, centerBus?.id, depth, filterKey]);
 
   async function generate() {
     if (!net || !scope || !summary) return;
@@ -124,16 +155,25 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
         {net && (
           <div className="flex flex-col gap-2.5">
             {option("all", `Whole case (${net.buses.filter((b) => !b.star).length} buses)`)}
-            {option("area", "One area")}
-            {kind === "area" && (
-              <select className={`${inputClass} ml-6`} value={area} onChange={(e) => setArea(Number(e.target.value))}>
-                {areas.map(([a, n]) => (
-                  <option key={a} value={a}>
-                    Area {a} ({n} buses)
-                  </option>
-                ))}
-              </select>
-            )}
+            {groupings.map(({ kind: g, label, one }) => (
+              <div key={g} className="contents">
+                {option(g, label)}
+                {kind === g && (
+                  <select
+                    className={`${inputClass} ml-6`}
+                    aria-label={one}
+                    value={group[g]}
+                    onChange={(e) => setGroup({ ...group, [g]: Number(e.target.value) })}
+                  >
+                    {groups[g].map(([v, n]) => (
+                      <option key={v} value={v}>
+                        {one} {v} ({n} buses)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ))}
             {option("around", "Around a bus")}
             {kind === "around" && (
               <div className="ml-6 grid grid-cols-2 gap-2">
@@ -170,9 +210,24 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
                 </datalist>
               </div>
             )}
+            <div className="rounded-md border border-slate-200 overflow-visible [&>[data-testid=filter-chips]]:border-b-0 [&>[data-testid=filter-chips]]:rounded-md">
+              <FilterChips
+                fields={fields}
+                options={(field) =>
+                  distinctValues(net.buses.filter((b) => !b.star).map((b) => drawFieldValue(b, field)))
+                }
+                rules={filters}
+                onRules={setFilters}
+              />
+            </div>
+            {ready.length > 0 && kind === "around" && (
+              <p className="text-[11px] text-slate-500">
+                The drawing grows only through buses that pass the filters; the studied bus is always drawn.
+              </p>
+            )}
             <p className={`text-[11px] ${count > READABLE_BUSES ? "text-amber-700" : "text-slate-500"}`}>
               {count} buses will be drawn.
-              {count > READABLE_BUSES && " That's a lot for one sheet; an area or a neighbourhood reads better."}
+              {count > READABLE_BUSES && " That's a lot for one sheet; an area, a filter or a neighbourhood reads better."}
             </p>
           </div>
         )}
