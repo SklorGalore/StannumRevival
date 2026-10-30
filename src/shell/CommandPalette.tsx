@@ -106,6 +106,16 @@ export function paletteCommands(): Command[] {
     list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
     if (studyPath)
       list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+    if (summary.power.available)
+      for (const solved of [false, true])
+        if (!solved || w.solveReport)
+          list.push({
+            id: `export-matpower${solved ? "-solved" : ""}`,
+            title: `Export ${solved ? "solved case" : "case"} as MATPOWER…`,
+            icon: <Download size={14} />,
+            keywords: "export matpower m file save write convert",
+            run: () => void studyFile.exportMatpower(solved),
+          });
     for (const revision of [35, 33] as const)
       list.push({
         id: `export-raw-${revision}`,

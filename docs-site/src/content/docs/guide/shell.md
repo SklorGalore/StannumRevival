@@ -11,8 +11,7 @@ The dark teal rail on the left switches between **Diagram**, **Power flow**,
 **Records** and **Case diff**. The case's topology is in the Diagram, as
 [layers and tables](/StannumRevival/guide/topology/). Modules stay loaded when you switch away, so a
 solved case, a drawn diagram or a comparison is still there when you come
-back. The theme button at the bottom of the rail (it reads **System**,
-**Light** or **Dark**) cycles through the three themes.
+back.
 
 ## Case bar
 
@@ -78,8 +77,8 @@ Wherever Stannum reports something about an element, the report leads to it:
 
 ## Themes
 
-Light, dark and system themes are available from the theme button on the
-rail or the palette ("Switch to dark theme"). Diagrams have a separate **Print style**
+Light, dark and system themes are in the command palette (Ctrl+K, then
+"theme": "Switch to dark theme"). Diagrams have a separate **Print style**
 that draws everything in black for printing and export.
 
 ![The dark theme](../../../assets/screens/theme-dark.png)

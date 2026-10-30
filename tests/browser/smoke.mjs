@@ -712,14 +712,20 @@ const showing = await page.evaluate(
 );
 assert.equal(showing, 0, "diagram symbols visible on another module");
 
-// Theme: the rail button cycles System, Light, Dark. Dark flips the app's
+// Theme: the palette cycles System, Light, Dark. Dark flips the app's
 // colours, while the diagram in print style stays black on white.
-const theme = page.getByRole("button", { name: /^Theme:/ });
-for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Dark"; i++) await theme.click();
+const darkNow = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+const nextTheme = async () => {
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search" }).fill("theme");
+  await page.getByRole("option", { name: /theme/ }).first().waitFor();
+  await page.keyboard.press("Enter");
+};
+for (let i = 0; i < 3 && !(await darkNow()); i++) await nextTheme();
 assert(await page.evaluate(() => document.documentElement.classList.contains("dark")), "dark theme applied");
 const bodyBg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white"));
 await shot("theme-dark");
-for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Light"; i++) await theme.click();
+for (let i = 0; i < 3 && (await darkNow()); i++) await nextTheme();
 assert(!(await page.evaluate(() => document.documentElement.classList.contains("dark"))), "light theme applied");
 assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white")), "theme changes colours");
 
