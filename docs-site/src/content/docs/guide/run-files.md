@@ -11,7 +11,7 @@ from a terminal with `stannum-cli`. The format is described in
 
 ## Recording
 
-**Ctrl+K → Record a run file** starts recording. A red bar under the case bar
+**File → Record a run file** (or Ctrl+K) starts recording. A red bar under the toolbar
 counts the steps kept so far. Work as usual: opening a case, solving, study
 edits, attaching DC grids or bus coordinates, contingencies, Trip and
 compare, Records edits and exports are all kept. Looking around (selecting,
@@ -21,7 +21,7 @@ If a case is open when you start, the run file begins by opening it, with
 its DC grid file, bus coordinates and study edits, so it starts where you
 did.
 
-![Recording a run file: the red bar under the case bar counts the steps](../../../assets/screens/run-file-recording.png)
+![Recording a run file: the red bar under the toolbar counts the steps](../../../assets/screens/run-file-recording.png)
 
 **Stop and save…** asks where to save the file. Paths to files in the same
 folder (or below it) are written relative to the run file, so the folder can
@@ -45,7 +45,7 @@ solve_power_flow
 **Ctrl+K → Run a run file…**, or drop a `.stnrun` file on the window. Before
 anything runs, every line is checked, so a misspelled command on the last
 line stops the file before the first line changes anything. While it runs,
-the bar under the case bar has a **Cancel** button, which stops the run
+the bar under the toolbar has a **Cancel** button, which stops the run
 before its next line (and stops a solve or contingency run in progress).
 
 When it finishes, the app shows the case the run file left open, with its

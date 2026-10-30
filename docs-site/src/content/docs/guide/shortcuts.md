@@ -17,7 +17,7 @@ On macOS, use <kbd>Cmd</kbd> where this page says <kbd>Ctrl</kbd>. Press
 | <kbd>Esc</kbd> | Clear the selection, or close a menu or dialog |
 | <kbd>?</kbd> | List the keyboard shortcuts |
 | <kbd>←</kbd> / <kbd>→</kbd> on the divider | Resize [side by side](/StannumRevival/guide/side-by-side/) panes |
-| <kbd>Tab</kbd> first thing in the window | **Skip to the module**, past the rail and the case bar |
+| <kbd>Tab</kbd> first thing in the window | **Skip to the module**, past the rail, the menu bar and the toolbar |
 
 ## Tables, tabs and menus
 

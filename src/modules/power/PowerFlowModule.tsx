@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Download, FolderOpen, PanelLeftClose, PanelLeftOpen, Play, Sigma, X, Zap } from "lucide-react";
 import { useShownReport, useWorkspace, type ShownResult } from "../../store/workspaceStore";
-import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, pickSavePath, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
+import { api, DC_GRID_FILTERS, DEFAULT_SOLVE_SETTINGS, pickFile, saveTextExport, toStannumError, type StannumError } from "../../lib/analysis/api";
 import type {
   AreaRow,
   FactsRow,
@@ -32,7 +32,6 @@ import {
   inputClass,
 } from "../../ui/primitives";
 import { DataTable, filterRows, type Column } from "../../ui/DataTable";
-import { OverflowMenu } from "../../ui/OverflowMenu";
 import { SensitivityView } from "./SensitivityView";
 import { VscGridsTab } from "./VscGridsTab";
 import { busElement, elementBus, elementLabel, parseElement } from "../../lib/elements";
@@ -602,7 +601,6 @@ function SolvePanel({
   onCancelSolve,
   onSensitivities,
   report,
-  onExport,
   onHide,
 }: {
   onHide: () => void;
@@ -613,13 +611,10 @@ function SolvePanel({
   onCancelSolve: () => void;
   onSensitivities: () => void;
   report: SolveReport | null;
-  onExport: (solved: boolean) => void;
 }) {
   const ac = settings.model === "ac";
   const method = settings.method;
   const baseMva = useWorkspace((s) => s.caseSummary?.power.info?.counts.base_mva) ?? 100;
-  const exportRaw = useStudyFile((s) => s.exportRaw);
-  const exportStn = useStudyFile((s) => s.exportStn);
   // The settings people rarely touch fold away; the fold says how many differ from the defaults.
   const d = DEFAULT_SOLVE_SETTINGS;
   const changed = [
@@ -839,40 +834,6 @@ function SolvePanel({
           <Sigma size={14} /> {busy === "sens" ? "Calculating…" : "Calculate sensitivities"}
         </Button>
       </div>
-      <OverflowMenu
-        label="Export case"
-        showLabel
-        className="justify-center border border-slate-200 text-slate-600"
-        items={[
-          { id: "m-in", icon: <Download size={13} />, label: "MATPOWER, input case…", disabled: !!busy, onClick: () => onExport(false) },
-          { id: "m-out", icon: <Download size={13} />, label: "MATPOWER, solved case…", disabled: !!busy || !report, onClick: () => onExport(true) },
-          ...([35, 33] as const).map((revision) => ({
-            id: `raw${revision}`,
-            icon: <Download size={13} />,
-            label: `PSS/E RAW, revision ${revision}…`,
-            disabled: !!busy,
-            title: "The case with its Records edits and study edits, every record included",
-            onClick: () => void exportRaw(revision),
-          })),
-          {
-            id: "stnb",
-            icon: <Download size={13} />,
-            label: "Stannum case, binary .stnb (preview)…",
-            disabled: !!busy,
-            title:
-              "The case with its Records edits and study edits, as an open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is (format preview)",
-            onClick: () => void exportStn(true),
-          },
-          {
-            id: "stn",
-            icon: <Download size={13} />,
-            label: "Stannum case, text .stn (preview)…",
-            disabled: !!busy,
-            title: "The same case as text, one record per line: readable, and diffs well in version control (format preview)",
-            onClick: () => void exportStn(false),
-          },
-        ]}
-      />
     </aside>
   );
 }
@@ -1441,11 +1402,22 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("study");
   }, [studyShowRequest]);
 
-  // "Show import warnings" and "Attach VSC DC grids" from the command palette.
+  // "Contingencies", "Show import warnings" and "Attach VSC DC grids" from the toolbar, menus and Ctrl+K.
   const powerTabRequest = useWorkspace((s) => s.powerTabRequest);
   useEffect(() => {
     if (powerTabRequest) setTab(powerTabRequest.tab);
   }, [powerTabRequest]);
+
+  // "Calculate sensitivities" from the toolbar, the Analysis menu or Ctrl+K.
+  const sensitivityRequest = useWorkspace((s) => s.sensitivityRequest);
+  const lastSensitivityRequest = useRef(sensitivityRequest);
+  useEffect(() => {
+    if (sensitivityRequest === lastSensitivityRequest.current) return;
+    lastSensitivityRequest.current = sensitivityRequest;
+    if (!power?.available || busy) return;
+    void sensitivities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sensitivityRequest]);
 
   // "Solve power flow" from the command palette.
   const solveRequest = useWorkspace((s) => s.solveRequest);
@@ -1458,14 +1430,6 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solveRequest]);
-
-  async function exportMatpower(solved: boolean) {
-    const stem = (summary?.name ?? "case").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
-    const name = /^[A-Za-z]/.test(stem) ? stem : `case_${stem}`;
-    const path = await pickSavePath(`${name}${solved ? "_solved" : ""}.m`, [{ name: "MATPOWER", extensions: ["m"] }]);
-    if (!path) return;
-    await run("export", () => api.exportMatpower(path, solved), () => undefined);
-  }
 
   const contingencyTotal = useContingencies((s) => s.summary?.total);
   const contingencyChoice = useContingencies((s) => s.choice);
@@ -1552,7 +1516,6 @@ export function PowerFlowModule({ active }: { active: boolean }) {
           onCancelSolve={() => void api.cancelSolve()}
           onSensitivities={sensitivities}
           report={latest}
-          onExport={exportMatpower}
           onHide={() => setSettingsOpen(false)}
         />
       ) : (

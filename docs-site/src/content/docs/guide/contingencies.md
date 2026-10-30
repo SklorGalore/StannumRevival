@@ -115,7 +115,7 @@ outage. **Clear** in the Layers panel turns it off.
 While an outage is on the diagram, every view shows that outage's AC
 solution instead of the latest solve: the diagram's flow and voltage labels,
 the Power flow tables and overview, the **Results** layer and the element
-inspector. The case bar says which result is shown (**Outage #3 · Line 6–8
+inspector. The toolbar says which result is shown (**Outage #3 · Line 6–8
 circuit 1 out**, or **Base case**); its menu switches between the latest
 solve and the open outage, and the cross goes back to the latest solve. A
 new solve, a study change or clearing the outage goes back too.

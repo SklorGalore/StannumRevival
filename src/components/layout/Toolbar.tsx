@@ -237,8 +237,8 @@ export function Toolbar() {
         )}
         {roomy ? (
           <>
-            <OverflowMenu label="File" showLabel items={fileItems} />
-            <OverflowMenu label="View" showLabel items={viewItems} />
+            <OverflowMenu label="Drawing" showLabel items={fileItems} />
+            <OverflowMenu label="Canvas" showLabel items={viewItems} />
           </>
         ) : (
           <OverflowMenu label="More diagram actions" items={[...fileItems, ...viewItems]} />

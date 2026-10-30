@@ -253,10 +253,9 @@ df = buses.to_pandas()   # or polars.from_arrow(buses)
 
 ## Converting
 
-- **In the app**: open a `.stn` or `.stnb` file like any case. **Save case
-  as** saves a RAW or Stannum case as `.raw`, `.stn` or `.stnb`, by the
-  extension you choose. **Export Stannum case** (Power flow's side panel,
-  or **Ctrl+K**) writes any open case, with its Records and study edits, as
+- **In the app**: open a `.stn` or `.stnb` file like any case. **File → Save case
+  as…** saves a RAW or Stannum case as `.raw`, `.stn` or `.stnb`, by the
+  extension you choose. **File → Export case** (or **Ctrl+K**) writes any open case, with its Records and study edits, as
   text or binary.
 - **From the command line**: `stannum-cli convert case.raw case.stn` (or
   `case.stnb`), or the other way round. MATPOWER cases convert too.

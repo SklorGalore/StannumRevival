@@ -14,7 +14,7 @@ frontend, and how to add a command.
 
 ```
 ┌──────────────────────────────── React interface (src/) ────────────────────────────────┐
-│  Module rail · case bar · palette · log dock · side by side                              │
+│  Module rail · menu bar · toolbar · palette · log dock · side by side                    │
 │  Diagram (React Flow + ELK; network: Cytoscape)   Power flow   Case diff                 │
 └──────────────────────────────────────┬──────────────────────────────────────────────────┘
                                        │ stannum_command (src-tauri/src/analysis.rs)

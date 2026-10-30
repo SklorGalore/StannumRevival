@@ -216,8 +216,8 @@ open it with the panel button to draw by hand.
 
 ## Saving and exporting
 
-The toolbar's **File** menu holds New, Open, Save, Save as and Export; the
-**View** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
+The Diagram toolbar's **Drawing** menu holds New, Open, Save, Save as and
+Export; its **Canvas** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
 (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG, PNG or PDF with a title block.
 **Print style** draws everything in black.
 
