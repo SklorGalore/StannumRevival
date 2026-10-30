@@ -184,7 +184,7 @@
           "type": "number"
         },
         "pct": {
-          "description": "Percent of rate A, after and before; `None` when unrated.",
+          "description": "Percent of the run's rating after, and of its base rating before;\n`None` when unrated.",
           "format": "double",
           "type": [
             "number",
@@ -1521,6 +1521,11 @@
           "minimum": 0,
           "type": "integer"
         },
+        "base_rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "The rating for the base case: its loadings (the \"before\" figures)\nand the P0 event."
+        },
         "branches": {
           "default": true,
           "type": "boolean"
@@ -1542,7 +1547,7 @@
         },
         "limit_pct": {
           "default": 100.0,
-          "description": "Loading, as a percent of rate A, above which a branch is overloaded.",
+          "description": "Loading, as a percent of the rating, above which a branch is\noverloaded.",
           "format": "double",
           "type": "number"
         },
@@ -1561,6 +1566,11 @@
           ],
           "default": null,
           "description": "Run these NERC TPL-001 planning events instead of every branch and\ngenerator; `elements`, `branches` and `generators` are then unused."
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "The rating loadings are measured against after an outage."
         },
         "solve": {
           "$ref": "#/$defs/SolveSettings",
@@ -1598,6 +1608,9 @@
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "base_rating": {
+          "$ref": "#/$defs/Rating"
         },
         "cancelled": {
           "description": "Stopped early: outages after the stop keep their screened result.",
@@ -1638,6 +1651,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "description": "The ratings loadings were measured against, after outages and in\nthe base case."
+        },
         "screen_ms": {
           "format": "double",
           "type": "number"
@@ -1672,6 +1689,8 @@
       "required": [
         "method",
         "limit_pct",
+        "rating",
+        "base_rating",
         "total",
         "already_out",
         "ac_checked",
@@ -4178,7 +4197,7 @@
           "type": "number"
         },
         "pct": {
-          "description": "MVA as a percent of rate A, after the outage and before it.",
+          "description": "MVA as a percent of the run's rating after the outage, and of its\nbase rating before it.",
           "format": "double",
           "type": "number"
         },
@@ -4707,6 +4726,26 @@
         "title"
       ],
       "type": "object"
+    },
+    "Rating": {
+      "description": "Which of a branch's three ratings a loading is measured against.",
+      "oneOf": [
+        {
+          "const": "a",
+          "description": "Rate A (RAW RATE1): normal, long-term.",
+          "type": "string"
+        },
+        {
+          "const": "b",
+          "description": "Rate B (RAW RATE2): short-term, often the post-contingency rating.",
+          "type": "string"
+        },
+        {
+          "const": "c",
+          "description": "Rate C (RAW RATE3): emergency.",
+          "type": "string"
+        }
+      ]
     },
     "RawExport": {
       "description": "What an export wrote, and what it couldn't keep.",
@@ -8002,6 +8041,16 @@
       "args": {
         "additionalProperties": false,
         "properties": {
+          "baseRating": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "case": {
             "anyOf": [
               {
@@ -8018,6 +8067,16 @@
           "limitPct": {
             "format": "double",
             "type": "number"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -8026,7 +8085,7 @@
         ],
         "type": "object"
       },
-      "doc": "Take one element out of the last AC solve and solve again.",
+      "doc": "Take one element out of the last AC solve and solve again. Loadings\nare measured against `rating` after the trip and `base_rating`\nbefore it (both rate A when left out).",
       "result": {
         "$ref": "#/$defs/ContingencyDetail"
       },

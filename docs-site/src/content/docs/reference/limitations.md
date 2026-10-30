@@ -16,7 +16,8 @@ keep.
   or the NERC TPL-001 planning events P0, P1, P2.1 and P7.2. Outages of
   several elements together (N-2 and up), bus outages, planning events that
   need breakers, two stages or tower data (P2.2 to P2.4, P3 to P6, P7.1) and
-  remedial actions are not run. Loading is checked against rate A only.
+  remedial actions are not run. Loading is checked against rate A, B or C
+  as chosen; RAW 35 ratings 4 to 12 are not read.
 - The linear contingency screen leaves out resistance and phase shifts, and
   finds overloads only; voltage problems and reactive limits come from the
   AC checks.

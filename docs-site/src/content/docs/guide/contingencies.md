@@ -22,8 +22,13 @@ Solve the case with the AC model first. Then choose:
   solves the worst N in AC. **AC solve of every outage** is slower on large
   cases but needs no screen.
 - **Worst checked in AC**: N, 50 by default.
-- **Overloaded above**: the loading, as a percent of rate A, that counts as
-  an overload.
+- **Base case rating** and **Contingency rating**: which of each branch's
+  ratings (rate A normal, B short-term, C emergency) the loading is measured
+  against before and after an outage. Both are rate A by default; many
+  planners use rate A before and rate B after. A branch with no value for
+  the chosen rating is unrated. Saved in the study file.
+- **Overloaded above**: the loading, as a percent of the chosen rating, that
+  counts as an overload.
 
 The bus filters above the tab narrow the outages to branches and generators
 touching the matching buses, for example one area or one voltage level.

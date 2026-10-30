@@ -105,8 +105,12 @@ bus is in the chosen areas. Generators only take the area filter.
 ## Ranking
 
 A branch counts as overloaded when its MVA after the outage is above the
-limit (100% of rate A by default) and it was under the limit before, or has
-grown by more than one point. Pre-existing overloads that don't get worse
+limit (100% by default) of the contingency rating, and it was under the
+limit of the base case rating before, or has grown by more than one point.
+Both ratings are rate A unless chosen otherwise; a common planning choice
+is rate A before and rate B after. A branch whose chosen rating is zero is
+unrated and never overloads. The base case event (P0) is held to the base
+case rating. Pre-existing overloads that don't get worse
 don't rank an outage. A bus counts when it is outside its voltage limits and
 more than 0.001 p.u. further out than before.
 

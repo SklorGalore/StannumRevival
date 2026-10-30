@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Ratings B and C in contingency analysis.** Contingency runs and Trip
+  and compare measure loading against rate A, B or C, chosen separately for
+  the base case and after each outage (for example rate A before, rate B
+  after). Both stay rate A by default. The choice is saved in the study file
+  and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
+  server.
 - **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
   Stannum to Claude and other Model Context Protocol clients: open a case,
   solve, find violations, page through results, run N-1 or the NERC planning

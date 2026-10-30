@@ -7,7 +7,7 @@
 
 use crate::contingency::{
     ContingencyDetail, ContingencyJob, ContingencyResults, ContingencyRow, ContingencySettings,
-    ContingencySummary,
+    ContingencySummary, Rating,
 };
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
@@ -751,14 +751,16 @@ impl OpenCase {
     }
 
     /// Take one branch or generator out of the last AC solve and solve again
-    /// in AC with the same settings: "Trip and compare". The contingency
+    /// in AC with the same settings: "Trip and compare". `ratings` are the
+    /// ratings after the trip and before it. The contingency
     /// run in hand, if any, is kept.
     pub fn trip_and_compare(
         &mut self,
         element: &str,
         limit_pct: f64,
+        ratings: (Rating, Rating),
     ) -> Result<ContingencyDetail, Error> {
-        let done = self.trip_job(element, limit_pct)?.run()?;
+        let done = self.trip_job(element, limit_pct, ratings)?.run()?;
         self.finish_trip(done)
     }
 
@@ -772,7 +774,12 @@ impl OpenCase {
 
     /// [`Self::trip_and_compare`]'s solve, to run with [`TripJob::run`]
     /// without the workspace.
-    pub fn trip_job(&self, element: &str, limit_pct: f64) -> Result<TripJob, Error> {
+    pub fn trip_job(
+        &self,
+        element: &str,
+        limit_pct: f64,
+        ratings: (Rating, Rating),
+    ) -> Result<TripJob, Error> {
         let power = self.power_case()?;
         let (base, solve) = &**resumable(&self.solved).ok_or_else(|| {
             Error::not_ready(
@@ -786,6 +793,8 @@ impl OpenCase {
             method: crate::contingency::Method::Ac,
             ac_count: 1,
             limit_pct,
+            rating: ratings.0,
+            base_rating: ratings.1,
             solve: solve.clone(),
             planning: None,
         };

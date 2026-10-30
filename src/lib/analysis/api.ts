@@ -36,7 +36,7 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, SampleCase, Step } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, Rating, RunReport, SampleCase, Step } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -281,7 +281,8 @@ export const api = {
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
     fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
-  tripAndCompare: (element: string, limitPct: number): Promise<ContingencyDetail> => call("trip_and_compare", { element, limitPct }),
+  tripAndCompare: (element: string, limitPct: number, rating: Rating = "a", baseRating: Rating = "a"): Promise<ContingencyDetail> =>
+    call("trip_and_compare", { element, limitPct, rating, baseRating }),
   /** A named result ("base", "study", "contingency 3", "trip line:1-2-1") as a full solve report. */
   resultReport: async (name: string): Promise<SolveReport> =>
     decodeSolveReport(await call("result_report", { name })),

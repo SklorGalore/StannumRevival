@@ -277,7 +277,9 @@ class Case:
         Options (all optional): ``elements`` (ids to take out; every
         branch and generator by default), ``branches``, ``generators``,
         ``method`` ("screen" or "ac"), ``ac_count``, ``limit_pct``,
-        ``solve`` (settings as for :meth:`solve`).
+        ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
+        loadings are measured against after an outage and before it; rate A
+        by default), ``solve`` (settings as for :meth:`solve`).
         """
         summary = self.call("run_contingencies", settings=_settings(settings, options))
         summary["rows"] = self.contingency_rows()
@@ -303,10 +305,24 @@ class Case:
         """One outage's flow and voltage changes, by rank (from 1)."""
         return self.call("contingency_detail", rank=rank)
 
-    def trip(self, element: str, limit_pct: float = 100.0) -> Answer:
+    def trip(
+        self,
+        element: str,
+        limit_pct: float = 100.0,
+        rating: str = "a",
+        base_rating: str = "a",
+    ) -> Answer:
         """Take one element out of the last AC solve, solve again and
-        compare."""
-        return self.call("trip_and_compare", element=element, limit_pct=limit_pct)
+        compare. ``rating`` and ``base_rating`` ("a", "b" or "c") are the
+        branch ratings loadings are measured against after the trip and
+        before it."""
+        return self.call(
+            "trip_and_compare",
+            element=element,
+            limit_pct=limit_pct,
+            rating=rating,
+            base_rating=base_rating,
+        )
 
     # Records and elements
 
