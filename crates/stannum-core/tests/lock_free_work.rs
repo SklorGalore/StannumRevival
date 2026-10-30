@@ -120,7 +120,7 @@ fn record_edits_written_into_an_older_case_are_not_kept() {
     case.apply_record_edits(&[edit("80")]).unwrap();
     let done = job.run().unwrap();
     assert_eq!(case.finish_record_edits(done).unwrap_err(), CASE_CHANGED);
-    let text = String::from_utf8(case.bytes.clone()).unwrap();
+    let text = String::from_utf8(case.bytes.to_vec()).unwrap();
     assert!(!text.contains("95.5"), "the late edit isn't written");
     assert_eq!(case.record_edits, 1);
 }

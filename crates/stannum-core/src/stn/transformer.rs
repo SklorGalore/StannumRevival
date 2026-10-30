@@ -156,17 +156,17 @@ fn from_canon(c: &Canon, windings: usize, sbase: f64) -> Fields {
         ("MAG2".into(), num(c.mag[1] * c.mva[0] / sbase)),
     ];
     for p in 0..pairs {
-        out.push((format!("R{}", PAIRS[p]), num(c.r[p])));
-        out.push((format!("X{}", PAIRS[p]), num(c.x[p])));
-        out.push((format!("SBASE{}", PAIRS[p]), num(c.mva[p])));
+        out.push((format!("R{}", PAIRS[p]).into(), num(c.r[p])));
+        out.push((format!("X{}", PAIRS[p]).into(), num(c.x[p])));
+        out.push((format!("SBASE{}", PAIRS[p]).into(), num(c.mva[p])));
     }
     for w in 0..windings {
         let n = w + 1;
-        out.push((format!("WINDV{n}"), num(c.tap[w])));
-        out.push((format!("NOMV{n}"), num(c.nom[w])));
+        out.push((format!("WINDV{n}").into(), num(c.tap[w])));
+        out.push((format!("NOMV{n}").into(), num(c.nom[w])));
         if windings == 3 || w == 0 {
-            out.push((format!("RMA{n}"), num(c.adj_max[w])));
-            out.push((format!("RMI{n}"), num(c.adj_min[w])));
+            out.push((format!("RMA{n}").into(), num(c.adj_max[w])));
+            out.push((format!("RMI{n}").into(), num(c.adj_min[w])));
         }
     }
     out
@@ -373,7 +373,7 @@ pub(crate) fn import(ctx: &Ctx, f: &Fields, inexact: &mut usize) -> Option<(&'st
     let back = from_canon(&c, w, ctx.sbase);
     let values = || {
         back.iter()
-            .filter(|(n, _)| !matches!(n.as_str(), "CW" | "CZ" | "CM"))
+            .filter(|(n, _)| !matches!(n.as_ref(), "CW" | "CZ" | "CM"))
     };
     if values().any(|(n, v)| original(n).to_bits() != super::value_f64(v).to_bits()) {
         *inexact += 1;
@@ -387,8 +387,9 @@ pub(crate) fn import(ctx: &Ctx, f: &Fields, inexact: &mut usize) -> Option<(&'st
             })
             .collect();
         orig.extend(
-            values()
-                .map(|(n, _)| Value::List(vec![Value::Str(n.clone()), Value::Float(original(n))])),
+            values().map(|(n, _)| {
+                Value::List(vec![Value::Str(n.to_string()), Value::Float(original(n))])
+            }),
         );
         r.set("x.psse.orig", Value::List(orig));
     }
@@ -462,7 +463,7 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
         let mut overlay = converted.clone();
         for (name, v) in overlay.iter_mut() {
             if let Some(o) = orig_value(orig, name) {
-                *v = match name.as_str() {
+                *v = match name.as_ref() {
                     "CW" | "CZ" | "CM" => int(super::value_f64(&o) as i64),
                     _ => o,
                 };
@@ -490,7 +491,7 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
                         )
                     })
                     .unwrap_or(0) as i64;
-                check.push((format!("COD{n}"), int(cod)));
+                check.push((format!("COD{n}").into(), int(cod)));
             }
         }
         if to_canon(&check, w, kv, ctx.sbase).same(&c) {
@@ -538,8 +539,8 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
     }
     for k in 0..4 {
         let (o, f) = list.get(k).copied().unwrap_or((0, 1.0));
-        out.push((format!("O{}", k + 1), int(o)));
-        out.push((format!("F{}", k + 1), num(f)));
+        out.push((format!("O{}", k + 1).into(), int(o)));
+        out.push((format!("F{}", k + 1).into(), num(f)));
     }
     out.push(("VECGRP".into(), text(ctx.s(table, r, "vector_group"))));
     if three {
@@ -557,12 +558,12 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
             String::new()
         };
         out.push((
-            format!("ANG{n}"),
+            format!("ANG{n}").into(),
             num(ctx.f(table, r, &format!("w{n}_angle_deg"))),
         ));
         for k in 1..=12 {
             out.push((
-                format!("RATE{n}-{k}"),
+                format!("RATE{n}-{k}").into(),
                 num(ctx.f(table, r, &format!("{p}rate{k}_mva"))),
             ));
         }
@@ -573,7 +574,7 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
             .value(table, r, &format!("{p}control_on"))
             .and_then(Value::as_bool)
             .unwrap_or(true);
-        out.push((format!("COD{n}"), int(if on { cod } else { -cod })));
+        out.push((format!("COD{n}").into(), int(if on { cod } else { -cod })));
         let cont = match r.get(&format!("{p}reg_bus")) {
             Some(v) => {
                 let b = ctx.bus(Some(v))?;
@@ -586,21 +587,21 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
             }
             None => 0,
         };
-        out.push((format!("CONT{n}"), int(cont)));
+        out.push((format!("CONT{n}").into(), int(cont)));
         out.push((
-            format!("NOD{n}"),
+            format!("NOD{n}").into(),
             int(r.int(&format!("{p}reg_node")).unwrap_or(0)),
         ));
         out.push((
-            format!("VMA{n}"),
+            format!("VMA{n}").into(),
             num(ctx.f(table, r, &format!("{p}band_max"))),
         ));
         out.push((
-            format!("VMI{n}"),
+            format!("VMI{n}").into(),
             num(ctx.f(table, r, &format!("{p}band_min"))),
         ));
         out.push((
-            format!("NTP{n}"),
+            format!("NTP{n}").into(),
             int(ctx
                 .doc
                 .value(table, r, &format!("{p}steps"))
@@ -618,17 +619,17 @@ pub(crate) fn export(ctx: &ExCtx, table: &str, r: &Record) -> Result<Item, Strin
             })
             .and_then(|t| t.int("number"))
             .unwrap_or(0);
-        out.push((format!("TAB{n}"), int(tab)));
+        out.push((format!("TAB{n}").into(), int(tab)));
         out.push((
-            format!("CR{n}"),
+            format!("CR{n}").into(),
             num(ctx.f(table, r, &format!("{p}comp_r_pu"))),
         ));
         out.push((
-            format!("CX{n}"),
+            format!("CX{n}").into(),
             num(ctx.f(table, r, &format!("{p}comp_x_pu"))),
         ));
         out.push((
-            format!("CNXA{n}"),
+            format!("CNXA{n}").into(),
             num(ctx.f(table, r, &format!("{p}comp_angle_deg"))),
         ));
     }

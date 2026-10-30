@@ -71,6 +71,14 @@ fn round_trip(path: &Path, dir: &Path) -> String {
         text,
         "{name}: canonical text changed on reading"
     );
+    // The binary form holds the same case.
+    let binary = stn::encode(&again, true).unwrap();
+    let from_binary = stn::read_file(&name, &binary).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        stn::write(&from_binary).unwrap(),
+        text,
+        "{name}: .stnb changed the case"
+    );
     assert!(report.records > 0);
 
     let raw = stn::to_raw(&again, &name).unwrap();
@@ -287,22 +295,28 @@ fn stn_files_open_edit_and_save() {
     let mut ws = Workspace::default();
     ws.open(&everything).unwrap();
     let warnings = &ws.current().unwrap().power.as_ref().unwrap().warnings;
-    let generator = warnings
+    let star = warnings
         .iter()
-        .find(|w| w.element.as_deref() == Some("generator:1:1"))
+        .find(|w| w.element.as_deref() == Some("transformer:2:4:6:2"))
         .unwrap();
     assert!(
         stn_text
             .lines()
-            .nth(generator.line - 1)
+            .nth(star.line - 1)
             .unwrap()
-            .starts_with("generator 1:1 ")
+            .starts_with("transformer3 2:4:6:2 ")
     );
+    // Warnings about records of no element point at the record too.
+    let zone = warnings
+        .iter()
+        .find(|w| w.message.contains("zone data"))
+        .unwrap();
     assert!(
-        warnings
-            .iter()
-            .filter(|w| w.element.is_none())
-            .all(|w| w.line == 0)
+        stn_text
+            .lines()
+            .nth(zone.line - 1)
+            .unwrap()
+            .starts_with("zone ")
     );
 
     // A .stn file the reader refuses doesn't open.
@@ -356,6 +370,16 @@ fn conformance_conversions() {
             assert_eq!(text, expected, "{}", golden.display());
         }
         assert_same_solution(&path, &written);
+        // As .stnb: the same case, opened and solved the same.
+        let binary = written.with_extension("stnb");
+        let mut ws = Workspace::default();
+        ws.open(&path).unwrap();
+        ws.current_mut().unwrap().export_stn(&binary).unwrap();
+        let bytes = std::fs::read(&binary).unwrap();
+        assert!(stn::is_stn(&bytes));
+        let doc = stn::read_file("b", &bytes).unwrap();
+        assert_eq!(stn::write(&doc).unwrap(), text, "{}", binary.display());
+        assert_same_solution(&path, &binary);
     }
 }
 
@@ -414,4 +438,92 @@ fn stn_ids_comments_and_extensions_survive_editing() {
     let exported = dir.join("spur-exported.stn");
     ws.current_mut().unwrap().export_stn(&exported).unwrap();
     assert_eq!(std::fs::read_to_string(&exported).unwrap(), out);
+}
+
+/// A .stnb file opens, takes edits and saves as .stnb or .stn, keeping its
+/// ids and comments.
+#[test]
+fn stnb_files_open_and_save() {
+    use stannum_core::workspace::CaseFormat;
+    let dir = out_dir("stnb");
+    let raw = core_fixture("five_bus_devices.raw");
+    let (doc, _) = stn::from_raw("five_bus_devices.raw", &std::fs::read(&raw).unwrap()).unwrap();
+    let text = stn::write(&doc)
+        .unwrap()
+        .replace(
+            "stannum-case 0.1\n",
+            "stannum-case 0.1\n# Kept in the manifest.\n",
+        )
+        .replace("bus 5 number=5 ", "# Spur bus.\nbus spur number=5 ")
+        .replace(" bus=5 ", " bus=spur ")
+        .replace(" to=5 ", " to=spur ")
+        .replace("reg_bus=5", "reg_bus=spur");
+    let doc = stn::read(&text).unwrap();
+    let path = dir.join("spur.stnb");
+    std::fs::write(&path, stn::encode(&doc, true).unwrap()).unwrap();
+    assert_same_solution(&raw, &path);
+
+    let mut ws = Workspace::default();
+    assert_eq!(ws.open(&path).unwrap().format, CaseFormat::Stn);
+    let saved = dir.join("spur-saved.stnb");
+    ws.current_mut().unwrap().save_as(&saved).unwrap();
+    let back = stn::read_file("s", &std::fs::read(&saved).unwrap()).unwrap();
+    assert_eq!(stn::write(&back).unwrap(), text);
+    let as_text = dir.join("spur-saved.stn");
+    ws.current_mut().unwrap().save_as(&as_text).unwrap();
+    assert_eq!(std::fs::read_to_string(&as_text).unwrap(), text);
+}
+
+/// Opening a Stannum case reads its records straight into the power flow
+/// model; that gives the same model as writing them as RAW text and reading
+/// that, for every RAW file the tests have.
+#[test]
+fn direct_open_matches_raw_text() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut files = Vec::new();
+    let mut dirs = vec![
+        root.join("stannum-core/tests"),
+        root.join("stannum-format/conformance"),
+        root.join("rs-power/tests"),
+    ];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "raw") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    let mut compared = 0;
+    for path in files {
+        let bytes = std::fs::read(&path).unwrap();
+        let Ok((doc, _)) = stn::from_raw("case.raw", &bytes) else {
+            continue;
+        };
+        let text = stn::to_raw(&doc, "case").unwrap();
+        let from_text = stannum_core::power::load(&text, false);
+        let (sections, _) = stn::raw_sections(&doc).unwrap();
+        let direct = stannum_core::power::load_sections(sections);
+        // Source lines differ (there is no RAW text), so they're left out.
+        let shown = |p: Result<stannum_core::power::PowerCase, String>| match p {
+            Ok(p) => {
+                let text = format!("{p:?}");
+                let mut out = String::new();
+                for (i, part) in text.split("line: ").enumerate() {
+                    if i > 0 {
+                        out.push_str("line: _");
+                    }
+                    out.push_str(part.trim_start_matches(|c: char| c.is_ascii_digit()));
+                }
+                out
+            }
+            Err(e) => format!("error: {}", e.split(':').next_back().unwrap_or("")),
+        };
+        assert_eq!(shown(direct), shown(from_text), "{}", path.display());
+        compared += 1;
+    }
+    assert!(compared >= 10, "only {compared} files compared");
 }

@@ -51,6 +51,12 @@ const BUDGETS: &[(&str, f64, f64)] = &[
     ("run_contingencies", 90.0, 0.5),
     ("contingency_rows 100", 0.5, 0.1),
     ("contingency_page sorted", 0.5, 0.1),
+    // Writing a Stannum case goes through RAW records; opening one reads
+    // its records straight into the power flow model, as fast as RAW.
+    ("export_stn .stn", 4.0, 0.1),
+    ("open_case .stn", 2.0, 0.1),
+    ("export_stn .stnb", 4.0, 0.1),
+    ("open_case .stnb", 2.0, 0.1),
 ];
 
 /// How a command's time budget grows past [`BUDGET_BUSES`]: in proportion
@@ -312,6 +318,37 @@ fn a_large_case_stays_within_budget() {
         "contingency_page sorted",
         "contingency_page",
         json!({ "query": { "sort": { "field": "lost_load_mw", "descending": true } } }),
+    );
+    // The case as Stannum files, text and binary, written and opened again.
+    let stn = dir.join(format!("synthetic_{buses}_seed1.stn"));
+    run(
+        &s,
+        &mut out,
+        "export_stn .stn",
+        "export_stn",
+        json!({ "path": stn }),
+    );
+    run(
+        &s,
+        &mut out,
+        "open_case .stn",
+        "open_case",
+        json!({ "path": stn }),
+    );
+    let stnb = dir.join(format!("synthetic_{buses}_seed1.stnb"));
+    run(
+        &s,
+        &mut out,
+        "export_stn .stnb",
+        "export_stn",
+        json!({ "path": stnb }),
+    );
+    run(
+        &s,
+        &mut out,
+        "open_case .stnb",
+        "open_case",
+        json!({ "path": stnb }),
     );
     if !keep {
         let _ = std::fs::remove_dir_all(&dir);

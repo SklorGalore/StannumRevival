@@ -27,8 +27,9 @@ Usage:
   stannum-cli commands
       List the commands a run file can use.
   stannum-cli convert <from> <to>
-      Convert a case: RAW, MATPOWER or Stannum (.stn) in; a Stannum case
-      (.stn, format preview) or PSS/E RAW 35 (.raw) out.
+      Convert a case: RAW, MATPOWER or Stannum (.stn, .stnb) in; a Stannum
+      case (.stn text or .stnb binary, format preview) or PSS/E RAW 35
+      (.raw) out.
 
 A run file holds one command per line, then its arguments as name=value:
   open_case path=case30.m
@@ -130,7 +131,7 @@ fn convert(from: &std::path::Path, to: &std::path::Path) -> Result<bool, String>
         .unwrap_or("")
         .to_ascii_lowercase();
     let (records, notes) = match ext.as_str() {
-        "stn" => {
+        "stn" | "stnb" => {
             let done = case.export_stn(to).map_err(|e| e.message)?;
             (done.records, done.notes)
         }
@@ -140,7 +141,7 @@ fn convert(from: &std::path::Path, to: &std::path::Path) -> Result<bool, String>
         }
         _ => {
             return Err(format!(
-                "convert writes .stn or .raw files, not {}.",
+                "convert writes .stn, .stnb or .raw files, not {}.",
                 to.display()
             ));
         }

@@ -811,8 +811,8 @@ commands! {
         |s, a| s.workspace()?.case(a.case)?.diagram_network();
 
     /// Write the case, with its Records and study edits, as a Stannum case
-    /// file (.stn, format preview). The answer lists anything converted or
-    /// kept as RAW lines.
+    /// file (format preview): binary when `path` ends in `.stnb`, else text
+    /// (`.stn`). The answer lists anything converted or kept as RAW lines.
     export_stn { case: Option<CaseId>, path: PathBuf } -> crate::stn::StnExport =>
         |s, a| s.workspace()?.case_mut(a.case)?.export_stn(&a.path);
 
