@@ -1,0 +1,1 @@
+bus row 1: type: expected one of pq, pv, ref, isolated, not `slack`

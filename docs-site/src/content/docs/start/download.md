@@ -16,6 +16,9 @@ Pick the file for your computer from the **Assets** list:
 | Fedora, RHEL, openSUSE | `Stannum-<version>-1.x86_64.rpm` | `sudo dnf install ./Stannum-<version>-1.x86_64.rpm` |
 | Any other Linux | `Stannum_<version>_amd64.AppImage` | `chmod +x` it, then run it. |
 
+Pre-releases such as `1.0.0-rc.1` come without the `.rpm`, as RPM versions
+can't contain a hyphen. On Fedora, RHEL or openSUSE, run the AppImage.
+
 The same page has the [Python package](/StannumRevival/guide/python/) and
 `stannum-cli`, which [runs run files](/StannumRevival/guide/run-files/#running-without-the-app)
 without the app:
@@ -35,7 +38,7 @@ What changed in each version is in the release notes on the same page, and in
 ## Updates
 
 Stannum checks for a newer release a few seconds after it starts. When there
-is one, a bar under the case bar says so, with the first lines of what's new:
+is one, a bar under the toolbar says so, with the first lines of what's new:
 
 - **Install and restart** downloads the update, installs it and opens the
   new version. If the open case has edits or a study that isn't saved,

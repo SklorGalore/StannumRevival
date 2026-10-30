@@ -107,7 +107,17 @@ case.trip("line:4:5:1")              # Trip and compare
 ```
 
 Settings are those of the Contingencies module: `elements`, `branches`,
-`generators`, `method`, `ac_count`, `limit_pct` and `solve`.
+`generators`, `method`, `ac_count`, `limit_pct` and `solve`. To run NERC
+TPL-001 planning events instead, pass `planning`:
+
+```python
+run = case.contingencies(planning={"categories": ["P0", "P1", "P2.1", "P7.2"], "kv_min": 100})
+run.categories                       # events and problems in each category
+case.call("planning_event_counts", settings={"kv_min": 230})
+```
+
+Each row then has a `category` (such as `"P1.4"`) and, where the element
+alone doesn't say, a `description`.
 
 ## Records, elements and topology
 
@@ -185,7 +195,7 @@ results, and Python raises `KeyboardInterrupt` as usual.
 opening a workspace of its own. The script then works on the case in the
 window, and the window shows what it does as it goes: a case it opens,
 study edits it makes, results it solves. A **Script attached** chip in the
-case bar says a script is connected.
+toolbar says a script is connected.
 
 ```python
 import stannum as sn

@@ -60,6 +60,7 @@ const ACTIONS: &[&str] = &[
     "calculate_sensitivities",
     "export_matpower",
     "export_raw",
+    "export_stn",
     "apply_record_edits",
     "save_case_as",
     "topology_set_merge",
@@ -762,14 +763,14 @@ mod tests {
         let mut steps = parse(
             "solve_power_flow settings={\"model\": \"ac\", \"start\": \"last\", \"tolerance_mva\": 2, \"max_iterations\": 10}\n\
              solve_power_flow settings={\"model\": \"dc\", \"tolerance_mva\": 2}\n\
-             run_contingencies settings={\"method\": \"ac\", \"limit_pct\": 100, \"solve\": {\"start\": \"last\", \"enforce_q_limits\": true}}\n",
+             run_contingencies settings={\"method\": \"ac\", \"limit_pct\": 100, \"solve\": {\"start\": \"last\", \"enforce_q_limits\": false}}\n",
         )
         .unwrap();
         without_defaults(&mut steps);
         assert!(steps[0].args.is_empty());
         assert_eq!(steps[1].args["settings"], json!({ "model": "dc" }));
         let kept = &steps[2].args["settings"];
-        assert_eq!(kept["solve"], json!({ "enforce_q_limits": true }));
+        assert_eq!(kept["solve"], json!({ "enforce_q_limits": false }));
         assert!(kept.get("limit_pct").is_none());
     }
 

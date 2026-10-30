@@ -10,6 +10,7 @@ targets feed the readers random and mutated files to check that.
 | `matpower` | A MATPOWER `.m` file opened the same way |
 | `run_file` | A `.stnrun` run file, parsed and written back out |
 | `coordinates` | A bus coordinates CSV, decoded as UTF-8 or Windows-1252 |
+| `stn` | A Stannum case (`.stn`, `.stnb`) or lists (`.stnl`) file: read, written canonically and read back, through the other form, then opened as a case |
 
 The crate has its own workspace, since cargo-fuzz needs the nightly
 toolchain and sanitizers; the main build never compiles it.

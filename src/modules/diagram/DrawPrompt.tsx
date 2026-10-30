@@ -80,14 +80,14 @@ export function DrawPrompt() {
               className="justify-start"
               onClick={() => setOther(true)}
             >
-              <Wand2 size={13} /> Choose a bus, an area or the whole case…
+              <Wand2 size={13} /> Choose a bus, an area, zone or owner, or the whole case…
             </Button>
           </div>
           {!worst && !report && (
             <p className="text-slate-500">Solve the case and this offers its worst violation too.</p>
           )}
           <p className="text-slate-500">
-            To draw by hand instead, drag symbols from Components, on the left, onto the canvas.
+            To draw by hand instead, open Components with the panel button on the left and drag symbols onto the canvas.
           </p>
         </div>
       </div>

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Runs the cargo-fuzz targets in fuzz/ (raw, matpower, run_file,
-    coordinates), each for the given time, seeded with the test fixtures of
+    coordinates, stn), each for the given time, seeded with the test fixtures of
     the same kind. The corpus each run grows is kept in fuzz/corpus/<target>,
     so the next run starts where this one stopped.
 
@@ -19,7 +19,7 @@
         cargo install cargo-fuzz --locked
 
 .PARAMETER Target
-    Targets to run. All four when left out.
+    Targets to run. All five when left out.
 
 .PARAMETER Seconds
     How long to fuzz each target.
@@ -32,8 +32,8 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('raw', 'matpower', 'run_file', 'coordinates')]
-    [string[]] $Target = @('raw', 'matpower', 'run_file', 'coordinates'),
+    [ValidateSet('raw', 'matpower', 'run_file', 'coordinates', 'stn')]
+    [string[]] $Target = @('raw', 'matpower', 'run_file', 'coordinates', 'stn'),
     [int] $Seconds = 60,
     [int] $Jobs = 1
 )
@@ -49,10 +49,12 @@ $seedPatterns = @{
     matpower    = @('*.m')
     run_file    = @('*.stnrun')
     coordinates = @('*.csv')
+    stn         = @('*.stn', '*.stnb', '*.stnl')
 }
 $fixtureFolders = @(
     'crates/rs-power/tests/fixtures',
-    'crates/stannum-core/tests/fixtures'
+    'crates/stannum-core/tests/fixtures',
+    'crates/stannum-format/conformance'
 ) | ForEach-Object { Join-Path $root $_ }
 
 $failed = @()

@@ -227,7 +227,7 @@ class Case:
         "fast_decoupled_xb" or "fast_decoupled_bx"), ``start`` ("last",
         "flat" or "case"), ``tolerance_mva`` (2 by default),
         ``max_iterations`` (Newton, 10), ``decoupled_iterations`` (30),
-        ``enforce_q_limits``, ``dc_model`` ("detailed" or "simplified"),
+        ``enforce_q_limits`` (True by default), ``dc_model`` ("detailed" or "simplified"),
         ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
         ``adjust_phase_shifters``. Setting one of the last four to False
         locks those controls where they are instead of moving them.

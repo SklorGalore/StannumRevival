@@ -170,7 +170,7 @@ fn raw_edits_rewrite_only_the_edited_fields_and_reach_power_flow() {
     let (pl, name, id) = (col(&loads, "PL"), col(&buses, "NAME"), col(&buses, "I"));
     assert!(!buses.columns[id].editable, "key fields stay as read");
     assert!(buses.columns[name].editable);
-    let before = String::from_utf8(case.bytes.clone()).unwrap();
+    let before = String::from_utf8(case.bytes.to_vec()).unwrap();
 
     let summary = case
         .apply_record_edits(&[
@@ -179,7 +179,7 @@ fn raw_edits_rewrite_only_the_edited_fields_and_reach_power_flow() {
         ])
         .unwrap();
     assert_eq!(summary.record_edits, 2);
-    let after = String::from_utf8(case.bytes.clone()).unwrap();
+    let after = String::from_utf8(case.bytes.to_vec()).unwrap();
     let changed: Vec<(&str, &str)> = before
         .lines()
         .zip(after.lines())
@@ -221,7 +221,7 @@ fn raw_edits_rewrite_only_the_edited_fields_and_reach_power_flow() {
             .is_err()
     );
     assert!(case.apply_record_edits(&[edit("BUS", 0, id, "7")]).is_err());
-    assert_eq!(String::from_utf8(case.bytes.clone()).unwrap(), after);
+    assert_eq!(String::from_utf8(case.bytes.to_vec()).unwrap(), after);
 
     // Save as writes the edited case, which reads back the same.
     let dir = std::env::temp_dir().join(format!("stannum-records-{}", std::process::id()));

@@ -1,6 +1,6 @@
 [package]
 name = "stannum"
-version = "0.5.0"
+version = "1.0.0-rc.1"
 description = "Stannum: single-line diagrams, power flow, topology and RAW case comparison"
 edition = "2021"
 license.workspace = true
@@ -14,10 +14,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 stannum-core = { path = "../crates/stannum-core" }
+# A faster allocator: reading an 80,000-bus case's records takes half the
+# time it takes with the system one.
+mimalloc = { version = "0.1", default-features = false }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2.14"
 serde = { version = "1", features = ["derive"] }

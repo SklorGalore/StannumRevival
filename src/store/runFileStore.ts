@@ -82,7 +82,7 @@ export const useRunFile = create<RunFileState>((set, get) => ({
   saveRecording: async () => {
     const { steps } = get();
     const summary = useWorkspace.getState().caseSummary;
-    const base = summary ? summary.name.replace(/\.(raw|m)$/i, "") : "recording";
+    const base = summary ? summary.name.replace(/\.(raw|m|stnb?)$/i, "") : "recording";
     const path = await pickSavePath(`${base}.stnrun`, RUN_FILE_FILTERS);
     if (!path) return false;
     try {

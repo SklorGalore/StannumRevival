@@ -52,8 +52,10 @@ including its approximations, with the extensions marked below.
 Transformer magnetizing admittance, impedance correction tables, DC line
 tap control (COD 4) on three-winding transformers, wind control, FACTS devices in modes 3 to 8,
 FACTS series limits and reactance, GNE devices, induction machines and other unsupported equipment
-sections. Zone and owner names, inter-area transfers and multi-section line
-groupings are not kept.
+sections. Zone and owner names and inter-area transfers are not kept.
+Multi-section line groupings are read so that a contingency takes the whole
+line out; a grouping whose sections aren't all lines of the case is skipped
+with a warning.
 
 Every warning is listed with its line under **Import warnings** in Power flow.
 Warning wording and counts are not MATPOWER-compatible.

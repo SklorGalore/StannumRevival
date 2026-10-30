@@ -52,6 +52,7 @@ export default defineConfig({
             { label: "Case diff", slug: "guide/case-diff" },
             { label: "Run files", slug: "guide/run-files" },
             { label: "Python", slug: "guide/python" },
+            { label: "AI assistants (MCP)", slug: "guide/ai-assistants" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
           ],
         },
@@ -109,6 +110,10 @@ export default defineConfig({
             { label: "Diagram file (.sld)", slug: "reference/diagram-file" },
             { label: "Run file (.stnrun)", slug: "reference/run-file" },
             { label: "Bus coordinates file", slug: "reference/coordinates-file" },
+            { label: "Case file (.stn, .stnb, preview)", slug: "reference/case-file" },
+            { label: "Case file tables", slug: "reference/case-file-schema" },
+            { label: "Lists file (.stnl, preview)", slug: "reference/lists-file" },
+            { label: "Lists file tables", slug: "reference/lists-file-schema" },
           ],
         },
         {

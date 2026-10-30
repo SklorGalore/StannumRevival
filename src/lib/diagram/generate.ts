@@ -26,16 +26,52 @@ import type {
 } from "../../store/types";
 import { defaultGeneratorData, defaultLoadData, defaultTransformerData } from "../../store/defaults";
 import { busElement, elementLabel, parseElement } from "../elements";
+import { matchesValue, ruleReady, type FieldDefinition, type FieldValue, type FilterRule } from "../filters";
 import { useLog } from "../../store/logStore";
 import { bestFold, hopGroups } from "./compact";
 import { T3, t3Terminal, type T3Handle } from "./transformer3";
 
-export type Scope =
+/** A bus field that groups buses: area, loss zone or owner. */
+export type Grouping = "area" | "zone" | "owner";
+
+export type Scope = (
   | { kind: "all" }
-  | { kind: "area"; area: number }
+  /** Every bus whose area, zone or owner is `value`. */
+  | { kind: Grouping; value: number }
   /** `depth` hops around `bus`, or around `element` when given: a branch is
    *  drawn from both its ends, and a symbol on it is marked. */
-  | { kind: "around"; bus: number; depth: number; element?: string };
+  | { kind: "around"; bus: number; depth: number; element?: string }
+) & {
+  /** Only buses passing every rule are drawn (see {@link DRAW_FILTER_FIELDS}).
+   *  A local drawing only grows through passing buses. */
+  filters?: FilterRule[];
+};
+
+/** Fields a drawing can be filtered by. */
+export const DRAW_FILTER_FIELDS: FieldDefinition[] = [
+  { key: "base_kv", label: "Base kV", type: "number" },
+  { key: "area", label: "Area", type: "category" },
+  { key: "zone", label: "Zone", type: "category" },
+  { key: "owner", label: "Owner", type: "category" },
+];
+
+export function drawFieldValue(bus: NetworkBus, field: string): FieldValue {
+  switch (field) {
+    case "base_kv": return bus.base_kv;
+    case "area": return bus.area;
+    case "zone": return bus.zone;
+    // MATPOWER cases have no owners.
+    case "owner": return bus.owner || null;
+    default: return null;
+  }
+}
+
+/** Whether a bus passes a scope's filters; null when none apply. */
+export function drawFilter(scope: Scope): ((bus: NetworkBus) => boolean) | null {
+  const ready = (scope.filters ?? []).filter(ruleReady);
+  if (!ready.length) return null;
+  return (bus) => ready.every((r) => matchesValue(drawFieldValue(bus, r.field), r));
+}
 
 /** Above this many buses a whole-case drawing stops being readable. */
 export const READABLE_BUSES = 150;
@@ -174,14 +210,24 @@ export function centresOf(net: CaseNetwork, scope: Extract<Scope, { kind: "aroun
 export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
   const adj = adjacency(net);
   const star = new Set(net.buses.filter((b) => b.star).map((b) => b.id));
-  if (scope.kind === "all") return new Set(net.buses.map((b) => b.id));
-  if (scope.kind === "area") {
-    const chosen = new Set(net.buses.filter((b) => b.area === scope.area && !b.star).map((b) => b.id));
+  const filter = drawFilter(scope);
+  if (scope.kind !== "around") {
+    if (scope.kind === "all" && !filter) return new Set(net.buses.map((b) => b.id));
+    const grouping = scope.kind === "all" ? null : scope.kind;
+    const value = scope.kind === "all" ? 0 : scope.value;
+    const chosen = new Set(
+      net.buses
+        .filter((b) => !b.star && (!grouping || b[grouping] === value) && (!filter || filter(b)))
+        .map((b) => b.id)
+    );
     for (const id of [...chosen])
       for (const a of adj.get(id) ?? []) if (star.has(a.other)) chosen.add(a.other);
     return chosen;
   }
-  // Breadth-first by hop count; passing through a star point is free.
+  // Breadth-first by hop count; passing through a star point is free. With
+  // filters the walk only steps onto buses that pass them (the studied bus
+  // is always drawn).
+  const passes = new Map(net.buses.map((b) => [b.id, b.star || !filter || filter(b)]));
   const centres = centresOf(net, scope);
   const depth = new Map<number, number>(centres.map((b) => [b, 0]));
   const queue = [...centres];
@@ -189,6 +235,7 @@ export function selectBuses(net: CaseNetwork, scope: Scope): Set<number> {
     const id = queue.shift()!;
     const d = depth.get(id)!;
     for (const a of adj.get(id) ?? []) {
+      if (!passes.get(a.other)) continue;
       const next = star.has(a.other) ? d : d + 1;
       if (next > scope.depth && !star.has(a.other)) continue;
       if ((depth.get(a.other) ?? Infinity) <= next) continue;
@@ -341,9 +388,9 @@ export async function generateDiagram(net: CaseNetwork, scope: Scope, aspect = v
   const where =
     scope.kind === "around"
       ? ` around ${scope.element && parseElement(scope.element)?.kind !== "bus" ? elementLabel(scope.element) : `bus ${scope.bus}`} (${scope.depth} hops)`
-      : scope.kind === "area"
-        ? ` for area ${scope.area}`
-        : "";
+      : scope.kind === "all"
+        ? ""
+        : ` for ${scope.kind} ${scope.value}`;
   const end = useLog.getState().begin(`Laying out a one-line${where}`);
   try {
     let out: Generated;

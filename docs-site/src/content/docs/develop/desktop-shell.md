@@ -23,12 +23,16 @@ holds no analysis. Its Cargo package is `stannum` (library
 ```rust
 #[tauri::command]
 pub async fn stannum_command(
+    app: AppHandle,
     state: State<'_, SharedSession>,
+    access: State<'_, file_access::Shared>,
     command: String,
     args: Option<serde_json::Value>,
 ) -> Result<Response, Error> {
+    let args = args.unwrap_or_default();
+    file_access::check_command(&app, &access, &command, &args)?;
     let session = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || session.invoke(&command, args.unwrap_or_default()))
+    tauri::async_runtime::spawn_blocking(move || session.invoke(&command, args))
         .await
         .map_err(|e| Error::internal(e.to_string()))?
         .map(Response::new)
@@ -39,7 +43,8 @@ pub async fn stannum_command(
 Tauri state. Every command runs on a blocking worker, so a long solve
 never freezes the window, and the core's JSON text goes back as it is
 (`Response::new`) without being parsed again. A failure reaches the window
-as `{kind, message}`.
+as `{kind, message}`. Before it runs, every file path in the arguments is
+checked (see [File access](#file-access)).
 
 **Don't add a Tauri command for analysis.** Add a core command instead (see
 [Add a command](/StannumRevival/develop/add-a-command/)), so the browser
@@ -49,7 +54,8 @@ meaning to the core:
 
 | Tauri command | What it does |
 | --- | --- |
-| `save_diagram`, `load_diagram`, `save_binary` | Write and read diagram files and exports. |
+| `save_diagram`, `load_diagram`, `save_binary` | Write and read diagram files and exports, only at paths the person chose. |
+| `adopt_recent_files` | Once, on the first run with the file check, allows the Recent list kept by earlier versions. |
 | `show_snap_layouts` | Opens the Windows 11 snap layouts flyout from the custom title bar. |
 | `splash::app_ready` | The main window says it has rendered. |
 | `attach::attach_ui_reply`, `attach::attach_status` | Answers to a script's `ui.*` commands, and whether attach is listening. |
@@ -89,11 +95,47 @@ difference.
 ## Permissions
 
 `capabilities/default.json` grants the main window the window controls the
-title bar needs, open and save dialogs, file reads and writes in the
-Documents, Downloads and Desktop folders, opening web links, and the updater
-with the restart it needs. A new plugin or a new kind of
-file access needs a line there, or the call fails at run time with a
-permission error rather than at build time.
+title bar needs, open and save dialogs, opening Stannum's GitHub releases
+page in the browser (`tauri-plugin-opener`), and the updater with the
+restart it needs. The window has no direct file system access: files go
+through the shell's own commands and the core, which check paths
+themselves. A new plugin or a new kind of access needs a line there, or the
+call fails at run time with a permission error rather than at build time.
+
+## File access
+
+Commands that read or write a file only accept a path the person chose
+(`src-tauri/src/file_access.rs`):
+
+- picked in an open or save dialog (the dialog plugin adds it to the file
+  system scope of `tauri-plugin-fs`, which is registered for that scope
+  alone),
+- dropped on the window,
+- found next to a study file the person opened (`study_locate_case`),
+- inside Stannum's own sample folder,
+- or chosen in an earlier session. Chosen files are remembered in
+  `allowed-files.json` in the app's local data folder (the last 200), so
+  Recent files keep working.
+
+Any other path gets a `file` error. Core commands are checked by their
+`PathBuf` arguments (`stannum_core::commands::command_args`), so a new core
+command that takes a path is covered without changes here. Scripts,
+attach, run files and the command line don't go through the window and
+aren't affected. The window never needs another path: the check is there
+so that a script that isn't Stannum's, if one ever ran in the window,
+couldn't read or overwrite files the person didn't choose.
+
+## Content security policy
+
+`tauri.conf.json` sets a content security policy: scripts and workers only
+from the app itself, no `eval`, no inline scripts, network only for Tauri's
+IPC, images and fonts from the app or `data:`/`blob:` URLs. Inline styles
+stay allowed because React Flow, Cytoscape and MapLibre set them, so
+`dangerousDisableAssetCspModification` keeps Tauri from adding hashes to
+`style-src` (a hash would switch `'unsafe-inline'` off). `devCsp` is the same
+with the Vite dev server's inline script and hot reload socket allowed. A
+library that needs more (a remote tile server, a font CDN) needs its source
+added there.
 
 ## Updater
 

@@ -170,7 +170,17 @@ fn memphis_revision_35_real_world_case() {
     assert_eq!(imported.case.labels["bus_name"].len(), 993);
     // The 61 switched shunts in voltage control go to `voltage_controls`
     // without a warning.
-    assert_eq!(imported.warnings.len(), 374);
+    // 26 generators are wind machines (WMOD 1); the other 162 used to be
+    // reported too, from F4 read in WMOD's place.
+    assert_eq!(imported.warnings.len(), 212);
+    assert_eq!(
+        imported
+            .warnings
+            .iter()
+            .filter(|w| w.message.contains("wind-machine"))
+            .count(),
+        26
+    );
     assert_eq!(imported.voltage_controls.switched_shunts.len(), 61);
     for message in [
         "remote generator regulation ignored",
@@ -716,4 +726,57 @@ fn switching_devices_solve_as_lossless_branches() {
     assert_eq!(imported.branch_sources[4].kind, BranchKind::Transformer);
     let solved = rs_power::solve(&imported.case, &rs_power::PowerFlowOptions::default()).unwrap();
     assert_eq!(solved.status, rs_power::SolveStatus::Converged);
+}
+
+#[test]
+fn line_lengths_are_read_per_revision() {
+    // LEN follows ST, and from revision 31 the metered end MET too.
+    let line = |tail: &str| format!("10,20,'1',.01,.1,.02,100,110,120,0,0,0,0,1{tail}\n");
+    for (rev, tail, want) in [
+        ("33", ",2,12.5", 12.5),
+        ("31", ",1,7", 7.0),
+        ("30", ",4.25", 4.25),
+        ("33", "", 0.0),
+        ("33", ",1,-3", 0.0),
+    ] {
+        // Fixed shunt data has its own section from revision 31.
+        let sections: &[&str] = if rev == "30" {
+            &[BUSES, "", GEN, &line(tail)]
+        } else {
+            &[BUSES, "", "", GEN, &line(tail)]
+        };
+        let text = raw(sections).replacen("0,100,33", &format!("0,100,{rev}"), 1);
+        let imported = parse_raw_with_options(&text, &RawOptions::default()).unwrap();
+        assert_eq!(imported.branch_lengths, [want], "revision {rev}{tail}");
+    }
+    let text35 = "@!IC,SBASE,REV,XFRRAT,NXFRAT,BASFRQ\n0,100,35,0,0,60\nTitle\nTitle\nGENERAL,THRSHZ=.0002\n0 / END OF SYSTEM-WIDE DATA, BEGIN BUS DATA\n\
+10,'Slack',230,3,1,1,1,1.02,0,1.1,.9,1.1,.9\n20,'Load',115,1,1,1,1,1,0,1.1,.9,1.1,.9\n\
+0 / END OF BUS DATA, BEGIN LOAD DATA\n20,'1',1,1,1,30,10\n0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA\n\
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA\n10,'1',50,0,100,-100,1.02,0,0,100,0,1,0,0,1,1,100,200,0\n\
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA\n10,20,'1',.01,.1,.02,'Line',100,110,120,0,0,0,0,0,0,0,0,0,.01,.02,.03,.04,1,1,38.5\n\
+0 / END OF BRANCH DATA, BEGIN SYSTEM SWITCHING DEVICE DATA\n0 / END OF SYSTEM SWITCHING DEVICE DATA, BEGIN TRANSFORMER DATA\n\
+0 / END OF TRANSFORMER DATA\nQ\n";
+    let imported = parse_raw_with_options(text35, &RawOptions::default()).unwrap();
+    assert_eq!(imported.branch_lengths, [38.5]);
+}
+
+#[test]
+fn bus_owners_by_revision() {
+    let options = RawOptions::default();
+    let owners = |text: &str| {
+        let mut o: Vec<(u32, u32)> = parse_raw_with_options(text, &options)
+            .unwrap()
+            .bus_owners
+            .into_iter()
+            .collect();
+        o.sort();
+        o
+    };
+    // Revisions 31 and later: OWNER is the seventh field.
+    let v33 = raw(&["10,'A',230,3,1,1,4,1,0,1.1,.9\n20,'B',115,1,1,1,9,1,0,1.1,.9\n"]);
+    assert_eq!(owners(&v33), [(10, 4), (20, 9)]);
+    // Revision 30 and before: OWNER comes last, after VA. Blank means 1.
+    let v30 = raw(&["10,'A',230,3,0,0,1,1,1,0,5\n20,'B',115,1,0,0,1,1,1,0\n"])
+        .replacen("0,100,33", "0,100,30", 1);
+    assert_eq!(owners(&v30), [(10, 5), (20, 1)]);
 }

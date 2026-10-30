@@ -8,7 +8,10 @@ description: Solve settings, the overview and its checks, result tables, filters
 ## Solve settings
 
 The settings panel on the left (hide it with the button at its top right)
-holds:
+shows Model, AC method, tolerance and Q limits. The rest fold under **More
+settings**, which says how many differ from the defaults. On tabs with nothing
+to solve (Contingencies, Study, VSC grids, Import warnings) the panel folds to
+a narrow strip with **Solve** in it. The settings are:
 
 | Setting | Meaning | Default |
 | --- | --- | --- |
@@ -18,7 +21,7 @@ holds:
 | **Newton iterations per pass** | Newton steps allowed in each pass (Auto and Full Newton) | 10 |
 | **Decoupled iterations per pass** | Decoupled iterations allowed in each pass (every method but Full Newton) | 30 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |
-| **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | Off |
+| **Enforce generator Q limits** | Switch generators to fixed Q at their limits, and turn on remote voltage regulation | On |
 | **Move switched shunts** | Let switched shunts in voltage control move (RAW only). Off locks them where they are: where the last solve left them, or at their case values with Flat start | On |
 | **Move transformer taps** | Let tap changers in voltage control move (RAW only). Off locks them like shunts | On |
 | **DC line model** | **Detailed converters** or the simplified generator pair | Detailed |
@@ -57,7 +60,9 @@ it:
 **Buses**, **Generators** and **Branches** list every element with its solved
 values. Tables are searchable and sortable, show names, and export to CSV.
 Cells carry small bars and colours for voltage against its limits and branch
-loading, and rows outside limits are highlighted. The checkbox above each
+loading, and rows outside limits are highlighted. Loading is the larger
+end's MVA against rate A; a three-winding transformer's winding is measured
+at its own bus, since the star bus between the windings is internal. The checkbox above each
 table (for example **Voltage violations only**) narrows it to the problems.
 
 Selecting a row puts the element in the selection chip and opens its details,
@@ -92,7 +97,8 @@ The models behind these numbers are in [HVDC](/StannumRevival/manual/hvdc/overvi
 
 ## VSC grids
 
-**VSC grids** adds meshed and multi-terminal VSC DC grids that aren't in the
+**VSC grids** (from **Attach VSC DC grids…** on the Ready to solve screen or
+in Ctrl+K; the tab stays once a file is attached) adds meshed and multi-terminal VSC DC grids that aren't in the
 case file. **Attach DC grid file…** reads a [Stannum DC grid
 file](/StannumRevival/reference/dc-grid-file/), checks it against the case,
 and every AC solve after that includes its grids. Before the first solve,
@@ -130,7 +136,9 @@ layer](/StannumRevival/guide/topology/#colour-by-result).
 
 ## Import warnings
 
-For RAW files, **Import warnings** lists everything the conversion
+For RAW files, **Import warnings** opens from the note under the Overview,
+the link on the Ready to solve screen, or **Ctrl+K → Show import warnings**.
+It lists everything the conversion
 approximated or skipped. Warnings with the same message are grouped, most
 frequent first, with how many there are and which lines of the file they come
 from. Open a group to list each record with its line number and the branch or
@@ -140,16 +148,17 @@ common warning, not a line per record.
 
 ## Export MATPOWER
 
-**Input case…** writes the case as loaded (with study edits applied);
-**Solved case…** writes the latest solved case. Both are MATPOWER version 2
+**File → Export case** (and Ctrl+K) holds every export.
+**MATPOWER…** writes the case as loaded (with study edits applied);
+**MATPOWER, with the latest results…** writes the latest solved case. Both are MATPOWER version 2
 files that MATPOWER's `loadcase` reads.
 
 ## Export PSS/E RAW
 
-**Revision 35…** and **Revision 33…** under **Export PSS/E RAW** (also
+**PSS/E RAW 35…** and **PSS/E RAW 33…** in **File → Export case** (also
 **Ctrl+K → Export case as PSS/E RAW 35…/33…**) write the open case as a
 complete RAW file, with its Records edits and study edits written in. A bar
-under the case bar then says how many records were written and lists
+under the toolbar then says how many records were written and lists
 anything the file couldn't keep, such as fields revision 33 has no place
 for. See [Writing RAW](/StannumRevival/reference/psse-raw/#writing-raw) for
 what each conversion does.

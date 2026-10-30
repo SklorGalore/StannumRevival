@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, FileSearch, FlaskConical, GitCompareArrows } from "lucide-react";
+import { ArrowLeftRight, ChevronRight, FileSearch, FlaskConical, GitCompareArrows } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useStudy } from "../../store/studyStore";
 import { api, pickFile, RAW_FILTERS } from "../../lib/analysis/api";
@@ -63,7 +63,7 @@ export function CaseDiffModule({ active }: { active: boolean }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<DiffRecordDetail | null>(null);
-  const [changedOnly, setChangedOnly] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(true);
   const shared = useWorkspace((s) => s.selection);
   const select = useWorkspace((s) => s.select);
   // A selection from another module waiting for its section's records to load.
@@ -201,10 +201,37 @@ export function CaseDiffModule({ active }: { active: boolean }) {
 
   const detailElement = records.find((r) => r.index === selected)?.element ?? null;
 
-  const fields = useMemo(
-    () => (detail ? detail.fields.filter((f) => !changedOnly || f.status !== "unchanged").map((f, i) => ({ ...f, i })) : []),
-    [detail, changedOnly]
-  );
+  // An unchanged record shows every field, even with "Changed fields only" on.
+  const fields = useMemo(() => {
+    if (!detail) return [];
+    const changed = detail.fields.filter((f) => f.status !== "unchanged");
+    return (changedOnly && changed.length ? changed : detail.fields).map((f, i) => ({ ...f, i }));
+  }, [detail, changedOnly]);
+
+  // Sections with differences first; the rest fold away.
+  const sectionDiff = (s: DiffSummary["sections"][number]) => s.counts.added + s.counts.removed + s.counts.changed;
+  const differing = summary?.sections.filter((s) => sectionDiff(s) > 0) ?? [];
+  const same = summary?.sections.filter((s) => sectionDiff(s) === 0) ?? [];
+  const sectionItem = (s: DiffSummary["sections"][number]) => {
+    const diff = sectionDiff(s);
+    return (
+      <li key={s.name}>
+        <button
+          onClick={() => setSection(s.name)}
+          aria-current={section === s.name}
+          className={`w-full text-left px-3 py-1.5 border-b border-slate-100 ${section === s.name ? "bg-teal-50" : "hover:bg-slate-50"}`}
+        >
+          <span className="text-xs font-medium text-slate-800 flex justify-between">
+            {s.name}
+            {diff > 0 && <span className="text-amber-700">{count(diff)}</span>}
+          </span>
+          <span className="text-[10px] text-slate-500">
+            +{s.counts.added} · −{s.counts.removed} · ~{s.counts.changed} · ={s.counts.unchanged}
+          </span>
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div className="h-full flex flex-col gap-3 p-3 overflow-hidden" aria-hidden={!active}>
@@ -308,29 +335,17 @@ export function CaseDiffModule({ active }: { active: boolean }) {
             </Notice>
           )}
           <div className="flex-1 min-h-0 grid grid-cols-[230px_1fr_1fr] gap-3">
-            <Panel eyebrow="Sections" title={`${summary.sections.length} sections`} bodyClassName="overflow-y-auto">
-              <ul>
-                {summary.sections.map((s) => {
-                  const diff = s.counts.added + s.counts.removed + s.counts.changed;
-                  return (
-                    <li key={s.name}>
-                      <button
-                        onClick={() => setSection(s.name)}
-                        aria-current={section === s.name}
-                        className={`w-full text-left px-3 py-1.5 border-b border-slate-100 ${section === s.name ? "bg-teal-50" : "hover:bg-slate-50"}`}
-                      >
-                        <span className="text-xs font-medium text-slate-800 flex justify-between">
-                          {s.name}
-                          {diff > 0 && <span className="text-amber-700">{count(diff)}</span>}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          +{s.counts.added} · −{s.counts.removed} · ~{s.counts.changed} · ={s.counts.unchanged}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+            <Panel eyebrow="Sections" title={`${count(differing.length)} of ${summary.sections.length} differ`} bodyClassName="overflow-y-auto">
+              <ul>{differing.map(sectionItem)}</ul>
+              {same.length > 0 && (
+                <details className="group" open={!!section && same.some((s) => s.name === section)}>
+                  <summary className="flex items-center gap-1 cursor-pointer select-none px-3 py-1.5 text-[11px] text-slate-500 hover:text-slate-700 list-none">
+                    <ChevronRight size={11} className="transition-transform group-open:rotate-90" aria-hidden="true" />
+                    No differences ({same.length})
+                  </summary>
+                  <ul>{same.map(sectionItem)}</ul>
+                </details>
+              )}
             </Panel>
             <Panel
               eyebrow="Records"

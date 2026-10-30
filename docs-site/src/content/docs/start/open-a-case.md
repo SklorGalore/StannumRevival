@@ -1,6 +1,6 @@
 ---
 title: Open a case
-description: Supported file formats, what each module can do with them, and the case bar.
+description: Supported file formats, what each module can do with them, and the menu bar and toolbar.
 ---
 
 Open a case with **Open case…** in the top bar, from the
@@ -49,25 +49,30 @@ working. See [PSS/E RAW](/StannumRevival/reference/psse-raw/) and
 [MATPOWER](/StannumRevival/reference/matpower/) for what is read from each
 format.
 
-## The case bar
+## The menu bar and toolbar
 
-Once a case is open, the bar along the top of the window shows its name,
-format, bus, generator and branch counts and system MVA base. It also holds:
+Once a case is open, the menu bar along the top of the window shows its name,
+format, bus, generator and branch counts and system MVA base. The toolbar
+under it holds:
 
+- **Open** and **Save study**.
+- **Solve**, **Sensitivities** and **Contingencies**, which run in
+  [Power flow](/StannumRevival/guide/power-flow/) with its current settings.
+- **Side by side** and **Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>).
+- The **study badge** (for example "2 edits") when a
+  [study](/StannumRevival/guide/studies/) is changing the case.
 - **Link selection**, which makes a selection in one module select the same
   element in every other module.
 - The **selection chip**, naming the selected element with buttons to show it
   in another module or draw a one-line around it. <kbd>Esc</kbd> clears it.
-- The **study badge** (for example "2 edits") when a
-  [study](/StannumRevival/guide/studies/) is changing the case.
-- **Side by side**, **Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>) and **Open
-  another…**.
 
-Close the case with the **×** at the right end of the bar.
+**File → Close case** closes the case. See [The
+window](/StannumRevival/guide/shell/#menu-bar-and-toolbar) for every menu.
 
 ## Import warnings
 
 Converting a RAW file to the power flow model can approximate or skip data.
-Those warnings are listed, with the line they come from, under the **Import
-warnings** tab of [Power flow](/StannumRevival/guide/power-flow/), and in the
+Those warnings are listed, with the line they come from, under **Import
+warnings** in [Power flow](/StannumRevival/guide/power-flow/) (a note under the
+Overview opens it), and in the
 [log](/StannumRevival/guide/log/).

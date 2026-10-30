@@ -263,6 +263,13 @@ export type ContingencyDetail = G.ContingencyDetail;
 
 export type ContingencyProgress = G.Progress;
 
+/** NERC TPL-001 planning events to run instead of N-1 (stannum-core planning.rs). */
+export type PlanningSettings = G.PlanningSettings;
+
+export type CategoryCount = G.CategoryCount;
+
+export type CategorySummary = G.CategorySummary;
+
 export type RecordSource = G.RecordSource;
 export type RecordColumnKind = G.ColumnKind;
 

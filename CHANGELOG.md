@@ -8,6 +8,136 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 1.0.0-rc.1 - 2026-10-30
+
+### Added
+
+- **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
+  Stannum to Claude and other Model Context Protocol clients: open a case,
+  solve, find violations, page through results, run N-1 or the NERC planning
+  events, look at topology, compare RAW files and export, by asking in plain
+  words. `--attach` drives the running app instead, so the window shows
+  every case and result, and the assistant can select elements and draw
+  one-lines around them. See
+  [AI assistants (MCP)](https://sklorgalore.github.io/StannumRevival/guide/ai-assistants/).
+
+- **NERC TPL-001 planning events.** Contingencies can run the planning events
+  Stannum generates from the case instead of every branch and generator: the
+  base case (P0), each generator, line, transformer, shunt and DC line pole
+  (P1.1 to P1.5), each section of a multi-section line (P2.1) and each
+  bipolar DC line (P7.2), at or above a voltage (100 kV by default). Choose
+  **NERC TPL-001 planning events** under **Outages** in the Contingencies
+  tab; results show each event's category, with counts and a filter per
+  category. Scripts pass `planning` in the contingency settings, and
+  `planning_event_counts` says how many events each category gives.
+  Multi-section line groupings in RAW files are now read, so a planning event
+  takes a multi-section line out whole.
+- **Binary Stannum case files (`.stnb`, preview).** The same case as a
+  `.stn` file, in columns (Apache Arrow tables in a ZIP archive): about a
+  quarter of the size, and readable with pyarrow, pandas or polars with no
+  Stannum code. Open one like any case; **Save case as** and **Export
+  Stannum case** write one when the name ends in `.stnb`, as do
+  `stannum-cli convert` and `export_stn`.
+- **Stannum cases open faster than RAW.** A `.stn` or `.stnb` case is read
+  straight into the power flow model, with large tables split across
+  processor cores: at 12,000 buses, about 0.11 s for `.stnb` and 0.12 s for
+  `.stn`, against 0.14 s for the same case as RAW.
+  Warnings about a record point at its line in a `.stn` file, also for
+  records that aren't equipment.
+- **Stannum case files (`.stn`, preview).** An open text format for whole
+  cases: one record per line with named fields, stable ids beside bus
+  numbers, units in the field names, comments, and a fixed order so version
+  control diffs show only what changed. Open a `.stn` file like any case;
+  **Save case as** writes `.stn` or `.raw`; **Export Stannum case** (Power
+  flow's side panel, **Ctrl+K**) writes any case with its edits;
+  `stannum-cli convert case.raw case.stn` converts from the command line,
+  and `export_stn` does it in run files and Python. RAW 33 and 35 cases
+  convert both ways exactly. The format is a preview and may change before
+  its 1.0; see the Case file page in the docs. Lists files (`.stnl`) for
+  subsystems, contingencies, monitors and interfaces are defined and checked,
+  and will be applied by the contingency module in the next preview.
+
+### Changed
+
+- **Newton line search.** Each Newton step is checked before it's taken and
+  shortened while it would leave the mismatch larger than the last few
+  iterations did, so solves near the edge of what the network can carry
+  don't overshoot and wander. Ordinary solves are unchanged.
+- **Generators return from a reactive limit.** A generator bus fixed at a
+  reactive limit holds its voltage again when that voltage moves past the
+  setpoint on the side the limit pushes (at Qmax and above the setpoint, or
+  at Qmin and below), as PSS/E does. Before, only generators holding a
+  remote bus did, so a solve could end with units at a limit on the wrong
+  side of their setpoints.
+- **Synthetic cases are written as Stannum cases (`.stn`).** MATPOWER has no
+  column for the bus a generator regulates, so the `.m` file made every
+  synthetic unit hold its own terminals instead of its plant's high-voltage
+  bus, and the 80,000-bus case no longer solved with reactive limits on. The
+  large-case timing test keeps its case as `.stnb` and solves with reactive
+  limits on again.
+- **The Records tab and the topology open much faster on large RAW and
+  Stannum cases.** Records are read on every core, in parts, and no longer
+  copy their field layout one by one; the topology reader decodes its
+  records on every core too; and the app and the command line use a faster
+  memory allocator (mimalloc). On an 80,000-bus Stannum case, Records
+  opens in about 3 s instead of 12–18 s, the topology in about 3 s instead
+  of 4–8 s, and exporting it takes 5–6 s instead of 14–18 s.
+- **Map places for missing buses come from line lengths.** A bus the
+  coordinates file and the case leave out is now put where its lines'
+  lengths say: the RAW `LEN`, or the line's reactance where the case gives
+  none, scaled to kilometres by the lines whose ends are placed. A bus
+  behind a transformer sits exactly on its placed side. Hiding half the
+  substations of a synthetic 2,000-bus case, the estimates land 5.5 km from
+  the true places on average, against 17.8 km for neighbour averages. Too few placed lines
+  to scale by, and buses go at their neighbours' average as before.
+- **The desktop app only reads and writes files you choose.** Opening,
+  saving and exporting accept files picked in a dialog, dropped on the
+  window, found next to an opened study, or chosen in an earlier session
+  (so Recent files keep working); anything else is refused. The window also
+  has a content security policy now, and web links open through Tauri's
+  opener plugin, limited to Stannum's releases page. Scripts, run files and
+  the command line are unchanged.
+
+- **Enforce generator Q limits** is on by default in the app, run files
+  and Python, as real cases are solved in PSS/E and PowerWorld. With it off,
+  SyntheticUSA showed a 25 Mvar unit pushing 3,500 Mvar and a 1,584% branch;
+  with it on, the case matches its saved solution. Run files and scripts
+  that leave `enforce_q_limits` out now get Q limits; set it to `false` for
+  the old behaviour. Large cases take a few seconds longer to solve.
+
+### Fixed
+
+- A sample case a script opened while attached (`open_sample`) now shows in
+  the window; before, the window kept saying no case was open.
+- RAW revision 35 cases no longer warn that ordinary generators are wind
+  machines: the wind-machine flag was read two columns early (from F4).
+- The version at the foot of the module rail keeps a pre-release suffix
+  (v1.0-rc.1), so a release candidate never passes for the release.
+- Sensitivities work on 80,000-bus cases. They used to hold every injection
+  column at once, over 13 GB at 82,000 buses, and the app was shut down by
+  the system; now the case is factored once and the picked column is solved
+  when asked (about 3 s and 0.5 GB for SyntheticUSA).
+- A solve that starts from the last solution and doesn't converge tries
+  again from the case voltages. Ticking **Enforce generator Q limits** after
+  a solve without them used to stop at the iteration limit on SyntheticUSA.
+- A three-winding transformer's winding loading is measured at its own bus,
+  not at the internal star bus, in results, checks and contingencies.
+- RAW transformers with a 1.0 ratio and no phase shift show as transformers
+  in Branches and in network drawings, not as lines.
+- Branches results show **Loading** next to **Status**, where it is in view.
+- Sorting a table high to low keeps rows without a value (such as unrated
+  branches' loading) at the bottom instead of the top.
+- Case diff compares cases whose records repeat a key, such as
+  SyntheticUSA's nine DC lines all named 'DC Line 1'. Repeats are numbered
+  in file order ("#2" on) and matched by that number, with a note on each.
+- Case diff reads RAW files that end with Q where a section would start, as
+  SyntheticUSA does before INDUCTION MACHINE. The missing sections are read
+  as empty, as PSS/E does; Q partway through a section is still an error.
+- One-line labels clear the result halo and layer ring around a symbol.
+- A MATPOWER bus picked on a one-line shows its **Drawing** fields again.
+  Its load and shunt symbols stand for the same bus and are picked with it,
+  and the inspector used to leave the drawing fields out.
+
 ## 0.5.0 - 2026-10-29
 
 ### Added

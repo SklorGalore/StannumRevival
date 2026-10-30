@@ -1023,74 +1023,100 @@ fn dc_matrix(
     Ok(entries)
 }
 
+/// Keep a branch's derivative to one state when it is nonzero. A branch
+/// depends only on the states at its two ends; parallel edges of the same
+/// branch do not occur, so each state appears once.
+fn push_derivative(branch: &mut Vec<(usize, [f64; 4])>, state: usize, value: [f64; 4]) {
+    if value.iter().any(|v| *v != 0.0) {
+        branch.push((state, value));
+    }
+}
+
 fn ac_branch_state_derivatives(
     net: &Network,
     case: &Case,
     voltage: &[C],
     angles: &[usize],
     pq: &[usize],
-) -> Vec<Vec<[f64; 4]>> {
-    let mut result = vec![vec![[0.0; 4]; angles.len() + pq.len()]; case.branches.len()];
+) -> Vec<Vec<(usize, [f64; 4])>> {
+    // A branch depends only on the states at its two ends, so look those up
+    // instead of scanning every state for every branch.
+    let mut angle_state = vec![None; net.external.len()];
+    for (column, &bus) in angles.iter().enumerate() {
+        angle_state[bus] = Some(column);
+    }
+    let mut magnitude_state = vec![None; net.external.len()];
+    for (offset, &bus) in pq.iter().enumerate() {
+        magnitude_state[bus] = Some(angles.len() + offset);
+    }
+    let mut result = vec![Vec::new(); case.branches.len()];
     for edge in &net.edges {
         let vf = voltage[edge.f];
         let vt = voltage[edge.t];
         let from_current = edge.yff * vf + edge.yft * vt;
         let to_current = edge.ytf * vf + edge.ytt * vt;
-        for (column, &bus) in angles.iter().enumerate() {
-            let dvf = if bus == edge.f {
-                C::i() * vf
-            } else {
-                C::new(0.0, 0.0)
-            };
-            let dvt = if bus == edge.t {
-                C::i() * vt
-            } else {
-                C::new(0.0, 0.0)
-            };
+        let ends = if edge.f == edge.t {
+            &[edge.f][..]
+        } else {
+            &[edge.f, edge.t][..]
+        };
+        let zero = C::new(0.0, 0.0);
+        let derivative = |dvf: C, dvt: C| {
             let dsf = dvf * from_current.conj() + vf * (edge.yff * dvf + edge.yft * dvt).conj();
             let dst = dvt * to_current.conj() + vt * (edge.ytf * dvf + edge.ytt * dvt).conj();
-            result[edge.original][column] = [dsf.re, dsf.im, dst.re, dst.im];
+            [dsf.re, dsf.im, dst.re, dst.im]
+        };
+        for &bus in ends {
+            if let Some(state) = angle_state[bus] {
+                let dvf = if bus == edge.f { C::i() * vf } else { zero };
+                let dvt = if bus == edge.t { C::i() * vt } else { zero };
+                push_derivative(&mut result[edge.original], state, derivative(dvf, dvt));
+            }
         }
-        for (offset, &bus) in pq.iter().enumerate() {
-            let dvf = if bus == edge.f {
-                vf / vf.norm()
-            } else {
-                C::new(0.0, 0.0)
-            };
-            let dvt = if bus == edge.t {
-                vt / vt.norm()
-            } else {
-                C::new(0.0, 0.0)
-            };
-            let dsf = dvf * from_current.conj() + vf * (edge.yff * dvf + edge.yft * dvt).conj();
-            let dst = dvt * to_current.conj() + vt * (edge.ytf * dvf + edge.ytt * dvt).conj();
-            result[edge.original][angles.len() + offset] = [dsf.re, dsf.im, dst.re, dst.im];
+        for &bus in ends {
+            if let Some(state) = magnitude_state[bus] {
+                let dvf = if bus == edge.f { vf / vf.norm() } else { zero };
+                let dvt = if bus == edge.t { vt / vt.norm() } else { zero };
+                push_derivative(&mut result[edge.original], state, derivative(dvf, dvt));
+            }
         }
     }
     result
 }
 
-fn dc_branch_state_derivatives(net: &Network, case: &Case, vars: &[usize]) -> Vec<Vec<[f64; 4]>> {
+fn dc_branch_state_derivatives(
+    net: &Network,
+    case: &Case,
+    vars: &[usize],
+) -> Vec<Vec<(usize, [f64; 4])>> {
     let mut index = vec![None; net.external.len()];
     for (position, &bus) in vars.iter().enumerate() {
         index[bus] = Some(position);
     }
-    let mut result = vec![vec![[0.0; 4]; vars.len()]; case.branches.len()];
+    let mut result = vec![Vec::new(); case.branches.len()];
     for edge in &net.edges {
         let branch = &case.branches[edge.original];
         let coefficient = 1.0 / branch.x / if branch.tap == 0.0 { 1.0 } else { branch.tap };
         if let Some(column) = index[edge.f] {
-            result[edge.original][column] = [coefficient, 0.0, -coefficient, 0.0];
+            push_derivative(
+                &mut result[edge.original],
+                column,
+                [coefficient, 0.0, -coefficient, 0.0],
+            );
         }
         if let Some(column) = index[edge.t] {
-            result[edge.original][column] = [-coefficient, 0.0, coefficient, 0.0];
+            push_derivative(
+                &mut result[edge.original],
+                column,
+                [-coefficient, 0.0, coefficient, 0.0],
+            );
         }
     }
     result
 }
 
 fn multiply_branch_derivatives(
-    derivatives: &[Vec<[f64; 4]>],
+    derivatives: &[Vec<(usize, [f64; 4])>],
     state_sensitivities: &[Vec<f64>],
 ) -> Vec<Vec<[f64; 4]>> {
     let columns = state_sensitivities.first().map_or(0, Vec::len);
@@ -1098,17 +1124,11 @@ fn multiply_branch_derivatives(
         .iter()
         .map(|branch| {
             // A two-terminal branch depends only on the angle and magnitude
-            // states at its endpoints. Preserve the dense public result while
-            // avoiding a dense branch-by-state-by-injection multiplication.
-            let nonzero: Vec<_> = branch
-                .iter()
-                .enumerate()
-                .filter(|(_, derivative)| derivative.iter().any(|value| *value != 0.0))
-                .collect();
+            // states at its endpoints, so only those derivatives are kept.
             (0..columns)
                 .map(|column| {
                     let mut value = [0.0; 4];
-                    for &(state, derivative) in &nonzero {
+                    for &(state, derivative) in branch {
                         for component in 0..4 {
                             value[component] +=
                                 derivative[component] * state_sensitivities[state][column];
@@ -1139,6 +1159,55 @@ pub fn calculate_sensitivities(
     options: &PowerFlowOptions,
 ) -> Result<PowerFlowSensitivity, Error> {
     let started = std::time::Instant::now();
+    let prepared = prepare(input, options)?;
+    let columns = prepared.injection_variables.len();
+    let state_sensitivities = match options.model {
+        Model::Ac => {
+            // Reactive-sharing rows come after the injection rows and take
+            // no injection of their own.
+            let rhs: Vec<Vec<f64>> = (0..prepared.n)
+                .map(|row| {
+                    (0..columns)
+                        .map(|column| if row == column { 1.0 } else { 0.0 })
+                        .collect()
+                })
+                .collect();
+            solve_columns(prepared.n, &prepared.entries, &rhs)?
+        }
+        Model::Dc => inverse(prepared.n, &prepared.entries)?,
+    };
+    let branch_flow_sensitivities =
+        multiply_branch_derivatives(&prepared.derivatives, &state_sensitivities);
+    log::info!(
+        "finished {:?} sensitivity calculation: {} states, {} injections, {} branches, elapsed={} ms",
+        options.model,
+        prepared.state_variables.len(),
+        prepared.injection_variables.len(),
+        branch_flow_sensitivities.len(),
+        started.elapsed().as_millis()
+    );
+    Ok(PowerFlowSensitivity {
+        power_flow: prepared.power_flow,
+        state_variables: prepared.state_variables,
+        injection_variables: prepared.injection_variables,
+        state_sensitivities,
+        branch_flow_sensitivities,
+    })
+}
+
+/// The solved operating point, its variables, the reduced linear system and
+/// each branch's nonzero state derivatives, shared by the dense
+/// [`calculate_sensitivities`] and the column-at-a-time [`SensitivityModel`].
+struct Prepared {
+    power_flow: PowerFlowResult,
+    state_variables: Vec<StateVariable>,
+    injection_variables: Vec<InjectionVariable>,
+    n: usize,
+    entries: Vec<Triplet<usize, usize, f64>>,
+    derivatives: Vec<Vec<(usize, [f64; 4])>>,
+}
+
+fn prepare(input: &Case, options: &PowerFlowOptions) -> Result<Prepared, Error> {
     log::info!(
         "starting {:?} power-flow sensitivity calculation ({} buses, {} branches)",
         options.model,
@@ -1169,9 +1238,7 @@ pub fn calculate_sensitivities(
         bus.kind = kind;
     }
     let net = Network::new(&working)?;
-    let (state_variables, injection_variables, state_sensitivities, derivatives) = match options
-        .model
-    {
+    let (state_variables, injection_variables, n, entries, derivatives) = match options.model {
         Model::Ac => {
             let voltage: Vec<_> = net
                 .external
@@ -1204,22 +1271,13 @@ pub fn calculate_sensitivities(
                     InjectionVariable::ReactivePower(working.buses[net.external[bus]].id)
                 }))
                 .collect();
-            // Reactive-sharing rows come after the injection rows and take
-            // no injection of their own.
-            let n = layout.len();
-            let rhs: Vec<Vec<f64>> = (0..n)
-                .map(|row| {
-                    (0..injection_variables.len())
-                        .map(|column| if row == column { 1.0 } else { 0.0 })
-                        .collect()
-                })
-                .collect();
-            let sensitivity = solve_columns(n, &layout_jacobian(&net, &voltage, &layout), &rhs)?;
+            let entries = layout_jacobian(&net, &voltage, &layout);
             let derivatives = ac_branch_state_derivatives(&net, &working, &voltage, &angles, &pq);
             (
                 state_variables,
                 injection_variables,
-                sensitivity,
+                layout.len(),
+                entries,
                 derivatives,
             )
         }
@@ -1235,30 +1293,145 @@ pub fn calculate_sensitivities(
                 .iter()
                 .map(|&bus| InjectionVariable::ActivePower(working.buses[net.external[bus]].id))
                 .collect();
-            let sensitivity = inverse(vars.len(), &dc_matrix(&net, &working, &vars)?)?;
+            let entries = dc_matrix(&net, &working, &vars)?;
             let derivatives = dc_branch_state_derivatives(&net, &working, &vars);
             (
                 state_variables,
                 injection_variables,
-                sensitivity,
+                vars.len(),
+                entries,
                 derivatives,
             )
         }
     };
-    let branch_flow_sensitivities = multiply_branch_derivatives(&derivatives, &state_sensitivities);
-    log::info!(
-        "finished {:?} sensitivity calculation: {} states, {} injections, {} branches, elapsed={} ms",
-        options.model,
-        state_variables.len(),
-        injection_variables.len(),
-        branch_flow_sensitivities.len(),
-        started.elapsed().as_millis()
-    );
-    Ok(PowerFlowSensitivity {
+    Ok(Prepared {
         power_flow,
         state_variables,
         injection_variables,
-        state_sensitivities,
-        branch_flow_sensitivities,
+        n,
+        entries,
+        derivatives,
     })
+}
+
+/// One injection column of [`SensitivityModel`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct SensitivityColumn {
+    /// Response of each of [`SensitivityModel::state_variables`], in the
+    /// units of [`PowerFlowSensitivity::state_sensitivities`].
+    pub states: Vec<f64>,
+    /// Response of each branch as `[dPF, dQF, dPT, dQT]`, in input order.
+    pub branches: Vec<[f64; 4]>,
+}
+
+/// Sensitivities that factor the reduced system once and solve one injection
+/// column when asked, instead of holding every column.
+///
+/// [`calculate_sensitivities`] keeps dense `[state][injection]` and
+/// `[branch][injection]` arrays, which grow with the square of the case and
+/// do not fit in memory for tens of thousands of buses. This keeps the
+/// sparse factors and gives the same numbers one column at a time.
+pub struct SensitivityModel {
+    /// The converged operating point used for linearization.
+    pub power_flow: PowerFlowResult,
+    /// Rows of each column's `states`, as in [`PowerFlowSensitivity`].
+    pub state_variables: Vec<StateVariable>,
+    /// Columns, as in [`PowerFlowSensitivity`].
+    pub injection_variables: Vec<InjectionVariable>,
+    n: usize,
+    lu: Option<faer::sparse::linalg::solvers::Lu<usize, f64>>,
+    derivatives: Vec<Vec<(usize, [f64; 4])>>,
+}
+
+impl std::fmt::Debug for SensitivityModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SensitivityModel")
+            .field("states", &self.state_variables.len())
+            .field("injections", &self.injection_variables.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl SensitivityModel {
+    /// Solve the case and factor its reduced sensitivity system.
+    ///
+    /// # Errors
+    ///
+    /// As [`calculate_sensitivities`].
+    pub fn new(input: &Case, options: &PowerFlowOptions) -> Result<Self, Error> {
+        let started = std::time::Instant::now();
+        let prepared = prepare(input, options)?;
+        if prepared.entries.iter().any(|entry| !entry.val.is_finite()) {
+            return Err(Error::Numerical(
+                "non-finite sensitivity linear system".into(),
+            ));
+        }
+        let lu = if prepared.n == 0 {
+            None
+        } else {
+            let matrix = SparseColMat::<usize, f64>::try_new_from_triplets(
+                prepared.n,
+                prepared.n,
+                &prepared.entries,
+            )
+            .map_err(|error| Error::Numerical(format!("sparse assembly: {error:?}")))?;
+            Some(matrix.sp_lu().map_err(|error| {
+                Error::Numerical(format!("singular sensitivity system: {error:?}"))
+            })?)
+        };
+        log::info!(
+            "factored {:?} sensitivity system: {} states, {} injections, elapsed={} ms",
+            options.model,
+            prepared.state_variables.len(),
+            prepared.injection_variables.len(),
+            started.elapsed().as_millis()
+        );
+        Ok(Self {
+            power_flow: prepared.power_flow,
+            state_variables: prepared.state_variables,
+            injection_variables: prepared.injection_variables,
+            n: prepared.n,
+            lu,
+            derivatives: prepared.derivatives,
+        })
+    }
+
+    /// State and branch-flow responses to one injection column.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Numerical`] when `column` is out of range or the
+    /// solve gives non-finite values.
+    pub fn column(&self, column: usize) -> Result<SensitivityColumn, Error> {
+        if column >= self.injection_variables.len() {
+            return Err(Error::Numerical(format!("no sensitivity column {column}")));
+        }
+        let lu = self
+            .lu
+            .as_ref()
+            .ok_or_else(|| Error::Numerical("empty sensitivity system".into()))?;
+        let solved = lu.solve(Mat::from_fn(self.n, 1, |row, _| {
+            if row == column { 1.0 } else { 0.0 }
+        }));
+        let states: Vec<f64> = (0..self.n).map(|row| solved[(row, 0)]).collect();
+        if states.iter().any(|value| !value.is_finite()) {
+            return Err(Error::Numerical(
+                "sensitivity solve produced non-finite values".into(),
+            ));
+        }
+        let branches = self
+            .derivatives
+            .iter()
+            .map(|branch| {
+                let mut value = [0.0; 4];
+                for &(state, derivative) in branch {
+                    for component in 0..4 {
+                        value[component] += derivative[component] * states[state];
+                    }
+                }
+                value
+            })
+            .collect();
+        Ok(SensitivityColumn { states, branches })
+    }
 }

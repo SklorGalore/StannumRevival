@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { catchUpLog, useLog } from "../../store/logStore";
 import { useCrash } from "../../store/crashStore";
 import type {
+  CategoryCount,
   CaseNetwork,
   CaseSummary,
   ContingencyDetail,
@@ -11,6 +12,7 @@ import type {
   ContingencySettings,
   ContingencySummary,
   DcGridsSummary,
+  PlanningSettings,
   CoordinatesSummary,
   BusCoordinates,
   DiffRecordDetail,
@@ -47,6 +49,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   calculate_sensitivities: { label: "Calculating sensitivities", done: "Calculated sensitivities" },
   export_matpower: { label: "Exporting MATPOWER case", done: "Exported MATPOWER case" },
   export_raw: { label: "Exporting PSS/E RAW case", done: "Exported PSS/E RAW case" },
+  export_stn: { label: "Exporting Stannum case", done: "Exported Stannum case" },
   topology_snapshot: { label: "Analysing topology", done: "Analysed topology" },
   topology_set_merge: { label: "Rebuilding topology", done: "Rebuilt topology" },
   run_contingencies: { label: "Running contingencies", done: "Ran contingencies" },
@@ -73,6 +76,7 @@ const LOG_LABELS: Record<string, { label: string; done?: string; quiet?: boolean
   result_generators: { label: "Reading generator results", quiet: true },
   result_branches: { label: "Reading branch results", quiet: true },
   contingency_page: { label: "Reading contingency results", quiet: true },
+  planning_event_counts: { label: "Counting planning events", quiet: true },
   apply_record_edits: { label: "Applying record edits", done: "Applied record edits" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
@@ -181,7 +185,7 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   tolerance_mva: 2,
   max_iterations: 10,
   decoupled_iterations: 30,
-  enforce_q_limits: false,
+  enforce_q_limits: true,
   dc_model: "detailed",
   adjust_dc_taps: true,
   switch_shunts: true,
@@ -191,13 +195,16 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
 };
 
 export const CASE_FILTERS = [
-  { name: "Power system case", extensions: ["raw", "RAW", "m"] },
+  { name: "Power system case", extensions: ["raw", "RAW", "m", "stn", "stnb"] },
   { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
   { name: "MATPOWER", extensions: ["m"] },
+  { name: "Stannum case (preview)", extensions: ["stn", "stnb"] },
 ];
 export const DC_GRID_FILTERS = [{ name: "Stannum DC grids", extensions: ["json"] }];
 export const COORDINATE_FILTERS = [{ name: "Bus coordinates (CSV)", extensions: ["csv", "CSV", "txt"] }];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
+export const STN_FILTERS = [{ name: "Stannum case (preview)", extensions: ["stn"] }];
+export const STNB_FILTERS = [{ name: "Binary Stannum case (preview)", extensions: ["stnb"] }];
 export const RUN_FILE_FILTERS = [{ name: "Stannum run file", extensions: ["stnrun"] }];
 export const RUN_FILE_EXTENSION = /\.stnrun$/i;
 
@@ -263,10 +270,12 @@ export const api = {
     call("export_matpower", { path, solved }),
   /** Write the case, with its Records and study edits, as a complete RAW 33 or 35 file. */
   exportRaw: (path: string, revision: 33 | 35) => call("export_raw", { path, revision }),
+  exportStn: (path: string) => call("export_stn", { path }),
 
   runContingencies: (settings: ContingencySettings): Promise<ContingencySummary> =>
     call("run_contingencies", { settings }),
   // Polled while a run is going, so they skip the log.
+  planningEventCounts: (settings: PlanningSettings): Promise<CategoryCount[]> => call("planning_event_counts", { settings }),
   cancelContingencies: () => invokeCore("cancel_contingencies"),
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>

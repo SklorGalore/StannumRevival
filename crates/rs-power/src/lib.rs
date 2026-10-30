@@ -33,16 +33,18 @@ pub use mtdc::{
 pub use outage::{DcFactors, OutageFlows};
 pub use output::{format_matpower, save_matpower};
 pub use raw::{
-    BranchKind, BranchSource, DcLineKind, GeneratorSource, RawImport, RawOptions, RawSubstation,
-    RawWarning, SwitchType, SwitchingDevice, load_raw, load_raw_with_options, parse_raw,
+    BranchKind, BranchSource, DcLineKind, GeneratorSource, MultiSectionLine, RawField, RawImport,
+    RawOptions, RawRecord, RawSections, RawSubstation, RawWarning, ShuntKind, ShuntSource,
+    SwitchType, SwitchingDevice, convert_raw_records, load_raw, load_raw_with_options, parse_raw,
     parse_raw_with_options,
 };
 pub use sensitivity::{
     BranchFlowDerivatives, BusPowerDerivatives, InjectionVariable, LodfBridgeHandling,
-    PowerFlowJacobian, PowerFlowSensitivity, SquaredMagnitudeDerivatives, StateVariable,
-    VoltageCoordinates, branch_flow_derivatives, bus_power_derivatives, calculate_sensitivities,
-    make_jacobian, make_lodf, make_lodf_with_bridge_handling, make_ptdf, make_ptdf_columns,
-    make_ptdf_transfers, make_ptdf_with_slack_matrix,
+    PowerFlowJacobian, PowerFlowSensitivity, SensitivityColumn, SensitivityModel,
+    SquaredMagnitudeDerivatives, StateVariable, VoltageCoordinates, branch_flow_derivatives,
+    bus_power_derivatives, calculate_sensitivities, make_jacobian, make_lodf,
+    make_lodf_with_bridge_handling, make_ptdf, make_ptdf_columns, make_ptdf_transfers,
+    make_ptdf_with_slack_matrix,
 };
 pub use solver::{
     AcMethod, DcModel, Initialization, Model, PowerFlowOptions, PowerFlowResult, SolveStatus, solve,

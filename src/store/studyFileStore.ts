@@ -2,7 +2,7 @@
 // saved solves, solve and contingency settings, drawing and layout, kept
 // beside a reference to the case file. See lib/study/studyFile.ts.
 import { create } from "zustand";
-import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, toStannumError } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, STN_FILTERS, STNB_FILTERS, toStannumError } from "../lib/analysis/api";
 import { addRecent, fileName } from "../lib/study/recent";
 import {
   compareToFile,
@@ -22,7 +22,7 @@ import { caseChangeOk, onBeforeCaseChange, useWorkspace } from "./workspaceStore
 
 /** The Open dialog takes a case or a study. */
 export const OPEN_FILTERS = [
-  { name: "Case or study", extensions: ["raw", "RAW", "m", "stannum"] },
+  { name: "Case or study", extensions: ["raw", "RAW", "m", "stn", "stnb", "stannum"] },
   ...CASE_FILTERS.slice(1),
   ...STUDY_FILTERS,
 ];
@@ -54,6 +54,10 @@ interface StudyFileState {
    * `revision` (asking where), then say what the file couldn't keep.
    */
   exportRaw: (revision: 33 | 35) => Promise<boolean>;
+  /** Write the case, or with `solved` the latest solve, as a MATPOWER file. */
+  exportMatpower: (solved: boolean) => Promise<boolean>;
+  /** Write the case as a Stannum case file (.stn, or .stnb when `binary`; format preview). */
+  exportStn: (binary: boolean) => Promise<boolean>;
 }
 
 /** Whether there is anything worth keeping: edits, saved solves or a drawing. */
@@ -149,7 +153,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
   async exportRaw(revision) {
     const summary = useWorkspace.getState().caseSummary;
     if (!summary) return false;
-    const base = summary.name.replace(/\.(raw|m)$/i, "");
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     const path = await pickSavePath(`${base}_v${revision}.raw`, RAW_FILTERS);
     if (!path) return false;
     try {
@@ -160,6 +164,47 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
           // Notes say what the file couldn't keep, or that it came from the power flow model.
           tone: done.notes.length ? "warning" : "info",
           title: `Exported ${fileName(path)} as PSS/E RAW ${revision}: ${done.records.toLocaleString()} records`,
+          lines: done.notes.length ? done.notes : ["Every record of the case is in the file."],
+        },
+      });
+      return true;
+    } catch (e) {
+      set({ notice: null, error: `Couldn't export ${fileName(path)}: ${toStannumError(e).message}` });
+      return false;
+    }
+  },
+
+  async exportMatpower(solved) {
+    const summary = useWorkspace.getState().caseSummary;
+    if (!summary) return false;
+    // MATPOWER function names start with a letter and hold only word characters.
+    const stem = summary.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
+    const name = /^[A-Za-z]/.test(stem) ? stem : `case_${stem}`;
+    const path = await pickSavePath(`${name}${solved ? "_solved" : ""}.m`, [{ name: "MATPOWER", extensions: ["m"] }]);
+    if (!path) return false;
+    try {
+      await api.exportMatpower(path, solved);
+      set({ error: null, notice: { tone: "info", title: `Exported ${fileName(path)} as MATPOWER${solved ? " with the latest solve" : ""}`, lines: [] } });
+      return true;
+    } catch (e) {
+      set({ notice: null, error: `Couldn't export ${fileName(path)}: ${toStannumError(e).message}` });
+      return false;
+    }
+  },
+
+  async exportStn(binary) {
+    const summary = useWorkspace.getState().caseSummary;
+    if (!summary) return false;
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
+    const path = await pickSavePath(`${base}.${binary ? "stnb" : "stn"}`, binary ? STNB_FILTERS : STN_FILTERS);
+    if (!path) return false;
+    try {
+      const done = await api.exportStn(path);
+      set({
+        error: null,
+        notice: {
+          tone: "info",
+          title: `Exported ${fileName(path)} as a Stannum case: ${done.records.toLocaleString()} records`,
           lines: done.notes.length ? done.notes : ["Every record of the case is in the file."],
         },
       });
@@ -183,7 +228,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
       );
       if (!ok || !(await w.saveCaseAs())) return false;
     }
-    const base = summary.name.replace(/\.(raw|m)$/i, "");
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     const path = (!opts?.as && get().path) || (await pickSavePath(`${base}.stannum`, STUDY_FILTERS));
     if (!path) return false;
     set({ busy: "saving", error: null });

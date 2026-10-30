@@ -3,7 +3,7 @@ title: Side by side
 description: Two modules at once, with linked selection.
 ---
 
-**Side by side** in the case bar shows two modules at once. The usual pairs
+**Side by side** in the toolbar shows two modules at once. The usual pairs
 are a generated one-line beside the Power flow tables, or the network beside
 the Case diff.
 
@@ -35,7 +35,7 @@ Each module lays itself out for the width of its pane, not the window:
   inspector doesn't cover it.
 - Power flow folds its solve settings into a narrow rail. Its own inspector
   steps aside while the other pane already shows the selection.
-- In the case bar, the selection's **Show in** links fold into a menu when
+- In the toolbar, the selection's **Show in** links fold into a menu when
   the window is too narrow for them.
 
 The [log](/StannumRevival/guide/log/) sits under both panes.

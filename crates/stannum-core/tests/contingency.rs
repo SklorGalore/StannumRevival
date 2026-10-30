@@ -22,6 +22,7 @@ fn settings(method: Method) -> ContingencySettings {
         ac_count: 20,
         limit_pct: 100.0,
         solve: SolveSettings::default(),
+        planning: None,
     }
 }
 

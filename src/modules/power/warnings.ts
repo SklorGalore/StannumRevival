@@ -23,9 +23,13 @@ export function groupWarnings(warnings: RawWarning[]): WarningGroup[] {
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
 
-/** "line 12", "lines 12–40" or "lines 12, 40". */
+/**
+ * "line 12", "lines 12–40" or "lines 12, 40". Line 0 is no line (a Stannum
+ * case's warnings about no one record); "" when none has a line.
+ */
 export function lineSpan(warnings: RawWarning[]): string {
-  const lines = warnings.map((w) => w.line);
+  const lines = warnings.map((w) => w.line).filter((l) => l > 0);
+  if (!lines.length) return "";
   const lo = Math.min(...lines);
   const hi = Math.max(...lines);
   if (lo === hi) return `line ${lo}`;

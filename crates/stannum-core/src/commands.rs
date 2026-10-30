@@ -810,6 +810,12 @@ commands! {
     diagram_network { case: Option<CaseId> } -> crate::diagram::CaseNetwork =>
         |s, a| s.workspace()?.case(a.case)?.diagram_network();
 
+    /// Write the case, with its Records and study edits, as a Stannum case
+    /// file (format preview): binary when `path` ends in `.stnb`, else text
+    /// (`.stn`). The answer lists anything converted or kept as RAW lines.
+    export_stn { case: Option<CaseId>, path: PathBuf } -> crate::stn::StnExport =>
+        |s, a| s.workspace()?.case_mut(a.case)?.export_stn(&a.path);
+
     /// One element's data and limits from the file.
     element_detail { case: Option<CaseId>, element: String } -> crate::inspect::ElementDetail => |s, a| {
         // Shunts, FACTS devices and the like are read from their records.
@@ -900,11 +906,19 @@ commands! {
     diff_record_detail { section: String, index: usize } -> Option<crate::diff::RecordDetail> =>
         |s, a| Ok(s.workspace()?.comparison()?.record_detail(&a.section, a.index));
 
-    /// Run N-1 contingencies. `cancel_contingencies` stops the run and
+    /// Run N-1 contingencies, or with `settings.planning` the NERC TPL-001
+    /// planning events. `cancel_contingencies` stops the run and
     /// `contingency_progress` follows it. Settings left out take their
     /// defaults: every branch and generator, screened, then the worst in AC.
     run_contingencies { case: Option<CaseId>, settings: Option<ContingencySettings> } -> ContingencySummary =>
         |s, a| s.run_contingencies(a.case, a.settings.unwrap_or_default());
+
+    /// How many NERC TPL-001 planning events each category gives on the
+    /// open case, before running them with `run_contingencies`. Settings
+    /// left out take their defaults: every category Stannum generates, at
+    /// 100 kV and above.
+    planning_event_counts { case: Option<CaseId>, settings: Option<crate::planning::PlanningSettings> } -> Vec<crate::planning::CategoryCount> =>
+        |s, a| s.workspace()?.case(a.case)?.planning_event_counts(&a.settings.unwrap_or_default());
 
     /// Stop the contingency run in progress.
     cancel_contingencies {} -> () => |s, _| {

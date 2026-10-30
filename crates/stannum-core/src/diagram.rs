@@ -16,6 +16,11 @@ pub struct NetworkBus {
     pub name: String,
     pub base_kv: f64,
     pub area: u32,
+    /// Loss zone.
+    pub zone: u32,
+    /// Owner from the RAW bus record; 0 when the case has no owners
+    /// (MATPOWER).
+    pub owner: u32,
     #[schemars(extend("enum" = ["PQ", "PV", "Ref", "Isolated"]))]
     pub kind: &'static str,
     /// Load at the bus in MW / MVAr (rs-power aggregates loads per bus).
@@ -123,6 +128,8 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             name,
             base_kv: b.base_kv,
             area: b.area,
+            zone: b.zone,
+            owner: power.bus_owners.get(&b.id).copied().unwrap_or(0),
             kind: kind_label(b.kind),
             // What the load draws at the file's voltage.
             pd: b.load().0,
@@ -156,7 +163,7 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
             let tap = if br.tap == 0.0 { 1.0 } else { br.tap };
             let (kv_from, kv_to) = (base_kv(br.from), base_kv(br.to));
             // A branch is drawn as a transformer when it changes voltage level,
-            // has an off-nominal ratio, or shifts phase.
+            // has an off-nominal ratio, shifts phase, or is a RAW transformer.
             let switching = switches.get(&index).map(|d| NetworkSwitch {
                 kind: match d.kind {
                     SwitchType::Breaker => "breaker",
@@ -166,9 +173,12 @@ pub fn network(power: &PowerCase) -> CaseNetwork {
                 name: d.name.clone(),
                 normally_open: d.normally_open,
             });
-            let transformer = switching.is_none()
-                && ((kv_from - kv_to).abs() > 1e-6 || tap != 1.0 || br.shift != 0.0);
             let e = power.elements.branches.get(index);
+            let transformer = switching.is_none()
+                && ((kv_from - kv_to).abs() > 1e-6
+                    || tap != 1.0
+                    || br.shift != 0.0
+                    || e.is_some_and(|e| e.element.starts_with("transformer:")));
             NetworkBranch {
                 index,
                 element: e.map(|e| e.element.clone()).unwrap_or_default(),

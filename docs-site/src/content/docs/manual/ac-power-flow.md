@@ -88,6 +88,25 @@ $$
 Ordinary steps are far smaller and keep the full Newton step; the limit
 protects badly initialized solves from jumping to a low-voltage solution.
 
+### Line search
+
+A full Newton step can overshoot: far from a solution, or near the most the
+network can carry, the mismatch after the step can be larger than before.
+Each step is therefore checked before it is taken. With $f$ the sum of the
+squared mismatches, the step $\alpha$ is halved, up to six times, until
+
+$$
+f\bigl(x^{(k)} + \alpha\,\Delta x\bigr) < \bigl(1 - 10^{-4}\alpha\bigr)\,\max_{j=k-4}^{k} f\bigl(x^{(j)}\bigr).
+$$
+
+The step is measured against the largest of the last five mismatches rather
+than the latest (a *non-monotone* line search, after Grippo, Lampariello and
+Lucidi, 1986), because Newton's mismatch may rise for a step on its way to a
+solution, most often with detailed HVDC converters, whose response has
+corners. If no shorter step meets the test, the full step is taken. Most
+steps pass the test at full length, so ordinary solves are unchanged; the
+log says when a step was shortened. The decoupled methods don't use it.
+
 ### Starting point
 
 By default each solve starts where the last converged AC solve ended: its bus
@@ -121,9 +140,9 @@ After each converged Newton solve, the solver checks, in this order:
 3. **Generator reactive limits** (when enforced): fix violating generators at
    their limits and solve again. See [Generator reactive
    limits](/StannumRevival/manual/reactive-limits/).
-4. **Remote regulation restores**: a generator group that left voltage
-   control returns to it when its remote bus's voltage moves past the setpoint
-   the other way.
+4. **Returning to voltage control**: a generator bus that left voltage
+   control at a limit returns to it when the voltage it held moves past the
+   setpoint the other way (its own voltage, or its remote bus's).
 5. **Switched shunts and transformer taps**, only once reactive limits have
    settled: move them and solve again. At most 30 control passes. See
    [Switched shunts and taps](/StannumRevival/manual/voltage-controls/).

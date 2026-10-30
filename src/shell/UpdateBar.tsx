@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowDownCircle, CheckCircle2, ExternalLink, Loader2, X } from "lucide-react";
 import { RELEASES_URL, useUpdate } from "../store/updateStore";
+import { openLink } from "./appMenus";
 
 const mb = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 
@@ -13,16 +14,7 @@ export function notesPreview(notes: string, lines = 3): string[] {
     .slice(0, lines);
 }
 
-async function openLink(url: string) {
-  try {
-    const { open } = await import("@tauri-apps/plugin-shell");
-    await open(url);
-  } catch {
-    window.open(url, "_blank", "noopener");
-  }
-}
-
-/** Under the case bar: a newer Stannum, its download, or how a check went. */
+/** Under the toolbar: a newer Stannum, its download, or how a check went. */
 export function UpdateBar() {
   const phase = useUpdate((s) => s.phase);
   const update = useUpdate((s) => s.update);

@@ -4,7 +4,7 @@ Build a synthetic test case of any size.
 
 .DESCRIPTION
 Runs the stannum-synth generator (the method of Birchfield et al., IEEE
-Trans. Power Systems, 2017) and writes the case as MATPOWER, with bus
+Trans. Power Systems, 2017) and writes the case as a Stannum case (.stn), with bus
 coordinates, a validation report and a map. The same seed always builds the
 same case. See docs-site/src/content/docs/manual/synthetic-cases.md.
 

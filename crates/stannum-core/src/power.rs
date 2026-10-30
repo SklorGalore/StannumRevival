@@ -4,7 +4,7 @@ use crate::elements::Elements;
 use crate::table::{self, Table};
 use rs_power::{
     BusType, Case, Initialization, InjectionVariable, Model, PowerFlowOptions, PowerFlowResult,
-    PowerFlowSensitivity, SolveStatus, StateVariable,
+    SensitivityModel, SolveStatus, StateVariable,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,6 +42,34 @@ pub struct PowerCase {
     pub areas: Vec<rs_power::Area>,
     /// RAW loads assigned to another area than their bus's.
     pub area_loads: Vec<rs_power::AreaLoad>,
+    /// Every fixed and switched shunt, with what it adds to its bus. A
+    /// MATPOWER case has one fixed shunt per bus with a nonzero GS or BS.
+    pub shunts: Vec<rs_power::ShuntSource>,
+    /// RAW multi-section line groupings; empty otherwise.
+    pub multi_section_lines: Vec<rs_power::MultiSectionLine>,
+    /// Each branch's RAW `LEN`, in `case.branches` order, for placing buses
+    /// on the map; 0 where not given. Empty for MATPOWER.
+    pub branch_lengths: Vec<f64>,
+    /// Each RAW bus's `OWNER`, by bus number. Empty for MATPOWER, which has
+    /// no owners.
+    pub bus_owners: std::collections::BTreeMap<u32, u32>,
+}
+
+/// A MATPOWER bus's GS and BS as one fixed shunt, `shunt:<bus>:1`.
+fn matpower_shunts(case: &Case) -> Vec<rs_power::ShuntSource> {
+    case.buses
+        .iter()
+        .filter(|b| b.gs != 0.0 || b.bs != 0.0)
+        .map(|b| rs_power::ShuntSource {
+            kind: rs_power::ShuntKind::Fixed,
+            bus: b.id,
+            id: "1".into(),
+            online: true,
+            g: b.gs,
+            b: b.bs,
+            line: 0,
+        })
+        .collect()
 }
 
 fn dc_kind_label(kind: rs_power::DcLineKind) -> &'static str {
@@ -67,79 +95,112 @@ pub struct Warning {
 pub fn load(text: &str, is_matpower: bool) -> Result<PowerCase, String> {
     if is_matpower {
         let case = rs_power::parse_matpower(text).map_err(|e| e.to_string())?;
-        Ok(PowerCase {
-            elements: Elements::from_matpower(&case),
-            dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
-            case,
-            warnings: Vec::new(),
-            lcc_lines: Vec::new(),
-            vsc_lines: Vec::new(),
-            voltage_controls: rs_power::VoltageControls::default(),
-            flow_controls: rs_power::FlowControls::default(),
-            mtdc: Vec::new(),
-            substations: Vec::new(),
-            switching_devices: Vec::new(),
-            revision: None,
-            areas: Vec::new(),
-            area_loads: Vec::new(),
-        })
+        Ok(from_case(case))
     } else {
-        // VSC and multi-terminal DC lines are imported too, beyond MATPOWER.
-        // Line-commutated converters absorb reactive power, unlike MATPOWER's
-        // positive estimates. Generators hold the remote buses they regulate.
-        // Loads keep their constant-current and constant-impedance parts.
-        let options = rs_power::RawOptions {
-            all_dc_lines: true,
-            lcc_absorbs_reactive: true,
-            remote_regulation: true,
-            zip_loads: true,
-            ..Default::default()
-        };
-        let import = rs_power::parse_raw_with_options(text, &options).map_err(|e| e.to_string())?;
-        let elements = Elements::from_raw(
-            &import.case,
-            &import.branch_sources,
-            &import.generator_sources,
-            &import.dc_line_names,
-        );
-        // Which element each record's first line belongs to, so a warning
-        // can name what it is about.
-        let mut by_line: HashMap<usize, String> = HashMap::new();
-        for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
-            by_line.entry(s.line).or_insert_with(|| e.element.clone());
-        }
-        for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
-            by_line.entry(s.line).or_insert_with(|| e.element.clone());
-        }
-        Ok(PowerCase {
-            elements,
-            dc_line_kinds: import
-                .dc_line_kinds
-                .iter()
-                .copied()
-                .map(dc_kind_label)
-                .collect(),
-            lcc_lines: import.lcc_lines,
-            vsc_lines: import.vsc_lines,
-            voltage_controls: import.voltage_controls,
-            flow_controls: import.flow_controls,
-            mtdc: import.mtdc,
-            substations: import.substations,
-            switching_devices: import.switching_devices,
-            revision: Some(import.revision),
-            areas: import.areas,
-            area_loads: import.area_loads,
-            case: import.case,
-            warnings: import
-                .warnings
-                .into_iter()
-                .map(|w| Warning {
-                    element: by_line.get(&w.line).cloned(),
-                    line: w.line,
-                    message: w.message,
-                })
-                .collect(),
-        })
+        let import =
+            rs_power::parse_raw_with_options(text, &raw_options()).map_err(|e| e.to_string())?;
+        Ok(from_import(import))
+    }
+}
+
+/// A power flow model built in memory (a synthetic case, say), read as a
+/// MATPOWER case's would be but keeping what MATPOWER has no column for,
+/// such as the bus each generator regulates.
+pub fn from_case(case: Case) -> PowerCase {
+    let shunts = matpower_shunts(&case);
+    PowerCase {
+        elements: Elements::from_matpower(&case),
+        dc_line_kinds: vec!["two_terminal"; case.dcline.as_ref().map_or(0, Vec::len)],
+        case,
+        warnings: Vec::new(),
+        lcc_lines: Vec::new(),
+        vsc_lines: Vec::new(),
+        voltage_controls: rs_power::VoltageControls::default(),
+        flow_controls: rs_power::FlowControls::default(),
+        mtdc: Vec::new(),
+        substations: Vec::new(),
+        switching_devices: Vec::new(),
+        revision: None,
+        areas: Vec::new(),
+        area_loads: Vec::new(),
+        shunts,
+        multi_section_lines: Vec::new(),
+        branch_lengths: Vec::new(),
+        bus_owners: Default::default(),
+    }
+}
+
+/// How RAW cases are read for power flow. VSC and multi-terminal DC lines
+/// are imported too, beyond MATPOWER. Line-commutated converters absorb
+/// reactive power, unlike MATPOWER's positive estimates. Generators hold
+/// the remote buses they regulate. Loads keep their constant-current and
+/// constant-impedance parts.
+fn raw_options() -> rs_power::RawOptions {
+    rs_power::RawOptions {
+        all_dc_lines: true,
+        lcc_absorbs_reactive: true,
+        remote_regulation: true,
+        zip_loads: true,
+        ..Default::default()
+    }
+}
+
+/// A case from RAW records already in memory (a Stannum case's, see
+/// [`crate::stn::raw_sections`]), read as a RAW file's are.
+pub fn load_sections(sections: rs_power::RawSections) -> Result<PowerCase, String> {
+    let import =
+        rs_power::convert_raw_records(sections, &raw_options()).map_err(|e| e.to_string())?;
+    Ok(from_import(import))
+}
+
+fn from_import(import: rs_power::RawImport) -> PowerCase {
+    let elements = Elements::from_raw(
+        &import.case,
+        &import.branch_sources,
+        &import.generator_sources,
+        &import.dc_line_names,
+    );
+    // Which element each record's first line belongs to, so a warning
+    // can name what it is about.
+    let mut by_line: HashMap<usize, String> = HashMap::new();
+    for (s, e) in import.branch_sources.iter().zip(&elements.branches) {
+        by_line.entry(s.line).or_insert_with(|| e.element.clone());
+    }
+    for (s, e) in import.generator_sources.iter().zip(&elements.generators) {
+        by_line.entry(s.line).or_insert_with(|| e.element.clone());
+    }
+    PowerCase {
+        elements,
+        dc_line_kinds: import
+            .dc_line_kinds
+            .iter()
+            .copied()
+            .map(dc_kind_label)
+            .collect(),
+        lcc_lines: import.lcc_lines,
+        vsc_lines: import.vsc_lines,
+        voltage_controls: import.voltage_controls,
+        flow_controls: import.flow_controls,
+        mtdc: import.mtdc,
+        substations: import.substations,
+        switching_devices: import.switching_devices,
+        revision: Some(import.revision),
+        areas: import.areas,
+        area_loads: import.area_loads,
+        shunts: import.shunts,
+        multi_section_lines: import.multi_section_lines,
+        branch_lengths: import.branch_lengths,
+        bus_owners: import.bus_owners,
+        case: import.case,
+        warnings: import
+            .warnings
+            .into_iter()
+            .map(|w| Warning {
+                element: by_line.get(&w.line).cloned(),
+                line: w.line,
+                message: w.message,
+            })
+            .collect(),
     }
 }
 
@@ -250,7 +311,7 @@ fn decoupled_iterations() -> usize {
 }
 
 /// How to solve. Fields left out take their defaults: AC with the automatic
-/// method from the last solution, to 2 MVA, without reactive limits, with
+/// method from the last solution, to 2 MVA, with reactive limits held and
 /// every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default)]
@@ -270,6 +331,8 @@ pub struct SolveSettings {
     /// the decoupled stage of the automatic method).
     #[serde(default = "decoupled_iterations")]
     pub decoupled_iterations: usize,
+    /// Hold generators at their reactive limits (and regulate remote buses).
+    /// On by default, as real cases are solved in PSS/E and PowerWorld.
     pub enforce_q_limits: bool,
     #[serde(default)]
     pub dc_model: DcModelChoice,
@@ -311,7 +374,7 @@ impl Default for SolveSettings {
             tolerance_mva: DEFAULT_TOLERANCE_MVA,
             max_iterations: d.max_iterations,
             decoupled_iterations: d.decoupled_iterations,
-            enforce_q_limits: false,
+            enforce_q_limits: true,
             dc_model: DcModelChoice::Detailed,
             adjust_dc_taps: true,
             switch_shunts: true,
@@ -983,6 +1046,20 @@ fn outside(value: f64, low: f64, high: f64) -> f64 {
     }
 }
 
+/// Loading in percent of `rate`: the larger end of a line or two-winding
+/// transformer. A three-winding transformer's winding (`winding` 1 to 3)
+/// runs from its own bus to the internal star bus, so only its bus end is
+/// measured, as PSS/E reports winding loading at the winding terminal.
+pub fn loading_pct(p_from: f64, q_from: f64, p_to: f64, q_to: f64, rate: f64, winding: u8) -> f64 {
+    let from = p_from.hypot(q_from);
+    let worst = if winding > 0 {
+        from
+    } else {
+        from.max(p_to.hypot(q_to))
+    };
+    worst / rate * 100.0
+}
+
 /// Build the frontend report from a solve, including operating-limit checks.
 /// How many devices ended more than a rounding error from where they began.
 fn moved<T>(values: &[f64], devices: &[T], start: impl Fn(&T) -> f64) -> usize {
@@ -1095,8 +1172,10 @@ pub fn report(
         .zip(&result.branch_flows)
         .enumerate()
         .map(|(index, (br, f))| {
+            let e = elements.branches.get(index);
+            let winding = e.map_or(0, |e| e.winding);
             let loading_pct = (br.online && br.rate_a > 0.0)
-                .then(|| f[0].hypot(f[1]).max(f[2].hypot(f[3])) / br.rate_a * 100.0);
+                .then(|| loading_pct(f[0], f[1], f[2], f[3], br.rate_a, winding));
             if let Some(loading) = loading_pct {
                 if loading > 100.0 {
                     limits.branch_overloads += 1;
@@ -1105,16 +1184,20 @@ pub fn report(
                     limits.worst_branch = Some((br.from, br.to, loading));
                 }
             }
-            let e = elements.branches.get(index);
             BranchRow {
                 index,
                 element: e.map(|e| e.element.clone()).unwrap_or_default(),
                 circuit: e.map(|e| e.circuit.clone()).unwrap_or_default(),
-                winding: e.map_or(0, |e| e.winding),
+                winding,
                 from: br.from,
                 to: br.to,
                 online: br.online,
-                is_transformer: (br.tap != 0.0 && br.tap != 1.0) || br.shift != 0.0,
+                // RAW transformers are named by their record, so a unity
+                // ratio transformer is still a transformer. MATPOWER has no
+                // such record and falls back to the ratio and shift.
+                is_transformer: e.is_some_and(|e| e.element.starts_with("transformer:"))
+                    || (br.tap != 0.0 && br.tap != 1.0)
+                    || br.shift != 0.0,
                 pf: f[0],
                 qf: f[1],
                 pt: f[2],
@@ -1469,7 +1552,7 @@ pub fn quantities(model: ModelChoice) -> Vec<Quantity> {
 }
 
 pub fn sensitivity_summary(
-    s: &PowerFlowSensitivity,
+    s: &SensitivityModel,
     model: ModelChoice,
     elapsed_ms: f64,
 ) -> SensitivitySummary {
@@ -1545,12 +1628,10 @@ pub struct ResponseTable {
     pub rows: Vec<Response>,
 }
 
-fn bus_label(names: &[String], case: &Case, id: u32) -> String {
-    let name = case
-        .buses
-        .iter()
-        .position(|b| b.id == id)
-        .map(|i| names[i].as_str())
+fn bus_label(names: &[String], index: &HashMap<u32, usize>, id: u32) -> String {
+    let name = index
+        .get(&id)
+        .map(|&i| names[i].as_str())
         .filter(|n| !n.is_empty());
     match name {
         Some(n) => format!("Bus {id} ({n})"),
@@ -1560,7 +1641,7 @@ fn bus_label(names: &[String], case: &Case, id: u32) -> String {
 
 /// All responses to one injection column, in input order.
 pub fn responses(
-    s: &PowerFlowSensitivity,
+    s: &SensitivityModel,
     elements: &crate::elements::Elements,
     column: usize,
     quantity: Quantity,
@@ -1572,25 +1653,28 @@ pub fn responses(
         .ok_or_else(|| format!("No injection column {column}"))?;
     let case = &s.power_flow.case;
     let names = bus_names(case);
+    let index: HashMap<u32, usize> = case
+        .buses
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id, i))
+        .collect();
+    let solved = s.column(column).map_err(|e| e.to_string())?;
     let rows = match quantity {
         Quantity::Angle | Quantity::Magnitude => s
             .state_variables
             .iter()
             .enumerate()
-            .filter_map(|(index, state)| {
+            .filter_map(|(row, state)| {
                 let (bus, q) = match *state {
                     StateVariable::VoltageAngle(b) => (b, Quantity::Angle),
                     StateVariable::VoltageMagnitude(b) => (b, Quantity::Magnitude),
                 };
                 (q == quantity).then(|| Response {
-                    index,
-                    label: bus_label(&names, case, bus),
+                    index: row,
+                    label: bus_label(&names, &index, bus),
                     element: format!("bus:{bus}"),
-                    value: q.convert(
-                        s.state_sensitivities[index][column],
-                        case.base_mva,
-                        engineering,
-                    ),
+                    value: q.convert(solved.states[row], case.base_mva, engineering),
                     offline: false,
                 })
             })
@@ -1599,20 +1683,20 @@ pub fn responses(
             .branches
             .iter()
             .enumerate()
-            .map(|(index, br)| Response {
-                index,
+            .map(|(i, br)| Response {
+                index: i,
                 label: format!(
                     "Branch {}: {} → {}",
-                    index + 1,
-                    bus_label(&names, case, br.from),
-                    bus_label(&names, case, br.to)
+                    i + 1,
+                    bus_label(&names, &index, br.from),
+                    bus_label(&names, &index, br.to)
                 ),
                 element: elements
                     .branches
-                    .get(index)
+                    .get(i)
                     .map(|e| e.element.clone())
                     .unwrap_or_default(),
-                value: s.branch_flow_sensitivities[index][column][component],
+                value: solved.branches[i][component],
                 offline: !br.online,
             })
             .collect(),

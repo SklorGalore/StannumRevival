@@ -4,8 +4,8 @@ description: "The .sld file: a one-line drawing as JSON, with each symbol's plac
 ---
 
 A diagram file (`.sld`) holds one one-line drawing: its symbols, the wires
-between them and the view. Save one from the Diagram toolbar (**Save** or
-**Save As**, <kbd>Ctrl</kbd>+<kbd>S</kbd>). A
+between them and the view. Save one from the Diagram toolbar's **Drawing** menu (**Save** or
+**Save as…**, <kbd>Ctrl</kbd>+<kbd>S</kbd>). A
 [study file](/StannumRevival/reference/study-file/) holds the same drawing in
 its `diagram` field.
 

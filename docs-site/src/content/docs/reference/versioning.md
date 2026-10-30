@@ -52,6 +52,11 @@ The [study](/StannumRevival/reference/study-file/) (`.stannum`),
 - Files saved by earlier releases are kept in the repository's
   `tests/compat` folder, and the tests open them on every change.
 
+The [Stannum case](/StannumRevival/reference/case-file/) (`.stn`, `.stnb`) and
+[lists](/StannumRevival/reference/lists-file/) (`.stnl`) formats are in
+preview and outside this promise until their format version reaches 1.0,
+planned with Stannum 2.0. Until then any release may change them.
+
 ### Files Stannum reads from other tools
 
 PSS/E RAW and MATPOWER cases: what a 1.x release reads, every later 1.x
@@ -134,6 +139,10 @@ are:
 
 `--json` prints the run report, which follows the command rules above. The
 plain text output is for people and can change.
+
+`stannum-cli mcp` (the [MCP server](/StannumRevival/guide/ai-assistants/)
+for AI assistants) is a preview and not part of this promise: its tools are
+written for assistants and can change in a minor release.
 
 ### Attach
 

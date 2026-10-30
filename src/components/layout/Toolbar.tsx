@@ -117,6 +117,7 @@ export function Toolbar() {
   }
 
   const isDirty = useDiagramStore((s) => s.isDirty);
+  const currentFilePath = useDiagramStore((s) => s.currentFilePath);
   const gridVisible = useDiagramStore((s) => s.gridVisible);
   const snapToGrid = useDiagramStore((s) => s.snapToGrid);
   const selectedNodeIds = useDiagramStore((s) => s.selectedNodeIds);
@@ -150,7 +151,6 @@ export function Toolbar() {
 
   // The toolbar follows its pane's width, not the window's: side by side,
   // labels go first, then the file and view buttons move into "More".
-  const fileLabels = width >= 1350;
   const labels = width >= 900;
   const roomy = width >= 760;
   const fileItems: MenuItem[] = [
@@ -172,32 +172,23 @@ export function Toolbar() {
       className="h-12 flex items-center px-3 gap-1 border-b border-slate-200 bg-white select-none overflow-hidden whitespace-nowrap shrink-0"
       data-testid="diagram-toolbar"
     >
-      {width >= 820 && <span className="shrink-0 font-semibold text-slate-700 text-sm mr-3">Diagram</span>}
+      {width >= 820 && (
+        <span className="shrink-0 mr-3 flex items-baseline gap-1.5" data-testid="diagram-name">
+          <span className="font-semibold text-slate-700 text-sm">Diagram</span>
+          <span className="max-w-40 truncate text-[11px] text-slate-500" title={currentFilePath ?? "Not saved yet"}>
+            {currentFilePath ? currentFilePath.split(/[\\/]/).pop() : "Untitled"}
+            {isDirty && " *"}
+          </span>
+        </span>
+      )}
       <StyleSwitch compact={!roomy} />
       <LayersButton showLabel={labels} />
       <TablesButton showLabel={labels} />
-
-      {roomy && (
-        <>
-          <ToolbarButton icon={<FilePlus size={14} />} label="New" showLabel={fileLabels} onClick={handleNew} />
-          <ToolbarButton icon={<FolderOpen size={14} />} label="Open" showLabel={fileLabels} onClick={openDiagram} />
-          <ToolbarButton icon={<Save size={14} />} label="Save" showLabel={fileLabels} onClick={saveDiagram} />
-          <ToolbarButton icon={<Save size={14} />} label="Save As" showLabel={fileLabels} onClick={saveAsDialog} />
-          <Divider />
-        </>
-      )}
 
       <IconButton icon={<Undo2 size={14} />} title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
       <IconButton icon={<Redo2 size={14} />} title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} />
 
       <Divider />
-
-      {roomy && (
-        <>
-          <ToolbarButton icon={<Download size={14} />} label="Export" showLabel={fileLabels} onClick={() => setExportOpen(true)} />
-          <Divider />
-        </>
-      )}
 
       <ToolbarButton
         icon={<Wand2 size={14} />}
@@ -234,35 +225,25 @@ export function Toolbar() {
           />
         ))}
 
-      {roomy && (
-        <>
-          <Divider />
-          <ToolbarButton icon={<Grid size={14} />} label="Grid" showLabel={labels} onClick={toggleGrid} active={gridVisible} />
-          <ToolbarButton icon={<Magnet size={14} />} label="Snap" showLabel={labels} onClick={toggleSnap} active={snapToGrid} />
-          <ToolbarButton
-            icon={<Printer size={14} />}
-            label="Print style"
-            showLabel={labels}
-            onClick={toggleColorMode}
-            active={mono}
-            title="Black and white, for printing and export"
-          />
-        </>
+      {caseName && !linked && (
+        <span className="min-w-0 truncate text-[11px] text-amber-700" title={`Drawn from ${caseName}`}>
+          Drawn from {caseName}; open it to see results
+        </span>
       )}
-
-      <Divider />
-
-      <ToolbarButton
-        icon={<Trash2 size={14} />}
-        label="Delete"
-        showLabel={labels}
-        onClick={deleteSelected}
-        danger
-        disabled={!hasSelection || locked}
-        title={locked ? "The drawing is locked" : undefined}
-      />
-
-      {!roomy && <OverflowMenu label="More diagram actions" items={[...fileItems, ...viewItems]} />}
+      {/* File and view actions sit in two menus; Delete appears with a selection. */}
+      <div className="ml-auto flex items-center gap-1">
+        {hasSelection && !locked && (
+          <ToolbarButton icon={<Trash2 size={14} />} label="Delete" showLabel={false} onClick={deleteSelected} danger title="Delete from the drawing (Del)" />
+        )}
+        {roomy ? (
+          <>
+            <OverflowMenu label="Drawing" showLabel items={fileItems} />
+            <OverflowMenu label="Canvas" showLabel items={viewItems} />
+          </>
+        ) : (
+          <OverflowMenu label="More diagram actions" items={[...fileItems, ...viewItems]} />
+        )}
+      </div>
 
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {generateOpen && <GenerateDialog onClose={() => setGenerateOpen(false)} />}

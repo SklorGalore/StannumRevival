@@ -4,6 +4,7 @@
 //! - [`attach`]: lets a script drive the running app over a local socket.
 //! - [`commands`]: every command the clients use, listed once.
 //! - [`contingency`]: N-1 contingency analysis (linear screen, then AC).
+//! - [`planning`]: NERC TPL-001 planning events generated from the case.
 //! - [`power`]: AC/DC power flow and sensitivities via rs-power.
 //! - [`workspace`]: the shared open case, with topology via nodal.
 //! - [`derived_topology`]: topology for cases nodal can't read, from the power model.
@@ -24,6 +25,7 @@
 //! - [`logbook`]: the application log shown in the log panel.
 //! - [`crash`]: internal errors (panics) logged and answered as errors.
 //! - [`paging`]: tables read a page at a time, sorted and filtered in the core.
+//! - [`stn`]: Stannum's open case format (`.stn`), to and from RAW.
 
 pub mod attach;
 pub mod commands;
@@ -40,6 +42,7 @@ pub mod geo;
 pub mod inspect;
 pub mod logbook;
 pub mod paging;
+pub mod planning;
 pub mod power;
 pub mod raw_export;
 pub mod record_edit;
@@ -48,6 +51,7 @@ pub mod results;
 pub mod run_file;
 pub mod samples;
 pub mod schema;
+pub mod stn;
 pub mod study;
 pub mod study_file;
 pub mod table;

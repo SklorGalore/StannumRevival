@@ -44,8 +44,15 @@ $$
 $$
 
 with $\partial S_\text{br}/\partial x$ from MATPOWER's `dSbr_dV` in polar
-form. Because each branch row touches only its endpoint states, assembly
-avoids dense work even on large cases.
+form. Because each branch row touches only its endpoint states, only those
+derivatives are kept.
+
+The app never forms $J^{-1}$. It factors $J$ once (sparse LU) and solves for
+one injection column when you pick an injection bus, so an 80,000-bus case
+takes a few seconds and well under a gigabyte. The full matrices would not
+fit in memory at that size: rs-power's `calculate_sensitivities` still
+returns them for small cases, and `SensitivityModel` gives the same numbers
+a column at a time.
 
 ## Units and signs
 

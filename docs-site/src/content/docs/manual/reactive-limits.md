@@ -29,9 +29,25 @@ passes](/StannumRevival/manual/ac-power-flow/#loose-passes) the tolerance
 $\delta$ grows by the remaining mismatch (in Mvar), so that only clear
 violations switch while the solution is still rough.
 
-A generator fixed at a limit stays there in this solve, except a generator
-holding a remote bus, which can [take the bus
-back](/StannumRevival/manual/remote-regulation/#returning-to-voltage-control).
+### Returning to voltage control
+
+Fixing every violation in one pass can overshoot: once many generators stop
+holding voltage, the voltages around them fall or rise, and some of the
+generators already fixed find themselves with reactive power to spare. A
+generator bus at a limit therefore holds its voltage again when that voltage
+moves past the setpoint on the side the limit pushes, as in PSS/E:
+
+$$
+\text{at } Q_{\max}: \lvert V\rvert > V^\text{set} + 10^{-4},
+\qquad
+\text{at } Q_{\min}: \lvert V\rvert < V^\text{set} - 10^{-4}.
+$$
+
+A bus can return at most three times in one solve, so the limit loop cannot
+cycle. A generator holding a remote bus does the same with [the remote bus's
+voltage](/StannumRevival/manual/remote-regulation/#returning-to-voltage-control).
+Generators that start at a limit because the solve started from the last
+solution stay there.
 
 ## Reference bus
 

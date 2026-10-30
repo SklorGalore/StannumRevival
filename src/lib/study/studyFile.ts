@@ -27,7 +27,7 @@ export interface StudyFile {
     /** From the study's folder, with "/" separators; null when there is none. */
     relative: string | null;
     name: string;
-    format: "matpower" | "raw";
+    format: "matpower" | "raw" | "stn";
     fingerprint: FileFingerprint;
   };
   /** The attached DC grid file, if any. */

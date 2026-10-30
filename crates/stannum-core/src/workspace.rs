@@ -20,7 +20,7 @@ use crate::results::ResultName;
 use crate::study::{self, Edit};
 use crate::topology_wire;
 use nodal::topology::{Analysis, GraphData, Path as TopologyPath, Topology, TopologyOptions};
-use rs_power::{PowerFlowResult, PowerFlowSensitivity};
+use rs_power::{PowerFlowResult, SensitivityModel};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -32,6 +32,17 @@ use std::time::Instant;
 pub enum CaseFormat {
     Matpower,
     Raw,
+    /// A Stannum case file (.stn text or .stnb binary), read as the RAW 35
+    /// text it converts to.
+    Stn,
+}
+
+impl CaseFormat {
+    /// Whether the case's bytes are RAW text: RAW files, and Stannum case
+    /// files once converted.
+    pub fn is_raw(self) -> bool {
+        matches!(self, CaseFormat::Raw | CaseFormat::Stn)
+    }
 }
 
 pub struct TopologyState {
@@ -54,6 +65,72 @@ impl std::fmt::Display for CaseId {
     }
 }
 
+/// A case's text: MATPOWER or RAW as read or as edited, or for a Stannum
+/// case, RAW revision 35 written from it the first time something needs it
+/// (topology, Records, case diff, saving). Opening a Stannum case reads it
+/// straight into the power flow model, without the text. Cheap to clone.
+#[derive(Clone)]
+pub struct CaseText(Arc<CaseTextInner>);
+
+struct CaseTextInner {
+    text: OnceLock<Vec<u8>>,
+    /// The Stannum case and its file name, to write the text from.
+    source: Option<(Arc<stannum_format::Document>, String)>,
+}
+
+impl CaseText {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(Arc::new(CaseTextInner {
+            text: OnceLock::from(bytes),
+            source: None,
+        }))
+    }
+
+    fn from_stn(doc: Arc<stannum_format::Document>, name: String) -> Self {
+        Self(Arc::new(CaseTextInner {
+            text: OnceLock::new(),
+            source: Some((doc, name)),
+        }))
+    }
+
+    pub fn get(&self) -> &[u8] {
+        self.0.text.get_or_init(|| {
+            let Some((doc, name)) = &self.0.source else {
+                return Vec::new();
+            };
+            let start = Instant::now();
+            match crate::stn::to_raw(doc, name) {
+                Ok(text) => {
+                    log::debug!("Wrote {name} as RAW text ({:.0} ms)", elapsed_ms(start));
+                    text.into_bytes()
+                }
+                Err(e) => {
+                    log::warn!("{name} can't be written as RAW text: {e}");
+                    Vec::new()
+                }
+            }
+        })
+    }
+
+    /// Write the text now, on a thread of its own, so whatever needs it
+    /// first doesn't wait as long.
+    fn prepare(&self) {
+        if self.0.text.get().is_none() {
+            let text = self.clone();
+            std::thread::spawn(move || {
+                text.get();
+            });
+        }
+    }
+}
+
+impl std::ops::Deref for CaseText {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.get()
+    }
+}
+
 pub struct OpenCase {
     /// Set by [`Workspace::open`]; kept when the case is rebuilt in place.
     pub id: CaseId,
@@ -72,7 +149,7 @@ pub struct OpenCase {
     /// The last solve from before the study's edits changed, kept as a
     /// starting point for the next solve.
     pub before_edits: Option<Arc<Solved>>,
-    pub sensitivity: Option<(PowerFlowSensitivity, power::ModelChoice)>,
+    pub sensitivity: Option<(SensitivityModel, power::ModelChoice)>,
     /// The study's edits, and the case with them applied (None when there are none).
     pub edits: Vec<Edit>,
     pub edited: Option<Arc<PowerCase>>,
@@ -94,9 +171,13 @@ pub struct OpenCase {
     /// The file's records as tables, read the first time they're asked for.
     pub records: Option<Result<Arc<Records>, String>>,
     /// The case's text as opened, or as edited in Records since.
-    pub bytes: Vec<u8>,
+    pub bytes: CaseText,
     /// Cells edited in Records since the file was opened or saved.
     pub record_edits: usize,
+    /// A Stannum case's file as read (or last saved): what only it holds,
+    /// such as comments and ids, is carried onto the .stn files written
+    /// from the case's RAW form.
+    pub stn_source: Option<Arc<stannum_format::Document>>,
 }
 
 #[derive(Default)]
@@ -297,19 +378,84 @@ fn log_report(report: &power::SolveReport, solved_ms: f64) {
     }
 }
 
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
 impl OpenCase {
     pub fn from_bytes(path: &Path, bytes: &[u8]) -> Self {
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
+        if crate::stn::is_stn(bytes) {
+            return Self::from_stn(path, bytes);
+        }
         let format = match path.extension().and_then(|e| e.to_str()) {
             Some(e) if e.eq_ignore_ascii_case("m") => CaseFormat::Matpower,
             _ => CaseFormat::Raw,
         };
+        Self::from_case_bytes(path, format, bytes)
+    }
+
+    /// A Stannum case (`.stn` or `.stnb`), read straight into the power
+    /// flow model. Its RAW text is written on a thread of its own, for
+    /// what needs it later.
+    fn from_stn(path: &Path, bytes: &[u8]) -> Self {
+        let name = file_name(path);
+        let start = Instant::now();
+        let doc = match crate::stn::read_file(&name, bytes) {
+            Ok(doc) => Arc::new(doc),
+            Err(e) => {
+                return Self::from_power(
+                    path,
+                    CaseFormat::Stn,
+                    CaseText::new(Vec::new()),
+                    Err(e),
+                    start,
+                );
+            }
+        };
+        log::info!(
+            "Read {name} as a Stannum case ({:.0} ms)",
+            elapsed_ms(start)
+        );
+        let start = Instant::now();
+        // Warnings point at the .stn file's own lines; a .stnb file has rows, not lines.
+        let binary = stannum_format::is_binary(bytes);
+        let power = crate::stn::raw_sections(&doc).and_then(|(sections, lines)| {
+            let mut power = power::load_sections(sections)?;
+            for w in &mut power.warnings {
+                w.line = if binary {
+                    0
+                } else {
+                    lines.get(w.line).copied().unwrap_or(0)
+                };
+            }
+            Ok(power)
+        });
+        let text = CaseText::from_stn(doc.clone(), name);
+        let mut case = Self::from_power(path, CaseFormat::Stn, text.clone(), power, start);
+        case.stn_source = Some(doc);
+        text.prepare();
+        case
+    }
+
+    /// A case from bytes in its working form: MATPOWER or RAW text.
+    fn from_case_bytes(path: &Path, format: CaseFormat, bytes: &[u8]) -> Self {
         let text = decode_text(bytes);
         let start = Instant::now();
         let power = power::load(&text, format == CaseFormat::Matpower);
+        Self::from_power(path, format, CaseText::new(bytes.to_vec()), power, start)
+    }
+
+    /// A case from its text and its power flow model, read since `start`.
+    fn from_power(
+        path: &Path,
+        format: CaseFormat,
+        bytes: CaseText,
+        power: Result<PowerCase, String>,
+        start: Instant,
+    ) -> Self {
+        let name = file_name(path);
         match &power {
             Ok(p) => {
                 let c = power::counts(&p.case);
@@ -346,8 +492,9 @@ impl OpenCase {
             report: None,
             trip: None,
             records: None,
-            bytes: bytes.to_vec(),
+            bytes,
             record_edits: 0,
+            stn_source: None,
         };
         // Without a power flow model the topology is all the case has, so
         // the summary needs to know at once whether it can be built.
@@ -377,7 +524,9 @@ impl OpenCase {
                 CaseFormat::Matpower => {
                     Err("Topology analysis reads PSS/E RAW revision 35 files.".to_string())
                 }
-                CaseFormat::Raw => nodal::parse_raw(&self.bytes).map_err(|d| d.to_string()),
+                CaseFormat::Raw | CaseFormat::Stn => {
+                    nodal::parse_raw(&self.bytes).map_err(|d| d.to_string())
+                }
             };
             let topology = match (from_nodal, &self.power) {
                 (Ok(case), _) => Ok((case, false)),
@@ -421,6 +570,7 @@ impl OpenCase {
             self.coordinates.as_ref(),
             &crate::geo::case_places(&power.substations),
             &power.case,
+            &crate::geo::spans(&power.elements.branches, &power.branch_lengths),
             &self.name,
         )
     }
@@ -452,7 +602,7 @@ impl OpenCase {
                     info: None,
                 },
             },
-            diffable: self.format == CaseFormat::Raw,
+            diffable: self.format.is_raw(),
             record_edits: self.record_edits,
             dc_grids: self.dc_grids.as_ref().map(|g| g.summary()),
             coordinates: self.places.clone(),
@@ -537,6 +687,15 @@ impl OpenCase {
             if job.len() == 1 { "y" } else { "ies" }
         );
         Ok(job)
+    }
+
+    /// How many planning events each category asked for gives on the case
+    /// as the study has it, before running them.
+    pub fn planning_event_counts(
+        &self,
+        settings: &crate::planning::PlanningSettings,
+    ) -> Result<Vec<crate::planning::CategoryCount>, Error> {
+        Ok(crate::planning::counts(self.power_case()?, settings)?)
     }
 
     /// Keep a run finished without the workspace, unless the case changed
@@ -628,6 +787,7 @@ impl OpenCase {
             ac_count: 1,
             limit_pct,
             solve: solve.clone(),
+            planning: None,
         };
         let job = ContingencyJob::new(power, base, settings).map_err(|e| {
             if e.starts_with("Nothing to take out") {
@@ -778,16 +938,18 @@ impl OpenCase {
             Some(&loaded),
             &crate::geo::case_places(&power.substations),
             &power.case,
+            &crate::geo::spans(&power.elements.branches, &power.branch_lengths),
             &self.name,
         )
         .expect("a file always resolves")
         .summary;
         log::info!(
-            "Attached {}: {} buses placed from the file, {} from the case, {} estimated from neighbours, {} without a place",
+            "Attached {}: {} buses placed from the file, {} from the case, {} estimated (from {}), {} without a place",
             summary.name,
             summary.from_file,
             summary.from_case,
             summary.estimated,
+            summary.estimated_from,
             summary.missing
         );
         if summary.unknown_buses > 0 {
@@ -928,7 +1090,7 @@ impl OpenCase {
             )));
         }
         let start = Instant::now();
-        let from_records = if self.format == CaseFormat::Raw {
+        let from_records = if self.format.is_raw() {
             match self.working_bytes() {
                 Ok(bytes) => crate::raw_export::from_raw(&self.name, &bytes, revision),
                 Err(e) => Err(e.to_string()),
@@ -964,6 +1126,57 @@ impl OpenCase {
         );
         for note in &export.notes {
             log::info!("RAW export: {note}");
+        }
+        Ok(export)
+    }
+
+    /// Write the case, with its Records edits and the study's edits, as a
+    /// Stannum case file: `.stnb` (binary) when `path` ends so, else `.stn`
+    /// (text). RAW 33 and 35 cases are converted record by record; anything
+    /// else from the power flow model.
+    pub fn export_stn(&mut self, path: &Path) -> Result<crate::stn::StnExport, Error> {
+        let start = Instant::now();
+        let from_records = if self.format.is_raw() {
+            match self.working_bytes() {
+                Ok(bytes) => crate::stn::from_raw(&self.name, &bytes),
+                Err(e) => Err(e.to_string()),
+            }
+        } else {
+            Err(String::new())
+        };
+        let (mut doc, export) = match from_records {
+            Ok(done) => done,
+            Err(reason) => {
+                let power = self.power_case_shared()?;
+                let why = match (self.format, power.revision) {
+                    (CaseFormat::Matpower, _) => {
+                        "Written from the MATPOWER case's power flow model.".to_string()
+                    }
+                    (_, Some(rev)) if !matches!(rev, 33 | 35) => format!(
+                        "Written from the power flow model: Stannum reads RAW revision {rev} for power flow only, not record by record."
+                    ),
+                    _ => format!(
+                        "Written from the power flow model: the file's records couldn't be read one by one ({reason})."
+                    ),
+                };
+                crate::stn::from_model(&self.name, &power, why)
+            }
+        };
+        // A Stannum case keeps its file's ids, comments and extensions.
+        if let Some(source) = &self.stn_source {
+            doc.carry_from(source);
+        }
+        let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+        std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
+        log::info!(
+            "Exported {} as a Stannum case to {} ({} records, {:.0} ms)",
+            self.name,
+            path.display(),
+            export.records,
+            elapsed_ms(start)
+        );
+        for note in &export.notes {
+            log::info!("Stannum case export: {note}");
         }
         Ok(export)
     }
@@ -1099,6 +1312,7 @@ impl OpenCase {
         Ok(RecordEditJob {
             version: self.version,
             path: self.path.clone(),
+            format: self.format,
             name: self.name.clone(),
             bytes: self.bytes.clone(),
             records: records.clone(),
@@ -1124,6 +1338,7 @@ impl OpenCase {
         next.path = self.path.clone();
         next.name = self.name.clone();
         next.record_edits = self.record_edits + count;
+        next.stn_source = self.stn_source.take();
         next.dc_grids = self.dc_grids.take();
         // Matched again, since an edit can add, remove or reconnect buses.
         next.coordinates = self.coordinates.take();
@@ -1171,13 +1386,13 @@ impl OpenCase {
     /// with Records edits and the study's edits written in. Only RAW
     /// revisions Records can edit (33 and 35) can carry study edits.
     pub fn working_bytes(&mut self) -> Result<Vec<u8>, Error> {
-        if self.format != CaseFormat::Raw {
+        if !self.format.is_raw() {
             return Err(Error::unsupported(
                 "Case diff reads PSS/E RAW files, and this case is MATPOWER.",
             ));
         }
         if self.edits.is_empty() {
-            return Ok(self.bytes.clone());
+            return Ok(self.bytes.to_vec());
         }
         self.records()?;
         let Some(Ok(records)) = self.records.as_ref() else {
@@ -1205,9 +1420,38 @@ impl OpenCase {
     }
 
     /// Save the case, with its edits, to a new file, and carry on with that file.
+    ///
+    /// A RAW or Stannum case is saved as a Stannum case file when `path`
+    /// ends in `.stn` (text) or `.stnb` (binary), and as RAW otherwise.
     pub fn save_as(&mut self, path: &Path) -> Result<CaseSummary, Error> {
-        std::fs::write(path, &self.bytes).map_err(|e| Error::file(path, e))?;
+        let to_stn = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("stn") || e.eq_ignore_ascii_case("stnb"));
+        let format = match (to_stn, self.format) {
+            (true, CaseFormat::Matpower) => {
+                return Err(Error::unsupported(
+                    "Save a MATPOWER case as a Stannum case with Export instead: it's written from the power flow model.",
+                ));
+            }
+            (true, _) => CaseFormat::Stn,
+            (false, CaseFormat::Stn) => CaseFormat::Raw,
+            (false, format) => format,
+        };
+        if format == CaseFormat::Stn {
+            let (mut doc, _) = crate::stn::from_raw(&self.name, &self.bytes)?;
+            if let Some(source) = &self.stn_source {
+                doc.carry_from(source);
+            }
+            let bytes = crate::stn::encode(&doc, crate::stn::is_binary_path(path))?;
+            std::fs::write(path, bytes).map_err(|e| Error::file(path, e))?;
+            self.stn_source = Some(Arc::new(doc));
+        } else {
+            std::fs::write(path, self.bytes.get()).map_err(|e| Error::file(path, e))?;
+            self.stn_source = None;
+        }
         log::info!("Saved {} as {}", self.name, path.display());
+        self.format = format;
         self.path = path.to_path_buf();
         self.name = path
             .file_name()
@@ -1321,7 +1565,10 @@ impl Workspace {
         log::info!("Opening {}", path.display());
         let bytes = std::fs::read(path).map_err(|e| Error::file(path, e))?;
         let mut case = OpenCase::from_bytes(path, &bytes);
-        if case.power.is_err() && case.topology().is_err() && case.format == CaseFormat::Matpower {
+        if case.power.is_err()
+            && case.topology().is_err()
+            && matches!(case.format, CaseFormat::Matpower | CaseFormat::Stn)
+        {
             return Err(case.power.err().unwrap_or_default().into());
         }
         self.last_id += 1;
@@ -1394,6 +1641,7 @@ impl Workspace {
         let start = Instant::now();
         let case = self.current_mut()?;
         let file = std::fs::read(&case.path).map_err(|e| Error::file(&case.path, e))?;
+        let file = crate::stn::raw_bytes_of(&case.name, file)?;
         let working = case.working_bytes()?;
         let name = case.name.clone();
         let (record_edits, study_edits) = (case.record_edits, case.edits.len());
@@ -1483,45 +1731,57 @@ impl SolveJob {
             }
             _ => None,
         };
-        let input = warm.as_ref().unwrap_or(&power.case);
         let grids = dc_grids
             .as_deref()
             .filter(|_| settings.model == power::ModelChoice::Ac);
         if dc_grids.is_some() && grids.is_none() {
             log::warn!("VSC DC grids need the AC power flow; this DC solve leaves them out");
         }
-        let (result, vsc) = match grids {
-            Some(file) => {
-                let acdc = rs_power::solve_dc_grids(
-                    input,
-                    &options,
-                    &file.grids,
-                    &rs_power::DcGridSettings::default(),
-                )
-                .map_err(failed)?;
-                let names = power::bus_names(&power.case);
-                let index: std::collections::HashMap<u32, usize> = power
-                    .case
-                    .buses
-                    .iter()
-                    .enumerate()
-                    .map(|(i, b)| (b.id, i))
-                    .collect();
-                let vsc = dc_grids::report(file, &acdc, |bus| {
-                    index
-                        .get(&bus)
-                        .and_then(|&i| names.get(i))
-                        .cloned()
-                        .unwrap_or_default()
-                });
-                let mut ac = acdc.ac;
-                // The AC/DC iteration's outcome, not only the last AC solve's.
-                ac.status = acdc.status;
-                ac.iterations = acdc.ac_iterations;
-                (ac, Some(vsc))
-            }
-            None => (rs_power::solve(input, &options).map_err(failed)?, None),
+        let run = |input: &rs_power::Case, options: &rs_power::PowerFlowOptions| {
+            Ok::<_, Error>(match grids {
+                Some(file) => {
+                    let acdc = rs_power::solve_dc_grids(
+                        input,
+                        options,
+                        &file.grids,
+                        &rs_power::DcGridSettings::default(),
+                    )
+                    .map_err(failed)?;
+                    let names = power::bus_names(&power.case);
+                    let index: std::collections::HashMap<u32, usize> = power
+                        .case
+                        .buses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, b)| (b.id, i))
+                        .collect();
+                    let vsc = dc_grids::report(file, &acdc, |bus| {
+                        index
+                            .get(&bus)
+                            .and_then(|&i| names.get(i))
+                            .cloned()
+                            .unwrap_or_default()
+                    });
+                    let mut ac = acdc.ac;
+                    // The AC/DC iteration's outcome, not only the last AC solve's.
+                    ac.status = acdc.status;
+                    ac.iterations = acdc.ac_iterations;
+                    (ac, Some(vsc))
+                }
+                None => (rs_power::solve(input, options).map_err(failed)?, None),
+            })
         };
+        let (mut result, mut vsc) = run(warm.as_ref().unwrap_or(&power.case), &options)?;
+        if warm.is_some() && result.status != rs_power::SolveStatus::Converged {
+            // The last solution can be a poor start for different settings,
+            // such as the first solve with Q limits after one without them.
+            log::warn!(
+                "The solve from the last solution did not converge; solving again from the case voltages"
+            );
+            let mut retry = cold.clone();
+            retry.cancel = options.cancel.clone();
+            (result, vsc) = run(&power.case, &retry)?;
+        }
         let solved_ms = elapsed_ms(start);
         let mut report = power::report(
             &result,
@@ -1606,7 +1866,7 @@ pub struct SensitivityJob {
 /// Finished sensitivities, to keep with [`OpenCase::finish_sensitivities`].
 pub struct SensitivitiesDone {
     version: u64,
-    sensitivity: PowerFlowSensitivity,
+    sensitivity: SensitivityModel,
     model: power::ModelChoice,
     summary: power::SensitivitySummary,
 }
@@ -1615,7 +1875,7 @@ impl SensitivityJob {
     pub fn run(self) -> Result<SensitivitiesDone, Error> {
         let power = self.power.as_ref();
         let start = Instant::now();
-        let s = rs_power::calculate_sensitivities(&power.case, &self.settings.options_for(power))
+        let s = SensitivityModel::new(&power.case, &self.settings.options_for(power))
             .map_err(|e| e.to_string())?;
         let summary = power::sensitivity_summary(&s, self.settings.model, elapsed_ms(start));
         log::info!(
@@ -1638,7 +1898,7 @@ pub struct RecordsJob {
     version: u64,
     name: String,
     format: CaseFormat,
-    bytes: Vec<u8>,
+    bytes: CaseText,
     power: Result<Arc<PowerCase>, String>,
 }
 
@@ -1652,7 +1912,7 @@ impl RecordsJob {
     pub fn run(self) -> RecordsRead {
         let start = Instant::now();
         let raw = match self.format {
-            CaseFormat::Raw => Some(
+            CaseFormat::Raw | CaseFormat::Stn => Some(
                 crate::diff::parser::parse_bytes_for_viewing(&self.name, &self.bytes)
                     .map_err(|e| e.to_string()),
             ),
@@ -1692,8 +1952,9 @@ impl RecordsJob {
 pub struct RecordEditJob {
     version: u64,
     path: PathBuf,
+    format: CaseFormat,
     name: String,
-    bytes: Vec<u8>,
+    bytes: CaseText,
     records: Arc<Records>,
     power: Result<Arc<PowerCase>, String>,
     study_edits: Vec<Edit>,
@@ -1740,7 +2001,7 @@ impl RecordEditJob {
                 (text.into_bytes(), None)
             }
         };
-        let mut next = OpenCase::from_bytes(&self.path, &bytes);
+        let mut next = OpenCase::from_case_bytes(&self.path, self.format, &bytes);
         if let (Ok(_), Err(e)) = (&self.power, &next.power) {
             return Err(format!("The edited case can't be solved: {e}").into());
         }

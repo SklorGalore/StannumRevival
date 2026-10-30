@@ -73,10 +73,30 @@ const shot = async (name) => {
   await page.screenshot({ path: `${STANNUM_SHOTS}/${name}.png` });
 };
 const queue = (path) => page.evaluate((p) => window.__dialogQueue.push(p), path);
+// The diagram's file and view actions live in its File and View menus.
+const diagramMenu = async (menu, item) => {
+  await page.getByTestId("diagram-toolbar").getByRole("button", { name: menu, exact: true }).click();
+  await page.getByRole("menuitem", { name: item }).click();
+};
+// The menu bar: File, View, Analysis, Help; a submenu item is "Submenu > Item".
+const appMenu = async (menu, item) => {
+  await page.getByRole("menubar").getByRole("menuitem", { name: menu, exact: true }).click();
+  const path = item.split(" > ");
+  for (const [i, name] of path.entries()) {
+    const entry = page.getByRole("menu").last().getByRole("menuitem", { name, exact: true });
+    if (i < path.length - 1) await entry.hover();
+    else await entry.click();
+  }
+};
+// With a case open the components palette starts folded.
+const showComponents = async () => {
+  const show = page.getByRole("button", { name: "Show components" });
+  if (await show.count()) await show.click();
+};
 
 // Power flow on a MATPOWER case.
 await queue(STANNUM_MATPOWER);
-await page.getByRole("button", { name: "Open case…" }).first().click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText("Converged").first().waitFor();
 await page.getByText("Operating limits").waitFor();
@@ -90,6 +110,7 @@ await page.getByRole("button", { name: "Calculate sensitivities" }).click();
 await page.getByText("How to read these results").waitFor();
 await page.getByText(/Response \(/).waitFor();
 await shot("power-sensitivities");
+
 
 // The log records each step: the app's own lines and the solver's, pass by
 // pass and iteration by iteration. Ctrl+` opens and closes it.
@@ -108,6 +129,19 @@ await page.getByTestId("log-dock").getByLabel("Details").uncheck();
 await page.getByRole("button", { name: "Close log" }).click();
 await log.waitFor({ state: "detached" });
 await page.getByTestId("log-status").filter({ hasText: /Sensitivities|Calculated sensitivities/ }).waitFor();
+
+// The menu bar and the toolbar reach the same actions as the sidebar and Ctrl+K.
+await page.getByRole("menubar").getByRole("menuitem", { name: "File", exact: true }).click();
+await page.getByRole("menu", { name: "File" }).getByRole("menuitem", { name: "Export case" }).hover();
+await page.getByRole("menu", { name: "Export case" }).getByRole("menuitem", { name: "PSS/E RAW 35…" }).waitFor();
+await shot("menu-file-export");
+await page.keyboard.press("Escape");
+assert.equal(await page.getByRole("menu").count(), 0, "Escape closes the menus");
+await page.getByRole("toolbar", { name: "Case" }).getByRole("button", { name: "Contingencies" }).click();
+await page.getByRole("tab", { name: /Contingencies/, selected: true }).waitFor();
+await appMenu("Analysis", "Solve power flow");
+await page.getByRole("tab", { name: /Overview/, selected: true }).waitFor();
+await page.getByText("Converged").first().waitFor();
 
 // N-1 contingencies: every branch and generator out in turn, ranked, and
 // the worst opened beside the table.
@@ -220,7 +254,7 @@ await page.getByTestId("study-badge").waitFor({ state: "detached" });
 // Topology on a RAW v35 case: the Diagram's Network style, its tables and
 // its layers.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
 await page.getByRole("radio", { name: "Network" }).click();
 await page.locator('[data-testid="network-view"] canvas').first().waitFor();
@@ -348,10 +382,10 @@ const legend = page.getByTestId("voltage-legend");
 assert.equal(await legend.innerText(), "138 kV\n69 kV", "legend lists the drawing's voltages");
 
 // Print style, then undo after deleting everything.
-await page.getByRole("button", { name: "Print style" }).click();
+await diagramMenu("Canvas", "Print style");
 assert.equal(await legend.count(), 0, "no voltage legend in print style");
 await shot("diagram-print");
-await page.getByRole("button", { name: "Print style" }).click();
+await diagramMenu("Canvas", "Print style");
 const nodeCount = await page.locator(".react-flow__node").count();
 await page.locator(".react-flow__pane").click({ position: { x: 5, y: 5 } });
 await page.keyboard.press("Control+a");
@@ -387,7 +421,7 @@ await dragBy(flowText, -60, 0);
 await page.waitForFunction((x) => document.querySelector("text.edge-label").getAttribute("x") !== x, flowX);
 await shot("diagram-labels");
 await queue("/tmp/labels.svg");
-await page.getByRole("button", { name: "Export", exact: true }).click();
+await diagramMenu("Drawing", "Export…");
 await page.locator("div.fixed button").filter({ hasText: /^SVG$/ }).click();
 await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.svg"]);
@@ -395,19 +429,19 @@ const svgOut = await page.evaluate(() => window.__files["/tmp/labels.svg"]);
 assert(svgOut.includes(`transform="${movedLabel}"`), "exported SVG keeps the moved label");
 // PDF export loads jsPDF on demand; check it still writes a PDF.
 await queue("/tmp/labels.pdf");
-await page.getByRole("button", { name: "Export", exact: true }).click();
+await diagramMenu("Drawing", "Export…");
 await page.locator("div.fixed button").filter({ hasText: /^PDF$/ }).click();
 await page.locator("div.fixed button").filter({ hasText: /^Export/ }).click();
 await page.waitForFunction(() => window.__files["/tmp/labels.pdf"]);
 assert((await page.evaluate(() => window.__files["/tmp/labels.pdf"])).startsWith("%PDF-"), "PDF export writes a PDF");
 await queue("/tmp/labels.sld");
-await page.getByRole("button", { name: "Save As", exact: true }).click();
+await diagramMenu("Drawing", "Save as…");
 await page.waitForFunction(() => window.__files["/tmp/labels.sld"]);
 // Saved, so New asks nothing.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("Drawing", "New");
 await page.locator(".react-flow__node-generator").first().waitFor({ state: "detached" });
 await queue("/tmp/labels.sld");
-await page.getByRole("button", { name: "Open", exact: true }).click();
+await diagramMenu("Drawing", "Open…");
 await page.locator(".react-flow__node-generator").first().waitFor();
 assert.equal(await labelAt(), movedLabel, "a saved drawing reopens with the label where it was put");
 await page.locator(".react-flow__node-generator").first().click({ position: { x: 20, y: 30 } });
@@ -507,9 +541,11 @@ await page.locator("[aria-label=Hops]:visible", { hasText: "2 hops" }).waitFor()
 
 // Hand drawing: a wire released on a bus bar, between its taps, gets a new tap.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("Drawing", "New");
 const pane = page.locator(".react-flow__pane");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
 const load = page.locator(".react-flow__node-load");
 await load.hover();
@@ -525,6 +561,7 @@ await page.keyboard.press("Control+z");
 assert.equal(await page.locator(".react-flow__edge").count(), 0, "undo removes the wire");
 
 // Wire routing: a wire drawn past a symbol goes around it and its label.
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: 330, y: 300 } });
 await load.hover();
 const loadTerminal = await load.locator(".react-flow__handle").boundingBox();
@@ -613,11 +650,14 @@ assert.equal(await page.evaluate(() => document.querySelector(".react-flow__edge
 // On a fresh drawing, a generator dropped on the bar and a load dragged up to
 // it sit on the bus and are wired to it with no visible line.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("Drawing", "New");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 450, y: 200 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: 330, y: 400 } });
 const paneBox = await pane.boundingBox();
 const barNow = await page.locator(".react-flow__node-bus").boundingBox();
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, {
   targetPosition: { x: barNow.x - paneBox.x + 40, y: barNow.y - paneBox.y + 20 },
 });
@@ -663,7 +703,8 @@ await page.waitForFunction(() =>
 // symbols dropped beside it turn to face it and sit on it, and a wire released
 // on the bar gets a tap on the side it comes from.
 // The dialog handler at the top answers yes.
-await page.getByRole("button", { name: "New", exact: true }).click();
+await diagramMenu("Drawing", "New");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Bus$/ }).dragTo(pane, { targetPosition: { x: 400, y: 150 } });
 const vbus = page.locator(".react-flow__node-bus");
 await vbus.click();
@@ -675,7 +716,9 @@ await page.waitForFunction(() => {
 const vb = await vbus.boundingBox();
 const vx = vb.x - paneBox.x;
 const vy = vb.y - paneBox.y;
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Load (Static)" }).dragTo(pane, { targetPosition: { x: vx + 20, y: vy + 60 } });
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: /^Generator$/ }).dragTo(pane, { targetPosition: { x: vx - 20, y: vy + 120 } });
 await page.waitForFunction(() => document.querySelectorAll(".react-flow__edge").length === 2);
 const sideLoad = await load.boundingBox();
@@ -683,6 +726,7 @@ assert(sideLoad.width > sideLoad.height, "load turned to face the vertical bus")
 assert(Math.abs(sideLoad.x - (vb.x + vb.width)) < 3, `load sits on the right of the bar (${sideLoad.x} vs ${vb.x + vb.width})`);
 const sideGen = await page.locator(".react-flow__node-generator").boundingBox();
 assert(Math.abs(sideGen.x + sideGen.width - vb.x) < 3, "generator sits on the left of the bar");
+await showComponents();
 await page.locator("[draggable=true]").filter({ hasText: "Circuit Breaker" }).dragTo(pane, { targetPosition: { x: vx + 200, y: vy + 160 } });
 const cb = page.locator(".react-flow__node-circuitBreaker");
 await cb.click();
@@ -712,14 +756,20 @@ const showing = await page.evaluate(
 );
 assert.equal(showing, 0, "diagram symbols visible on another module");
 
-// Theme: the rail button cycles System, Light, Dark. Dark flips the app's
+// Theme: the palette cycles System, Light, Dark. Dark flips the app's
 // colours, while the diagram in print style stays black on white.
-const theme = page.getByRole("button", { name: /^Theme:/ });
-for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Dark"; i++) await theme.click();
+const darkNow = () => page.evaluate(() => document.documentElement.classList.contains("dark"));
+const nextTheme = async () => {
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search" }).fill("theme");
+  await page.getByRole("option", { name: /theme/ }).first().waitFor();
+  await page.keyboard.press("Enter");
+};
+for (let i = 0; i < 3 && !(await darkNow()); i++) await nextTheme();
 assert(await page.evaluate(() => document.documentElement.classList.contains("dark")), "dark theme applied");
 const bodyBg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white"));
 await shot("theme-dark");
-for (let i = 0; i < 3 && (await theme.getAttribute("aria-label")) !== "Theme: Light"; i++) await theme.click();
+for (let i = 0; i < 3 && (await darkNow()); i++) await nextTheme();
 assert(!(await page.evaluate(() => document.documentElement.classList.contains("dark"))), "light theme applied");
 assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-white")), "theme changes colours");
 
@@ -727,7 +777,7 @@ assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.docu
 // converter pair down to its inverter bus, and the legend names it.
 if (STANNUM_RAW_DC) {
   await queue(STANNUM_RAW_DC);
-  await page.getByRole("button", { name: "Open another…" }).click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.getByRole("button", { name: "Diagram", exact: true }).click();
   await page.getByRole("button", { name: "From case" }).click();
   await page.getByLabel(/Around a bus/).check();
@@ -790,11 +840,11 @@ if (STANNUM_RAW_DC) {
   await page.waitForTimeout(400);
   await shot("diagram-three-winding");
 
-  // Power flow lists every DC line; with Q limits on, the case converges and
+  // Power flow lists every DC line; with Q limits on (the default), the case converges and
   // the line-commutated converters absorb reactive power. Two-terminal lines
   // use the detailed converter model: the rectifier holds the order.
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
-  await page.getByLabel("Enforce generator Q limits").check();
+  assert.equal(await page.getByLabel("Enforce generator Q limits").isChecked(), true, "Q limits on by default");
   await page.getByRole("button", { name: "Solve", exact: true }).click();
   await page.getByText("Converged").first().waitFor();
   await page.getByRole("tab", { name: /DC lines/ }).click();
@@ -815,7 +865,6 @@ if (STANNUM_RAW_DC) {
   await network.getByText("Holds DC voltage").waitFor();
   assert.match(await network.innerText(), /DC5[\s\S]*517\.\d/, "star bus DC5 solved near 517 kV");
   await shot("power-dc-network");
-  await page.getByLabel("Enforce generator Q limits").uncheck();
 }
 
 // A DC line picked on the diagram is found in Case diff, and back again.
@@ -824,7 +873,7 @@ if (STANNUM_RAW_DC) {
 if (STANNUM_DC_A && STANNUM_DC_B) {
   const chip = page.getByTestId("selection-chip");
   await queue(STANNUM_DC_A);
-  await page.getByRole("button", { name: "Open another…" }).click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.getByRole("button", { name: "Case diff", exact: true }).click();
   await page.getByText(/Use the open case/).click();
   await queue(STANNUM_DC_B);
@@ -868,7 +917,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
 // converters, DC buses and DC lines of each grid.
 if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
   await queue(STANNUM_VSC_CASE);
-  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   await page.getByTestId("open-vsc-grids").click();
   await queue(STANNUM_VSC_GRIDS);
@@ -895,7 +944,7 @@ if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
 // Selections are unlinked here, so this works without linking.
 if (STANNUM_VIOLATIONS) {
   await queue(STANNUM_VIOLATIONS);
-  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   const linkedToggle = page.getByRole("button", { name: "Linked", exact: true });
   if (await linkedToggle.count()) await linkedToggle.click();
@@ -1102,7 +1151,7 @@ if (STANNUM_VIOLATIONS) {
 
   // An empty drawing offers to draw around the worst violation.
   // The dialog handler at the top answers yes.
-  await page.getByRole("button", { name: "New", exact: true }).click();
+  await diagramMenu("Drawing", "New");
   const prompt = page.getByTestId("draw-prompt");
   await prompt.waitFor();
   await prompt.getByRole("button", { name: new RegExp(`worst violation: ${worst}(?!\\d)`) }).waitFor();
@@ -1177,7 +1226,7 @@ if (STANNUM_VIOLATIONS) {
 // Records: every record type of the open case with every field, sorted,
 // filtered, and picked into the inspector and onto the diagram.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 const recordTypes = page.getByTestId("record-types");
 await recordTypes.getByRole("button", { name: /^Buses/ }).waitFor();
@@ -1254,7 +1303,7 @@ await recordInspector.getByRole("button", { name: "Draw around" }).click();
 await page.locator(".react-flow__node-bus").first().waitFor();
 // A MATPOWER case lists the power flow model's tables.
 await queue(STANNUM_MATPOWER);
-await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
 await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
@@ -1273,7 +1322,7 @@ const movedStudy = `${studyDir}/moved.stannum`;
 const moved = { ...savedStudy, case: { ...savedStudy.case, path: `${studyDir}/gone/case9.m`, relative: "case9.m" } };
 await page.evaluate(([p, c]) => (window.__files[p] = c), [movedStudy, JSON.stringify(moved)]);
 await queue(movedStudy);
-await page.getByRole("button", { name: "Open another…" }).click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 const studyNotice = page.getByTestId("study-notice");
 await studyNotice.getByText("Opened moved.stannum").waitFor();
 await studyNotice.getByText(/The case was found at .*case9\.m/).waitFor();
@@ -1290,8 +1339,8 @@ await shot("study-reopened");
 await page.getByRole("button", { name: "Clear all" }).click();
 await page.getByTestId("study-badge").waitFor({ state: "detached" });
 const asked = dialogs.length;
-await page.getByRole("button", { name: "Close case" }).click();
-await page.getByText("No case open.").waitFor();
+await appMenu("File", "Close case");
+await page.getByText("No case open", { exact: true }).waitFor();
 assert.match(dialogs[asked] ?? "", /moved\.stannum has changes that aren't saved/);
 const recent = page.getByTestId("recent-files").first();
 await recent.getByText("moved.stannum").waitFor();
@@ -1301,7 +1350,7 @@ await shot("recent-files");
 // Case diff of the working case: a study outage on a RAW case shows as the
 // branch record's status changing from the file.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open case…" }).first().click();
+await page.getByRole("button", { name: "Open case or study…" }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText(/Converged|Iteration limit/).first().waitFor();
 await page.getByRole("tab", { name: /Branches/ }).click();
@@ -1334,7 +1383,7 @@ await shot("diff-working");
   const runDir = mkdtempSync(`${tmpdir()}/stannum-run-`);
   copyFileSync(STANNUM_MATPOWER, `${runDir}/case9.m`);
   await queue(`${runDir}/case9.m`);
-  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
   await command("record", /Record a run file/);
   const bar = page.getByTestId("recording-bar");
@@ -1368,8 +1417,8 @@ await shot("diff-working");
 
   // Played back on an empty window, it opens the case, takes the line out
   // and solves, and the app shows all of it.
-  await page.getByRole("button", { name: "Close case" }).click();
-  await page.getByText("No case open.").waitFor();
+  await appMenu("File", "Close case");
+  await page.getByText("No case open", { exact: true }).waitFor();
   await queue(runFile);
   await command("run file", /Run a run file/);
   await page.getByTestId("run-file-notice").getByText(/^Ran case9_outage\.stnrun: 4 steps in \d+ ms\.$/).waitFor();
@@ -1442,7 +1491,7 @@ if (STANNUM_CRASH_TEST) {
 // shortcut list, and focus going back where it was after the palette.
 {
   await queue(STANNUM_RAW);
-  await page.getByRole("button", { name: /Open (case|another)…/ }).first().click();
+  await page.getByRole("button", { name: "Open case or study…" }).click();
   await page.locator("[data-case-summary]").getByText("five_bus.raw").waitFor();
   await page.keyboard.press("Control+3");
   const recordsPane = page.locator('[data-module="records"]');

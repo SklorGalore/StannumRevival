@@ -3,6 +3,7 @@ import { ArrowLeftRight, X } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ModuleRail } from "./ModuleRail";
 import { CaseBar } from "./CaseBar";
+import { MenuBar } from "./MenuBar";
 import { StudyNoticeBar } from "./StudyFileControls";
 import { RunFileBar } from "./RunFileBar";
 import { UpdateBar } from "./UpdateBar";
@@ -23,7 +24,7 @@ import { PowerFlowModule } from "../modules/power/PowerFlowModule";
 import { CaseDiffModule } from "../modules/diff/CaseDiffModule";
 import { RecordsModule } from "../modules/records/RecordsModule";
 
-const CASE_EXTENSIONS = /\.(raw|m)$/i;
+const CASE_EXTENSIONS = /\.(raw|m|stnb?)$/i;
 
 /** Open a case or study, or run a run file, dropped anywhere on the window (outside the diff file pickers). */
 function useCaseDrop() {
@@ -210,6 +211,7 @@ export function Shell() {
       </a>
       <ModuleRail />
       <div className="flex-1 min-w-0 flex flex-col">
+        <MenuBar />
         <CaseBar />
         <StudyNoticeBar />
         <CrashNoticeBar />

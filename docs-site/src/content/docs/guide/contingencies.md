@@ -1,6 +1,6 @@
 ---
 title: Contingencies
-description: N-1 contingency analysis in Power flow, ranked outages, and showing an outage on the diagram.
+description: N-1 contingency analysis and NERC TPL-001 planning events in Power flow, ranked outages, and showing an outage on the diagram.
 ---
 
 The **Contingencies** tab in Power flow answers "what if it trips?" for every
@@ -27,6 +27,46 @@ Solve the case with the AC model first. Then choose:
 
 The bus filters above the tab narrow the outages to branches and generators
 touching the matching buses, for example one area or one voltage level.
+
+## Planning events
+
+Set **Outages** to **NERC TPL-001 planning events** to run the events of
+TPL-001 Table 1 that Stannum generates from the case, instead of every
+branch and generator:
+
+| Event | What goes out |
+| --- | --- |
+| P0 | Nothing: the base case, checked against the limits as it stands |
+| P1.1 | One generator |
+| P1.2 | One transmission line; a multi-section line goes out whole |
+| P1.3 | One transformer (a three-winding transformer is one) |
+| P1.4 | One fixed or switched shunt |
+| P1.5 | One pole of a two-terminal DC line: half its schedule |
+| P2.1 | One section of a multi-section line |
+| P7.2 | A two-terminal or VSC DC line |
+
+Tick the categories to run; each shows how many events it gives on the open
+case. **At or above (kV)** (100 kV by default) keeps branches, shunts and DC
+lines with a terminal at that voltage or higher, and any bus without a base
+voltage. Generators are not filtered by voltage, since most connect below it
+through a step-up transformer.
+
+The results list each event's category beside the outage, with a note when
+the element alone doesn't say what went out (one pole, or which section). The
+row of category buttons above the table counts each category's events and
+those with problems; click one, or use **All categories**, to list only that
+category. **Export CSV** includes the category.
+
+P0 is solved in AC and judged against the limits, so it lists every overload
+and voltage problem already in the case; the other events count only what
+they make new or worse, as N-1 does. Shunt outages move voltages rather than
+MW, which the linear screen can't see: the largest shunts (by MVAr) get an
+AC budget of their own, as many as **Worst checked in AC**.
+
+Events that need breakers and substation layout (P2.2 to P2.4, P4, P5), two
+outages with adjustments between them (P3, P6), or tower data (P7.1) are not
+generated yet. Fault type and clearing don't change a steady-state result,
+so only what goes out matters here.
 
 **Run contingencies** shows progress while it runs, and **Cancel** stops it;
 outages it didn't reach in AC keep their linear result. Texas 2k (6,080
@@ -75,7 +115,7 @@ outage. **Clear** in the Layers panel turns it off.
 While an outage is on the diagram, every view shows that outage's AC
 solution instead of the latest solve: the diagram's flow and voltage labels,
 the Power flow tables and overview, the **Results** layer and the element
-inspector. The case bar says which result is shown (**Outage #3 · Line 6–8
+inspector. The toolbar says which result is shown (**Outage #3 · Line 6–8
 circuit 1 out**, or **Base case**); its menu switches between the latest
 solve and the open outage, and the cross goes back to the latest solve. A
 new solve, a study change or clearing the outage goes back too.

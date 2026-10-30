@@ -4,6 +4,9 @@ import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from ".
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
 import { addRecent } from "../lib/study/recent";
 
+/** Power flow tabs other parts of the app can open. */
+export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "study";
+
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 
 /** One bus or piece of equipment selected across every module. */
@@ -93,6 +96,12 @@ interface WorkspaceState {
   /** Incremented to ask Power flow to solve with its current settings. */
   solveRequest: number;
   requestSolve: () => void;
+  /** Incremented to ask Power flow to calculate sensitivities (toolbar, menu, Ctrl+K). */
+  sensitivityRequest: number;
+  requestSensitivities: () => void;
+  /** Asks Power flow to open one of its tabs (toolbar, menu, Ctrl+K). */
+  powerTabRequest: { tab: PowerTabRequest; n: number } | null;
+  showPowerTab: (tab: PowerTabRequest) => void;
   /** The Ctrl+K search and command palette. */
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
@@ -235,6 +244,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focus: (element) => set({ selection: { element, from: "search" } }),
   solveRequest: 0,
   requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, ...showing(s, "power") })),
+  sensitivityRequest: 0,
+  requestSensitivities: () => set((s) => ({ sensitivityRequest: s.sensitivityRequest + 1, ...showing(s, "power") })),
+  powerTabRequest: null,
+  showPowerTab: (tab) => set((s) => ({ powerTabRequest: { tab, n: (s.powerTabRequest?.n ?? 0) + 1 }, ...showing(s, "power") })),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   drawRequest: null,
@@ -260,10 +273,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const summary = get().caseSummary;
     if (!summary) return false;
     const matpower = summary.format === "matpower";
-    const base = summary.name.replace(/\.(raw|m)$/i, "");
-    const path = await pickSavePath(`${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : "raw"}`, [
-      matpower ? { name: "MATPOWER", extensions: ["m"] } : { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
-    ]);
+    const stn = summary.format === "stn";
+    const binary = /\.stnb$/i.test(summary.name);
+    const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
+    // RAW and Stannum cases save as either; the extension picks the format.
+    // A Stannum case keeps its form; otherwise binary is offered first.
+    const raw = { name: "PSS/E RAW", extensions: ["raw", "RAW"] };
+    const stnFilter = { name: "Stannum case (preview)", extensions: ["stn"] };
+    const stnbFilter = { name: "Binary Stannum case (preview)", extensions: ["stnb"] };
+    const path = await pickSavePath(
+      `${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : binary ? "stnb" : stn ? "stn" : "raw"}`,
+      matpower
+        ? [{ name: "MATPOWER", extensions: ["m"] }]
+        : binary
+          ? [stnbFilter, stnFilter, raw]
+          : stn
+            ? [stnFilter, stnbFilter, raw]
+            : [raw, stnbFilter, stnFilter]
+    );
     if (!path) return false;
     const saved = await api.saveCaseAs(path);
     set({ caseSummary: saved });

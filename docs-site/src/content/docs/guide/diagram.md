@@ -49,8 +49,8 @@ attach one from the map's toolbar or the command palette (**Attach bus
 coordinates**). The case's buses are gathered into sites, one dot for each
 substation the file names (or each point, where it names none), coloured by
 the site's highest voltage. Branches are straight lines between sites, and DC
-lines are dashed. A site whose buses were all placed next to their neighbours,
-rather than by the file, is drawn hollow.
+lines are dashed. A site whose buses were all estimated from their lines' lengths,
+rather than placed by the file, is drawn hollow.
 
 ![The Map style: the whole case over state outlines](../../../assets/screens/diagram-map.png)
 
@@ -94,7 +94,14 @@ connections, equipment, diagnostics) in a drawer under the drawing. See
 ## Generating from the case
 
 **From case** draws a one-line of the open case (MATPOWER or RAW): the whole
-case, one area, or the buses within a few hops of a chosen bus.
+case, one area, one zone, one owner (RAW cases), or the buses within a few
+hops of a chosen bus.
+
+**Add filter** under the choices narrows any of them by base kV, area, zone
+or owner, for example "Base kV ≥ 230" or "Owner is 4". Every filter must
+pass. Around a bus, the drawing grows only through buses that pass, so "Base
+kV = 345" three hops out draws the 345 kV network near the bus; the studied
+bus is always drawn. The dialog counts the buses before you generate.
 
 - Buses, generators, loads, lines and transformers are laid out top to bottom
   with right-angle wiring (ELK layered layout, run in the background).
@@ -211,11 +218,14 @@ edits. The drawing's own fields (rotation, label position, the symbol's
 drawing values) are folded into its **Drawing** section. Symbols drawn by hand
 show those fields directly. A selected element this drawing doesn't include
 is inspected too, with **Draw around** to bring it in. The symbol palette on
-the left collapses to give the drawing more room.
+the left starts folded while a case is open (drawings come from the case);
+open it with the panel button to draw by hand.
 
 ## Saving and exporting
 
-Diagrams save as `.sld` files (<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG,
-PNG or PDF with a title block. **Print style** draws everything in black.
+The Diagram toolbar's **Drawing** menu holds New, Open, Save, Save as and
+Export; its **Canvas** menu holds Grid, Snap and Print style. Diagrams save as `.sld` files
+(<kbd>Ctrl</kbd>+<kbd>S</kbd>) and export to SVG, PNG or PDF with a title block.
+**Print style** draws everything in black.
 
 ![Print style](../../../assets/screens/diagram-print.png)

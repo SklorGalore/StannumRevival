@@ -39,8 +39,9 @@ export function WarningsTab({ warnings, onShow }: { warnings: RawWarning[]; onSh
                 <span className="flex-1 min-w-0">
                   <span className="text-slate-800">{g.message}</span>
                   <span className="block text-[11px] text-slate-500">
-                    {lineSpan(g.warnings)}
-                    {g.elements.length > 0 && ` · ${count(g.elements.length)} element${g.elements.length === 1 ? "" : "s"}`}
+                    {[lineSpan(g.warnings), g.elements.length > 0 && `${count(g.elements.length)} element${g.elements.length === 1 ? "" : "s"}`]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </span>
               </button>
@@ -55,7 +56,7 @@ export function WarningsTab({ warnings, onShow }: { warnings: RawWarning[]; onSh
             rowKey={(w) => w.i}
             initialSort={null}
             columns={[
-              { key: "line", header: "Line", value: (w) => w.line, align: "right" },
+              { key: "line", header: "Line", value: (w) => w.line, render: (w) => (w.line > 0 ? w.line : "—"), align: "right" },
               {
                 key: "element",
                 header: "Element",

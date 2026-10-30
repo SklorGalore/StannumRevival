@@ -75,8 +75,9 @@ working. The [user guide](https://sklorgalore.github.io/StannumRevival/guide/she
   compare exactly, formatting and comments are ignored, and layouts that are
   not verified are listed as unsupported. See [Case diff](https://sklorgalore.github.io/StannumRevival/guide/case-diff/).
 - **Scripting.** Run files (`.stnrun`) recorded from the app and replayed in
-  it or by `stannum-cli`, and a Python package, `stannum`. See
-  [Run files](https://sklorgalore.github.io/StannumRevival/guide/run-files/) and [Python](https://sklorgalore.github.io/StannumRevival/guide/python/).
+  it or by `stannum-cli`, a Python package, `stannum`, and an MCP server
+  (`stannum-cli mcp`) for Claude and other AI assistants. See
+  [Run files](https://sklorgalore.github.io/StannumRevival/guide/run-files/), [Python](https://sklorgalore.github.io/StannumRevival/guide/python/) and [AI assistants](https://sklorgalore.github.io/StannumRevival/guide/ai-assistants/).
 
 The bottom strip and the log (**Ctrl+`**) say what Stannum is doing and keep
 every step, including a solver report of each power flow. What isn't modelled
@@ -156,7 +157,7 @@ crates/stannum-core/      Analysis core (no Tauri): workspace, power flow, topol
   src/diff/               case-diff port: tokenizer, exact values, parser, comparison
   schemas/raw.schema.json RAW field layouts (shared with nodal and case-diff)
   tests/                  Integration tests and fixtures
-crates/stannum-cli/       stannum-cli: runs and checks run files without the app
+crates/stannum-cli/       stannum-cli: runs run files without the app; MCP server
 crates/stannum-py/        The `stannum` Python package (PyO3)
 crates/stannum-synth/     Synthetic test cases
 src-tauri/                Desktop shell; src/analysis.rs passes commands to the core's list

@@ -38,7 +38,7 @@ version 1 cases are not supported.
 
 ## Writing
 
-**Export MATPOWER** in Power flow writes the input case or the latest solved
+**File → Export case** (or Ctrl+K) writes the input case or the latest solved
 case. The file defines a function named after the file, ready for MATPOWER's
 `loadcase`. Row order, extra columns, costs and labels are kept; comments and
 original number formatting are not. The file name must be a valid MATLAB

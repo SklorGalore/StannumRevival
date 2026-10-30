@@ -1,10 +1,10 @@
 name: Fuzz file readers
 
-# Feeds random and mutated files to the RAW, MATPOWER, run file and
-# coordinates CSV readers (fuzz/README.md). A bad file must give an error,
-# never a panic. Runs weekly and on request for ten minutes per reader, and
-# briefly on pull requests that change the fuzz setup. Each reader's corpus
-# is kept between runs, so coverage grows week to week.
+# Feeds random and mutated files to the RAW, MATPOWER, run file, bus
+# coordinates and Stannum case readers (fuzz/README.md). A bad file must
+# give an error, never a panic. Runs weekly and on request for ten minutes
+# per reader, and briefly on pull requests that change the fuzz setup. Each
+# reader's corpus is kept between runs, so coverage grows week to week.
 on:
   schedule:
     - cron: "41 5 * * 2"
@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [raw, matpower, run_file, coordinates]
+        target: [raw, matpower, run_file, coordinates, stn]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

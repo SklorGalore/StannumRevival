@@ -1,17 +1,17 @@
-import { GitCompareArrows, Monitor, Moon, PencilRuler, Sheet, Sun, Zap } from "lucide-react";
-import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
+import { GitCompareArrows, PencilRuler, Sheet, Zap } from "lucide-react";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
 import type { ReactNode } from "react";
 import logoUrl from "../assets/stannum-logo.svg";
 import logoSmallUrl from "../assets/stannum-logo-small.svg";
 import { dragRegion } from "./WindowControls";
 import { useUpdate } from "../store/updateStore";
+import { shortVersion } from "../lib/version/shortVersion";
 
 export const MODULES: { id: ModuleId; label: string; icon: ReactNode; hint: string }[] = [
   { id: "diagram", label: "Diagram", icon: <PencilRuler size={18} />, hint: "One-line and network drawings, with topology layers and tables" },
-  { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC/DC power flow and sensitivities (rs-power)" },
+  { id: "power", label: "Power flow", icon: <Zap size={18} />, hint: "AC and DC power flow, sensitivities and contingencies" },
   { id: "records", label: "Records", icon: <Sheet size={18} />, hint: "Every record in the open case as a table: all fields, sort and filter" },
-  { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Exact RAW case comparison (case-diff)" },
+  { id: "diff", label: "Case diff", icon: <GitCompareArrows size={18} />, hint: "Compare two RAW cases record by record, or a case with its file" },
 ];
 
 /** The Stannum mark. Below 40 px it switches to the heavier small-size drawing. */
@@ -56,7 +56,6 @@ export function ModuleRail() {
           {m.label}
         </button>
       ))}
-      <ThemeButton />
       <VersionButton />
     </nav>
   );
@@ -71,33 +70,13 @@ function VersionButton() {
     <button
       type="button"
       onClick={() => void check()}
-      className="relative mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/70 hover:bg-white/5 hover:text-teal-50"
+      className="relative mt-auto mx-auto rounded px-1.5 text-center text-[9px] text-teal-100/70 hover:bg-white/5 hover:text-teal-50"
       title={waiting ? `Stannum ${__APP_VERSION__}. Stannum ${update.version} is available: click to see it.` : `Stannum ${__APP_VERSION__}. Click to check for updates.`}
       aria-label={waiting ? `Stannum ${__APP_VERSION__}, update ${update.version} available` : `Stannum ${__APP_VERSION__}, check for updates`}
       data-testid="version-button"
     >
-      v{__APP_VERSION__.split(".").slice(0, 2).join(".")}
+      {shortVersion(__APP_VERSION__)}
       {waiting && <span className="absolute -right-0.5 top-0 h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
-    </button>
-  );
-}
-
-const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" } as const;
-
-/** Cycles System → Light → Dark. */
-function ThemeButton() {
-  const preference = useTheme((s) => s.preference);
-  const setPreference = useTheme((s) => s.setPreference);
-  const Icon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
-  return (
-    <button
-      className="mt-auto mx-2 mb-1 flex flex-col items-center gap-1 rounded-lg py-2 text-[10.5px] font-medium text-teal-100/70 hover:bg-white/5 hover:text-white"
-      onClick={() => setPreference(NEXT_PREFERENCE[preference])}
-      title={`Theme: ${THEME_LABEL[preference]}. Click for ${THEME_LABEL[NEXT_PREFERENCE[preference]]}.`}
-      aria-label={`Theme: ${THEME_LABEL[preference]}`}
-    >
-      <Icon size={16} />
-      {THEME_LABEL[preference]}
     </button>
   );
 }

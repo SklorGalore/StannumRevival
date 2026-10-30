@@ -25,7 +25,7 @@ touch the element, each with a button to remove it.
 
 **Set output** and **Set load** open a small form; **Apply to study** adds the edit.
 
-The case bar shows a badge ("2 edits") while a study is changing the case, and
+The toolbar shows a badge ("2 edits") while a study is changing the case, and
 the edits take effect on the next solve. Every edit names an element that
 exists; an edit that names nothing in the case is refused rather than ignored.
 
@@ -49,7 +49,7 @@ bus voltages that moved, largest first.
 
 ## Saving a study to a file
 
-**Save study** in the case bar writes the work to a `.stannum` file so it
+**Save study** in the toolbar writes the work to a `.stannum` file so it
 survives closing Stannum and can be handed to someone else. It keeps:
 
 - the study edits and saved solves (with the compare choice),
@@ -72,12 +72,12 @@ the study then refers to that file.
 
 ## Opening a study
 
-**Open case…** (or **Open another…**) also opens `.stannum` files, as does
+**Open** in the toolbar (or **File → Open case or study…**) also opens `.stannum` files, as does
 **Open study…** in the command palette and dropping one on the window. The
 case opens, the edits are applied, saved solves come back and the case is
 solved again with the saved settings.
 
-Stannum says so under the case bar when:
+Stannum says so under the toolbar when:
 
 - **the case moved.** It looks for the case where it was, then at the same
   place relative to the study, then beside the study. If none of those has it,
@@ -88,7 +88,7 @@ Stannum says so under the case bar when:
 - **an edit no longer fits.** An edit naming an element that is no longer in
   the case is left out, and the message lists it.
 
-![A study opened after its case moved and changed: the notice under the case bar, the edits and the saved solve](../../../assets/screens/study-reopened.png)
+![A study opened after its case moved and changed: the notice under the toolbar, the edits and the saved solve](../../../assets/screens/study-reopened.png)
 
 Before a different case or study replaces one with unsaved changes, Stannum
 asks whether to discard them.

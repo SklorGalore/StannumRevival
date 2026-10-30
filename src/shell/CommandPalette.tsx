@@ -7,6 +7,8 @@ import {
   BellOff,
   Circle,
   Columns2,
+  AlertTriangle,
+  Cable,
   CornerDownLeft,
   FileCode2,
   FlaskConical,
@@ -26,6 +28,8 @@ import {
   Play,
   Search,
   Sheet,
+  Sigma,
+  ListChecks,
   Sun,
   Terminal,
   Wand2,
@@ -46,6 +50,7 @@ import { paletteElements, searchElements, type PaletteElement } from "../lib/sea
 import { centreBus } from "../ui/DrawAround";
 import { useShortcuts } from "./ShortcutsDialog";
 import { knownSampleCases } from "../ui/SampleCases";
+import { saveCaseAs } from "./appMenus";
 
 export interface Command {
   id: string;
@@ -106,6 +111,17 @@ export function paletteCommands(): Command[] {
     list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
     if (studyPath)
       list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+    list.push({ id: "save-case-as", title: "Save case as…", icon: <Save size={14} />, keywords: "file write raw stn stnb records edits", run: saveCaseAs });
+    if (summary.power.available)
+      for (const solved of [false, true])
+        if (!solved || w.solveReport)
+          list.push({
+            id: `export-matpower${solved ? "-solved" : ""}`,
+            title: solved ? "Export case as MATPOWER, with the latest results…" : "Export case as MATPOWER…",
+            icon: <Download size={14} />,
+            keywords: "export matpower m file save write convert",
+            run: () => void studyFile.exportMatpower(solved),
+          });
     for (const revision of [35, 33] as const)
       list.push({
         id: `export-raw-${revision}`,
@@ -114,9 +130,22 @@ export function paletteCommands(): Command[] {
         keywords: "export raw file save write psse convert revision version",
         run: () => void studyFile.exportRaw(revision),
       });
+    for (const binary of [true, false])
+      list.push({
+        id: binary ? "export-stnb" : "export-stn",
+        title: binary ? "Export case as binary Stannum case (.stnb, preview)…" : "Export case as Stannum case (.stn, preview)…",
+        icon: <Download size={14} />,
+        keywords: binary ? "export stnb stannum binary arrow columnar large fast file save write convert" : "export stn stannum open text format file save write convert",
+        run: () => void studyFile.exportStn(binary),
+      });
   }
   if (summary?.power.available)
-    list.push({ id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve });
+    list.push(
+      { id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve },
+      { id: "sensitivities", title: "Calculate sensitivities", icon: <Sigma size={14} />, keywords: "ptdf lodf shift factors distribution", run: w.requestSensitivities }
+    );
+  if (w.solveReport)
+    list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });
   for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
   if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
   else
@@ -164,6 +193,21 @@ export function paletteCommands(): Command[] {
       run: () => w.setLinked(!linked),
     });
     if (summary.power.available) {
+      if (summary.power.info?.warnings.length)
+        list.push({
+          id: "import-warnings",
+          title: `Show import warnings (${summary.power.info.warnings.length.toLocaleString()})`,
+          icon: <AlertTriangle size={14} />,
+          keywords: "raw import warnings ignored approximated notes file",
+          run: () => w.showPowerTab("warnings"),
+        });
+      list.push({
+        id: "vsc-grids",
+        title: "Attach VSC DC grids…",
+        icon: <Cable size={14} />,
+        keywords: "vsc dc grid hvdc multi-terminal mtdc converter dcgrid json attach",
+        run: () => w.showPowerTab("vsc"),
+      });
       list.push({
         id: "coordinates",
         title: summary.coordinates?.path ? "Attach other bus coordinates…" : "Attach bus coordinates…",

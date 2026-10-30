@@ -90,7 +90,13 @@ export function DataTable<T>({
     // Stable: ties keep input order.
     return filtered
       .map((row, i) => ({ row, i }))
-      .sort((a, b) => sign * compare(col.value(a.row), col.value(b.row)) || a.i - b.i)
+      .sort((a, b) => {
+        const x = col.value(a.row);
+        const y = col.value(b.row);
+        // Missing values stay last in both directions.
+        const missing = x === null || x === undefined || y === null || y === undefined;
+        return (missing ? compare(x, y) : sign * compare(x, y)) || a.i - b.i;
+      })
       .map((x) => x.row);
   }, [remote, filtered, sort, columns]);
 

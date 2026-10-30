@@ -5,8 +5,13 @@
 //! one factorization of the network, then checks the worst N with a full AC
 //! solve that starts from the base solution. Every outage can also be solved
 //! in AC. Runs use every core and can be cancelled between outages.
+//!
+//! Instead of every branch and generator, a run can take the NERC TPL-001
+//! planning events [`crate::planning`] generates: each outage is then an
+//! event of a category, and can take out shunts and DC lines too.
 
 use crate::error::Error;
+use crate::planning::{self, PlanningSettings};
 use crate::power::{self, PowerCase, SolveSettings};
 use rs_power::{BusType, Case, DcFactors, OutageFlows, PowerFlowResult, SolveStatus};
 use serde::{Deserialize, Serialize};
@@ -59,6 +64,10 @@ pub struct ContingencySettings {
     pub limit_pct: f64,
     #[serde(default)]
     pub solve: SolveSettings,
+    /// Run these NERC TPL-001 planning events instead of every branch and
+    /// generator; `elements`, `branches` and `generators` are then unused.
+    #[serde(default)]
+    pub planning: Option<PlanningSettings>,
 }
 
 impl Default for ContingencySettings {
@@ -71,6 +80,7 @@ impl Default for ContingencySettings {
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
             solve: SolveSettings::default(),
+            planning: None,
         }
     }
 }
@@ -107,11 +117,15 @@ pub struct VoltageProblem {
 pub struct ContingencyRow {
     /// Position in the ranked list, from 1.
     pub rank: usize,
-    /// The element taken out.
+    /// The element taken out; empty for the base case (P0).
     pub element: String,
-    /// "branch" or "generator".
-    #[schemars(extend("enum" = ["branch", "generator"]))]
+    /// "branch", "generator", "shunt", "dc_line", or "base" for P0.
+    #[schemars(extend("enum" = ["branch", "generator", "shunt", "dc_line", "base"]))]
     pub kind: &'static str,
+    /// The planning event category, such as "P1.2"; none in an N-1 run.
+    pub category: Option<String>,
+    /// What the event is, in words, when the element alone doesn't say.
+    pub description: Option<String>,
     /// "ac" when solved in AC, "linear" when only screened.
     #[schemars(extend("enum" = ["ac", "linear"]))]
     pub checked: &'static str,
@@ -159,6 +173,20 @@ pub struct ContingencySummary {
     /// Stopped early: outages after the stop keep their screened result.
     pub cancelled: bool,
     pub worst: Option<ContingencyRow>,
+    /// Planning event runs: outages and problems in each category, in
+    /// category order. Empty in an N-1 run.
+    pub categories: Vec<CategorySummary>,
+}
+
+/// One planning event category's share of a run.
+#[derive(Clone, Debug, Serialize, Default, PartialEq, schemars::JsonSchema)]
+pub struct CategorySummary {
+    pub category: String,
+    pub total: usize,
+    pub with_overloads: usize,
+    pub with_voltage_problems: usize,
+    pub not_converged: usize,
+    pub islanding: usize,
 }
 
 /// A branch's flow after one outage, for drawing the change on a diagram.
@@ -264,12 +292,50 @@ impl RunHandle {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct Outage {
     element: String,
     kind: &'static str,
     branch_rows: Vec<usize>,
     generator_rows: Vec<usize>,
+    /// Rows of `PowerCase::shunts`.
+    shunt_rows: Vec<usize>,
+    /// `case.dcline` rows with the share of the schedule that stays.
+    dc_rows: Vec<(usize, f64)>,
+    category: Option<&'static str>,
+    description: Option<String>,
+}
+
+impl Outage {
+    /// P0: judged against the limits, not against the base case.
+    fn is_base(&self) -> bool {
+        self.kind == "base"
+    }
+}
+
+/// The MVA at 1 p.u. a shunt outage takes off, for choosing which shunts to
+/// solve in AC.
+fn shunt_mvar(power: &PowerCase, outage: &Outage) -> f64 {
+    outage
+        .shunt_rows
+        .iter()
+        .map(|&r| power.shunts[r].g.hypot(power.shunts[r].b))
+        .sum()
+}
+
+impl From<planning::PlanningEvent> for Outage {
+    fn from(e: planning::PlanningEvent) -> Self {
+        Self {
+            element: e.element,
+            kind: e.kind,
+            branch_rows: e.branch_rows,
+            generator_rows: e.generator_rows,
+            shunt_rows: e.shunt_rows,
+            dc_rows: e.dc_rows,
+            category: Some(e.category),
+            description: e.description,
+        }
+    }
 }
 
 /// Everything a run needs, copied out of the workspace so the run doesn't
@@ -288,6 +354,13 @@ fn outages(
     power: &PowerCase,
     settings: &ContingencySettings,
 ) -> Result<(Vec<Outage>, usize), String> {
+    if let Some(p) = &settings.planning {
+        let list: Vec<Outage> = planning::events(power, p)?
+            .into_iter()
+            .map(Outage::from)
+            .collect();
+        return Ok((list, 0));
+    }
     let mut list: Vec<Outage> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
     let wanted: Option<std::collections::HashSet<&str>> = settings
@@ -299,8 +372,7 @@ fn outages(
             list.push(Outage {
                 element: element.to_string(),
                 kind,
-                branch_rows: vec![],
-                generator_rows: vec![],
+                ..Default::default()
             });
             list.len() - 1
         });
@@ -357,9 +429,11 @@ impl ContingencyJob {
     ) -> Result<Self, String> {
         let (outages, already_out) = outages(power, &settings)?;
         if outages.is_empty() {
-            return Err(
-                "Nothing to take out: the list has no in-service branches or generators.".into(),
-            );
+            return Err(if settings.planning.is_some() {
+                "Nothing to take out: no in-service element fits the planning event filters.".into()
+            } else {
+                "Nothing to take out: the list has no in-service branches or generators.".into()
+            });
         }
         Ok(Self {
             power: power.clone(),
@@ -407,7 +481,23 @@ impl ContingencyJob {
                 Method::Ac => n,
                 Method::Screen => self.settings.ac_count.min(n),
             };
-            let chosen = &order[..count];
+            // The screen can't judge a shunt outage, which moves voltages
+            // rather than MW: the largest shunts get their own AC budget of
+            // the same size. The base case (P0) is always solved.
+            let (shunts, screened): (Vec<usize>, Vec<usize>) = order
+                .iter()
+                .copied()
+                .filter(|&i| !self.outages[i].is_base())
+                .partition(|&i| !self.outages[i].shunt_rows.is_empty());
+            let mut chosen: Vec<usize> = (0..n).filter(|&i| self.outages[i].is_base()).collect();
+            let mut shunts = shunts;
+            shunts.sort_by(|&a, &b| {
+                shunt_mvar(&self.power, &self.outages[b])
+                    .total_cmp(&shunt_mvar(&self.power, &self.outages[a]))
+            });
+            chosen.extend(screened.iter().take(count));
+            chosen.extend(shunts.iter().take(count));
+            let count = chosen.len();
             handle.set_phase(2, count);
             let solved = parallel(handle, count, |k| {
                 context
@@ -463,6 +553,7 @@ impl ContingencyJob {
             elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
             cancelled: was_cancelled,
             worst: ranked.first().map(|(_, r)| r.clone()),
+            categories: category_summaries(&ranked),
         };
         log_summary(&summary);
         let (order, rows): (Vec<usize>, Vec<ContingencyRow>) = ranked.into_iter().unzip();
@@ -480,6 +571,30 @@ impl ContingencyJob {
             last_report: None,
         })
     }
+}
+
+/// Each category's outages and problems, in the order planning lists them.
+fn category_summaries(ranked: &[(usize, ContingencyRow)]) -> Vec<CategorySummary> {
+    let mut out: Vec<CategorySummary> = planning::CATEGORIES
+        .iter()
+        .map(|(c, _)| CategorySummary {
+            category: c.to_string(),
+            ..Default::default()
+        })
+        .collect();
+    for (_, r) in ranked {
+        let Some(c) = &r.category else { continue };
+        let Some(s) = out.iter_mut().find(|s| &s.category == c) else {
+            continue;
+        };
+        s.total += 1;
+        s.with_overloads += usize::from(r.overloads > 0);
+        s.with_voltage_problems += usize::from(r.voltage_violations > 0);
+        s.not_converged += usize::from(r.converged == Some(false));
+        s.islanding += usize::from(r.cut_off_buses > 0);
+    }
+    out.retain(|s| s.total > 0);
+    out
 }
 
 /// Under one point of severity, so it only orders outages with the same
@@ -590,8 +705,10 @@ struct Outcome {
     cut_off: Vec<u32>,
 }
 
-fn loading(p_from: f64, q_from: f64, p_to: f64, q_to: f64, rate: f64) -> f64 {
-    p_from.hypot(q_from).max(p_to.hypot(q_to)) / rate * 100.0
+/// Loading of branch row `r`, measured as in the solve report.
+fn loading(power: &PowerCase, r: usize, pf: f64, qf: f64, pt: f64, qt: f64, rate: f64) -> f64 {
+    let winding = power.elements.branches.get(r).map_or(0, |e| e.winding);
+    power::loading_pct(pf, qf, pt, qt, rate, winding)
 }
 
 /// A branch is new or worse when it is over the limit now and was under it,
@@ -622,8 +739,10 @@ impl<'a> Context<'a> {
                 .branches
                 .iter()
                 .zip(flows)
-                .map(|(b, f)| {
-                    (b.online && b.rate_a > 0.0).then(|| loading(f[0], f[1], f[2], f[3], b.rate_a))
+                .enumerate()
+                .map(|(r, (b, f))| {
+                    (b.online && b.rate_a > 0.0)
+                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], b.rate_a))
                 })
                 .collect(),
             names: power::bus_names(case),
@@ -671,12 +790,13 @@ impl<'a> Context<'a> {
         let case = self.case();
         let mut flows = self.pf.clone();
         // Generators taken out: their output moves to the reference bus.
-        let lost: Vec<(u32, f64)> = outage
+        let mut lost: Vec<(u32, f64)> = outage
             .generator_rows
             .iter()
             .filter(|&&r| case.generators[r].online)
             .map(|&r| (case.generators[r].bus, -self.base.case.generators[r].pg))
             .collect();
+        lost.extend(self.other_injections(outage));
         if !lost.is_empty() {
             for (f, d) in flows.iter_mut().zip(self.factors.injection_flows(&lost)) {
                 *f += d;
@@ -739,6 +859,46 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// How a shunt or DC line outage moves each bus's MW injection, for the
+    /// linear screen. A shunt only moves its conductance; a DC line's
+    /// terminals move by the scheduled flow given up, net of losses at the
+    /// receiving end.
+    fn other_injections(&self, outage: &Outage) -> Vec<(u32, f64)> {
+        let mut out = Vec::new();
+        let vm: HashMap<u32, f64> = self.base.case.buses.iter().map(|b| (b.id, b.vm)).collect();
+        for &r in &outage.shunt_rows {
+            let s = &self.power.shunts[r];
+            if s.g != 0.0 {
+                let v = vm.get(&s.bus).copied().unwrap_or(1.0);
+                out.push((s.bus, s.g * v * v));
+            }
+        }
+        let solved = self
+            .base
+            .case
+            .dcline
+            .as_ref()
+            .or(self.case().dcline.as_ref());
+        for &(r, keep) in &outage.dc_rows {
+            let Some(line) = solved.and_then(|t| t.get(r)) else {
+                continue;
+            };
+            if line[2] == 0.0 {
+                continue;
+            }
+            let pf = line[3];
+            let delivered = |p: f64| p - line[15] - line[16] * p;
+            let to_change = if keep == 0.0 {
+                -delivered(pf)
+            } else {
+                delivered(keep * pf) - delivered(pf)
+            };
+            out.push((line[0] as u32, (1.0 - keep) * pf));
+            out.push((line[1] as u32, to_change));
+        }
+        out
+    }
+
     /// The bus that takes up the slack in the part of the network that stays:
     /// the reference bus, or if it was cut off, the bus of the largest online
     /// generator left in its island.
@@ -761,6 +921,7 @@ impl<'a> Context<'a> {
     fn screen(&self, outage: &Outage) -> Outcome {
         let case = self.case();
         let (flows, cut) = self.linear_flows(outage);
+        let absolute = outage.is_base();
         let mut overloads = Vec::new();
         let mut branches = Vec::new();
         let mut worst: Option<Overload> = None;
@@ -772,6 +933,8 @@ impl<'a> Context<'a> {
             let delta = flows[r] - self.pf[r];
             let pct = (!tripped && b.online && b.rate_a > 0.0).then(|| {
                 loading(
+                    self.power,
+                    r,
                     self.pf[r] + delta,
                     self.qf[r],
                     self.pt[r] - delta,
@@ -792,7 +955,7 @@ impl<'a> Context<'a> {
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, base, self.limit_pct) {
+                if new_or_worse(pct, if absolute { 0.0 } else { base }, self.limit_pct) {
                     overloads.push(o);
                 }
             }
@@ -821,6 +984,8 @@ impl<'a> Context<'a> {
             rank: 0,
             element: outage.element.clone(),
             kind: outage.kind,
+            category: outage.category.map(str::to_string),
+            description: outage.description.clone(),
             checked: "linear",
             converged: None,
             iterations: None,
@@ -857,6 +1022,29 @@ impl<'a> Context<'a> {
         for &r in &outage.generator_rows {
             case.generators[r].online = false;
         }
+        // Shunts in voltage control come off after the warm start, which
+        // moves them to their solved step first.
+        for &r in &outage.shunt_rows {
+            let s = &self.power.shunts[r];
+            if self.controlled_shunt(r).is_some() {
+                continue;
+            }
+            if let Some(&row) = self.bus_row.get(&s.bus) {
+                case.buses[row].gs -= s.g;
+                case.buses[row].bs -= s.b;
+            }
+        }
+        if let Some(table) = &mut case.dcline {
+            for &(r, keep) in &outage.dc_rows {
+                if let Some(line) = table.get_mut(r) {
+                    if keep == 0.0 {
+                        line[2] = 0.0;
+                    } else {
+                        line[3] *= keep;
+                    }
+                }
+            }
+        }
         let ids: std::collections::HashSet<u32> = cut.iter().map(|&b| case.buses[b].id).collect();
         for &b in cut {
             case.buses[b].kind = BusType::Isolated;
@@ -891,6 +1079,19 @@ impl<'a> Context<'a> {
         case
     }
 
+    /// The voltage control entry of shunt row `r`, if it is in one.
+    fn controlled_shunt(&self, r: usize) -> Option<usize> {
+        let s = &self.power.shunts[r];
+        if s.kind != rs_power::ShuntKind::Switched || s.line == 0 {
+            return None;
+        }
+        self.power
+            .voltage_controls
+            .switched_shunts
+            .iter()
+            .position(|c| c.line == s.line && c.bus == s.bus)
+    }
+
     /// Solve the outage in AC from the base solution. `None` only when the
     /// run was cancelled first.
     fn ac(&self, outage: &Outage, settings: &SolveSettings, handle: &RunHandle) -> Option<Outcome> {
@@ -916,7 +1117,27 @@ impl<'a> Context<'a> {
         let case = self.outage_case(outage, &cut);
         let mut options = settings.options_for(self.power);
         options.cancel = Some(handle.0.cancel.clone());
-        let warm = power::warm_start(&case, self.base, &mut options);
+        let mut warm = power::warm_start(&case, self.base, &mut options);
+        for &r in &outage.shunt_rows {
+            if let Some(k) = self.controlled_shunt(r) {
+                // Off at whatever step it was on, and nothing left to switch.
+                let control = &mut options.voltage_controls.switched_shunts[k];
+                if let Some(&row) = self.bus_row.get(&control.bus) {
+                    warm.buses[row].bs -= control.initial;
+                }
+                control.initial = 0.0;
+                control.blocks.clear();
+            }
+        }
+        if let rs_power::DcModel::Detailed { lines, .. } = &mut options.dc_model {
+            for &(r, keep) in &outage.dc_rows {
+                if keep > 0.0
+                    && let Some(line) = lines.iter_mut().find(|l| l.row == r)
+                {
+                    line.setpoint *= keep;
+                }
+            }
+        }
         let mut row = screened.row.clone();
         row.checked = "ac";
         let result = match rs_power::solve(&warm, &options) {
@@ -948,14 +1169,15 @@ impl<'a> Context<'a> {
             return Some((Outcome { row, ..screened }, None));
         }
         let solved = &result.case;
+        let absolute = outage.is_base();
         let mut overloads = Vec::new();
         let mut branches = Vec::new();
         let mut worst: Option<Overload> = None;
         for (r, (b, f)) in solved.branches.iter().zip(&result.branch_flows).enumerate() {
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
-            let pct =
-                (b.online && b.rate_a > 0.0).then(|| loading(f[0], f[1], f[2], f[3], b.rate_a));
+            let pct = (b.online && b.rate_a > 0.0)
+                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], b.rate_a));
             if let (Some(pct), Some(base)) = (pct, base_pct) {
                 let o = Overload {
                     element: self.element(r),
@@ -969,7 +1191,7 @@ impl<'a> Context<'a> {
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, base, self.limit_pct) {
+                if new_or_worse(pct, if absolute { 0.0 } else { base }, self.limit_pct) {
                     overloads.push(o);
                 }
             }
@@ -1008,7 +1230,10 @@ impl<'a> Context<'a> {
                     0.0
                 }
             };
-            let (now, was) = (outside(b.vm), outside(before.vm));
+            let (now, was) = (
+                outside(b.vm),
+                if absolute { 0.0 } else { outside(before.vm) },
+            );
             if now > 0.0 && now > was + 0.001 {
                 voltage_problems.push(VoltageProblem {
                     bus: b.id,

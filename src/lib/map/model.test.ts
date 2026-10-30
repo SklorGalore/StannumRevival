@@ -7,6 +7,8 @@ const bus = (id: number, base_kv: number, star = false): NetworkBus => ({
   name: `B${id}`,
   base_kv,
   area: 1,
+  zone: 1,
+  owner: 1,
   kind: "PQ",
   pd: 0,
   qd: 0,

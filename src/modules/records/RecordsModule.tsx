@@ -458,7 +458,7 @@ export function RecordsModule({ active }: { active: boolean }) {
   const exportCsv = async () => {
     if (!table || !source) return;
     const rows = await allRows(source, null, search.trim());
-    await saveTextExport(`${summary.name.replace(/\.(raw|m)$/i, "")}-${table.label.toLowerCase().replace(/\s+/g, "-")}.csv`, toCsv(csvRows(table, rows)), {
+    await saveTextExport(`${summary.name.replace(/\.(raw|m|stnb?)$/i, "")}-${table.label.toLowerCase().replace(/\s+/g, "-")}.csv`, toCsv(csvRows(table, rows)), {
       name: "CSV",
       extensions: ["csv"],
     });
