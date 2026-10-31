@@ -126,6 +126,15 @@ section into the next version's when a release is cut (see
   Hover a value for the full number. The VSC grids "Converters settled to"
   figure shows three decimals of MVA, like the residual.
 
+### Fixed
+
+- **Confirm prompts in the app.** Questions such as "Discard unsaved
+  changes?" and "Restart to update?" failed with "dialog.message not
+  allowed", and even when allowed they went ahead without waiting for the
+  answer. The app now allows the dialog plugin's confirm prompts and waits
+  for OK or Cancel before discarding a diagram, Records edits or unsaved
+  study edits, or restarting for an update.
+
 ## 1.0.0-rc.1 - 2026-10-30
 
 ### Added
