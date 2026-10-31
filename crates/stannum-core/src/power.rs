@@ -141,6 +141,8 @@ fn raw_options() -> rs_power::RawOptions {
         lcc_absorbs_reactive: true,
         remote_regulation: true,
         zip_loads: true,
+        magnetizing: true,
+        impedance_correction: true,
         ..Default::default()
     }
 }
@@ -549,6 +551,10 @@ pub fn warm_start(case: &Case, last: &PowerFlowResult, options: &mut PowerFlowOp
                 line.inverter.tap = s.inverter_tap;
             }
         }
+    }
+    // Moved taps and angles change impedance through correction tables.
+    for branch in &mut warm.branches {
+        branch.correct_impedance();
     }
     options.initialization = Initialization::Solution;
     warm

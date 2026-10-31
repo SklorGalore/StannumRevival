@@ -107,7 +107,7 @@ impl Network {
             if !all.contains_key(&br.from) || !all.contains_key(&br.to) {
                 return Err(invalid("branch references unknown bus"));
             }
-            if [br.r, br.x, br.b, br.tap, br.shift]
+            if [br.r, br.x, br.b, br.tap, br.shift, br.mag_g, br.mag_b]
                 .iter()
                 .any(|x| !x.is_finite())
                 || br.tap < 0.0
@@ -133,7 +133,8 @@ impl Network {
                 original: i,
                 f,
                 t,
-                yff: ytt / tap.norm_sqr(),
+                // Magnetizing admittance sits at the from bus, outside the tap.
+                yff: ytt / tap.norm_sqr() + C::new(br.mag_g, br.mag_b),
                 yft: -ys / tap.conj(),
                 ytf: -ys / tap,
                 ytt,

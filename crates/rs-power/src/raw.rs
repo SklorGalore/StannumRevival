@@ -2,9 +2,9 @@
 //! See NOTICE for upstream attribution and licensing.
 use crate::{
     Area, AreaLoad, Asymmetric, Branch, Bus, BusType, Case, DcLineTap, Error, FactsDevice,
-    FlowControls, Generator, LccControl, LccConverter, LccEnd, LccLine, MtdcBus, MtdcConverter,
-    MtdcLink, MtdcSystem, PhaseShifter, ReactiveTap, ShuntMode, SwitchedShunt, TapControl,
-    VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
+    FlowControls, Generator, ImpedanceCorrection, LccControl, LccConverter, LccEnd, LccLine,
+    MtdcBus, MtdcConverter, MtdcLink, MtdcSystem, PhaseShifter, ReactiveTap, ShuntMode,
+    SwitchedShunt, TapControl, VoltageControls, VscAcControl, VscConverter, VscDcControl, VscLine,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -38,6 +38,16 @@ pub struct RawOptions {
     /// converts them to constant power at the bus voltage in the file, so
     /// this is off by default to keep conversions identical to MATPOWER 8.1.
     pub zip_loads: bool,
+    /// Keep transformers' magnetizing admittance (MAG1, MAG2) in
+    /// [`Branch::mag_g`] and [`Branch::mag_b`], at the winding one bus.
+    /// MATPOWER drops it, so this is off by default to keep conversions
+    /// identical to MATPOWER 8.1.
+    pub magnetizing: bool,
+    /// Apply impedance correction tables (TAB1-3) to transformer windings
+    /// through [`Branch::correction`], so a winding's impedance follows
+    /// its ratio or angle. MATPOWER uses the nominal impedance, so this is
+    /// off by default to keep conversions identical to MATPOWER 8.1.
+    pub impedance_correction: bool,
 }
 
 /// A source-located diagnostic about RAW conversion.
@@ -1121,11 +1131,16 @@ fn convert(
             angmin: -360.0,
             angmax: 360.0,
             extra: vec![],
+            mag_g: 0.0,
+            mag_b: 0.0,
+            correction: None,
         });
     }
+    let tables = impedance_tables(rev, section("impedance correction"), &mut ctx)?;
     convert_transformers(
         rev,
         section("transformer"),
+        &tables,
         &mut case,
         &mut branch_sources,
         &indices,
@@ -1265,6 +1280,7 @@ fn convert(
                 | "multi-section line"
         ) && !(options.all_dc_lines
             && matches!(name, "voltage source converter" | "multi-terminal DC"))
+            && !(options.impedance_correction && name == "impedance correction")
             && let Some(r) = rows.first()
         {
             ctx.warn(
@@ -1489,6 +1505,9 @@ fn convert_switching_devices(
             angmin: -360.0,
             angmax: 360.0,
             extra: vec![],
+            mag_g: 0.0,
+            mag_b: 0.0,
+            correction: None,
         });
     }
     Ok(devices)
@@ -2212,13 +2231,159 @@ fn transformer_branch(
         angmin: -360.0,
         angmax: 360.0,
         extra: vec![],
+        mag_g: 0.0,
+        mag_b: 0.0,
+        correction: None,
     })
+}
+
+/// Magnetizing admittance in per unit on the system base from MAG1 and
+/// MAG2: as given when CM is 1; from no-load loss in watts and exciting
+/// current in per unit on SBASE1-2 when CM is 2 (inductive, so the
+/// susceptance is negative).
+fn magnetizing(
+    r: &Record,
+    z: &Record,
+    base_mva: f64,
+    mag1: f64,
+    mag2: f64,
+) -> Result<(f64, f64), Error> {
+    let out = match r.optional(6, 1.0)? {
+        2.0 => {
+            let sbase = z.optional(2, base_mva)?;
+            let sbase = if sbase > 0.0 { sbase } else { base_mva };
+            let g = mag1 / 1e6 / base_mva;
+            let y = mag2 * sbase / base_mva;
+            (g, -(y * y - g * g).max(0.0).sqrt())
+        }
+        _ => (mag1, mag2),
+    };
+    if !out.0.is_finite() || !out.1.is_finite() {
+        return Err(r.error("invalid transformer magnetizing admittance"));
+    }
+    Ok(out)
+}
+
+/// Impedance correction tables by number: `(T, Re F, Im F)` points.
+type Tables = HashMap<u32, Vec<(f64, f64, f64)>>;
+
+/// Impedance correction tables by number. Revisions up to 33 give one
+/// table per record, `I, T1, F1, ... T11, F11`, with unused pairs zero;
+/// revisions 34 and 35 give `I, T1, Re F1, Im F1, ...` over as many records
+/// as needed, each table ended by a `0, 0, 0` point.
+fn impedance_tables(rev: u32, rows: &[Record], ctx: &mut Context<'_>) -> Result<Tables, Error> {
+    let mut tables = HashMap::new();
+    let mut add = |number: u32, points: Vec<(f64, f64, f64)>, r: &Record, ctx: &mut Context<'_>| {
+        let ascending = points.windows(2).all(|w| w[1].0 > w[0].0);
+        if points.is_empty()
+            || !ascending
+            || points
+                .iter()
+                .any(|p| !(p.1.is_finite() && p.2.is_finite()) || p.1 <= 0.0)
+        {
+            ctx.warn(
+                r.line,
+                true,
+                format!("impedance correction table {number} skipped: its T values must ascend and its factors be positive"),
+            )?;
+        } else {
+            tables.insert(number, points);
+        }
+        Ok::<(), Error>(())
+    };
+    if rev <= 33 {
+        for r in rows {
+            let number = r.id(0)?;
+            let mut points = vec![];
+            let mut i = 1;
+            while i < r.fields.len() {
+                let t = r.optional(i, 0.0)?;
+                let f = r.optional(i + 1, 0.0)?;
+                if t == 0.0 && f == 0.0 {
+                    break;
+                }
+                points.push((t, f, 0.0));
+                i += 2;
+            }
+            add(number, points, r, ctx)?;
+        }
+    } else {
+        let mut values = vec![];
+        for r in rows {
+            for i in 0..r.fields.len() {
+                values.push((r.optional(i, 0.0)?, r));
+            }
+        }
+        let mut at = 0;
+        while at < values.len() {
+            let (number, r) = values[at];
+            at += 1;
+            if number < 1.0 || number.fract() != 0.0 {
+                return Err(r.error("invalid impedance correction table number"));
+            }
+            let mut points = vec![];
+            while at < values.len() {
+                let get = |k: usize| values.get(at + k).map_or(0.0, |v| v.0);
+                let (t, re, im) = (get(0), get(1), get(2));
+                at += 3;
+                if t == 0.0 && re == 0.0 && im == 0.0 {
+                    break;
+                }
+                points.push((t, re, im));
+            }
+            add(number as u32, points, r, ctx)?;
+        }
+    }
+    Ok(tables)
+}
+
+/// The impedance correction of winding record `w` (its TAB), when
+/// impedance correction is on and the table exists. `z` is the winding's
+/// nominal impedance on the system base.
+fn correction(
+    w: &Record,
+    controls: [usize; 3],
+    tables: &Tables,
+    z: (f64, f64),
+    tap_per_ratio: f64,
+    ctx: &mut Context<'_>,
+) -> Result<Option<Box<ImpedanceCorrection>>, Error> {
+    let table = w.optional(controls[1], 0.0)?;
+    if table == 0.0 || !ctx.options.impedance_correction {
+        return Ok(None);
+    }
+    let number = table.abs() as u32;
+    let Some(points) = tables.get(&number) else {
+        ctx.warn(
+            w.line,
+            true,
+            format!("impedance correction table {number} not found; nominal impedance used"),
+        )?;
+        return Ok(None);
+    };
+    // Phase shifters look up their angle and taps their ratio; a fixed
+    // winding uses PSS/E's rule: a table starting below 0.5 or ending
+    // above 1.5 is in degrees.
+    let by_angle = match w.optional(controls[0], 0.0)?.abs() {
+        3.0 | 5.0 => true,
+        1.0 | 2.0 | 4.0 => false,
+        _ => points[0].0 < 0.5 || points[points.len() - 1].0 > 1.5,
+    };
+    Ok(Some(Box::new(ImpedanceCorrection {
+        table: number,
+        points: points.clone(),
+        by_angle,
+        tap_per_ratio,
+        r: z.0,
+        x: z.1,
+    })))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn convert_transformers(
     rev: u32,
     rows: &[Record],
+    tables: &Tables,
     case: &mut Case,
     sources: &mut Vec<BranchSource>,
     indices: &HashMap<u32, usize>,
@@ -2262,12 +2427,18 @@ fn convert_transformers(
             if status > if kind == 0 { 1 } else { 4 } {
                 return Err(r.error("invalid transformer status"));
             }
-            if r.optional(7, 0.0)? != 0.0 || r.optional(8, 0.0)? != 0.0 {
-                ctx.warn(
-                    r.line,
-                    true,
-                    "transformer magnetizing admittance ignored, matching MATPOWER",
-                )?;
+            let (mag1, mag2) = (r.optional(7, 0.0)?, r.optional(8, 0.0)?);
+            let mut mag = (0.0, 0.0);
+            if mag1 != 0.0 || mag2 != 0.0 {
+                if ctx.options.magnetizing {
+                    mag = magnetizing(r, z, case.base_mva, mag1, mag2)?;
+                } else {
+                    ctx.warn(
+                        r.line,
+                        true,
+                        "transformer magnetizing admittance ignored, matching MATPOWER",
+                    )?;
+                }
             }
             // COD, TAB and CNXA on each winding record. Revision 34 widened the
             // ratings to twelve and revision 35 added NODE after CONT.
@@ -2287,6 +2458,7 @@ fn convert_transformers(
                     let modelled = (i == controls[0]
                         && ([1.0, 2.0, 3.0, 5.0].contains(&value.abs())
                             || (value.abs() == 4.0 && kind == 0)))
+                        || (i == controls[1] && ctx.options.impedance_correction)
                         || (i == controls[2] && w.optional(controls[0], 0.0)?.abs() == 5.0);
                     if value != 0.0 && !modelled {
                         ctx.warn(w.line, true, "transformer reactive, power or impedance-correction controls and connection angles ignored; supplied tap retained")?;
@@ -2356,15 +2528,19 @@ fn convert_transformers(
                     });
                 }
                 let (f, t) = (&case.buses[buses[0]], &case.buses[buses[1]]);
-                case.branches.push(transformer_branch(
-                    r,
+                let ratio = winding(&ws[0], cw, f)?;
+                let mut branch = transformer_branch(r, &ws[0], f.id, t.id, zi, tap, status == 1)?;
+                (branch.mag_g, branch.mag_b) = mag;
+                branch.correction = correction(
                     &ws[0],
-                    f.id,
-                    t.id,
+                    controls,
+                    tables,
                     zi,
-                    tap,
-                    status == 1,
-                )?);
+                    if ratio > 0.0 { tap / ratio } else { 1.0 },
+                    ctx,
+                )?;
+                branch.correct_impedance();
+                case.branches.push(branch);
             } else {
                 let id =
                     u32::try_from(next).map_err(|_| r.error("star bus ID exceeds u32 range"))?;
@@ -2414,9 +2590,15 @@ fn convert_transformers(
                     }
                     flow_control(rev, &ws[i], controls, case.branches.len(), tap, ctx, flow)?;
                     let b = &case.buses[buses[i]];
-                    case.branches.push(transformer_branch(
-                        r, &ws[i], b.id, id, star_z[i], tap, online,
-                    )?);
+                    let mut branch =
+                        transformer_branch(r, &ws[i], b.id, id, star_z[i], tap, online)?;
+                    if i == 0 {
+                        (branch.mag_g, branch.mag_b) = mag;
+                    }
+                    // A three-winding table scales its winding's star impedance.
+                    branch.correction = correction(&ws[i], controls, tables, star_z[i], 1.0, ctx)?;
+                    branch.correct_impedance();
+                    case.branches.push(branch);
                 }
                 let b = &case.buses[buses[0]];
                 case.buses.push(Bus {

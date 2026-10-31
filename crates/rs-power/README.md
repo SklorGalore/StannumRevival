@@ -110,8 +110,10 @@ MATPOWER's `use_winding_baseV=1`, including its zero-NOMV behavior. ZIP loads ar
 frozen at the supplied bus voltage, as in MATPOWER, unless `zip_loads` is set. Switched shunts use BINIT, including offline
 records, as in MATPOWER; those in voltage control and transformer windings in
 voltage control are also listed in `RawImport::voltage_controls` (see below).
-Transformer magnetizing admittance, other tap controls, correction tables and
-wind control are ignored with warnings when present, and so is remote
+Transformer magnetizing admittance and impedance correction tables are
+ignored with warnings, as in MATPOWER, unless `magnetizing` and
+`impedance_correction` are set (see `Branch::mag_g`, `Branch::correction`).
+Other tap controls and wind control are ignored with warnings when present, and so is remote
 regulation unless `remote_regulation` is set. Unsupported equipment sections are skipped with warnings, following
 MATPOWER; ownership, zone, inter-area transfer and grouping metadata are not
 retained. Area data is kept in `RawImport::areas`, and loads whose area differs

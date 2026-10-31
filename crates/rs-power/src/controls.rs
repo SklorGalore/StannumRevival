@@ -946,6 +946,7 @@ impl<'a> Controller<'a> {
             t.before = Some((vm, t.ratio, round));
             t.ratio = next;
             case.branches[t.tap.branch].tap = t.tap.tap_per_ratio * next;
+            case.branches[t.tap.branch].correct_impedance();
             moved += 1;
         }
         moved

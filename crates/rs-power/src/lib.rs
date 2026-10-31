@@ -19,7 +19,7 @@ mod solver;
 mod vsc;
 mod vsc_grid;
 
-pub use case::{Branch, Bus, BusType, Case, Generator};
+pub use case::{Branch, Bus, BusType, Case, Generator, ImpedanceCorrection};
 pub use controls::{ShuntMode, SwitchedShunt, TapControl, VoltageControls};
 pub use dc::{LccControl, LccConverter, LccEnd, LccLine, LccMode, LccSolution};
 pub use facts::{FactsDevice, FactsSolution};
