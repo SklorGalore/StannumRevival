@@ -18,8 +18,8 @@ on. Open it with **File → History…**, **Show history** in the command palett
 drawer.
 
 Opening a case, solving, study edits, attaching DC grids or bus coordinates,
-contingencies, transfer limits, Trip and compare, Records edits and exports
-are all kept. Looking around (selecting, opening tables, drawing) isn't.
+contingencies, transfer limits, Trip and compare, Records edits, scaling and
+exports are all kept. Looking around (selecting, opening tables, drawing) isn't.
 Each line is shown as it would be written in a run file; solve settings at
 their defaults are left out.
 

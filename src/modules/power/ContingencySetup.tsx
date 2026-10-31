@@ -642,7 +642,7 @@ function BusesInput({ value, onChange }: { value: number[]; onChange: (buses: nu
   );
 }
 
-function Picks({
+export function Picks({
   title,
   options,
   names,

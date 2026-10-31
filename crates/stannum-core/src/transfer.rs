@@ -68,7 +68,7 @@ impl Subsystem {
             && (kv <= 0.0 || self.kv_max.is_none_or(|max| kv <= max))
     }
 
-    pub(crate) fn bus_ids(&self, power: &PowerCase) -> HashSet<u32> {
+    fn bus_ids(&self, power: &PowerCase) -> HashSet<u32> {
         (0..power.case.buses.len())
             .filter(|&r| self.contains(power, r))
             .map(|r| power.case.buses[r].id)

@@ -1,18 +1,6 @@
 // Generated from the core's command schemas (stannum_core::commands::schemas).
 // Don't edit: run `pwsh scripts/update-schemas.ps1` after changing a command.
 
-/** How much to scale by. */
-export type Amount = {
-  kind: "target";
-  value: number;
-} | {
-  kind: "change";
-  value: number;
-} | {
-  kind: "percent";
-  value: number;
-};
-
 export type AnalysisWire = {
   absorbed_equipment: number;
   active_buses: number;
@@ -123,6 +111,21 @@ export type BusCoordinates = {
   /** The substation the file or the case names, if any. */
   substation: (string | null)[];
   summary: CoordinatesSummary;
+};
+
+/**
+ * Which buses scale. Each list left empty lets every bus through; a bus
+ * must pass every list that isn't, and the kV range.
+ */
+export type BusFilter = {
+  areas?: number[];
+  /** Only buses at or below this base voltage, kV. */
+  kv_max?: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min?: number | null;
+  /** Owners of the buses (RAW only; MATPOWER buses have none). */
+  owners?: number[];
+  zones?: number[];
 };
 
 export type BusRef = {
@@ -912,8 +915,8 @@ export type Fingerprint = {
 };
 
 export type GenerationScaling = {
-  mw: Amount;
-  participation?: ParticipationInput;
+  mw: ScaleAmount;
+  participation?: ScaleParticipation;
   /**
    * Keep every unit between Pmin and Pmax. What the others can't take
    * is reported as a shortfall.
@@ -1068,9 +1071,6 @@ export type LoadParts = {
   q: [number, number, number];
 };
 
-/** Which parts of a load scale. */
-export type LoadPartsInput = "all" | "constant_power";
-
 export type LoadScaling = {
   /**
    * Scale each load's Mvar by the same factor as its MW, so its power
@@ -1083,10 +1083,10 @@ export type LoadScaling = {
    * Reactive power: left out, Mvar stays as it is, unless
    * `constant_power_factor` moves it with the MW.
    */
-  mvar?: Amount | null;
+  mvar?: ScaleAmount | null;
   /** Real power: left out, MW stays as it is. */
-  mw?: Amount | null;
-  parts?: LoadPartsInput;
+  mw?: ScaleAmount | null;
+  parts?: ScaleLoadParts;
 };
 
 /** How each outage is checked. */
@@ -1393,9 +1393,6 @@ export type Participation = {
   units: number;
 };
 
-/** How a generation change is shared between units. */
-export type ParticipationInput = "output" | "pmax" | "headroom";
-
 export type Path = {
   buses: number[];
   connection_ids: string[];
@@ -1602,6 +1599,24 @@ export type SampleCase = {
   title: string;
 };
 
+/** How much to scale by. */
+export type ScaleAmount = {
+  kind: "target";
+  value: number;
+} | {
+  kind: "change";
+  value: number;
+} | {
+  kind: "percent";
+  value: number;
+};
+
+/** Which parts of a load scale. */
+export type ScaleLoadParts = "all" | "constant_power";
+
+/** How a generation change is shared between units. */
+export type ScaleParticipation = "output" | "pmax" | "headroom";
+
 /** What scaling did, or would do. */
 export type ScaleReport = {
   /** How many generators ended at Pmin or Pmax. */
@@ -1610,8 +1625,8 @@ export type ScaleReport = {
   buses: number;
   /** How many loads and generators changed in all. */
   changed: number;
-  generation: Totals | null;
-  load: Totals | null;
+  generation: ScaleTotals | null;
+  load: ScaleTotals | null;
   /** Anything worth knowing, such as loads left alone. */
   notes: string[];
   /** The biggest changes first, at most [`ROWS_KEPT`] of them. */
@@ -1622,10 +1637,20 @@ export type ScaleReport = {
 
 /** What to scale and where. */
 export type ScaleSettings = {
-  /** The buses whose loads and generators scale. Empty lists mean every bus. */
-  buses?: Subsystem;
+  /** The buses whose loads and generators scale. */
+  buses?: BusFilter;
   generation?: GenerationScaling | null;
   load?: LoadScaling | null;
+};
+
+/** Totals before and after. */
+export type ScaleTotals = {
+  /** How many loads or in-service generators are at the chosen buses. */
+  count: number;
+  mvar_after: number;
+  mvar_before: number;
+  mw_after: number;
+  mw_before: number;
 };
 
 /** What `scale_load_generation` answers: what changed, and the case after. */
@@ -1895,16 +1920,6 @@ export type TopologyWire = {
   analysis: AnalysisWire;
   case: CaseWire;
   graph: GraphWire;
-};
-
-/** Totals before and after. */
-export type Totals = {
-  /** How many loads or in-service generators are at the chosen buses. */
-  count: number;
-  mvar_after: number;
-  mvar_before: number;
-  mw_after: number;
-  mw_before: number;
 };
 
 /**

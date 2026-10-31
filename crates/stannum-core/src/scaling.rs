@@ -1,7 +1,7 @@
 //! Scale load and generation in a set of buses, as PSS/E's SCAL does.
 //!
-//! The buses come from a [`Subsystem`] (areas, zones, owners, buses and a kV
-//! range). Loads and generators at those buses are scaled to a target total
+//! The buses come from a [`BusFilter`]: areas, zones, owners and a kV range,
+//! each narrowing the others. Loads and generators at those buses are scaled to a target total
 //! or by a change (MW or percent), and the new values are written into the
 //! case's records, so the change is part of the case like any Records edit:
 //! saved with it, compared by Case diff, and logged in History as one
@@ -15,7 +15,6 @@
 use crate::power::PowerCase;
 use crate::record_edit::RecordEdit;
 use crate::records::{RecordSource, RecordTable, Records};
-use crate::transfer::Subsystem;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use std::collections::{HashMap, HashSet};
@@ -23,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 /// How much to scale by.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub enum Amount {
+pub enum ScaleAmount {
     /// The total the scaled loads or generators should come to.
     Target(f64),
     /// Add this much to the total (negative lowers it).
@@ -32,13 +31,13 @@ pub enum Amount {
     Percent(f64),
 }
 
-impl Amount {
+impl ScaleAmount {
     /// The new total for a present total of `now`.
     fn total(self, now: f64) -> f64 {
         match self {
-            Amount::Target(v) => v,
-            Amount::Change(v) => now + v,
-            Amount::Percent(p) => now * (1.0 + p / 100.0),
+            ScaleAmount::Target(v) => v,
+            ScaleAmount::Change(v) => now + v,
+            ScaleAmount::Percent(p) => now * (1.0 + p / 100.0),
         }
     }
 }
@@ -48,7 +47,7 @@ impl Amount {
     Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum LoadParts {
+pub enum ScaleLoadParts {
     /// Constant power, current and admittance parts alike.
     #[default]
     All,
@@ -60,17 +59,17 @@ pub enum LoadParts {
 pub struct LoadScaling {
     /// Real power: left out, MW stays as it is.
     #[serde(default)]
-    pub mw: Option<Amount>,
+    pub mw: Option<ScaleAmount>,
     /// Reactive power: left out, Mvar stays as it is, unless
     /// `constant_power_factor` moves it with the MW.
     #[serde(default)]
-    pub mvar: Option<Amount>,
+    pub mvar: Option<ScaleAmount>,
     /// Scale each load's Mvar by the same factor as its MW, so its power
     /// factor stays the same. `mvar` is then ignored.
     #[serde(default)]
     pub constant_power_factor: bool,
     #[serde(default)]
-    pub parts: LoadParts,
+    pub parts: ScaleLoadParts,
     /// Also scale loads that draw negative MW.
     #[serde(default)]
     pub include_negative: bool,
@@ -81,7 +80,7 @@ pub struct LoadScaling {
     Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum Participation {
+pub enum ScaleParticipation {
     /// In proportion to each unit's output: every unit scales by the same
     /// factor.
     #[default]
@@ -95,25 +94,70 @@ pub enum Participation {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct GenerationScaling {
-    pub mw: Amount,
+    pub mw: ScaleAmount,
     /// Keep every unit between Pmin and Pmax. What the others can't take
     /// is reported as a shortfall.
     #[serde(default = "yes")]
     pub respect_limits: bool,
     #[serde(default)]
-    pub participation: Participation,
+    pub participation: ScaleParticipation,
 }
 
 fn yes() -> bool {
     true
 }
 
+/// Which buses scale. Each list left empty lets every bus through; a bus
+/// must pass every list that isn't, and the kV range.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
+pub struct BusFilter {
+    #[serde(default)]
+    pub areas: Vec<u32>,
+    #[serde(default)]
+    pub zones: Vec<u32>,
+    /// Owners of the buses (RAW only; MATPOWER buses have none).
+    #[serde(default)]
+    pub owners: Vec<u32>,
+    /// Only buses at or above this base voltage, kV.
+    #[serde(default)]
+    pub kv_min: Option<f64>,
+    /// Only buses at or below this base voltage, kV.
+    #[serde(default)]
+    pub kv_max: Option<f64>,
+}
+
+impl BusFilter {
+    /// The ids of the buses that pass.
+    pub fn bus_ids(&self, power: &PowerCase) -> HashSet<u32> {
+        let listed = |list: &[u32], v: u32| list.is_empty() || list.contains(&v);
+        power
+            .case
+            .buses
+            .iter()
+            .filter(|b| {
+                let kv = b.base_kv;
+                listed(&self.areas, b.area)
+                    && listed(&self.zones, b.zone)
+                    && (self.owners.is_empty()
+                        || power
+                            .bus_owners
+                            .get(&b.id)
+                            .is_some_and(|o| self.owners.contains(o)))
+                    // A bus with no base voltage passes the kV filters.
+                    && (kv <= 0.0 || self.kv_min.is_none_or(|min| kv >= min))
+                    && (kv <= 0.0 || self.kv_max.is_none_or(|max| kv <= max))
+            })
+            .map(|b| b.id)
+            .collect()
+    }
+}
+
 /// What to scale and where.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ScaleSettings {
-    /// The buses whose loads and generators scale. Empty lists mean every bus.
+    /// The buses whose loads and generators scale.
     #[serde(default)]
-    pub buses: Subsystem,
+    pub buses: BusFilter,
     #[serde(default)]
     pub load: Option<LoadScaling>,
     #[serde(default)]
@@ -122,7 +166,7 @@ pub struct ScaleSettings {
 
 /// Totals before and after.
 #[derive(Clone, Debug, Default, Serialize, PartialEq, schemars::JsonSchema)]
-pub struct Totals {
+pub struct ScaleTotals {
     /// How many loads or in-service generators are at the chosen buses.
     pub count: usize,
     pub mw_before: f64,
@@ -150,8 +194,8 @@ pub struct ScaledRow {
 pub struct ScaleReport {
     /// How many buses the filters chose.
     pub buses: usize,
-    pub load: Option<Totals>,
-    pub generation: Option<Totals>,
+    pub load: Option<ScaleTotals>,
+    pub generation: Option<ScaleTotals>,
     /// Generation MW the units couldn't take within their limits.
     pub shortfall_mw: f64,
     /// How many generators ended at Pmin or Pmax.
@@ -222,7 +266,7 @@ struct Load {
 fn loads<'a>(
     records: &'a Records,
     chosen: &HashSet<u32>,
-    parts: LoadParts,
+    parts: ScaleLoadParts,
 ) -> Result<(&'a RecordTable, Vec<Load>), String> {
     match records.source {
         RecordSource::Raw => {
@@ -234,8 +278,8 @@ fn loads<'a>(
             let pc = fields(["PL", "IP", "YP"])?;
             let qc = fields(["QL", "IQ", "YQ"])?;
             let used = match parts {
-                LoadParts::All => 3,
-                LoadParts::ConstantPower => 1,
+                ScaleLoadParts::All => 3,
+                ScaleLoadParts::ConstantPower => 1,
             };
             let mut out = Vec::new();
             for (row, r) in table.rows.iter().enumerate() {
@@ -298,7 +342,7 @@ fn loads<'a>(
 }
 
 /// The factor that takes `now` to `amount`'s total.
-fn factor(amount: Amount, now: f64, what: &str) -> Result<f64, String> {
+fn factor(amount: ScaleAmount, now: f64, what: &str) -> Result<f64, String> {
     let then = amount.total(now);
     if now.abs() < TINY {
         if then.abs() < TINY {
@@ -331,10 +375,10 @@ fn share(units: &[Unit], delta: f64, g: &GenerationScaling) -> (Vec<f64>, Vec<bo
     let mut stuck = vec![false; units.len()];
     let weight = |u: &Unit, now: f64| -> f64 {
         match g.participation {
-            Participation::Output => now.abs(),
-            Participation::Pmax => u.pmax.max(0.0),
-            Participation::Headroom if up => (u.pmax - now).max(0.0),
-            Participation::Headroom => (now - u.pmin).max(0.0),
+            ScaleParticipation::Output => now.abs(),
+            ScaleParticipation::Pmax => u.pmax.max(0.0),
+            ScaleParticipation::Headroom if up => (u.pmax - now).max(0.0),
+            ScaleParticipation::Headroom => (now - u.pmin).max(0.0),
         }
     };
     // Room left before a unit's limit in the direction of travel. Units
@@ -448,9 +492,9 @@ pub fn plan(
         let p_now = p_fixed + p_moving + kept.iter().map(|x| x.p_all).sum::<f64>();
         let q_now = q_fixed + q_moving + kept.iter().map(|x| x.q_all).sum::<f64>();
         // Targets are for every load at the chosen buses, negative ones too.
-        let to = |amount: Amount, now: f64, moving: f64, what: &str| -> Result<f64, String> {
+        let to = |amount: ScaleAmount, now: f64, moving: f64, what: &str| -> Result<f64, String> {
             let then = amount.total(now);
-            factor(Amount::Target(moving + then - now), moving, what)
+            factor(ScaleAmount::Target(moving + then - now), moving, what)
         };
         let kp = match l.mw {
             Some(a) => to(a, p_now, p_moving, "MW")?,
@@ -464,11 +508,11 @@ pub fn plan(
                 None => 1.0,
             }
         };
-        let mut totals = Totals {
+        let mut totals = ScaleTotals {
             count: scaled.len() + kept.len(),
             mw_before: p_now,
             mvar_before: q_now,
-            ..Totals::default()
+            ..ScaleTotals::default()
         };
         totals.mw_after = kept.iter().map(|x| x.p_all).sum();
         totals.mvar_after = kept.iter().map(|x| x.q_all).sum();
@@ -551,7 +595,7 @@ pub fn plan(
             && (left - (target - before)).abs() < TINY
         {
             report.notes.push(match g.participation {
-                Participation::Output => {
+                ScaleParticipation::Output => {
                     "The chosen generators produce nothing, so scaling by output can't move them: share by Pmax or headroom instead.".into()
                 }
                 _ => "The chosen generators have no room to move.".into(),
@@ -559,12 +603,12 @@ pub fn plan(
         }
         report.shortfall_mw = left;
         report.at_limit = at_limit.iter().filter(|&&a| a).count();
-        let mut totals = Totals {
+        let mut totals = ScaleTotals {
             count: units.len(),
             mw_before: before,
             mw_after: after.iter().sum(),
             mvar_before: units.iter().map(|u| u.qg).sum(),
-            ..Totals::default()
+            ..ScaleTotals::default()
         };
         totals.mvar_after = totals.mvar_before;
         if units.is_empty() {
@@ -625,9 +669,9 @@ mod tests {
     }
 
     fn generation(
-        mw: Amount,
+        mw: ScaleAmount,
         respect_limits: bool,
-        participation: Participation,
+        participation: ScaleParticipation,
     ) -> GenerationScaling {
         GenerationScaling {
             mw,
@@ -638,15 +682,15 @@ mod tests {
 
     #[test]
     fn amounts() {
-        assert_eq!(Amount::Target(50.0).total(80.0), 50.0);
-        assert_eq!(Amount::Change(-5.0).total(80.0), 75.0);
-        assert!((Amount::Percent(10.0).total(80.0) - 88.0).abs() < 1e-12);
+        assert_eq!(ScaleAmount::Target(50.0).total(80.0), 50.0);
+        assert_eq!(ScaleAmount::Change(-5.0).total(80.0), 75.0);
+        assert!((ScaleAmount::Percent(10.0).total(80.0) - 88.0).abs() < 1e-12);
     }
 
     #[test]
     fn output_scaling_is_one_factor() {
         let units = [unit(50.0, 0.0, 200.0), unit(100.0, 0.0, 200.0)];
-        let g = generation(Amount::Change(30.0), true, Participation::Output);
+        let g = generation(ScaleAmount::Change(30.0), true, ScaleParticipation::Output);
         let (pg, _, left) = share(&units, 30.0, &g);
         assert!((pg[0] - 60.0).abs() < 1e-9 && (pg[1] - 120.0).abs() < 1e-9);
         assert!(left.abs() < 1e-9);
@@ -656,7 +700,7 @@ mod tests {
     fn limits_pass_the_rest_on() {
         // The first unit can only take 10 MW; the second takes the rest.
         let units = [unit(90.0, 0.0, 100.0), unit(90.0, 0.0, 300.0)];
-        let g = generation(Amount::Change(60.0), true, Participation::Output);
+        let g = generation(ScaleAmount::Change(60.0), true, ScaleParticipation::Output);
         let (pg, at, left) = share(&units, 60.0, &g);
         assert!((pg[0] - 100.0).abs() < 1e-9, "{pg:?}");
         assert!((pg[1] - 140.0).abs() < 1e-9, "{pg:?}");
@@ -667,7 +711,11 @@ mod tests {
     #[test]
     fn shortfall_when_everyone_is_full() {
         let units = [unit(90.0, 0.0, 100.0), unit(50.0, 0.0, 60.0)];
-        let g = generation(Amount::Change(50.0), true, Participation::Headroom);
+        let g = generation(
+            ScaleAmount::Change(50.0),
+            true,
+            ScaleParticipation::Headroom,
+        );
         let (pg, _, left) = share(&units, 50.0, &g);
         assert_eq!(pg, vec![100.0, 60.0]);
         assert!((left - 30.0).abs() < 1e-9);
@@ -676,7 +724,7 @@ mod tests {
     #[test]
     fn ignoring_limits_goes_past_pmax() {
         let units = [unit(90.0, 0.0, 100.0)];
-        let g = generation(Amount::Change(50.0), false, Participation::Output);
+        let g = generation(ScaleAmount::Change(50.0), false, ScaleParticipation::Output);
         let (pg, at, left) = share(&units, 50.0, &g);
         assert_eq!(pg, vec![140.0]);
         assert_eq!(at, vec![false]);
@@ -686,7 +734,7 @@ mod tests {
     #[test]
     fn going_down_stops_at_pmin() {
         let units = [unit(50.0, 40.0, 100.0), unit(50.0, 0.0, 100.0)];
-        let g = generation(Amount::Change(-40.0), true, Participation::Output);
+        let g = generation(ScaleAmount::Change(-40.0), true, ScaleParticipation::Output);
         let (pg, at, left) = share(&units, -40.0, &g);
         assert!((pg[0] - 40.0).abs() < 1e-9, "{pg:?}");
         assert!((pg[1] - 20.0).abs() < 1e-9, "{pg:?}");

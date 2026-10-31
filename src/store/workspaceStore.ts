@@ -2,6 +2,7 @@ import { useLog } from "./logStore";
 import { create } from "zustand";
 import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
+import type { ScaleReport, ScaleSettings } from "../lib/analysis/commands.gen";
 import { addRecent } from "../lib/study/recent";
 import { confirmDialog } from "../lib/tauri/commands";
 
@@ -117,6 +118,8 @@ interface WorkspaceState {
   editedVersion: number;
   /** Write cell edits from Records into the case; every module reloads it. Throws when an edit is refused. */
   applyRecordEdits: (edits: RecordEdit[]) => Promise<void>;
+  /** Scale load and generation into the case's records, like Records edits. */
+  scaleLoadGeneration: (settings: ScaleSettings) => Promise<ScaleReport>;
   /** Save the edited case to a new file, which then becomes the open case. */
   saveCaseAs: () => Promise<boolean>;
   /**
@@ -262,6 +265,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   editedVersion: -1,
+  scaleLoadGeneration: async (settings) => {
+    const { report, case: summary } = await api.scaleLoadGeneration(settings);
+    if (report.changed > 0)
+      set((s) => ({
+        caseSummary: summary,
+        caseVersion: s.caseVersion + 1,
+        editedVersion: s.caseVersion + 1,
+        solveReport: null,
+        shown: null,
+        drawRequest: null,
+      }));
+    return report;
+  },
   applyRecordEdits: async (edits) => {
     const summary = await api.applyRecordEdits(edits);
     set((s) => ({

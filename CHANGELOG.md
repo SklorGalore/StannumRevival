@@ -10,6 +10,15 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Scaling wizard.** Analysis → Scale load and generation… (also in
+  Ctrl+K) scales load and generation at the buses of chosen areas, zones,
+  owners and kV range, to a target total or by a change in MW or percent.
+  Load MW and Mvar scale together at constant power factor or separately;
+  generators share the change by output, Pmax or room to move, within Pmin
+  and Pmax or ignoring them. A live preview lists the totals and every
+  change first, and the result is written into the case's records, so
+  History keeps it as one `scale_load_generation` line
+  ([guide](https://sklorgalore.github.io/StannumRevival/guide/scaling/)).
 - **Verification tables.** The [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
   page now shows, for every solver, the largest difference from its
   reference and the limit the test allows: power flow and RAW import

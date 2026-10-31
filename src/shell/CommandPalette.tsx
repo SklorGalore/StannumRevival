@@ -31,6 +31,7 @@ import {
   Play,
   Search,
   Sheet,
+  Scale,
   Sigma,
   ListChecks,
   Sun,
@@ -55,6 +56,7 @@ import { centreBus } from "../ui/DrawAround";
 import { useShortcuts } from "./ShortcutsDialog";
 import { knownSampleCases } from "../ui/SampleCases";
 import { saveCaseAs } from "./appMenus";
+import { openScaling } from "../modules/power/ScaleDialog";
 
 export interface Command {
   id: string;
@@ -154,7 +156,14 @@ export function paletteCommands(): Command[] {
   if (summary?.power.available)
     list.push(
       { id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve },
-      { id: "sensitivities", title: "Calculate sensitivities", icon: <Sigma size={14} />, keywords: "ptdf lodf shift factors distribution", run: w.requestSensitivities }
+      { id: "sensitivities", title: "Calculate sensitivities", icon: <Sigma size={14} />, keywords: "ptdf lodf shift factors distribution", run: w.requestSensitivities },
+      {
+        id: "scale",
+        title: "Scale load and generation…",
+        icon: <Scale size={14} />,
+        keywords: "scale scaling load generation demand mw mvar percent target increment area zone owner kv power factor pmax scal wizard",
+        run: openScaling,
+      }
     );
   if (w.solveReport)
     list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });

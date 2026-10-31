@@ -54,6 +54,9 @@ import type {
   Rating,
   RunReport,
   SampleCase,
+  ScaleReport,
+  ScaleSettings,
+  Scaled,
   Step,
   TransferResults,
   TransferSettings,
@@ -143,6 +146,11 @@ const LOG_LABELS: Record<
   apply_record_edits: {
     label: "Applying record edits",
     done: "Applied record edits",
+  },
+  scale_preview: { label: "Working out the scaling", quiet: true },
+  scale_load_generation: {
+    label: "Scaling load and generation",
+    done: "Scaled load and generation",
   },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
@@ -516,6 +524,10 @@ export const api = {
     call("apply_record_edits", { edits }),
   saveCaseAs: (path: string): Promise<CaseSummary> =>
     call("save_case_as", { path }),
+  scalePreview: (settings: ScaleSettings): Promise<ScaleReport> =>
+    call("scale_preview", { settings }),
+  scaleLoadGeneration: (settings: ScaleSettings): Promise<Scaled> =>
+    call("scale_load_generation", { settings }),
 
   readTextFile: (path: string) => shell<string>("load_diagram", { path }),
   writeTextFile: (path: string, content: string) =>

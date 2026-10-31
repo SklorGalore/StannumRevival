@@ -129,7 +129,7 @@ export function answerUi(command: string, args: unknown): { ok: unknown } | { er
 /** Commands that leave a different case (or the same one reopened). */
 const CASE_CHANGES = new Set(["open_case", "open_sample", "close_case", "run_file"]);
 /** Commands that change what the case holds but keep its study. */
-const CASE_EDITS = new Set(["apply_record_edits"]);
+const CASE_EDITS = new Set(["apply_record_edits", "scale_load_generation"]);
 /** Commands that change the case summary's attachments or path. */
 const SUMMARY_CHANGES = new Set(["load_dc_grids", "clear_dc_grids", "load_coordinates", "clear_coordinates", "save_case_as"]);
 
@@ -157,8 +157,10 @@ export async function catchUp(command: string, args: Record<string, unknown>, an
     return;
   }
   if (CASE_EDITS.has(command)) {
+    // Scaling answers with its report and the case after it.
+    const summary = command === "scale_load_generation" ? (answer as { case: unknown }).case : answer;
     useWorkspace.setState((s) => ({
-      caseSummary: answer as typeof s.caseSummary,
+      caseSummary: summary as typeof s.caseSummary,
       caseVersion: s.caseVersion + 1,
       editedVersion: s.caseVersion + 1,
       solveReport: null,

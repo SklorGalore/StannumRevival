@@ -179,6 +179,25 @@ fn matpower_loads_scale_on_the_bus_table() {
 }
 
 #[test]
+fn filters_narrow_each_other() {
+    let s = open("five_bus.raw");
+    // Area 1 and 69 kV: buses 4 only (bus 5 is area 2).
+    let report = call(
+        &s,
+        "scale_preview",
+        json!({ "settings": {
+            "buses": { "areas": [1], "kv_max": 69.0 },
+            "load": { "mw": { "kind": "change", "value": 4.0 } },
+        } }),
+    );
+    assert_eq!(report["buses"], 1, "{report}");
+    assert!(
+        near(report["load"]["mw_after"].as_f64().unwrap(), 44.0),
+        "{report}"
+    );
+}
+
+#[test]
 fn nothing_chosen_is_an_error() {
     let s = open("five_bus.raw");
     let e = s

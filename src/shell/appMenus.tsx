@@ -15,6 +15,7 @@ import { MODULES } from "./ModuleRail";
 import { recentFiles } from "../lib/study/recent";
 import { knownSampleCases } from "../ui/SampleCases";
 import { saveDiagnostics } from "../lib/diagnostics/save";
+import { openScaling } from "../modules/power/ScaleDialog";
 
 export const DOCS_URL = "https://sklorgalore.github.io/StannumRevival/";
 
@@ -197,6 +198,10 @@ function analysisMenu(): MenuEntry[] {
       title: w.solveReport ? undefined : "Solve the case first",
     }),
     sep,
+    item("scale", "Scale load and generation…", openScaling, {
+      disabled: !power,
+      title: power ? "Scale load and generation by area, zone, owner and kV" : why,
+    }),
     item("study", "Study edits", () => w.showPowerTab("study"), { disabled: !power }),
   ];
 }
