@@ -997,6 +997,12 @@ commands! {
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
 
+    /// Write every violation of the last run to a CSV file, one line each:
+    /// branch overloads, bus voltages and interfaces, and a line for each
+    /// outage whose AC solve failed.
+    export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
+        |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
+
     /// Take one element out of the last AC solve and solve again. Loadings
     /// are measured against `rating` after the trip and `base_rating`
     /// before it (both rate A when left out).

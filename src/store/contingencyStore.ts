@@ -46,6 +46,10 @@ export interface ContingencyChoice {
   method: ContingencyMethod;
   acCount: number;
   limitPct: number;
+  /** Points an overload already there before the outage must gain to be reported. */
+  worseByPct: number;
+  /** Report every problem after the outage, also those already there before it. */
+  reportExisting: boolean;
   /** The rating loadings are measured against after an outage, and before. */
   rating: Rating;
   baseRating: Rating;
@@ -67,6 +71,8 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   method: "screen",
   acCount: 50,
   limitPct: 100,
+  worseByPct: 1,
+  reportExisting: false,
   rating: "a",
   baseRating: "a",
 };
@@ -164,6 +170,8 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,
+        worse_by_pct: c.worseByPct,
+        report_existing: c.reportExisting,
         rating: c.rating,
         base_rating: c.baseRating,
         solve: { ...solve, model: "ac" },

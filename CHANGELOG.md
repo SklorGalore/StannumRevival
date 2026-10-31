@@ -10,6 +10,16 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Every contingency violation in one CSV.** The Contingencies tab's
+  **Export CSV** can now save every violation: one line per overload,
+  voltage problem and interface violation of every outage, written by the
+  core straight to the file (command `export_contingency_violations`), as
+  well as the one-row-per-outage table. How much worse a problem already
+  there before the outage must get to count is now a setting (**Worse by**,
+  `worse_by_pct` and `worse_by_pu`; 1 point and 0.001 p.u. as before), and
+  **Include existing** (`report_existing`) reports every problem after the
+  outage. Each overload now carries the limit it was judged against.
+
 - **Transformer magnetizing and impedance correction tables.** RAW cases'
   magnetizing admittance (`MAG1`, `MAG2`, either `CM`) now draws at the
   winding one bus, and impedance correction tables (`TAB1`–`TAB3`) scale a
