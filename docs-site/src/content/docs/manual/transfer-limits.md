@@ -11,8 +11,11 @@ the converged AC solution of the case with the study's edits, and adds a
 linear (DC) transfer on top, as PSS/E's DFAX and TLTG do.
 
 The study runs from [run files](/StannumRevival/guide/run-files/) and the
-command registry (`run_transfer_limits`) for now; the app module, Python and
-the MCP server follow.
+command registry (`run_transfer_limits`),
+[Python](/StannumRevival/guide/python/#transfer-limits)
+(`Case.transfer_limits`) and the
+[MCP server](/StannumRevival/guide/ai-assistants/) (`transfer_limits`); the
+app module follows.
 
 ## The transfer
 

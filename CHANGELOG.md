@@ -16,8 +16,9 @@ section into the next version's when a release is cut (see
   transfer at which a monitored branch or interface reaches its rating, in
   the base case or after each contingency, from linear PTDFs and OTDFs on
   top of the AC solve. It also reports the generation limit of each side.
-  Runs from run files (`run_transfer_limits`) for now; the app module,
-  Python and MCP follow.
+  Runs from run files (`run_transfer_limits`), Python
+  (`Case.transfer_limits`) and the MCP server (`transfer_limits`); the app
+  module follows.
 - **Your own contingency list.** Contingencies can run from a `.stnl`
   lists file (preview): its named contingencies (`open` and `trip_bus`
   events) and its `contingency_set` rules for single branches, generators,

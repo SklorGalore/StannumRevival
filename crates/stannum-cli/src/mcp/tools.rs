@@ -180,6 +180,17 @@ const TOOLS: &[Tool] = &[
         app: false,
         run: trip_and_compare,
     },
+    // Transfer limits
+    Tool {
+        name: "transfer_limits",
+        title: "Transfer limits (DFAX, FCITC)",
+        description: "How many MW can move from a `source` subsystem to a `sink` (areas, zones, owners, buses, kV) before a monitored branch or interface reaches its rating, in the base case and after each contingency (`contingencies: {}` for every branch outage): the first change of total transfer capability (FCITC), from linear PTDFs and OTDFs on the AC solve. Solve with the AC model first. Answers the summary (FCITC, the limiting element and contingency, generation limit, notes) and the lowest limits, elements already past their limit, each contingency's worst limit and the largest PTDFs, `max_rows` each (default 20).",
+        input: transfer_input,
+        read_only: false,
+        destructive: false,
+        app: false,
+        run: transfer_limits,
+    },
     // Topology
     Tool {
         name: "topology_summary",
@@ -562,6 +573,13 @@ fn contingencies_input() -> Value {
         "type": "object",
         "description": "How each outage is solved: the same settings as solve_power_flow's `settings`, defaults for any left out.",
     });
+    schema
+}
+
+fn transfer_input() -> Value {
+    let mut schema = core_schema("TransferSettings", false);
+    schema["properties"]["max_rows"]["description"] =
+        json!("Most rows in each list (default 20 here).");
     schema
 }
 
@@ -1222,6 +1240,69 @@ fn run_contingencies(c: &Call, args: &Value) -> Answer {
             json!("query_contingencies pages the ranked results; contingency_detail shows one.");
     }
     Ok(out)
+}
+
+fn transfer_limits(c: &Call, args: &Value) -> Answer {
+    let mut settings = args.clone();
+    if settings.get("max_rows").is_none() {
+        settings["max_rows"] = json!(20);
+    }
+    let stop = AtomicBool::new(false);
+    let r = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = usize::MAX;
+            while !stop.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(p) = c.backend.side("transfer_progress") else {
+                    continue;
+                };
+                let done = p["done"].as_u64().unwrap_or(0) as usize;
+                if p["phase"] == "idle" || done == last {
+                    continue;
+                }
+                let total = p["total"].as_u64().unwrap_or(0);
+                (c.progress)(
+                    done as f64,
+                    Some(total as f64),
+                    &format!("cases studied: {done} of {total}"),
+                );
+                last = done;
+            }
+        });
+        let _follow = Follow { stop: &stop };
+        c.backend
+            .call("run_transfer_limits", json!({ "settings": settings }))
+    })?;
+    let rows = |key: &str, lead: &[&str]| {
+        let mut rows = Rows::from_records(r[key].as_array().map(Vec::as_slice).unwrap_or(&[]));
+        rows.lead(lead);
+        rows.to_json()
+    };
+    let limit_cols = [
+        "monitored",
+        "contingency",
+        "fcitc_mw",
+        "flow_mw",
+        "limit_mw",
+        "factor",
+    ];
+    let mut summary = r["summary"].clone();
+    if let Some(o) = summary.as_object_mut() {
+        o.remove("elapsed_ms");
+    }
+    if c.cancelled.load(Ordering::SeqCst) || summary["cancelled"].as_bool() == Some(true) {
+        summary["note"] = json!("Cancelled: these are the cases studied before it stopped.");
+    }
+    Ok(json!({
+        "summary": summary,
+        "limits": rows("limits", &limit_cols),
+        "past_limits": rows("past_limits", &limit_cols),
+        "contingencies": rows("contingencies", &["contingency", "fcitc_mw", "monitored", "factor"]),
+        "factors": rows("factors", &["monitored", "ptdf", "flow_mw", "limit_mw"]),
+    }))
 }
 
 fn planning_counts(c: &Call, args: &Value) -> Answer {

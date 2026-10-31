@@ -181,6 +181,15 @@ fn a_client_opens_solves_and_reads_a_case() {
         .tool("run_contingencies", json!({ "method": "ac" }))
         .unwrap();
     assert_eq!(run["total"], 12, "{run}");
+    let transfer = c
+        .tool(
+            "transfer_limits",
+            json!({ "source": { "buses": [2] }, "sink": { "buses": [3] }, "contingencies": {}, "max_rows": 3 }),
+        )
+        .unwrap();
+    assert!(transfer["summary"]["fcitc_mw"].is_number(), "{transfer}");
+    assert!(transfer["limits"]["rows"].as_array().unwrap().len() <= 3);
+    assert_eq!(transfer["limits"]["columns"][0], "monitored", "{transfer}");
     let worst = c
         .tool("contingency_detail", json!({ "rank": 1, "limit": 3 }))
         .unwrap();
