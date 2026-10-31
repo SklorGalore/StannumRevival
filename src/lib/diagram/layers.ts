@@ -5,6 +5,7 @@
 // flow's Contingencies tab.
 import type { ContingencyDetail, SolveReport, TopoPath, TopologySnapshot } from "../analysis/types";
 import { elementLabel } from "../elements";
+import { ratingLabel, type Rating } from "../analysis/ratings";
 import { createColorPresentation, type ColorSettings } from "../../modules/topology/fields/field-colors";
 import { matchesBus, matchesEquipment, type FilterRule } from "../../modules/topology/fields/field-view";
 
@@ -102,7 +103,7 @@ export interface LayerInput {
   rules: FilterRule[];
   colors: ColorSettings;
   /** The outage open in the Contingencies tab, while shown on the diagram. */
-  contingency?: { detail: ContingencyDetail; limitPct: number } | null;
+  contingency?: { detail: ContingencyDetail; limitPct: number; rating?: Rating } | null;
   results?: ResultInput | null;
 }
 
@@ -146,7 +147,7 @@ export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput):
   } else if (id === "results" && input.results) {
     resultMarks(input.results, marks, legend);
   } else if (id === "contingency" && input.contingency) {
-    contingencyMarks(input.contingency.detail, input.contingency.limitPct, marks, legend);
+    contingencyMarks(input.contingency.detail, input.contingency.limitPct, input.contingency.rating ?? "a", marks, legend);
   } else if (id === "fields") {
     const rules = input.rules;
     if (rules.length) {
@@ -178,7 +179,7 @@ export function layerMarks(id: LayerId, s: TopologySnapshot, input: LayerInput):
 const MOVED_MW = 5;
 
 /** The outage, what it overloads, and where flow moved: drawn on the diagram. */
-function contingencyMarks(d: ContingencyDetail, limit: number, marks: LayerMarks, legend: LegendEntry[]) {
+function contingencyMarks(d: ContingencyDetail, limit: number, rating: Rating, marks: LayerMarks, legend: LegendEntry[]) {
   const outage = d.row.element;
   const cut = new Set(d.cut_off);
   for (const bus of d.cut_off) put(marks.buses, bus, { dim: true, note: "Split off by the outage" });
@@ -187,7 +188,7 @@ function contingencyMarks(d: ContingencyDetail, limit: number, marks: LayerMarks
   for (const b of d.branches) {
     const delta = b.mw - b.base_mw;
     if (b.tripped || cut.has(b.from) || cut.has(b.to)) continue;
-    const pct = b.pct === null ? "" : `, ${b.pct.toFixed(0)}% of rate A (was ${b.base_pct?.toFixed(0) ?? "—"}%)`;
+    const pct = b.pct === null ? "" : `, ${b.pct.toFixed(0)}% of ${ratingLabel(rating)} (was ${b.base_pct?.toFixed(0) ?? "—"}%)`;
     const note = `After ${elementLabel(outage)}: ${b.mw.toFixed(1)} MW (${delta >= 0 ? "+" : ""}${delta.toFixed(1)})${pct}`;
     if (b.pct !== null && b.pct > limit && (b.base_pct === null || b.base_pct <= limit || b.pct > b.base_pct + 1)) {
       put(marks.elements, b.element, { color: LAYER_COLORS.overload, bold: true, note });

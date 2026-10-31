@@ -11,6 +11,7 @@ import { api, saveTextExport } from "../../lib/analysis/api";
 import type { CategoryCount, ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
+import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
 import { Button, EmptyState, ErrorBanner, Metric, Notice, SearchBox, inputClass } from "../../ui/primitives";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
@@ -58,7 +59,7 @@ export function outcome(r: ContingencyRow): string {
   return "No new problems";
 }
 
-function columns(limit: number, planning: boolean): Column<ContingencyRow>[] {
+function columns(limit: number, planning: boolean, rating: Rating, baseRating: Rating): Column<ContingencyRow>[] {
   const category: Column<ContingencyRow>[] = planning
     ? [
         {
@@ -114,7 +115,7 @@ function columns(limit: number, planning: boolean): Column<ContingencyRow>[] {
       key: "pct",
       sortField: "worst.pct",
       header: "Loading",
-      title: "MVA as a percent of rate A after the outage",
+      title: `MVA as a percent of ${ratingLabel(rating)} after the outage`,
       value: (r) => r.worst?.pct ?? null,
       render: (r) =>
         r.worst ? (
@@ -132,7 +133,7 @@ function columns(limit: number, planning: boolean): Column<ContingencyRow>[] {
       key: "was",
       sortField: "worst.base_pct",
       header: "Before",
-      title: "The same branch's loading before the outage",
+      title: `The same branch's loading before the outage, as a percent of ${ratingLabel(baseRating)}`,
       value: (r) => r.worst?.base_pct ?? null,
       render: (r) => <span className="text-slate-500">{fixed(r.worst?.base_pct, 1)}</span>,
       align: "right",
@@ -197,12 +198,14 @@ function OutagePanel({
   detail,
   row,
   limit,
+  rating,
   onPick,
   onClose,
 }: {
   detail: ContingencyDetail | null;
   row: ContingencyRow;
   limit: number;
+  rating: Rating;
   onPick: (element: string) => void;
   onClose: () => void;
 }) {
@@ -270,7 +273,7 @@ function OutagePanel({
           <p className="px-3 py-2 text-slate-500">Solving the outage…</p>
         ) : (
           <>
-            <Section title={`Overloads above ${fixed(limit, 0)}% (${detail.overloads.length})`}>
+            <Section title={`Overloads above ${fixed(limit, 0)}% of ${ratingLabel(rating)} (${detail.overloads.length})`}>
               {detail.overloads.length === 0 ? (
                 <p className="text-slate-500">No branch goes over the limit, or gets worse than it was.</p>
               ) : (
@@ -394,7 +397,12 @@ export function ContingencyTab({
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [category, setCategory] = useState("");
   const planned = !!s.summary && s.summary.categories.length > 0;
-  const cols = useMemo(() => columns(s.summary?.limit_pct ?? s.choice.limitPct, planned), [s.summary, s.choice.limitPct, planned]);
+  const shownRating = s.summary?.rating ?? s.choice.rating;
+  const shownBase = s.summary?.base_rating ?? s.choice.baseRating;
+  const cols = useMemo(
+    () => columns(s.summary?.limit_pct ?? s.choice.limitPct, planned, shownRating, shownBase),
+    [s.summary, s.choice.limitPct, planned, shownRating, shownBase]
+  );
   const planning = s.choice.source === "planning";
   // Planning event counts, for the categories to pick from.
   const loadCounts = s.loadCounts;
@@ -557,7 +565,41 @@ export function ContingencyTab({
           </label>
         )}
         <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Overloaded above (% of rate A)
+          Base case rating
+          <select
+            className={inputClass}
+            value={s.choice.baseRating}
+            onChange={(e) => s.setChoice({ baseRating: e.target.value as Rating })}
+            aria-label="Base case rating"
+            title="The rating for loadings before an outage, and for the base case (P0)"
+            data-testid="base-rating"
+          >
+            {RATINGS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label} ({r.hint})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
+          Contingency rating
+          <select
+            className={inputClass}
+            value={s.choice.rating}
+            onChange={(e) => s.setChoice({ rating: e.target.value as Rating })}
+            aria-label="Contingency rating"
+            title="The rating for loadings after an outage"
+            data-testid="contingency-rating"
+          >
+            {RATINGS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label} ({r.hint})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
+          Overloaded above (%)
           <input
             className={`${inputClass} w-20`}
             type="number"
@@ -641,7 +683,7 @@ export function ContingencyTab({
               label="Cause overloads"
               value={count(summary.with_overloads)}
               tone={summary.with_overloads ? "bad" : "good"}
-              detail={summary.worst?.worst && summary.worst.overloads ? `Worst ${fixed(summary.worst.worst.pct, 0)}%` : `Above ${fixed(summary.limit_pct, 0)}% of rate A`}
+              detail={summary.worst?.worst && summary.worst.overloads ? `Worst ${fixed(summary.worst.worst.pct, 0)}%` : `Above ${fixed(summary.limit_pct, 0)}% of ${ratingLabel(summary.rating)}`}
             />
             <Metric
               label="Voltage problems"
@@ -731,6 +773,7 @@ export function ContingencyTab({
                 row={openRow}
                 detail={s.detail?.row.rank === openRow.rank ? s.detail : null}
                 limit={summary.limit_pct}
+                rating={summary.rating}
                 onPick={onPick}
                 onClose={() => void s.openRow(null)}
               />

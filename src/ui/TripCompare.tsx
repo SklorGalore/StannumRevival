@@ -9,6 +9,7 @@ import { useLayers } from "../store/layerStore";
 import { useStudy } from "../store/studyStore";
 import { elementLabel, parseElement } from "../lib/elements";
 import { fixed } from "../lib/analysis/format";
+import { ratingLabel } from "../lib/analysis/ratings";
 
 /** Whether an element can be tripped: a branch or generator, with a converged AC solve to start from. */
 function useCanTrip(element: string): boolean {
@@ -63,6 +64,7 @@ export function TripOutcome({ element, onPick }: { element: string; onPick: (ele
   const open = useContingencies((s) => s.open);
   const setOnDiagram = useContingencies((s) => s.setOnDiagram);
   const limit = useContingencies((s) => s.choice.limitPct);
+  const rating = useContingencies((s) => s.choice.rating);
   const add = useStudy((s) => s.add);
   if (!detail || !onDiagram || open !== null || detail.row.element !== element) return null;
   const row = detail.row;
@@ -74,8 +76,8 @@ export function TripOutcome({ element, onPick }: { element: string; onPick: (ele
       {row.note && <p className="text-amber-800">{row.note}</p>}
       <p className="mt-1">
         {detail.overloads.length === 0
-          ? `No branch goes over ${fixed(limit, 0)}% of rate A, or gets worse.`
-          : `${detail.overloads.length} branch${detail.overloads.length === 1 ? "" : "es"} over ${fixed(limit, 0)}%, new or worse:`}
+          ? `No branch goes over ${fixed(limit, 0)}% of ${ratingLabel(rating)}, or gets worse.`
+          : `${detail.overloads.length} branch${detail.overloads.length === 1 ? "" : "es"} over ${fixed(limit, 0)}% of ${ratingLabel(rating)}, new or worse:`}
       </p>
       {detail.overloads.length > 0 && (
         <ul className="mt-0.5">

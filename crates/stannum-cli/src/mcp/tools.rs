@@ -587,7 +587,9 @@ fn trip_input() -> Value {
     object(
         json!({
             "element": { "type": "string", "description": "Branch or generator id, such as line:4:5:1." },
-            "limit_pct": { "type": "number", "description": "Loading, percent of rate A, above which a branch is overloaded (default 100)." },
+            "limit_pct": { "type": "number", "description": "Loading, percent of the rating, above which a branch is overloaded (default 100)." },
+            "rating": { "type": "string", "enum": ["a", "b", "c"], "description": "The rating loadings are measured against after the trip (default a: rate A)." },
+            "base_rating": { "type": "string", "enum": ["a", "b", "c"], "description": "The rating for loadings before the trip (default a: rate A)." },
             "limit": { "type": "integer", "minimum": 1, "maximum": MAX_ROWS, "description": "Most changed branches and buses to list (default 20)." },
         }),
         &["element"],
@@ -1296,6 +1298,8 @@ fn trip_and_compare(c: &Call, args: &Value) -> Answer {
         json!({
             "element": text(args, "element")?,
             "limitPct": args["limit_pct"].as_f64().unwrap_or(100.0),
+            "rating": args["rating"].as_str().unwrap_or("a"),
+            "baseRating": args["base_rating"].as_str().unwrap_or("a"),
         }),
     )?;
     Ok(detail_answer(&d, count(args, "limit", 20) as usize))

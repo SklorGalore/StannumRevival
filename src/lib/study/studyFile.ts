@@ -38,7 +38,16 @@ export interface StudyFile {
   edits: { edit: StudyEdit; was?: string }[];
   solves: { name: string; entries: { edit: StudyEdit; was?: string }[]; report: SolveReport }[];
   compare: { a: StudyCompareSide; b: StudyCompareSide } | null;
-  contingencies: { branches: boolean; generators: boolean; method: "screen" | "ac"; acCount: number; limitPct: number };
+  contingencies: {
+    branches: boolean;
+    generators: boolean;
+    method: "screen" | "ac";
+    acCount: number;
+    limitPct: number;
+    /** Missing from studies saved before 1.1, which used rate A. */
+    rating?: "a" | "b" | "c";
+    baseRating?: "a" | "b" | "c";
+  };
   /** The one-line drawing, when there is one. */
   diagram: SLDDiagram | null;
   view: { module: ModuleId; split: ModuleId | null; splitRatio: number };

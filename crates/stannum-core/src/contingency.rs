@@ -33,6 +33,32 @@ pub enum Method {
     Ac,
 }
 
+/// Which of a branch's three ratings a loading is measured against.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Rating {
+    /// Rate A (RAW RATE1): normal, long-term.
+    #[default]
+    A,
+    /// Rate B (RAW RATE2): short-term, often the post-contingency rating.
+    B,
+    /// Rate C (RAW RATE3): emergency.
+    C,
+}
+
+impl Rating {
+    /// The branch's rating in MVA; zero means unrated.
+    pub fn of(self, b: &rs_power::Branch) -> f64 {
+        match self {
+            Rating::A => b.rate_a,
+            Rating::B => b.rate_b,
+            Rating::C => b.rate_c,
+        }
+    }
+}
+
 fn yes() -> bool {
     true
 }
@@ -59,9 +85,17 @@ pub struct ContingencySettings {
     /// How many of the worst screened outages get an AC solve.
     #[serde(default = "default_ac_count")]
     pub ac_count: usize,
-    /// Loading, as a percent of rate A, above which a branch is overloaded.
+    /// Loading, as a percent of the rating, above which a branch is
+    /// overloaded.
     #[serde(default = "default_limit")]
     pub limit_pct: f64,
+    /// The rating loadings are measured against after an outage.
+    #[serde(default)]
+    pub rating: Rating,
+    /// The rating for the base case: its loadings (the "before" figures)
+    /// and the P0 event.
+    #[serde(default)]
+    pub base_rating: Rating,
     #[serde(default)]
     pub solve: SolveSettings,
     /// Run these NERC TPL-001 planning events instead of every branch and
@@ -79,6 +113,8 @@ impl Default for ContingencySettings {
             method: Method::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
+            rating: Rating::default(),
+            base_rating: Rating::default(),
             solve: SolveSettings::default(),
             planning: None,
         }
@@ -91,7 +127,8 @@ pub struct Overload {
     pub element: String,
     pub from: u32,
     pub to: u32,
-    /// MVA as a percent of rate A, after the outage and before it.
+    /// MVA as a percent of the run's rating after the outage, and of its
+    /// base rating before it.
     pub pct: f64,
     pub base_pct: f64,
     /// Active flow at the from end, MW, after and before.
@@ -158,6 +195,10 @@ pub struct ContingencyRow {
 pub struct ContingencySummary {
     pub method: Option<Method>,
     pub limit_pct: f64,
+    /// The ratings loadings were measured against, after outages and in
+    /// the base case.
+    pub rating: Rating,
+    pub base_rating: Rating,
     /// Outages run, and in-service checks skipped because the element was
     /// already out.
     pub total: usize,
@@ -197,7 +238,8 @@ pub struct BranchChange {
     pub to: u32,
     pub mw: f64,
     pub base_mw: f64,
-    /// Percent of rate A, after and before; `None` when unrated.
+    /// Percent of the run's rating after, and of its base rating before;
+    /// `None` when unrated.
     pub pct: Option<f64>,
     pub base_pct: Option<f64>,
     pub tripped: bool,
@@ -463,7 +505,7 @@ impl ContingencyJob {
     pub fn run(self) -> Result<ContingencyResults, String> {
         let handle = &self.handle;
         let start = Instant::now();
-        let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+        let context = Context::new(&self.power, &self.base, &self.settings)?;
         let n = self.outages.len();
 
         handle.set_phase(1, n);
@@ -535,6 +577,8 @@ impl ContingencyJob {
         let summary = ContingencySummary {
             method: Some(self.settings.method),
             limit_pct: self.settings.limit_pct,
+            rating: self.settings.rating,
+            base_rating: self.settings.base_rating,
             total: ranked.len(),
             already_out: self.already_out,
             ac_checked,
@@ -686,6 +730,8 @@ struct Context<'a> {
     base: &'a PowerFlowResult,
     factors: DcFactors,
     limit_pct: f64,
+    rating: Rating,
+    base_rating: Rating,
     /// Base flows at the from and to ends.
     pf: Vec<f64>,
     qf: Vec<f64>,
@@ -721,8 +767,9 @@ impl<'a> Context<'a> {
     fn new(
         power: &'a PowerCase,
         base: &'a PowerFlowResult,
-        limit_pct: f64,
+        settings: &ContingencySettings,
     ) -> Result<Self, String> {
+        let base_rating = settings.base_rating;
         let factors = DcFactors::new(&power.case).map_err(|e| e.to_string())?;
         let flows = &base.branch_flows;
         let case = &base.case;
@@ -730,7 +777,9 @@ impl<'a> Context<'a> {
             power,
             base,
             factors,
-            limit_pct,
+            limit_pct: settings.limit_pct,
+            rating: settings.rating,
+            base_rating,
             pf: flows.iter().map(|f| f[0]).collect(),
             qf: flows.iter().map(|f| f[1]).collect(),
             pt: flows.iter().map(|f| f[2]).collect(),
@@ -741,8 +790,9 @@ impl<'a> Context<'a> {
                 .zip(flows)
                 .enumerate()
                 .map(|(r, (b, f))| {
-                    (b.online && b.rate_a > 0.0)
-                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], b.rate_a))
+                    let rate = base_rating.of(b);
+                    (b.online && rate > 0.0)
+                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], rate))
                 })
                 .collect(),
             names: power::bus_names(case),
@@ -757,6 +807,15 @@ impl<'a> Context<'a> {
 
     fn case(&self) -> &Case {
         &self.power.case
+    }
+
+    /// The base case (P0) is held to the base rating; outages to the run's.
+    fn rating_for(&self, base_case: bool) -> Rating {
+        if base_case {
+            self.base_rating
+        } else {
+            self.rating
+        }
     }
 
     fn element(&self, row: usize) -> String {
@@ -922,16 +981,18 @@ impl<'a> Context<'a> {
         let case = self.case();
         let (flows, cut) = self.linear_flows(outage);
         let absolute = outage.is_base();
+        let rating = self.rating_for(absolute);
         let mut overloads = Vec::new();
         let mut branches = Vec::new();
         let mut worst: Option<Overload> = None;
         for (r, b) in case.branches.iter().enumerate() {
+            let rate = rating.of(b);
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
             // The linear model only moves active power: both ends move by
             // the same MW, and Q and losses stay as they were.
             let delta = flows[r] - self.pf[r];
-            let pct = (!tripped && b.online && b.rate_a > 0.0).then(|| {
+            let pct = (!tripped && b.online && rate > 0.0).then(|| {
                 loading(
                     self.power,
                     r,
@@ -939,7 +1000,7 @@ impl<'a> Context<'a> {
                     self.qf[r],
                     self.pt[r] - delta,
                     self.qt[r],
-                    b.rate_a,
+                    rate,
                 )
             });
             if let (Some(pct), Some(base)) = (pct, base_pct) {
@@ -1170,14 +1231,16 @@ impl<'a> Context<'a> {
         }
         let solved = &result.case;
         let absolute = outage.is_base();
+        let rating = self.rating_for(absolute);
         let mut overloads = Vec::new();
         let mut branches = Vec::new();
         let mut worst: Option<Overload> = None;
         for (r, (b, f)) in solved.branches.iter().zip(&result.branch_flows).enumerate() {
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
-            let pct = (b.online && b.rate_a > 0.0)
-                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], b.rate_a));
+            let rate = rating.of(b);
+            let pct = (b.online && rate > 0.0)
+                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], rate));
             if let (Some(pct), Some(base)) = (pct, base_pct) {
                 let o = Overload {
                     element: self.element(r),
@@ -1327,7 +1390,7 @@ impl ContingencyResults {
             return Ok(d.clone());
         }
         let i = self.index(rank)?;
-        let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+        let context = Context::new(&self.power, &self.base, &self.settings)?;
         let row = &self.rows[i];
         let (outcome, solution) = if row.checked == "ac" {
             context
@@ -1385,7 +1448,7 @@ impl ContingencyResults {
         let start = Instant::now();
         let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);
         if !cached {
-            let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+            let context = Context::new(&self.power, &self.base, &self.settings)?;
             let (outcome, solution) = context
                 .ac_solved(
                     &self.outages[i],

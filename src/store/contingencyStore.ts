@@ -13,6 +13,7 @@ import type {
   ContingencySummary,
   SolveSettings,
 } from "../lib/analysis/types";
+import type { Rating } from "../lib/analysis/ratings";
 
 /** Rows kept here: the worst outages, to open the first. The table reads pages from the core. */
 export const FIRST_PAGE = 100;
@@ -33,6 +34,9 @@ export interface ContingencyChoice {
   method: ContingencyMethod;
   acCount: number;
   limitPct: number;
+  /** The rating loadings are measured against after an outage, and before. */
+  rating: Rating;
+  baseRating: Rating;
 }
 
 export const DEFAULT_CHOICE: ContingencyChoice = {
@@ -44,6 +48,8 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   method: "screen",
   acCount: 50,
   limitPct: 100,
+  rating: "a",
+  baseRating: "a",
 };
 
 interface ContingencyState {
@@ -132,6 +138,8 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,
+        rating: c.rating,
+        base_rating: c.baseRating,
         solve: { ...solve, model: "ac" },
         planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
       });
@@ -170,7 +178,7 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   async trip(element) {
     set({ tripping: element });
     try {
-      const detail = await api.tripAndCompare(element, get().choice.limitPct);
+      const detail = await api.tripAndCompare(element, get().choice.limitPct, get().choice.rating, get().choice.baseRating);
       // Shown on its own, not as a row of the last run.
       set({ detail, open: null, onDiagram: true });
       followShown(get());

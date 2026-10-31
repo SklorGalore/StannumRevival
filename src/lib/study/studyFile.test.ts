@@ -16,7 +16,7 @@ function study(over: Partial<StudyFile> = {}): StudyFile {
     edits: [{ edit: { kind: "status", element: "branch:1:4:1", online: false }, was: "in service" }],
     solves: [],
     compare: null,
-    contingencies: { branches: true, generators: false, method: "ac", acCount: 20, limitPct: 90 },
+    contingencies: { branches: true, generators: false, method: "ac", acCount: 20, limitPct: 90, rating: "b", baseRating: "a" },
     diagram: null,
     view: { module: "power", split: "diagram", splitRatio: 0.6 },
     ...over,

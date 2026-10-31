@@ -44,7 +44,10 @@ export type BranchChange = {
   element: string;
   from: number;
   mw: number;
-  /** Percent of rate A, after and before; `None` when unrated. */
+  /**
+   * Percent of the run's rating after, and of its base rating before;
+   * `None` when unrated.
+   */
   pct: number | null;
   to: number;
   tripped: boolean;
@@ -332,6 +335,11 @@ export type ContingencyRowColumns = {
 export type ContingencySettings = {
   /** How many of the worst screened outages get an AC solve. */
   ac_count?: number;
+  /**
+   * The rating for the base case: its loadings (the "before" figures)
+   * and the P0 event.
+   */
+  base_rating?: Rating;
   branches?: boolean;
   /**
    * Branch and generator ids to take out, one at a time. When absent,
@@ -339,7 +347,10 @@ export type ContingencySettings = {
    */
   elements?: string[] | null;
   generators?: boolean;
-  /** Loading, as a percent of rate A, above which a branch is overloaded. */
+  /**
+   * Loading, as a percent of the rating, above which a branch is
+   * overloaded.
+   */
   limit_pct?: number;
   method?: Method;
   /**
@@ -347,6 +358,8 @@ export type ContingencySettings = {
    * generator; `elements`, `branches` and `generators` are then unused.
    */
   planning?: PlanningSettings | null;
+  /** The rating loadings are measured against after an outage. */
+  rating?: Rating;
   solve?: SolveSettings;
 };
 
@@ -354,6 +367,7 @@ export type ContingencySummary = {
   ac_checked: number;
   ac_ms: number;
   already_out: number;
+  base_rating: Rating;
   /** Stopped early: outages after the stop keep their screened result. */
   cancelled: boolean;
   /**
@@ -366,6 +380,11 @@ export type ContingencySummary = {
   limit_pct: number;
   method: Method | null;
   not_converged: number;
+  /**
+   * The ratings loadings were measured against, after outages and in
+   * the base case.
+   */
+  rating: Rating;
   screen_ms: number;
   /**
    * Outages run, and in-service checks skipped because the element was
@@ -1024,7 +1043,10 @@ export type Overload = {
   from: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
-  /** MVA as a percent of rate A, after the outage and before it. */
+  /**
+   * MVA as a percent of the run's rating after the outage, and of its
+   * base rating before it.
+   */
   pct: number;
   to: number;
 };
@@ -1184,6 +1206,9 @@ export type QuantityInfo = {
   key: string;
   title: string;
 };
+
+/** Which of a branch's three ratings a loading is measured against. */
+export type Rating = "a" | "b" | "c";
 
 /** What an export wrote, and what it couldn't keep. */
 export type RawExport = {
@@ -2210,12 +2235,18 @@ export interface CoreCommands {
     };
     result: SourceRecord | null;
   };
-  /** Take one element out of the last AC solve and solve again. */
+  /**
+   * Take one element out of the last AC solve and solve again. Loadings
+   * are measured against `rating` after the trip and `base_rating`
+   * before it (both rate A when left out).
+   */
   trip_and_compare: {
     args: {
+      baseRating?: Rating | null;
       case?: CaseId | null;
       element: string;
       limitPct: number;
+      rating?: Rating | null;
     };
     result: ContingencyDetail;
   };

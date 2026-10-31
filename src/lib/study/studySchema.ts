@@ -44,6 +44,9 @@ export const studySchema = z.object({
     method: z.enum(["screen", "ac"]),
     acCount: z.number(),
     limitPct: z.number(),
+    // Saved since 1.1; older studies used rate A for both.
+    rating: z.enum(["a", "b", "c"]).optional(),
+    baseRating: z.enum(["a", "b", "c"]).optional(),
   }),
   diagram: z.looseObject({ metadata: z.looseObject({}), nodes: z.array(z.unknown()), edges: z.array(z.unknown()) }).nullable(),
   view: z.object({ module: moduleId, split: moduleId.nullable(), splitRatio: z.number() }),

@@ -2,7 +2,7 @@
 //! check against solving the same outage as a study edit, and cancelling.
 use rs_power::{DcFactors, OutageFlows};
 use stannum_core::Workspace;
-use stannum_core::contingency::{ContingencySettings, Method};
+use stannum_core::contingency::{ContingencySettings, Method, Rating};
 use stannum_core::power::{ModelChoice, SolveSettings};
 use stannum_core::study::Edit;
 use std::path::PathBuf;
@@ -23,6 +23,7 @@ fn settings(method: Method) -> ContingencySettings {
         limit_pct: 100.0,
         solve: SolveSettings::default(),
         planning: None,
+        ..Default::default()
     }
 }
 
@@ -222,7 +223,9 @@ fn trip_and_compare_matches_the_ac_run() {
     case.run_contingencies(all).unwrap();
     let rows = case.contingency_rows(0, 1).unwrap();
     let element = rows[0].element.clone();
-    let tripped = case.trip_and_compare(&element, 100.0).unwrap();
+    let tripped = case
+        .trip_and_compare(&element, 100.0, Default::default())
+        .unwrap();
     let ranked = case.contingency_detail(1).unwrap();
     assert_eq!(tripped.row.element, element);
     assert_eq!(tripped.row.checked, "ac");
@@ -245,7 +248,9 @@ fn trip_and_compare_matches_the_ac_run() {
     }])
     .unwrap();
     case.solve(SolveSettings::default()).unwrap();
-    let err = case.trip_and_compare(&element, 100.0).unwrap_err();
+    let err = case
+        .trip_and_compare(&element, 100.0, Default::default())
+        .unwrap_err();
     assert!(err.message.contains("already out"), "{err}");
 }
 
@@ -283,7 +288,8 @@ fn named_results_match_a_study_solve() {
         .unwrap();
     assert!(!out.online && out.pf == 0.0, "{out:?}");
 
-    case.trip_and_compare(&element, 100.0).unwrap();
+    case.trip_and_compare(&element, 100.0, Default::default())
+        .unwrap();
     let tripped = case.result(&format!("trip {element}")).unwrap();
     assert!(
         case.result("trip line:999-998-1")
@@ -331,4 +337,116 @@ fn named_results_match_a_study_solve() {
             c.pf
         );
     }
+}
+
+/// case30 with rate B twice rate A and no rate C, written out and opened.
+fn solved_with_rate_b() -> Workspace {
+    let text = std::fs::read_to_string(case("case30.m")).unwrap();
+    let mut c = rs_power::parse_matpower(&text).unwrap();
+    for b in &mut c.branches {
+        b.rate_b = 2.0 * b.rate_a;
+        b.rate_c = 0.0;
+    }
+    let path = std::env::temp_dir().join(format!("stannum-ratings-{}.m", std::process::id()));
+    std::fs::write(&path, rs_power::format_matpower(&c).unwrap()).unwrap();
+    let mut ws = Workspace::default();
+    ws.open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert!(
+        ws.current_mut()
+            .unwrap()
+            .solve(SolveSettings::default())
+            .unwrap()
+            .converged
+    );
+    ws
+}
+
+/// Loadings follow the chosen ratings: rate B (twice rate A) halves every
+/// post-outage loading, the base rating sets the "before" figures, and an
+/// unset rate C leaves nothing rated.
+#[test]
+fn loadings_follow_the_chosen_ratings() {
+    let mut ws = solved_with_rate_b();
+    let run = |ws: &mut Workspace, rating: Rating, base_rating: Rating| {
+        let open = ws.current_mut().unwrap();
+        let summary = open
+            .run_contingencies(ContingencySettings {
+                rating,
+                base_rating,
+                ..settings(Method::Ac)
+            })
+            .unwrap();
+        assert_eq!((summary.rating, summary.base_rating), (rating, base_rating));
+        let rows = open.contingency_rows(0, 1000).unwrap();
+        (summary, rows)
+    };
+    let (a, rows_a) = run(&mut ws, Rating::A, Rating::A);
+    assert!(a.with_overloads > 0, "case30 has overloads on rate A");
+    let (b, rows_b) = run(&mut ws, Rating::B, Rating::A);
+    assert!(b.with_overloads < a.with_overloads);
+    // Same outages, same flows: each worst branch is half as loaded on B.
+    let by_element = |rows: &[stannum_core::contingency::ContingencyRow], element: &str| {
+        rows.iter().find(|r| r.element == element).cloned().unwrap()
+    };
+    let mut compared = 0;
+    for row in rows_a.iter().filter(|r| r.converged == Some(true)) {
+        let (Some(wa), Some(wb)) = (&row.worst, &by_element(&rows_b, &row.element).worst) else {
+            continue;
+        };
+        if wa.element == wb.element && wa.from == wb.from {
+            assert!(
+                (wa.pct - 2.0 * wb.pct).abs() < 1e-6,
+                "{}: {} vs {}",
+                row.element,
+                wa.pct,
+                wb.pct
+            );
+            // The base figure stays on rate A.
+            assert!((wa.base_pct - wb.base_pct).abs() < 1e-9);
+            compared += 1;
+        }
+    }
+    assert!(compared > 10, "only {compared} rows compared");
+
+    // Base rating B halves the "before" figures too.
+    let (_, rows_bb) = run(&mut ws, Rating::B, Rating::B);
+    let row = rows_bb.iter().find(|r| r.worst.is_some()).unwrap();
+    let w = row.worst.as_ref().unwrap();
+    let wa = by_element(&rows_b, &row.element).worst.unwrap();
+    if wa.element == w.element && wa.from == w.from {
+        assert!((wa.base_pct - 2.0 * w.base_pct).abs() < 1e-6);
+    }
+
+    // No branch has a rate C: nothing is rated, so nothing overloads.
+    let (c, rows_c) = run(&mut ws, Rating::C, Rating::C);
+    assert_eq!(c.with_overloads, 0);
+    assert!(rows_c.iter().all(|r| r.overloads == 0));
+}
+
+/// Trip and compare takes the same ratings as a run.
+#[test]
+fn trip_and_compare_uses_the_chosen_ratings() {
+    let mut ws = solved_with_rate_b();
+    let open = ws.current_mut().unwrap();
+    let summary = open.run_contingencies(settings(Method::Ac)).unwrap();
+    let worst = summary.worst.expect("a worst outage");
+    let on_a = open
+        .trip_and_compare(&worst.element, 100.0, (Rating::A, Rating::A))
+        .unwrap();
+    let on_b = open
+        .trip_and_compare(&worst.element, 100.0, (Rating::B, Rating::A))
+        .unwrap();
+    // Every rated branch is half as loaded on rate B, and the same before.
+    assert_eq!(on_a.branches.len(), on_b.branches.len());
+    let mut rated = 0;
+    for (a, b) in on_a.branches.iter().zip(&on_b.branches) {
+        assert_eq!((&a.element, a.from, a.to), (&b.element, b.from, b.to));
+        assert_eq!(a.base_pct, b.base_pct);
+        if let (Some(pa), Some(pb)) = (a.pct, b.pct) {
+            assert!((pa - 2.0 * pb).abs() < 1e-6, "{}: {pa} vs {pb}", a.element);
+            rated += 1;
+        }
+    }
+    assert!(rated > 0);
 }

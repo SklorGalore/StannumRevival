@@ -23,6 +23,8 @@ export function useLayerSync(want: boolean) {
   const onDiagram = useContingencies((s) => s.onDiagram);
   const detail = useContingencies((s) => s.detail);
   const limitPct = useContingencies((s) => s.summary?.limit_pct ?? 100);
+  // A trip shown on its own was measured with the current choice.
+  const rating = useContingencies((s) => (s.open !== null && s.summary ? s.summary.rating : s.choice.rating));
   const report = useShownReport();
   const resultMode = useLayers((s) => s.resultMode);
   const compareWith = useLayers((s) => s.compareWith);
@@ -33,8 +35,8 @@ export function useLayerSync(want: boolean) {
     [resultMode, report, saved, sensitivity]
   );
   const contingency = useMemo(
-    () => (onDiagram && detail ? { detail, limitPct } : null),
-    [onDiagram, detail, limitPct]
+    () => (onDiagram && detail ? { detail, limitPct, rating } : null),
+    [onDiagram, detail, limitPct, rating]
   );
 
   // A new case: restore its saved filters and colours.

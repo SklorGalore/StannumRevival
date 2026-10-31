@@ -389,8 +389,12 @@ impl Session {
         case: Option<CaseId>,
         element: &str,
         limit_pct: f64,
+        ratings: (crate::contingency::Rating, crate::contingency::Rating),
     ) -> Result<crate::contingency::ContingencyDetail, Error> {
-        let job = self.workspace()?.case(case)?.trip_job(element, limit_pct)?;
+        let job = self
+            .workspace()?
+            .case(case)?
+            .trip_job(element, limit_pct, ratings)?;
         let done = job.run()?;
         self.workspace()?.case_mut(case)?.finish_trip(done)
     }
@@ -946,9 +950,11 @@ commands! {
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
 
-    /// Take one element out of the last AC solve and solve again.
-    trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } -> crate::contingency::ContingencyDetail =>
-        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct);
+    /// Take one element out of the last AC solve and solve again. Loadings
+    /// are measured against `rating` after the trip and `base_rating`
+    /// before it (both rate A when left out).
+    trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64, rating: Option<crate::contingency::Rating>, base_rating: Option<crate::contingency::Rating> } -> crate::contingency::ContingencyDetail =>
+        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct, (a.rating.unwrap_or_default(), a.base_rating.unwrap_or_default()));
 
     /// A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
     /// as a full solve report.
@@ -1136,6 +1142,7 @@ mod tests {
             "query" => json!({}),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),
+            "rating" | "base_rating" => json!("b"),
             _ => json!(1),
         };
         for (c, names) in COMMANDS.iter().zip(ARGS).filter(|(c, _)| c.takes_case) {
