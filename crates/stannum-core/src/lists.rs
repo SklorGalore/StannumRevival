@@ -155,7 +155,12 @@ pub fn parse(text: &str, power: &PowerCase) -> Result<Lists, String> {
             None => None,
         };
         out.sets.push(Set {
-            name: r.id.clone(),
+            // Its display name, when it has one.
+            name: r
+                .str("name")
+                .filter(|n| !n.is_empty())
+                .unwrap_or(&r.id)
+                .to_string(),
             kind,
             buses,
             kv_min: r.float("kv_min"),
@@ -441,4 +446,57 @@ impl<'a> Subsystems<'a> {
         }
         Some(out)
     }
+}
+
+/// A subsystem record of a lists file, as written: its id, name and
+/// members, for editing and saving again.
+#[derive(Clone, Debug, serde::Serialize, schemars::JsonSchema)]
+pub struct ListedSubsystem {
+    pub id: String,
+    pub name: String,
+    #[serde(flatten)]
+    pub members: crate::transfer::Subsystem,
+    /// Other subsystems it includes, by id.
+    pub subsystems: Vec<String>,
+}
+
+/// The subsystem records of the lists file at `path`.
+pub fn subsystems(path: &str) -> Result<Vec<ListedSubsystem>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("Couldn't read the lists file {path}: {e}"))?;
+    let doc = stannum_format::read_lists(&text)
+        .map_err(|e| format!("The lists file has problems:\n{e}"))?;
+    let list = |r: &Record, field: &str| -> Vec<Value> {
+        doc.value("subsystem", r, field)
+            .and_then(Value::as_list)
+            .map(<[Value]>::to_vec)
+            .unwrap_or_default()
+    };
+    let ints = |r: &Record, field: &str| -> Vec<u32> {
+        list(r, field)
+            .into_iter()
+            .filter_map(|v| v.as_i64())
+            .filter_map(|v| u32::try_from(v).ok())
+            .collect()
+    };
+    Ok(doc
+        .records("subsystem")
+        .iter()
+        .map(|r| ListedSubsystem {
+            id: r.id.clone(),
+            name: r.str("name").unwrap_or("").to_string(),
+            members: crate::transfer::Subsystem {
+                areas: ints(r, "areas"),
+                zones: ints(r, "zones"),
+                owners: ints(r, "owners"),
+                buses: ints(r, "buses"),
+                kv_min: r.float("kv_min"),
+                kv_max: r.float("kv_max"),
+            },
+            subsystems: list(r, "subsystems")
+                .into_iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+        })
+        .collect())
 }

@@ -12,7 +12,19 @@ overloads and voltage problems they cause.
 
 ## Running
 
-Solve the case with the AC model first. Then choose:
+Solve the case with the AC model first. The bar above the results sums up
+the setup in one line; **Set up…** opens the contingency setup, a dialog with
+five steps:
+
+1. **Outages**: what to take out, and where.
+2. **Monitor**: what is checked after each outage.
+3. **Subsystems**: named sets of buses (areas, zones, owners, bus numbers
+   and a kV range) that Outages and Monitor pick from.
+4. **Limits & reporting**: ratings, the overload limit, and what counts as
+   a problem.
+5. **Solution**: the screen, and the AC solve options.
+
+**Run contingencies** runs from the dialog or from the bar. The choices are:
 
 - **Take out**: branches, generators, buses, or any mix. A three-winding
   transformer goes out as one element. A bus goes out with every branch and
@@ -36,12 +48,34 @@ Solve the case with the AC model first. Then choose:
   ratings (rate A normal, B short-term, C emergency) the loading is measured
   against before and after an outage. Both are rate A by default; many
   planners use rate A before and rate B after. A branch with no value for
-  the chosen rating is unrated. Saved in the study file.
+  the chosen rating is unrated.
 - **Overloaded above**: the loading, as a percent of the chosen rating, that
   counts as an overload.
 
+- **Within** (Outages): a subsystem, to take out only the elements in it:
+  a branch counts when either end is in it. With N-2, pairs are of
+  branches only.
+- **Overloads worse by** and **Voltages worse by** (Limits & reporting):
+  how much worse a problem already there before the outage must get to
+  count (1 point and 0.001 p.u. by default). **Include existing problems**
+  counts every problem after the outage.
+- **Generator Q limits**, **Transformer taps** and **Switched shunts**
+  (Solution): **Same as Power flow** follows the Power flow tab's settings;
+  **On** or **Off** sets them for the contingency solves only.
+
 The bus filters above the tab narrow the outages to branches and generators
-touching the matching buses, for example one area or one voltage level.
+touching the matching buses, for example one area or one voltage level. A
+subsystem chosen under **Within** takes their place.
+
+## Subsystems
+
+The **Subsystems** step builds the sets of buses the other steps pick from.
+**New** adds one; tick areas, zones and owners (each with its bus count),
+list bus numbers, and give a kV range. Listed members combine, and the kV
+range narrows them; with nothing listed, every bus in the range is in it.
+**Save…** writes them as a `.stnl` lists file and **Load…** reads the
+subsystems of one, so the same subsystems work on any case. A subsystem
+that includes other subsystems loads without those links.
 
 ## Planning events
 
@@ -104,12 +138,14 @@ A list doesn't belong to one case. Elements the case doesn't have, and
 events Stannum doesn't apply yet (`close`, `set_p_mw`, `set_q_mvar`), skip
 their contingency and are listed in a note above the results. The
 [lists file format](/StannumRevival/reference/lists-file/) page has the
-syntax and an example; the study file remembers which file you chose.
+syntax and an example.
 
 ## Checking only what you monitor
 
 By default every rated branch and every bus is checked after each outage.
-Set **Checked** to **Monitors from a lists file** and choose a file (the
+Under **Monitor**, choose **A subsystem** to check only the branches with an
+end in it (at the limit and ratings of Limits & reporting) and, with **Bus
+voltages too**, its buses. Or choose **Monitors from a lists file** and a file (the
 lists file you run, or another) to check only what its `monitor` records
 name, as a PSS/E `.mon` file does:
 
