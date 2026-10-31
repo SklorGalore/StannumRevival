@@ -4,6 +4,7 @@ use num_complex::Complex64 as C;
 use rs_power::{
     PowerFlowOptions, RawImport, RawOptions, SolveStatus, parse_raw_with_options, solve,
 };
+use stannum_verify::Check;
 
 const BASE: &str = include_str!("fixtures/transformer_detail/five_bus.raw");
 /// The transformer 2-4 is the case's fifth branch.
@@ -123,8 +124,22 @@ fn magnetizing_admittance_draws_at_the_winding_one_bus() {
     let i_from = vf * (ys / (tap * tap) + C::new(0.002, -0.03)) - vt * ys / tap;
     let s_from = vf * i_from.conj() * 100.0;
     let flow = result.branch_flows[T];
-    assert!((flow[0] - s_from.re).abs() < 1e-6, "{flow:?} vs {s_from}");
-    assert!((flow[1] - s_from.im).abs() < 1e-6, "{flow:?} vs {s_from}");
+    let mut check = Check::new(
+        "transformer-detail",
+        "Magnetizing admittance in a solved case, against the branch equations",
+        "Value",
+        "MW, Mvar",
+        1e-6,
+    );
+    assert!(
+        check.compare(flow[0], s_from.re) < 1e-6,
+        "{flow:?} vs {s_from}"
+    );
+    assert!(
+        check.compare(flow[1], s_from.im) < 1e-6,
+        "{flow:?} vs {s_from}"
+    );
+    check.finish();
     // The magnetizing branch draws |V|^2 (g - jb): 0.2 MW and 3 Mvar at 1 pu.
     let without = solved(
         &Variant {
@@ -148,8 +163,16 @@ fn magnetizing_from_no_load_loss_and_exciting_current() {
     };
     let br = &v.import(true).case.branches[T];
     let g = 0.15 / 100.0;
-    assert!((br.mag_g - g).abs() < 1e-12);
-    assert!((br.mag_b + (0.01f64 * 0.01 - g * g).sqrt()).abs() < 1e-12);
+    let mut check = Check::new(
+        "transformer-detail",
+        "Magnetizing from no-load loss and exciting current (CM 2)",
+        "Value",
+        "p.u.",
+        1e-12,
+    );
+    assert!(check.compare(br.mag_g, g) < 1e-12);
+    assert!(check.compare(br.mag_b, -(0.01f64 * 0.01 - g * g).sqrt()) < 1e-12);
+    check.finish();
 }
 
 #[test]
@@ -201,8 +224,16 @@ fn a_ratio_table_scales_the_impedance_at_the_winding_ratio() {
     assert!(!c.by_angle);
     assert_eq!(c.points.len(), 3);
     assert!((br.tap - 1.05 / 1.02).abs() < 1e-12);
-    assert!((br.r - R * 1.15).abs() < 1e-12, "{}", br.r);
-    assert!((br.x - X * 1.15).abs() < 1e-12, "{}", br.x);
+    let mut check = Check::new(
+        "transformer-detail",
+        "Ratio table over two records, read at the winding ratio",
+        "Value",
+        "p.u.",
+        1e-12,
+    );
+    assert!(check.compare(br.r, R * 1.15) < 1e-12, "{}", br.r);
+    assert!(check.compare(br.x, X * 1.15) < 1e-12, "{}", br.x);
+    check.finish();
     // Ends hold their factors.
     assert_eq!(c.factor(0.5), (0.8, 0.0));
     assert_eq!(c.factor(2.0), (1.3, 0.0));
@@ -222,7 +253,15 @@ fn an_angle_table_with_complex_factors() {
     assert!(br.correction.as_ref().unwrap().by_angle);
     let f = C::new(1.0 + 0.1 / 3.0, 0.05 / 3.0);
     let z = C::new(R, X) * f;
-    assert!((br.r - z.re).abs() < 1e-12 && (br.x - z.im).abs() < 1e-12);
+    let mut check = Check::new(
+        "transformer-detail",
+        "Angle table with complex factors",
+        "Value",
+        "p.u.",
+        1e-12,
+    );
+    assert!(check.compare(br.r, z.re) < 1e-12 && check.compare(br.x, z.im) < 1e-12);
+    check.finish();
 }
 
 #[test]
@@ -314,7 +353,15 @@ fn revision_30_tables_and_magnetizing_in_the_psse_sample_case() {
         .find(|b| (b.from, b.to) == (152, 3021))
         .unwrap();
     assert_eq!(b.correction.as_ref().unwrap().points.len(), 11);
-    assert!((b.x - 0.0042 * 0.98).abs() < 1e-12);
+    let mut check = Check::new(
+        "transformer-detail",
+        "MATPOWER t_psse_case3: table 2 at a ratio of 1.1",
+        "Value",
+        "p.u.",
+        1e-12,
+    );
+    assert!(check.compare(b.x, 0.0042 * 0.98) < 1e-12);
+    check.finish();
     let gsu = branches
         .iter()
         .find(|b| (b.from, b.to) == (101, 151))

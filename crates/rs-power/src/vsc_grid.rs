@@ -1362,7 +1362,20 @@ mod tests {
             // Inputs are rounded to 0.01 MW and 0.01°, so allow a little
             // more than the tables' own rounding.
             let tol = [0.012, 0.012, 0.0006, 0.012, 0.006, 0.012];
+            let names = [
+                ("Converter P", "MW"),
+                ("Converter Q", "Mvar"),
+                ("Converter voltage", "p.u."),
+                ("Converter angle", "deg"),
+                ("Losses", "MW"),
+                ("DC power", "MW"),
+            ];
+            let row = format!("Converter {}", n + 1);
             for q in 0..6 {
+                let mut check =
+                    stannum_verify::Check::new("vsc-paper", &row, names[q].0, names[q].1, tol[q]);
+                check.compare(got[q], want[q]);
+                check.finish();
                 assert!(
                     (got[q] - want[q]).abs() <= tol[q],
                     "converter {}: quantity {q} is {} against {}",

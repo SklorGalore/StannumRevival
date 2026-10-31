@@ -10,6 +10,16 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Verification tables.** The [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
+  page now shows, for every solver, the largest difference from its
+  reference and the limit the test allows: power flow and RAW import
+  against MATPOWER 8.1, the Texas 2000-bus and Memphis cases against their
+  saved PowerWorld solutions, meshed VSC grids against Beerten et al.
+  (2012) and MatACDC, contingency results against DC and AC solves, transfer
+  factors against DC solves, and transformer tables against hand
+  calculations. The reference tests write the numbers as they run
+  (`pwsh scripts/verify.ps1`), and the docs build reruns them for every
+  commit.
 - **Contingency names.** Contingencies are named the way PSS/E names them
   when no name is given: bus name and number at each end, then the circuit
   (`NORTH 101 SOUTH 102 1`), a generator's bus then its id, a bus outage by

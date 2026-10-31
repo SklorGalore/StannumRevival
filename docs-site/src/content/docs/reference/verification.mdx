@@ -1,0 +1,189 @@
+---
+title: Verification
+description: Every solver checked against a reference, with the largest difference and the tolerance, rerun on every build of this site.
+---
+
+import VerificationSummary from "../../../components/VerificationSummary.astro";
+import VerificationTable from "../../../components/VerificationTable.astro";
+
+Each table on this page compares a Stannum result with a reference: another
+tool's solution, a published paper, an independent calculation. A cell holds
+the **largest difference** over everything compared for that case, with the
+**limit** the test allows under it. A test over its limit fails, and a
+failing test stops a pull request from merging.
+
+The numbers aren't typed in. The reference tests write them as they run,
+and the documentation workflow runs them again before every build of this
+site, so they belong to the commit named here:
+
+<VerificationSummary />
+
+To run the same checks and rebuild the tables yourself:
+
+```powershell
+pwsh scripts/verify.ps1
+```
+
+It writes `docs-site/src/data/verification.json`, which these tables read.
+
+## Power flow against MATPOWER 8.1
+
+rs-power's numerical behaviour targets the **MATPOWER 8.1 legacy core**
+(AC power/polar Newton and DC power flow, constant-power loads). Reference
+results were generated with MATPOWER 8.1 at a $10^{-10}$ mismatch tolerance
+and are checked in as fixtures, so the tests need no MATLAB, Octave or
+MATPOWER installation.
+
+Each case is solved with every AC method (Newton, fixed slope, both fast
+decoupled forms and Auto) and with the DC model. The AC row shows the worst
+of the five methods. The case9 variants cover reactive limits, slack
+reassignment, generators sharing a bus, infinite and zero-width reactive
+ranges, taps, phase shifts, shunts, offline equipment, parallel branches and
+nonconsecutive bus numbers. With infeasible reactive limits MATPOWER and
+every method report the AC case as infeasible, so only its DC row has
+numbers.
+
+<VerificationTable suite="matpower" />
+
+## RAW import against MATPOWER 8.1's importer
+
+Every numeric bus, generator, branch and DC line field Stannum imports is
+compared with what MATPOWER 8.1's `psse2mpc` makes of the same file
+(relative difference), then the imported case is solved and compared with
+MATPOWER's AC and DC solutions of it. The files cover revision layouts 23 to
+33, every transformer `CW`/`CZ` combination, partial winding statuses, DC
+line control modes and three of MATPOWER's own RAW test files.
+
+<VerificationTable suite="raw-import" label="File" />
+
+## Saved solutions
+
+These cases were saved solved by PowerWorld Simulator, so each bus record
+holds the voltage that tool found. Stannum opens the file and solves it as
+the app does, with its default settings (reactive limits, remote regulation,
+switched shunts and taps all on, 2 MVA tolerance), and the voltages are
+compared bus by bus. On the Texas case the largest magnitude difference is
+at bus 3051; most buses are within a few thousandths of a per unit.
+
+<VerificationTable suite="saved-solution" />
+
+Larger saved cases, which aren't stored in the repository, are listed under
+[Large cases](#large-cases).
+
+## Meshed VSC grids: the published model
+
+The station model reproduces every converter in Tables II and III of
+Beerten, Cole and Belmans (2012), *Generalized steady-state VSC MTDC model
+for sequential AC/DC power flow algorithms*, from its system-bus values. The
+inputs are the tables' own rounded values, so the limits allow a little more
+than the tables' rounding. See [Meshed VSC
+grids](/StannumRevival/manual/hvdc/vsc-grids/#verification).
+
+<VerificationTable suite="vsc-paper" label="Converter" />
+
+## Meshed VSC grids: MatACDC 1.0
+
+On Stannum's own two-area case, with three asynchronous AC grids and two
+meshed DC grids, the solver agrees with MatACDC 1.0 (J. Beerten, KU Leuven).
+MatACDC itself is not in the repository, only its results on this case.
+Where a converter reaches its limits the two differ by design: Stannum puts
+the converter exactly on its limit, as the paper describes, and MatACDC
+stops just inside it. In that run the grid that reaches no limit still
+agrees, which is the third row.
+
+<VerificationTable suite="matacdc" label="Run" />
+
+## Contingency analysis
+
+The linear screen's flows after each outage are compared with a DC power
+flow solved without that branch. The AC-checked outages are compared with
+the same outage made as a study edit and solved on its own. Both sides
+solve to $10^{-6}$ MVA here: at the default 2 MVA tolerance, a line rated
+16 MVA can read a few percent apart between two solves that both
+converged.
+
+<VerificationTable suite="contingency" />
+
+## Transfer limits
+
+Every distribution factor the transfer limit run reports is compared with
+moving 100 MW from the source to the sink in two DC power flows, in the base
+case (PTDF) and with each outage taken (OTDF).
+
+<VerificationTable suite="transfer" />
+
+## Transformer impedance tables and magnetizing
+
+Impedance correction tables (`TAB`) and magnetizing admittance (`MAG1`,
+`MAG2`, with `CM` 1 and 2) from RAW files, against values worked out by hand
+from the tables and the transformer data, and in a solved case against the
+branch equations.
+
+<VerificationTable suite="transformer-detail" label="Check" />
+
+## Other checks
+
+These run with every pull request but have no table here:
+
+- Analytic Jacobians against finite differences.
+- Nodal power balance of solved cases.
+- Singular systems, invalid inputs and nonconvergence.
+- The three RAW readers (power flow for revisions 23 to 35, topology for 35,
+  and Records and Case diff for 33 and 35) count the same buses,
+  generators, branches, switching devices and loads in every RAW fixture
+  each one supports. Known gaps are listed in the test with their reason:
+  Records and Case diff can't yet read a RAW 35 file with substation data,
+  or bus records that leave out trailing fields.
+
+## Large cases
+
+Optional tests (run with `--ignored`) solve large public cases that are not
+stored in the repository, so they aren't rerun for this page;
+`scripts/fetch-test-cases.ps1` fetches them and checks their hashes.
+
+| Case | Size | Checks |
+| --- | --- | --- |
+| Texas A&M SyntheticUSA (RAW 33) | 82,000 buses | Q limits, remote regulation, 9 LCC lines, 150 continuous shunts, 291 taps; compared with the saved PowerWorld solution |
+| ACTIVSg70k (MATPOWER) | 70,000 buses | Solve speed |
+| Synthetic East–West US (RAW 34) | 80,000 buses | Revision 34 import |
+
+## Time and size budgets
+
+Every pull request builds a 12,000-bus [synthetic case](/StannumRevival/manual/synthetic-cases/)
+and works through it with the commands the app sends: open, attach
+coordinates, solve, the diagram, the map, topology, Records, pages of the
+Power flow, Records and contingency tables sorted, searched and filtered in
+the core, and an N-1 contingency run. Each command has a budget for how long it takes and how much
+it sends back, and the test fails when one goes over, so a change that makes
+large cases several times slower is caught before it merges. It also checks
+that the app keeps answering while a solve runs. The run's summary on GitHub
+shows the table.
+
+```powershell
+cargo test --release -p stannum-core --test budgets -- --ignored --nocapture
+```
+
+`STANNUM_BUDGET_BUSES` builds a different size; budgets grow in proportion
+(an N-1 run, which solves an outage per branch and generator, by the size
+to the power 1.5). A weekly workflow, also run on request, works through an
+80,000-bus case the same way.
+The same seed always builds the same case, so `STANNUM_BUDGET_CACHE` can name
+a folder to keep it in and reuse; CI keeps one until the generator or the
+solver changes.
+
+## Interface
+
+A browser smoke test drives the real interface in Chromium against the real
+Rust core on every pull request: opening MATPOWER and RAW cases, solving,
+sensitivities, studies, every module, side by side, the palette, the log, DC
+lines and VSC grids. The screenshots in this documentation come from that test.
+
+## Adding a check
+
+A reference test makes a `stannum_verify::Check` for each quantity it
+compares, passes it every difference, and calls `finish()`, which fails the
+test when the largest difference is over the limit. When `STANNUM_VERIFY`
+names a file, `finish()` also appends the result to it, which is how
+`scripts/verify.ps1` collects the tables. A new suite needs a place in
+`stannum_verify::SUITES` and a `<VerificationTable>` on this page. Add the
+test to the list in `scripts/verify.ps1`.
