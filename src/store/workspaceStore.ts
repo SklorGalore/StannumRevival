@@ -93,7 +93,7 @@ interface WorkspaceState {
   select: (element: string | null, from: ModuleId) => void;
   /** Show an element in every module, linked or not (a search result). */
   focus: (element: string) => void;
-  /** Incremented to ask Power flow to solve with its current settings. */
+  /** Incremented to ask Power flow to solve with its current settings, without leaving the current view. */
   solveRequest: number;
   requestSolve: () => void;
   /** Incremented to ask Power flow to calculate sensitivities (toolbar, menu, Ctrl+K). */
@@ -243,7 +243,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   focus: (element) => set({ selection: { element, from: "search" } }),
   solveRequest: 0,
-  requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1, ...showing(s, "power") })),
+  // Solving keeps the current view: the diagram, tables and inspector update
+  // in place. Power flow comes into view only if the solve fails.
+  requestSolve: () => set((s) => ({ solveRequest: s.solveRequest + 1 })),
   sensitivityRequest: 0,
   requestSensitivities: () => set((s) => ({ sensitivityRequest: s.sensitivityRequest + 1, ...showing(s, "power") })),
   powerTabRequest: null,

@@ -10,6 +10,21 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Mvar flow direction on the one-line.** Each branch shows an open violet
+  arrow for the way its reactive power flows, beside the filled MW arrow;
+  the Mvar number beside it is violet too, and now a magnitude, like MW.
+- **Animated flow arrows.** **Canvas > Animated flow arrows** (also under
+  **View** and in Ctrl+K) moves the MW and Mvar arrows along the wires, each
+  the way its flow goes and in its own colour, faster with more flow. Off by default; exports and reduced motion
+  keep still arrows.
+
+### Changed
+
+- **Solve keeps the current view.** Solving from the toolbar, the menu bar or
+  Ctrl+K no longer switches to Power flow; the diagram and tables update in
+  place. Power flow comes into view only when the solve fails or does not
+  converge.
+
 - **N-2 and bus outages.** Contingency runs can take the chosen branches
   and generators out two at a time (every pair once, up to 250,000 pairs;
   the bus filters narrow them), and can take out each bus with every
