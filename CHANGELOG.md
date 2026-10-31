@@ -8,8 +8,6 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
-## 1.0.0-rc.1 - 2026-10-30
-
 ### Added
 
 - **N-2 and bus outages.** Contingency runs can take the chosen branches
@@ -26,6 +24,11 @@ section into the next version's when a release is cut (see
   after). Both stay rate A by default. The choice is saved in the study file
   and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
   server.
+
+## 1.0.0-rc.1 - 2026-10-30
+
+### Added
+
 - **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
   Stannum to Claude and other Model Context Protocol clients: open a case,
   solve, find violations, page through results, run N-1 or the NERC planning
