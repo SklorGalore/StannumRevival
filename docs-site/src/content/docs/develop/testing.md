@@ -126,6 +126,6 @@ version and changelog, builds installers for Windows, macOS and Linux, the
 Python wheels and `stannum-cli`, and attaches them all to a draft GitHub
 release. `pwsh scripts/release/start-release.ps1 -Version x.y.z` cuts
 `release/vx.y.z` from `development`, sets the version and opens its pull
-request into `main`; once that merges, `finish-release.ps1` tags it and
+request into `main`; once it is squashed in, `finish-release.ps1` tags it and
 merges `main` back into `development`. The steps, signing and checks are in
 [docs/releasing.md](https://github.com/SklorGalore/StannumRevival/blob/main/docs/releasing.md).
