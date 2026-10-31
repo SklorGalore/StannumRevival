@@ -10,6 +10,18 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Contingency setup.** The Contingencies tab's settings moved into a
+  setup dialog with five steps: Outages, Monitor, Subsystems, Limits &
+  reporting, and Solution. The tab keeps a one-line summary, **Set up…**
+  and **Run**. New in it: subsystems built from areas, zones, owners, buses
+  and a kV range (saved to and loaded from `.stnl` lists files), N-1 and
+  N-2 within a subsystem, monitoring one subsystem's branches and voltages,
+  a voltage "worse by" threshold, and generator Q limit, tap and switched
+  shunt settings for the contingency solves alone. The core takes lists
+  text inline (`lists_text`, `monitors_text`) and reads a file's
+  subsystems (`lists_subsystems`); a contingency set's `name` now names
+  its category.
+
 - **Every contingency violation in one CSV.** The Contingencies tab's
   **Export CSV** can now save every violation: one line per overload,
   voltage problem and interface violation of every outage, written by the

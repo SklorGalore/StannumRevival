@@ -6,10 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, Download, FileText, Play, Square, X } from "lucide-react";
 import { useTransfers, type Side, type SideKind, busList } from "../../store/transferStore";
 import { LISTS_FILTERS, pickFile, saveTextExport } from "../../lib/analysis/api";
-import { caseNetwork } from "../../lib/diagram/network";
-import { useWorkspace } from "../../store/workspaceStore";
+import { useCaseGroups, type CaseGroups } from "../../ui/useCaseGroups";
 import type { SolveReport } from "../../lib/analysis/types";
-import type { CaseNetwork, ContingencyLimit, Scaling, TransferFactor, TransferLimit } from "../../lib/analysis/commands.gen";
+import type { ContingencyLimit, Scaling, TransferFactor, TransferLimit } from "../../lib/analysis/commands.gen";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
 import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
@@ -57,33 +56,6 @@ function monitoredLabel(m: string, winding = 0): string {
   return winding ? `${elementLabel(m)} (winding ${winding})` : elementLabel(m);
 }
 
-/** Buses of each area, zone and owner, from the case. */
-function useGroups(): Record<"area" | "zone" | "owner", [number, number][]> | null {
-  const caseVersion = useWorkspace((s) => s.caseVersion);
-  const [net, setNet] = useState<CaseNetwork | null>(null);
-  useEffect(() => {
-    let live = true;
-    caseNetwork()
-      .then((n) => live && setNet(n))
-      .catch(() => live && setNet(null));
-    return () => {
-      live = false;
-    };
-  }, [caseVersion]);
-  return useMemo(() => {
-    if (!net) return null;
-    const out = { area: [], zone: [], owner: [] } as Record<"area" | "zone" | "owner", [number, number][]>;
-    for (const g of ["area", "zone", "owner"] as const) {
-      const counts = new Map<number, number>();
-      for (const b of net.buses) if (!b.star) counts.set(b[g], (counts.get(b[g]) ?? 0) + 1);
-      out[g] = [...counts].sort((a, b) => a[0] - b[0]);
-    }
-    // MATPOWER cases have no owners: owner 0 on every bus.
-    if (!out.owner.some(([o]) => o > 0)) out.owner = [];
-    return out;
-  }, [net]);
-}
-
 function SidePicker({
   label,
   side,
@@ -95,7 +67,7 @@ function SidePicker({
   label: string;
   side: Side;
   onChange: (s: Side) => void;
-  groups: Record<"area" | "zone" | "owner", [number, number][]> | null;
+  groups: CaseGroups | null;
   areaNames: Map<number, string>;
   testId: string;
 }) {
@@ -267,7 +239,7 @@ function factorColumns(onPick: (e: string) => void): Column<TransferFactor>[] {
 export function TransferTab({ report, onPick }: { report: SolveReport | null; onPick: (element: string) => void }) {
   const s = useTransfers();
   const c = s.choice;
-  const groups = useGroups();
+  const groups = useCaseGroups();
   const areaNames = useMemo(() => new Map((report?.areas ?? []).map((a) => [a.number, a.name.trim()])), [report]);
   const [view, setView] = useState<View>("limits");
   const [search, setSearch] = useState("");
