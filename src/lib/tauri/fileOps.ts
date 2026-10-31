@@ -3,6 +3,7 @@ import {
   showOpenDialog,
   saveDiagramFile,
   loadDiagramFile,
+  confirmDialog,
 } from "./commands";
 import { serialize } from "../serialization/serialize";
 import { deserialize } from "../serialization/deserialize";
@@ -36,7 +37,7 @@ export async function saveAsDialog(): Promise<string | null> {
 export async function openDiagram(): Promise<void> {
   const store = useDiagramStore.getState();
   if (store.isDirty) {
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       "You have unsaved changes. Open a different file anyway?"
     );
     if (!ok) return;

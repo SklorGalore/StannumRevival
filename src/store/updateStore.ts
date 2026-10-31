@@ -150,7 +150,7 @@ export const useUpdate = create<UpdateState>((set, get) => ({
   install: async () => {
     if (!pending || get().phase !== "available") return;
     // Restarting closes the case like opening another would, so ask the same questions.
-    if (!caseChangeOk(useWorkspace.getState().caseSummary)) return;
+    if (!(await caseChangeOk(useWorkspace.getState().caseSummary))) return;
     set({ phase: "downloading", received: 0, total: null, error: null });
     const version = pending.version;
     const done = useLog.getState().begin(`Installing Stannum ${version}`);

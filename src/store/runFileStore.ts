@@ -106,7 +106,7 @@ export const useRunFile = create<RunFileState>((set, get) => ({
     if (get().running) return null;
     const w = useWorkspace.getState();
     // A run file usually opens its own case: ask about unsaved work first.
-    if (!caseChangeOk(w.caseSummary)) return null;
+    if (!(await caseChangeOk(w.caseSummary))) return null;
     const chosen = path ?? (await pickFile(RUN_FILE_FILTERS));
     if (!chosen) return null;
     set({ running: chosen, report: null, error: null });
