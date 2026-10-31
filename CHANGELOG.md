@@ -10,12 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
-- **Mvar flow direction on the one-line.** Each branch shows an open arrow
-  for the way its reactive power flows, beside the filled MW arrow; the Mvar
-  number beside it is now a magnitude, like MW.
+- **Mvar flow direction on the one-line.** Each branch shows an open violet
+  arrow for the way its reactive power flows, beside the filled MW arrow;
+  the Mvar number beside it is violet too, and now a magnitude, like MW.
 - **Animated flow arrows.** **Canvas > Animated flow arrows** (also under
-  **View** and in Ctrl+K) moves the MW arrows along the wires, faster on
-  more heavily loaded branches. Off by default; exports and reduced motion
+  **View** and in Ctrl+K) moves the MW and Mvar arrows along the wires, each
+  the way its flow goes and in its own colour, faster with more flow. Off by default; exports and reduced motion
   keep still arrows.
 
 ### Changed

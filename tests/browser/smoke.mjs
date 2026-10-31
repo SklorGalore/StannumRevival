@@ -338,6 +338,8 @@ assert.equal(await page.getByTestId("flow-arrows-moving").count(), 0, "still arr
 await diagramMenu("Canvas", "Animated flow arrows");
 await page.getByTestId("flow-arrows-moving").first().waitFor();
 assert.equal(await page.getByTestId("flow-arrow").count(), 0, "no still MW arrows while they move");
+await page.getByTestId("mvar-arrows-moving").first().waitFor();
+assert.equal(await page.getByTestId("mvar-arrow").count(), 0, "no still Mvar arrows while they move");
 await diagramMenu("Canvas", "Animated flow arrows");
 await page.getByTestId("flow-arrow").first().waitFor();
 

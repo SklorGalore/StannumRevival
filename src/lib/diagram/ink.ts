@@ -15,8 +15,10 @@ export interface Ink {
   text: string;
   /** Ratings and secondary text. */
   muted: string;
-  /** Power flow numbers. */
+  /** Power flow numbers, and MW flow arrows. */
   result: string;
+  /** Mvar flow arrows and numbers, apart from MW at a glance. */
+  reactive: string;
   /** Selected symbols and wires: the shell's teal accent. */
   selected: string;
   /** Out of service equipment. */
@@ -37,6 +39,7 @@ const COLOR: Ink = {
   text: "#475569",
   muted: "#64748b",
   result: RESULT_TEXT,
+  reactive: "#7c3aed",
   selected: "#009689",
   off: "#94a3b8",
   wire: "#334155",
@@ -52,6 +55,7 @@ const DARK: Ink = {
   text: "#cbd5e1",
   muted: "#94a3b8",
   result: "#5eead4",
+  reactive: "#a78bfa",
   selected: "#00d5be",
   off: "#64748b",
   wire: "#94a3b8",
@@ -66,6 +70,7 @@ const MONO: Ink = {
   text: "#000000",
   muted: "#333333",
   result: "#000000",
+  reactive: "#000000",
   selected: "#009689",
   off: "#808080",
   wire: "#000000",

@@ -198,19 +198,40 @@ export function ConductorEdge({
   const hasQ = !!flow && !!results?.ac && !asMarks && Math.abs(flow.q) > 0.05;
   const qAt = hasQ ? reactiveArrowAt(mid, seg.a, seg.b) : null;
   const pAt = hasQ && qAt && !animate ? qAt.p : mid;
-  const qArrow = hasQ && flow && qAt ? arrowPath(qAt.q, flowDirection(seg.a, seg.b, flow.q < 0), 0.8) : null;
+  const qArrow = hasQ && flow && qAt && !animate ? arrowPath(qAt.q, flowDirection(seg.a, seg.b, flow.q < 0), 0.8) : null;
   const arrow = hasP && !animate ? arrowPath(pAt, dir, k) : null;
   // Moving arrows: one every 50 px along the whole wire, faster with more flow.
   const lineLength = polylineLength(line);
-  const train =
-    hasP && animate && flow && lineLength > 12
-      ? {
-          count: Math.max(1, Math.round(lineLength / 50)),
-          dur: lineLength / flowSpeed(row?.loading_pct, flow.p, maxFlow),
-          reverse: flow.p < 0,
-          shape: arrowPath({ x: 0, y: 0 }, { x: 1, y: 0 }, k),
-        }
-      : null;
+  const moving = animate && !!flow && lineLength > 12;
+  const trains =
+    moving && flow
+      ? [
+          ...(hasP
+            ? [
+                {
+                  kind: "mw" as const,
+                  count: Math.max(1, Math.round(lineLength / 50)),
+                  dur: lineLength / flowSpeed(row?.loading_pct, flow.p, maxFlow),
+                  reverse: flow.p < 0,
+                  shape: arrowPath({ x: 0, y: 0 }, { x: 1, y: 0 }, k),
+                },
+              ]
+            : []),
+          // Mvar arrows move too, in their own colour and pace (measured
+          // against the largest MW flow, so small Mvar flows creep).
+          ...(hasQ
+            ? [
+                {
+                  kind: "mvar" as const,
+                  count: Math.max(1, Math.round(lineLength / 50)),
+                  dur: lineLength / flowSpeed(null, flow.q, maxFlow),
+                  reverse: flow.q < 0,
+                  shape: arrowPath({ x: 0, y: 0 }, { x: 1, y: 0 }, 0.8),
+                },
+              ]
+            : []),
+        ]
+      : [];
   const numbers = flow
     ? [
         mw(Math.abs(flow.p)),
@@ -222,6 +243,8 @@ export function ConductorEdge({
       ? [data.label]
       : [];
   const lines = asMarks ? [] : numbers;
+  // The Mvar number is drawn in the Mvar arrows' colour.
+  const mvarLine = flow && results?.ac ? 1 : -1;
   textAt ??= vertical
     ? { x: mid.x + 7, y: mid.y - (lines.length - 1) * 5.5 + 3, anchor: "start" }
     : { x: mid.x, y: mid.y - 6 - (lines.length - 1) * 11, anchor: "middle" };
@@ -284,29 +307,39 @@ export function ConductorEdge({
           <title>MW flow direction</title>
         </path>
       )}
-      {train && !offline && (
-        <g fill={overload ?? ink.result} data-testid="flow-arrows-moving" pointerEvents="none">
-          {Array.from({ length: train.count }, (_, i) => (
-            <path key={i} d={train.shape}>
-              <animateMotion
-                path={path}
-                dur={`${train.dur.toFixed(2)}s`}
-                begin={`${(-(i * train.dur) / train.count).toFixed(2)}s`}
-                repeatCount="indefinite"
-                rotate={train.reverse ? "auto-reverse" : "auto"}
-                keyPoints={train.reverse ? "1;0" : "0;1"}
-                keyTimes="0;1"
-                calcMode="linear"
-              />
-            </path>
-          ))}
-        </g>
-      )}
+      {!offline &&
+        trains.map((train) => (
+          <g
+            key={train.kind}
+            fill={train.kind === "mw" ? (overload ?? ink.result) : "none"}
+            stroke={train.kind === "mvar" ? ink.reactive : undefined}
+            strokeWidth={train.kind === "mvar" ? 1.2 : undefined}
+            strokeLinejoin="round"
+            data-testid={train.kind === "mw" ? "flow-arrows-moving" : "mvar-arrows-moving"}
+            pointerEvents="none"
+          >
+            {Array.from({ length: train.count }, (_, i) => (
+              <path key={i} d={train.shape}>
+                <animateMotion
+                  path={path}
+                  dur={`${train.dur.toFixed(2)}s`}
+                  // Mvar arrows start half a gap behind, so the two sets interleave.
+                  begin={`${(-((i + (train.kind === "mvar" ? 0.5 : 0)) * train.dur) / train.count).toFixed(2)}s`}
+                  repeatCount="indefinite"
+                  rotate={train.reverse ? "auto-reverse" : "auto"}
+                  keyPoints={train.reverse ? "1;0" : "0;1"}
+                  keyTimes="0;1"
+                  calcMode="linear"
+                />
+              </path>
+            ))}
+          </g>
+        ))}
       {qArrow && !offline && (
         <path
           d={qArrow}
           fill="none"
-          stroke={overload ?? ink.result}
+          stroke={ink.reactive}
           strokeWidth={1.2}
           strokeLinejoin="round"
           data-testid="mvar-arrow"
@@ -331,7 +364,7 @@ export function ConductorEdge({
         >
           <title>Drag to move the label</title>
           {lines.map((l, i) => (
-            <tspan key={i} x={textAt.x} dy={i ? 11 : 0}>
+            <tspan key={i} x={textAt.x} dy={i ? 11 : 0} fill={i === mvarLine && !overload ? ink.reactive : undefined}>
               {l}
             </tspan>
           ))}
