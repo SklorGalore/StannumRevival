@@ -125,6 +125,28 @@ run_transfer_limits settings={"source": {"areas": [1]}, "sink": {"areas": [7]}, 
 | `limit_pct` | 100 | percent of the rating that is the limit |
 | `include_past_limits` | false | let elements already past their limit set the FCITC |
 | `max_rows` | 200 | rows kept in each list |
+| `lists` | none | a lists file (`.stnl`), below |
+| `transfer` | the file's only one | the lists file's `transfer` record to run |
+
+## From a lists file
+
+A [lists file](/StannumRevival/reference/lists-file/#transfers) keeps a
+transfer with the subsystems, contingencies and monitors it uses, so the
+same study runs on every case of a series. With `lists` set:
+
+- its `transfer` record (the one `transfer` names, or the file's only one)
+  supplies the source, sink, scaling, cutoff, ratings and limit; without
+  one, `source` and `sink` and the rest come from the settings;
+- its `contingency` records and `contingency_set` rules, when it has any,
+  are the outages studied, in place of `contingencies`;
+- its flow and interface `monitor` records, when it has any, are what is
+  watched, in place of `monitor`, at the transfer's ratings and limit.
+  Voltage monitors don't apply to a transfer and are left out with a note,
+  as is anything the case lacks.
+
+```text
+run_transfer_limits settings={"lists": "summer.stnl", "transfer": "far_west_coast"}
+```
 
 `cancel_transfer_limits` stops a study between contingencies (keeping what
 is done) and `transfer_progress` follows it.

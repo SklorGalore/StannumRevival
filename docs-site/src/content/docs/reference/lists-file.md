@@ -1,6 +1,6 @@
 ---
 title: Lists file format (.stnl)
-description: "The .stnl text format: subsystems, contingencies, monitored elements and interfaces, kept apart from the case so they run against any case."
+description: "The .stnl text format: subsystems, contingencies, monitored elements, interfaces and transfers, kept apart from the case so they run against any case."
 ---
 
 :::caution[Preview]
@@ -8,13 +8,13 @@ The lists format is a **preview** (format version 0.1), like the
 [case format](/StannumRevival/reference/case-file/). The contingency module
 runs a file's `contingency` records (`open` and `trip_bus` events) and its
 `contingency_set` rules, and checks what its `monitor` records name,
-including interfaces. `close`, `set_p_mw` and `set_q_mvar` events, and
+including interfaces. Transfer limits run its `transfer` records. `close`, `set_p_mw` and `set_q_mvar` events, and
 rating slots above 3, are read and checked but not applied yet.
 :::
 
 A lists file (`.stnl`) holds the study definitions that PSS/E keeps in
-`.sub`, `.mon` and `.con` files: subsystems, contingencies, what to monitor,
-and interfaces. They are kept out of the case on purpose, so one set of
+`.sub`, `.mon` and `.con` files (and the transfers of a `.dfx` setup):
+subsystems, contingencies, what to monitor, interfaces and transfers. They are kept out of the case on purpose, so one set of
 lists can run against every case of a study: this summer's peak, next
 year's, or a case with a project added.
 
@@ -38,6 +38,9 @@ monitor flows subsystem=north limit_pct=95
 monitor v2 kind=voltage element=bus:2 vmin_pu=0.95
 interface flowgate elements=[[line:1:2:1, 1], [line:1:3:1, 1]] limit_mw=180
 monitor gate kind=interface interface=flowgate
+
+subsystem south areas=[2, 3]
+transfer north_south name="North to South" source=north sink=south scaling=reserve rating=2
 ```
 
 ## Syntax
@@ -56,3 +59,25 @@ zones, owners and buses in subsystems are named by number. Nothing refers to
 a particular case file, so a list works with any case that has the
 equipment. When lists are applied to a case, an element the case doesn't
 have is reported and skipped, not treated as an error.
+
+## Transfers
+
+A `transfer` record names a transfer to find the
+[limit](/StannumRevival/manual/transfer-limits/) of: power moved from its
+`source` subsystem to its `sink`, shared out by `scaling` (`generation`,
+`reserve` or `load`), with its own `cutoff_pct`, `base_rating`, `rating`
+(slots 1 to 3, A to C) and `limit_pct`. Run against a case, it studies the
+file's contingencies and contingency sets and watches its flow and
+interface monitors, when the file has them; a monitor's own rating and
+limit give way to the transfer's. A file can hold several transfers, and a
+run names the one it wants.
+
+```text
+stannum-lists 0.1
+subsystem far_west name="Far West" areas=[1]
+subsystem coast name="Coast" areas=[7]
+subsystem hv name="100 kV and up" areas=[1, 2, 3, 4, 5, 6, 7, 8] kv_min=100
+contingency_set n1 kind=n_1_branches kv_min=100
+monitor hv_flows subsystem=hv
+transfer far_west_coast name="Far West to Coast" source=far_west sink=coast
+```

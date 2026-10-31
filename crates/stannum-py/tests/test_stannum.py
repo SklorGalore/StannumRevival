@@ -143,6 +143,24 @@ def test_transfer_limits(case9: sn.Case) -> None:
         case9.transfer_limits({"buses": [5]}, {"buses": [3]})
 
 
+def test_transfer_limits_from_a_lists_file(case9: sn.Case, tmp_path) -> None:
+    case9.solve()
+    lists = tmp_path / "transfers.stnl"
+    lists.write_text(
+        "stannum-lists 0.1\n"
+        "subsystem two buses=[2]\n"
+        "subsystem three buses=[3]\n"
+        "contingency_set n1 kind=n_1_branches\n"
+        "transfer east source=two sink=three rating=2\n"
+    )
+    run = case9.transfer_limits(lists=str(lists))
+    direct = case9.transfer_limits({"buses": [2]}, {"buses": [3]}, contingencies={}, rating="b")
+    assert run.summary.fcitc_mw == direct.summary.fcitc_mw
+    assert run.summary.contingencies == direct.summary.contingencies == 9
+    with pytest.raises(sn.StannumError):
+        case9.transfer_limits(lists=str(lists), transfer="west")
+
+
 def test_records_and_record_edits(case9: sn.Case) -> None:
     book = case9.records()
     assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]

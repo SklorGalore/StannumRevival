@@ -189,8 +189,10 @@ fn default_rows() -> usize {
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct TransferSettings {
     /// Where the power comes from.
+    #[serde(default)]
     pub source: Subsystem,
     /// Where it goes.
+    #[serde(default)]
     pub sink: Subsystem,
     #[serde(default)]
     pub scaling: Scaling,
@@ -220,6 +222,17 @@ pub struct TransferSettings {
     /// element within its limit past it.
     #[serde(default)]
     pub include_past_limits: bool,
+    /// A lists file (`.stnl`). Its contingencies and contingency sets,
+    /// when it has any, are the outages studied instead of
+    /// `contingencies`; its flow and interface monitors, when it has any,
+    /// are what is watched instead of `monitor`.
+    #[serde(default)]
+    pub lists: Option<String>,
+    /// The lists file's `transfer` record to run: its source, sink,
+    /// scaling, cutoff, ratings and limit replace the ones above. The
+    /// file's only transfer when absent.
+    #[serde(default)]
+    pub transfer: Option<String>,
 }
 
 /// One limit the transfer runs into: a monitored element, in the base case
@@ -356,6 +369,8 @@ pub struct TransferJob {
     base: PowerFlowResult,
     settings: TransferSettings,
     outages: Vec<Outage>,
+    /// What the lists file left out or changed, in words.
+    notes: Vec<String>,
     handle: RunHandle,
 }
 
@@ -382,10 +397,43 @@ impl TransferJob {
         base: &PowerFlowResult,
         settings: TransferSettings,
     ) -> Result<Self, String> {
+        let mut settings = settings;
+        let mut notes = Vec::new();
+        let mut listed = None;
+        match settings.lists.clone() {
+            Some(path) => {
+                let lists = crate::lists::load(&path, power)?;
+                apply_lists(power, &mut settings, &lists, &mut notes)?;
+                if lists.named.is_empty() && lists.sets.is_empty() {
+                    notes.extend(lists.notes);
+                } else {
+                    // The lists file's own notes come back with its outages.
+                    let picker = ContingencySettings {
+                        lists: Some(path),
+                        ..Default::default()
+                    };
+                    let (list, _, more) = contingency::outages(power, &picker)?;
+                    notes.extend(more);
+                    listed = Some(list);
+                }
+            }
+            None if settings.transfer.is_some() => {
+                return Err("A transfer named from a lists file needs the lists file.".into());
+            }
+            None => {}
+        }
+        if settings.source.is_everything() && settings.sink.is_everything() {
+            return Err("Pick a source and a sink for the transfer.".into());
+        }
         if !(settings.cutoff.is_finite() && settings.cutoff >= 0.0) {
             return Err("The distribution factor cutoff must be zero or more.".into());
         }
         let outages = match &settings.contingencies {
+            _ if listed.is_some() => {
+                let mut list = listed.unwrap_or_default();
+                list.retain(|o| !o.branch_rows.is_empty() || !o.generator_rows.is_empty());
+                list
+            }
             None => Vec::new(),
             Some(c) => {
                 let picker = ContingencySettings {
@@ -419,6 +467,7 @@ impl TransferJob {
             base: base.clone(),
             settings,
             outages,
+            notes,
             handle: RunHandle::default(),
         })
     }
@@ -441,7 +490,7 @@ impl TransferJob {
         let s = &self.settings;
         let case = &self.power.case;
         let solved = &self.base.case;
-        let mut notes = Vec::new();
+        let mut notes = self.notes.clone();
 
         let source_buses = s.source.bus_ids(&self.power);
         let sink_buses = s.sink.bus_ids(&self.power);
@@ -526,8 +575,10 @@ impl TransferJob {
         };
         let cutoff = s.cutoff;
         let include_past = s.include_past_limits;
-        type Best = Vec<Option<TransferLimit>>;
-        type Local = (Best, Best, Vec<ContingencyLimit>, usize);
+        // Each limit with the index of what was out (0 for the base case),
+        // so that equal limits keep the earlier one whatever thread found it.
+        type Best = Vec<Option<(usize, TransferLimit)>>;
+        type Local = (Best, Best, Vec<(usize, ContingencyLimit)>, usize);
         let parts: Vec<Local> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..workers)
                 .map(|_| {
@@ -570,19 +621,22 @@ impl TransferJob {
                                 } else {
                                     &mut best[k]
                                 };
-                                if slot.as_ref().is_none_or(|b| t < b.fcitc_mw) {
-                                    *slot = Some(TransferLimit {
-                                        monitored: m.name.clone(),
-                                        from: m.from,
-                                        to: m.to,
-                                        winding: m.winding,
-                                        contingency: contingency.clone(),
-                                        fcitc_mw: t,
-                                        flow_mw: f,
-                                        limit_mw: lim,
-                                        factor: d,
-                                        ptdf: m.of(&ptdf),
-                                    });
+                                if slot.as_ref().is_none_or(|(_, b)| t < b.fcitc_mw) {
+                                    *slot = Some((
+                                        i,
+                                        TransferLimit {
+                                            monitored: m.name.clone(),
+                                            from: m.from,
+                                            to: m.to,
+                                            winding: m.winding,
+                                            contingency: contingency.clone(),
+                                            fcitc_mw: t,
+                                            flow_mw: f,
+                                            limit_mw: lim,
+                                            factor: d,
+                                            ptdf: m.of(&ptdf),
+                                        },
+                                    ));
                                 }
                                 if (t >= 0.0 || include_past)
                                     && lowest.as_ref().is_none_or(|l| t < l.fcitc_mw)
@@ -595,7 +649,7 @@ impl TransferJob {
                                     });
                                 }
                             }
-                            worst.extend(lowest);
+                            worst.extend(lowest.map(|l| (i, l)));
                             self.handle.step();
                         }
                         (best, past, worst, islanding)
@@ -611,10 +665,12 @@ impl TransferJob {
 
         let merge = |into: &mut Best, part: Best| {
             for (slot, candidate) in into.iter_mut().zip(part) {
-                if let Some(c) = candidate
-                    && slot.as_ref().is_none_or(|b| c.fcitc_mw < b.fcitc_mw)
+                if let Some((ci, c)) = candidate
+                    && slot.as_ref().is_none_or(|(bi, b)| {
+                        c.fcitc_mw < b.fcitc_mw || (c.fcitc_mw == b.fcitc_mw && ci < *bi)
+                    })
                 {
-                    *slot = Some(c);
+                    *slot = Some((ci, c));
                 }
             }
         };
@@ -629,13 +685,15 @@ impl TransferJob {
             islanding += cut;
         }
         let ascending = |list: Best| {
-            let mut out: Vec<TransferLimit> = list.into_iter().flatten().collect();
-            out.sort_by(|a, b| a.fcitc_mw.total_cmp(&b.fcitc_mw));
-            out
+            let mut out: Vec<(usize, TransferLimit)> = list.into_iter().flatten().collect();
+            out.sort_by(|(i, a), (j, b)| a.fcitc_mw.total_cmp(&b.fcitc_mw).then(i.cmp(j)));
+            out.into_iter().map(|(_, l)| l).collect::<Vec<_>>()
         };
         let mut limits = ascending(best);
         let mut past_limits = ascending(past);
-        by_contingency.sort_by(|a, b| a.fcitc_mw.total_cmp(&b.fcitc_mw));
+        by_contingency.sort_by(|(i, a), (j, b)| a.fcitc_mw.total_cmp(&b.fcitc_mw).then(i.cmp(j)));
+        let mut by_contingency: Vec<ContingencyLimit> =
+            by_contingency.into_iter().map(|(_, c)| c).collect();
         let mut table: Vec<TransferFactor> = monitored
             .iter()
             .map(|m| TransferFactor {
@@ -816,6 +874,165 @@ impl TransferJob {
     }
 }
 
+/// Take the transfer and what it watches from a lists file: its `transfer`
+/// record (the one named, or its only one) and its flow and interface
+/// monitors. The record's ratings and limit apply to the monitors.
+fn apply_lists(
+    power: &PowerCase,
+    s: &mut TransferSettings,
+    lists: &crate::lists::Lists,
+    notes: &mut Vec<String>,
+) -> Result<(), String> {
+    use crate::lists::Watched;
+    let chosen = match &s.transfer {
+        Some(name) => Some(
+            lists
+                .transfers
+                .iter()
+                .find(|t| &t.name == name)
+                .ok_or_else(|| format!("The lists file has no transfer {name}."))?,
+        ),
+        None if lists.transfers.len() == 1 => lists.transfers.first(),
+        None => None,
+    };
+    if chosen.is_none() && lists.transfers.len() > 1 {
+        let names: Vec<&str> = lists.transfers.iter().map(|t| t.name.as_str()).collect();
+        return Err(format!(
+            "The lists file has {} transfers; name the one to run ({}).",
+            names.len(),
+            names.join(", ")
+        ));
+    }
+    if let Some(t) = chosen {
+        let side = |buses: &HashSet<u32>, what: &str| {
+            if buses.is_empty() {
+                return Err(format!(
+                    "Transfer \"{}\": its {what} has no buses in this case.",
+                    t.name
+                ));
+            }
+            let mut buses: Vec<u32> = buses.iter().copied().collect();
+            buses.sort_unstable();
+            Ok(Subsystem {
+                buses,
+                ..Default::default()
+            })
+        };
+        s.source = side(&t.source, "source")?;
+        s.sink = side(&t.sink, "sink")?;
+        s.scaling = match t.scaling.as_str() {
+            "reserve" => Scaling::Reserve,
+            "load" => Scaling::Load,
+            _ => Scaling::Generation,
+        };
+        s.cutoff = t.cutoff_pct / 100.0;
+        let rating = |slot: u8| match slot {
+            2 => Rating::B,
+            3 => Rating::C,
+            _ => Rating::A,
+        };
+        s.base_rating = rating(t.base_rating);
+        s.rating = rating(t.rating);
+        s.limit_pct = t.limit_pct;
+        notes.push(format!(
+            "Transfer \"{}\" from the lists file: {} source and {} sink bus{}.",
+            t.name,
+            t.source.len(),
+            t.sink.len(),
+            if t.sink.len() == 1 { "" } else { "es" }
+        ));
+    }
+    // The monitors, when the file has flow or interface monitors.
+    let branches: HashSet<&str> = power
+        .elements
+        .branches
+        .iter()
+        .map(|e| e.element.as_str())
+        .collect();
+    let mut m = MonitorSettings {
+        branches: false,
+        subsystem: None,
+        kv_min: 0.0,
+        elements: Vec::new(),
+        interfaces: Vec::new(),
+    };
+    let (mut any, mut whole, mut voltage) = (false, false, 0);
+    let mut buses: HashSet<u32> = HashSet::new();
+    for mon in &lists.monitors {
+        match &mon.watched {
+            Watched::Flow {
+                element: Some(e), ..
+            } => {
+                if branches.contains(e.as_str()) {
+                    m.elements.push(e.clone());
+                    any = true;
+                } else {
+                    notes.push(format!(
+                        "Monitor \"{}\": {e} isn't a branch in this case; skipped.",
+                        mon.name
+                    ));
+                }
+            }
+            Watched::Flow { buses: Some(b), .. } => {
+                buses.extend(b);
+                any = true;
+            }
+            Watched::Flow { .. } => {
+                whole = true;
+                any = true;
+            }
+            Watched::Interface(i) => {
+                let Some(limit_mw) = i.limit_mw else {
+                    notes.push(format!(
+                        "Monitor \"{}\": interface {} has no limit; skipped.",
+                        mon.name, i.name
+                    ));
+                    continue;
+                };
+                if let Some((id, _)) = i
+                    .elements
+                    .iter()
+                    .find(|(id, _)| !branches.contains(id.as_str()))
+                {
+                    notes.push(format!(
+                        "Monitor \"{}\": {id} in interface {} isn't a branch in this case; skipped.",
+                        mon.name, i.name
+                    ));
+                    continue;
+                }
+                m.interfaces.push(Interface {
+                    name: i.name.clone(),
+                    elements: i.elements.clone(),
+                    limit_mw,
+                });
+                any = true;
+            }
+            Watched::Voltage { .. } => voltage += 1,
+        }
+    }
+    if voltage > 0 {
+        notes.push(format!(
+            "{voltage} voltage monitor{} in the lists file left out: a transfer's limit is in MW.",
+            if voltage == 1 { "" } else { "s" },
+        ));
+    }
+    if any {
+        if whole {
+            m.branches = true;
+        } else if !buses.is_empty() {
+            let mut buses: Vec<u32> = buses.into_iter().collect();
+            buses.sort_unstable();
+            m.branches = true;
+            m.subsystem = Some(Subsystem {
+                buses,
+                ..Default::default()
+            });
+        }
+        s.monitor = m;
+    }
+    Ok(())
+}
+
 fn bus_rows(case: &Case) -> HashMap<u32, usize> {
     case.buses
         .iter()
@@ -904,7 +1121,117 @@ mod tests {
             limit_pct: 100.0,
             max_rows: 200,
             include_past_limits: false,
+            lists: None,
+            transfer: None,
         }
+    }
+
+    /// Settings that take everything from the lists file `text`.
+    fn from_lists(text: &str, tag: &str) -> (TransferSettings, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "stannum-transfer-{tag}-{}.stnl",
+            std::process::id()
+        ));
+        std::fs::write(&path, text).unwrap();
+        let s = TransferSettings {
+            source: Subsystem::default(),
+            sink: Subsystem::default(),
+            contingencies: None,
+            lists: Some(path.to_string_lossy().into_owned()),
+            ..settings(1, 1)
+        };
+        (s, path)
+    }
+
+    #[test]
+    fn a_lists_file_transfer_runs_as_written() {
+        let (power, base) = case9();
+        let text = "stannum-lists 0.1\n\
+            subsystem a buses=[2]\n\
+            subsystem b buses=[3]\n\
+            contingency_set n1 kind=n_1_branches\n\
+            monitor v kind=voltage element=bus:5\n\
+            transfer t source=a sink=b scaling=reserve rating=2 cutoff_pct=1\n";
+        let (s, path) = from_lists(text, "as-written");
+        let listed = TransferJob::new(&power, &base, s).unwrap().run();
+        std::fs::remove_file(&path).ok();
+        let listed = listed.unwrap();
+        let mut direct = settings(2, 3);
+        direct.scaling = Scaling::Reserve;
+        direct.rating = Rating::B;
+        direct.cutoff = 0.01;
+        let direct = TransferJob::new(&power, &base, direct)
+            .unwrap()
+            .run()
+            .unwrap();
+        let (a, b) = (&listed.summary, &direct.summary);
+        assert_eq!(a.fcitc_mw, b.fcitc_mw);
+        assert_eq!(a.contingencies, b.contingencies);
+        assert_eq!(a.monitored, b.monitored);
+        assert_eq!(a.rating, Rating::B);
+        assert_eq!(listed.limits, direct.limits);
+        assert!(
+            a.notes.iter().any(|n| n.contains("1 voltage monitor")),
+            "{:?}",
+            a.notes
+        );
+    }
+
+    #[test]
+    fn a_lists_file_chooses_what_is_watched() {
+        let (power, base) = case9();
+        let line = power.elements.branches[3].element.clone();
+        let other = power.elements.branches[4].element.clone();
+        let text = format!(
+            "stannum-lists 0.1\n\
+            subsystem a buses=[2]\n\
+            subsystem b buses=[3]\n\
+            monitor one element={line}\n\
+            monitor gone element=line:98:99:1\n\
+            interface gate elements=[[{line}, 1], [{other}, -1]] limit_mw=150\n\
+            monitor gate kind=interface interface=gate\n\
+            transfer t source=a sink=b\n\
+            transfer u source=b sink=a\n"
+        );
+        let (mut s, path) = from_lists(&text, "watched");
+        let unnamed = TransferJob::new(&power, &base, s.clone()).err();
+        s.transfer = Some("u".into());
+        let r = TransferJob::new(&power, &base, s.clone()).map(|j| j.run());
+        s.transfer = Some("nope".into());
+        let missing = TransferJob::new(&power, &base, s).err();
+        std::fs::remove_file(&path).ok();
+        assert!(unnamed.unwrap().contains("2 transfers; name the one"));
+        assert!(missing.unwrap().contains("no transfer nope"));
+        let r = r.unwrap().unwrap();
+        // The branch and the interface; no outages in the file, none asked.
+        assert_eq!((r.summary.monitored, r.summary.contingencies), (2, 0));
+        assert_eq!(r.summary.source.buses, 1);
+        assert!(r.factors.iter().any(|f| f.monitored == "interface:gate"));
+        assert!(
+            r.summary
+                .notes
+                .iter()
+                .any(|n| n.contains("line:98:99:1 isn't a branch")),
+            "{:?}",
+            r.summary.notes
+        );
+    }
+
+    #[test]
+    fn a_transfer_needs_its_sides_and_its_file() {
+        let (power, base) = case9();
+        let mut s = settings(2, 3);
+        s.transfer = Some("t".into());
+        assert!(TransferJob::new(&power, &base, s).is_err());
+        let mut s = settings(2, 3);
+        s.source = Subsystem::default();
+        s.sink = Subsystem::default();
+        assert!(
+            TransferJob::new(&power, &base, s)
+                .err()
+                .unwrap()
+                .contains("Pick a source and a sink")
+        );
     }
 
     #[test]

@@ -34,6 +34,14 @@ export interface TransferChoice {
   rating: Rating;
   baseRating: Rating;
   includePast: boolean;
+  /**
+   * A lists file (.stnl): its contingencies and monitors, when it has
+   * them, replace the outages and monitored elements above, and its
+   * transfer record (the one named, or its only one) the source and sink.
+   */
+  listsPath: string | null;
+  /** The lists file's transfer record to run; blank for its only one. */
+  transferName: string;
 }
 
 export const DEFAULT_TRANSFER: TransferChoice = {
@@ -49,6 +57,8 @@ export const DEFAULT_TRANSFER: TransferChoice = {
   rating: "a",
   baseRating: "a",
   includePast: false,
+  listsPath: null,
+  transferName: "",
 };
 
 /** The bus numbers in a typed list such as "101, 102 205". */
@@ -85,6 +95,8 @@ export function transferSettings(c: TransferChoice): TransferSettings {
     base_rating: c.baseRating,
     include_past_limits: c.includePast,
     max_rows: 500,
+    lists: c.listsPath,
+    transfer: c.listsPath && c.transferName.trim() ? c.transferName.trim() : null,
   };
 }
 

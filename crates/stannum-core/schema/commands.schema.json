@@ -6493,6 +6493,14 @@
           "format": "double",
           "type": "number"
         },
+        "lists": {
+          "default": null,
+          "description": "A lists file (`.stnl`). Its contingencies and contingency sets,\nwhen it has any, are the outages studied instead of\n`contingencies`; its flow and interface monitors, when it has any,\nare what is watched instead of `monitor`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "max_rows": {
           "default": 200,
           "description": "The most rows kept in each of the results' lists.",
@@ -6521,17 +6529,37 @@
         },
         "sink": {
           "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
           "description": "Where it goes."
         },
         "source": {
           "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
           "description": "Where the power comes from."
+        },
+        "transfer": {
+          "default": null,
+          "description": "The lists file's `transfer` record to run: its source, sink,\nscaling, cutoff, ratings and limit replace the ones above. The\nfile's only transfer when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "source",
-        "sink"
-      ],
       "type": "object"
     },
     "TransferSummary": {

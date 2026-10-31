@@ -339,8 +339,8 @@ class Case:
 
     def transfer_limits(
         self,
-        source: Mapping[str, Any],
-        sink: Mapping[str, Any],
+        source: Mapping[str, Any] | None = None,
+        sink: Mapping[str, Any] | None = None,
         settings: Mapping[str, Any] | None = None,
         **options: Any,
     ) -> Answer:
@@ -363,6 +363,13 @@ class Case:
         ``rating`` and ``base_rating`` ("a", "b" or "c"), ``limit_pct``,
         ``include_past_limits`` and ``max_rows``.
 
+        ``lists`` (a ``.stnl`` path) takes the outages from the file's
+        contingencies and contingency sets and what is watched from its flow
+        and interface monitors, when it has them. Its ``transfer`` records
+        name whole transfers: ``transfer="north_south"`` (or the file's only
+        one) supplies the source, sink, scaling, cutoff, ratings and limit,
+        so ``source`` and ``sink`` can be left out.
+
         Returns the ``summary`` (``fcitc_mw``, ``limiting``,
         ``generation_limit_mw``, ``transfer_limit_mw``, ``notes``, ...) and
         the ``limits``, ``past_limits``, ``contingencies`` and ``factors``
@@ -372,7 +379,11 @@ class Case:
         merged = _settings(settings, options) or {}
         result = self.call(
             "run_transfer_limits",
-            settings={**merged, "source": dict(source), "sink": dict(sink)},
+            settings={
+                **merged,
+                **({"source": dict(source)} if source is not None else {}),
+                **({"sink": dict(sink)} if sink is not None else {}),
+            },
         )
         for key in ("limits", "past_limits", "contingencies", "factors"):
             rows = result.get(key) or []
