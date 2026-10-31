@@ -149,6 +149,15 @@ fn a_client_opens_solves_and_reads_a_case() {
         solved.get("buses").is_some_and(|b| b == 9),
         "a count, not the table: {solved}"
     );
+    // Settings one by one, as an assistant most often passes them.
+    let newton = c
+        .tool(
+            "solve_power_flow",
+            json!({ "method": "newton", "start": "flat", "tolerance_mva": 0.001 }),
+        )
+        .unwrap();
+    assert_eq!(newton["method"], "newton", "{newton}");
+    assert_eq!(newton["decoupled_iterations"], 0, "{newton}");
 
     let top = c
         .tool(

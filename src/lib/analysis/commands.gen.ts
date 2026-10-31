@@ -2120,11 +2120,63 @@ export interface CoreCommands {
     };
     result: BusCoordinates;
   };
-  /** Calculate sensitivities at the solved operating point. */
+  /**
+   * Calculate sensitivities at the solved operating point. Takes the same
+   * settings as `solve_power_flow`, in `settings` or one by one.
+   */
   calculate_sensitivities: {
     args: {
+      /**
+       * Step DC converter taps, and the transformers that some converters
+       * step instead (COD 4); detailed model only.
+       */
+      adjust_dc_taps?: boolean;
+      /**
+       * Move phase shifters in active power flow control (AC only). When
+       * false they are locked, like taps.
+       */
+      adjust_phase_shifters?: boolean;
+      /**
+       * Step transformer taps in voltage control (COD 1) and reactive flow
+       * control (COD 2) (AC only). When false they are locked, like shunts.
+       */
+      adjust_transformer_taps?: boolean;
+      /**
+       * Hold each area's net interchange at its desired value with the
+       * area slack generation (AC only; RAW area data). Off by default.
+       */
+      area_interchange?: InterchangeChoice;
       case?: CaseId | null;
+      dc_model?: DcModelChoice;
+      /**
+       * Decoupled iterations per pass (fixed-slope and fast decoupled, and
+       * the decoupled stage of the automatic method).
+       */
+      decoupled_iterations?: number;
+      /**
+       * Hold generators at their reactive limits (and regulate remote buses).
+       * On by default, as real cases are solved in PSS/E and PowerWorld.
+       */
+      enforce_q_limits?: boolean;
+      /** Newton iterations per pass. */
+      max_iterations?: number;
+      /** AC solution method. */
+      method?: MethodChoice;
+      model?: ModelChoice;
       settings?: SolveSettings | null;
+      start?: StartChoice;
+      /**
+       * Switch shunts in voltage control (AC only). When false they are
+       * locked: they stay where they are, which is where the last solve left
+       * them when starting from it, and at their case values otherwise.
+       */
+      switch_shunts?: boolean;
+      /**
+       * Largest power mismatch allowed at any bus, in MVA. It converts to per
+       * unit on each case's own base at solve time, so the same setting means
+       * the same MW and Mvar on every case.
+       */
+      tolerance_mva?: number;
     };
     result: SensitivitySummary;
   };
@@ -2633,12 +2685,63 @@ export interface CoreCommands {
   };
   /**
    * Solve the power flow with the study's edits. `cancel_solve` stops it.
-   * Settings left out take their defaults.
+   * Settings go in `settings` or one by one beside it (`method`,
+   * `tolerance_mva`, `start`, `enforce_q_limits`, `switch_shunts`, ...);
+   * settings left out take their defaults.
    */
   solve_power_flow: {
     args: {
+      /**
+       * Step DC converter taps, and the transformers that some converters
+       * step instead (COD 4); detailed model only.
+       */
+      adjust_dc_taps?: boolean;
+      /**
+       * Move phase shifters in active power flow control (AC only). When
+       * false they are locked, like taps.
+       */
+      adjust_phase_shifters?: boolean;
+      /**
+       * Step transformer taps in voltage control (COD 1) and reactive flow
+       * control (COD 2) (AC only). When false they are locked, like shunts.
+       */
+      adjust_transformer_taps?: boolean;
+      /**
+       * Hold each area's net interchange at its desired value with the
+       * area slack generation (AC only; RAW area data). Off by default.
+       */
+      area_interchange?: InterchangeChoice;
       case?: CaseId | null;
+      dc_model?: DcModelChoice;
+      /**
+       * Decoupled iterations per pass (fixed-slope and fast decoupled, and
+       * the decoupled stage of the automatic method).
+       */
+      decoupled_iterations?: number;
+      /**
+       * Hold generators at their reactive limits (and regulate remote buses).
+       * On by default, as real cases are solved in PSS/E and PowerWorld.
+       */
+      enforce_q_limits?: boolean;
+      /** Newton iterations per pass. */
+      max_iterations?: number;
+      /** AC solution method. */
+      method?: MethodChoice;
+      model?: ModelChoice;
       settings?: SolveSettings | null;
+      start?: StartChoice;
+      /**
+       * Switch shunts in voltage control (AC only). When false they are
+       * locked: they stay where they are, which is where the last solve left
+       * them when starting from it, and at their case values otherwise.
+       */
+      switch_shunts?: boolean;
+      /**
+       * Largest power mismatch allowed at any bus, in MVA. It converts to per
+       * unit on each case's own base at solve time, so the same setting means
+       * the same MW and Mvar on every case.
+       */
+      tolerance_mva?: number;
     };
     result: SolveReport;
   };

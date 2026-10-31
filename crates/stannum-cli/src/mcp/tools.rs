@@ -71,7 +71,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "solve_power_flow",
         title: "Solve power flow",
-        description: "Solve the power flow of the open case with the study's edits. Settings left out take their defaults: AC, automatic method, from the last solution, 2 MVA tolerance, reactive limits held, every control on. Answers a summary: convergence, totals, how controls moved and counts of limit problems. Then use find_violations and query_results.",
+        description: "Solve the power flow of the open case with the study's edits. Pass any setting on its own (method, tolerance_mva, start, enforce_q_limits, switch_shunts, adjust_transformer_taps, area_interchange, ...) or all in `settings`. Settings left out take their defaults: AC, automatic method, from the last solution, 2 MVA tolerance, reactive limits held, every control on. Answers a summary: convergence, totals, how controls moved and counts of limit problems. Then use find_violations and query_results.",
         input: solve_input,
         read_only: false,
         destructive: false,
@@ -523,10 +523,12 @@ fn open_case_input() -> Value {
 }
 
 fn solve_input() -> Value {
-    object(
-        json!({ "settings": core_schema("SolveSettings", true) }),
-        &[],
-    )
+    // Each setting on its own (the easy way to ask for one), and all of
+    // them in `settings`, as the core takes them.
+    let settings = core_schema("SolveSettings", true);
+    let mut properties = settings["properties"].clone();
+    properties["settings"] = settings;
+    object(properties, &[])
 }
 
 fn violations_input() -> Value {
@@ -997,6 +999,11 @@ fn solve(c: &Call, args: &Value) -> Answer {
     let mut solve_args = json!({});
     if args["settings"].is_object() {
         solve_args["settings"] = args["settings"].clone();
+    }
+    for name in stannum_core::commands::flat_settings("solve_power_flow") {
+        if let Some(value) = args.get(name.as_str()).filter(|v| !v.is_null()) {
+            solve_args[name.as_str()] = value.clone();
+        }
     }
     let report = c.backend.call("solve_power_flow", solve_args)?;
     if c.cancelled.load(Ordering::SeqCst) {
@@ -1817,5 +1824,13 @@ mod tests {
         assert!(settings.get("required").is_none());
         let methods = settings["properties"]["method"].to_string();
         assert!(methods.contains("fast_decoupled_xb"), "{methods}");
+    }
+
+    #[test]
+    fn solve_settings_can_be_given_one_by_one() {
+        let s = solve_input();
+        let methods = s["properties"]["method"].to_string();
+        assert!(methods.contains("fast_decoupled_xb"), "{methods}");
+        assert!(s["properties"]["tolerance_mva"].is_object(), "{s}");
     }
 }

@@ -195,7 +195,7 @@ impl Session {
         crash::catch(command, || {
             #[cfg(feature = "fault-injection")]
             crash::inject(command);
-            dispatch(self, command, args)
+            dispatch(self, command, lift_settings(command, args)?)
         })
     }
 
@@ -608,6 +608,95 @@ impl<F: FnMut()> Drop for OnDrop<F> {
     }
 }
 
+/// Commands that take their solve settings one by one as well as in
+/// `settings`: `solve_power_flow method=newton tolerance_mva=0.5`.
+const FLAT_SETTINGS: &[&str] = &["solve_power_flow", "calculate_sensitivities"];
+
+/// The settings `command` also takes one by one, beside its `settings`
+/// argument (snake_case names); empty for other commands.
+pub fn flat_settings(command: &str) -> &'static [String] {
+    static SOLVE: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    if !FLAT_SETTINGS.contains(&command) {
+        return &[];
+    }
+    SOLVE.get_or_init(|| match serde_json::to_value(SolveSettings::default()) {
+        Ok(Value::Object(fields)) => fields.keys().cloned().collect(),
+        _ => Vec::new(),
+    })
+}
+
+/// Moves the settings given one by one (snake_case or camelCase) into
+/// `settings`. One given both ways is an error, not a quiet pick.
+pub fn lift_settings(command: &str, args: Value) -> Result<Value, Error> {
+    let names = flat_settings(command);
+    let Value::Object(mut fields) = args else {
+        return Ok(args);
+    };
+    let mut lifted = Map::new();
+    for name in names {
+        let camel = crate::run_file::camel(name);
+        for key in [name.as_str(), camel.as_str()] {
+            if let Some(value) = fields.remove(key)
+                && lifted.insert(name.clone(), value).is_some()
+            {
+                return Err(Error::invalid_arguments(format!(
+                    "{command}: {name} is given twice."
+                )));
+            }
+            if camel == *name {
+                break;
+            }
+        }
+    }
+    if lifted.is_empty() {
+        return Ok(Value::Object(fields));
+    }
+    let settings = fields
+        .entry("settings")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if settings.is_null() {
+        *settings = Value::Object(Map::new());
+    }
+    let Value::Object(settings) = settings else {
+        return Err(Error::invalid_arguments(format!(
+            "{command}: settings must be an object."
+        )));
+    };
+    for (name, value) in lifted {
+        if settings.contains_key(&name) {
+            return Err(Error::invalid_arguments(format!(
+                "{command}: {name} is given both on its own and in settings."
+            )));
+        }
+        settings.insert(name, value);
+    }
+    Ok(Value::Object(fields))
+}
+
+/// Copies the properties of the `settings` argument's type into the
+/// arguments themselves, for a command in [`FLAT_SETTINGS`].
+fn flatten_settings_schema(args: &mut Value, defs: &Map<String, Value>) {
+    fn reference(v: &Value) -> Option<&str> {
+        v.get("$ref")
+            .and_then(Value::as_str)
+            .or_else(|| v.get("anyOf")?.as_array()?.iter().find_map(reference))
+    }
+    let Some(name) =
+        reference(&args["properties"]["settings"]).and_then(|r| r.strip_prefix("#/$defs/"))
+    else {
+        return;
+    };
+    let Some(Value::Object(fields)) = defs.get(name).and_then(|d| d.get("properties")).cloned()
+    else {
+        return;
+    };
+    if let Some(Value::Object(properties)) = args.get_mut("properties") {
+        for (field, schema) in fields {
+            properties.entry(field).or_insert(schema);
+        }
+    }
+}
+
 fn parse<T: serde::de::DeserializeOwned>(command: &str, args: Value) -> Result<T, Error> {
     let args = if args.is_null() {
         Value::Object(Default::default())
@@ -720,6 +809,13 @@ macro_rules! commands {
             for command in commands.values_mut() {
                 crate::schema::rewrite_refs(&mut command["args"], &prefix, &mapping);
             }
+            // Settings taken one by one list beside `settings` with the
+            // same schema as inside it.
+            for (name, command) in commands.iter_mut() {
+                if !flat_settings(name).is_empty() {
+                    flatten_settings_schema(&mut command["args"], &defs);
+                }
+            }
             json!({
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "title": "Stannum commands",
@@ -774,7 +870,9 @@ commands! {
     };
 
     /// Solve the power flow with the study's edits. `cancel_solve` stops it.
-    /// Settings left out take their defaults.
+    /// Settings go in `settings` or one by one beside it (`method`,
+    /// `tolerance_mva`, `start`, `enforce_q_limits`, `switch_shunts`, ...);
+    /// settings left out take their defaults.
     solve_power_flow { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SolveReport =>
         |s, a| s.solve(a.case, a.settings.unwrap_or_default());
 
@@ -818,7 +916,8 @@ commands! {
     study_edits { case: Option<CaseId> } -> Vec<Edit> =>
         |s, a| Ok(s.workspace()?.case(a.case)?.edits.clone());
 
-    /// Calculate sensitivities at the solved operating point.
+    /// Calculate sensitivities at the solved operating point. Takes the same
+    /// settings as `solve_power_flow`, in `settings` or one by one.
     calculate_sensitivities { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SensitivitySummary =>
         |s, a| s.sensitivities(a.case, a.settings.unwrap_or_default());
 
@@ -1150,6 +1249,40 @@ mod tests {
         let d: Value =
             serde_json::from_str(&session.invoke("diagnostics", json!({})).unwrap()).unwrap();
         assert!(d["internal_errors"].as_u64().unwrap() >= 1);
+    }
+
+    #[test]
+    fn solve_settings_can_be_given_one_by_one() {
+        let session = Session::new();
+        session
+            .invoke("open_case", json!({ "path": case_file() }))
+            .unwrap();
+        let solve = |args: Value| -> Result<Value, Error> {
+            Ok(serde_json::from_str(&session.invoke("solve_power_flow", args)?).unwrap())
+        };
+        let r =
+            solve(json!({ "method": "newton", "start": "flat", "switch_shunts": false })).unwrap();
+        assert_eq!(r["method"], "newton");
+        assert_eq!(r["shunts_locked"], true);
+        assert_eq!(r["taps_locked"], false);
+        // camelCase too, and beside `settings`.
+        let r = solve(json!({ "toleranceMva": 1e-6, "settings": { "method": "fixed_slope", "adjust_transformer_taps": false } })).unwrap();
+        assert_eq!(r["method"], "fixed_slope");
+        assert_eq!(r["taps_locked"], true);
+        let r = solve(json!({ "model": "dc" })).unwrap();
+        assert_eq!(r["model"], "dc");
+
+        let e = solve(json!({ "method": "newton", "settings": { "method": "auto" } })).unwrap_err();
+        assert!(e.is(ErrorKind::InvalidArguments), "{e:?}");
+        let e = solve(json!({ "tolerance_mva": 1, "toleranceMva": 2 })).unwrap_err();
+        assert!(e.is(ErrorKind::InvalidArguments), "{e:?}");
+        let e = solve(json!({ "method": "fastest" })).unwrap_err();
+        assert!(e.is(ErrorKind::InvalidArguments), "{e:?}");
+        // Other commands don't take solve settings.
+        let e = session
+            .invoke("case_summary", json!({ "method": "newton" }))
+            .unwrap_err();
+        assert!(e.is(ErrorKind::InvalidArguments), "{e:?}");
     }
 
     #[test]
