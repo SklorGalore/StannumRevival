@@ -8,6 +8,11 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 1.0.0 - 2026-10-31
+
+The first stable release. Coming from 0.5.0, it also holds everything in
+1.0.0-rc.1 below.
+
 ### Added
 
 - **Verification tables.** The [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
