@@ -10,6 +10,28 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Contingency setup.** The Contingencies tab's settings moved into a
+  setup dialog with five steps: Outages, Monitor, Subsystems, Limits &
+  reporting, and Solution. The tab keeps a one-line summary, **Set up…**
+  and **Run**. New in it: subsystems built from areas, zones, owners, buses
+  and a kV range (saved to and loaded from `.stnl` lists files), N-1 and
+  N-2 within a subsystem, monitoring one subsystem's branches and voltages,
+  a voltage "worse by" threshold, and generator Q limit, tap and switched
+  shunt settings for the contingency solves alone. The core takes lists
+  text inline (`lists_text`, `monitors_text`) and reads a file's
+  subsystems (`lists_subsystems`); a contingency set's `name` now names
+  its category.
+
+- **Every contingency violation in one CSV.** The Contingencies tab's
+  **Export CSV** can now save every violation: one line per overload,
+  voltage problem and interface violation of every outage, written by the
+  core straight to the file (command `export_contingency_violations`), as
+  well as the one-row-per-outage table. How much worse a problem already
+  there before the outage must get to count is now a setting (**Worse by**,
+  `worse_by_pct` and `worse_by_pu`; 1 point and 0.001 p.u. as before), and
+  **Include existing** (`report_existing`) reports every problem after the
+  outage. Each overload now carries the limit it was judged against.
+
 - **Transformer magnetizing and impedance correction tables.** RAW cases'
   magnetizing admittance (`MAG1`, `MAG2`, either `CM`) now draws at the
   winding one bus, and impedance correction tables (`TAB1`–`TAB3`) scale a
@@ -66,6 +88,17 @@ section into the next version's when a release is cut (see
   server.
 
 ### Changed
+
+- **Study files are retired; save work as a run file, and keep a history.**
+  **Save study** is now **Save as run file**: a `.stnrun` that opens the
+  case, attaches its DC grid and bus coordinates files, sets the study edits
+  and solves with the app's settings. It leaves out saved solves (study
+  files kept every one as a full report) and the drawing, which has its own
+  file. Older `.stannum` files still open, with their edits, saved solves
+  and drawing, but are no longer written. **Record a run file** is replaced
+  by **History** in the log drawer (**File → History…**): every change and
+  export is kept as you go, and any part of it can be copied or saved as a
+  run file without starting anything first.
 
 - **Solve keeps the current view.** Solving from the toolbar, the menu bar or
   Ctrl+K no longer switches to Power flow; the diagram and tables update in

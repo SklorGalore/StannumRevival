@@ -71,6 +71,12 @@ fn default_limit() -> f64 {
 fn default_zero_impedance() -> f64 {
     0.0001
 }
+fn default_worse_by_pct() -> f64 {
+    1.0
+}
+fn default_worse_by_pu() -> f64 {
+    0.001
+}
 
 /// What to run.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
@@ -112,6 +118,19 @@ pub struct ContingencySettings {
     /// overloaded.
     #[serde(default = "default_limit")]
     pub limit_pct: f64,
+    /// How many percentage points of loading a branch or interface already
+    /// over its limit before the outage must gain to be reported. 1 by
+    /// default.
+    #[serde(default = "default_worse_by_pct")]
+    pub worse_by_pct: f64,
+    /// How many per unit a bus already outside its voltage limits before
+    /// the outage must move further out to be reported. 0.001 by default.
+    #[serde(default = "default_worse_by_pu")]
+    pub worse_by_pu: f64,
+    /// Report every branch, interface and bus outside its limits after the
+    /// outage, also those that already were before it and got no worse.
+    #[serde(default)]
+    pub report_existing: bool,
     /// The rating loadings are measured against after an outage.
     #[serde(default)]
     pub rating: Rating,
@@ -137,6 +156,27 @@ pub struct ContingencySettings {
     /// interfaces. Every rated branch and every bus when absent.
     #[serde(default)]
     pub monitors: Option<String>,
+    /// Lists text (`.stnl`) to run in place of a `lists` file, as the
+    /// setup builds it from its subsystems. Wins over `lists`.
+    #[serde(default)]
+    pub lists_text: Option<String>,
+    /// Lists text (`.stnl`) whose monitor records choose what is checked,
+    /// in place of a `monitors` file. Wins over `monitors`.
+    #[serde(default)]
+    pub monitors_text: Option<String>,
+}
+
+/// Lists read from inline `text` when given, else from the file at `path`.
+fn lists_from(
+    text: &Option<String>,
+    path: &Option<String>,
+    power: &PowerCase,
+) -> Option<Result<crate::lists::Lists, String>> {
+    match (text, path) {
+        (Some(t), _) => Some(crate::lists::parse(t, power)),
+        (None, Some(p)) => Some(crate::lists::load(p, power)),
+        (None, None) => None,
+    }
 }
 
 impl Default for ContingencySettings {
@@ -152,12 +192,17 @@ impl Default for ContingencySettings {
             method: Method::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
+            worse_by_pct: default_worse_by_pct(),
+            worse_by_pu: default_worse_by_pu(),
+            report_existing: false,
             rating: Rating::default(),
             base_rating: Rating::default(),
             solve: SolveSettings::default(),
             planning: None,
             lists: None,
             monitors: None,
+            lists_text: None,
+            monitors_text: None,
         }
     }
 }
@@ -175,6 +220,9 @@ pub struct Overload {
     /// Active flow at the from end, MW, after and before.
     pub mw: f64,
     pub base_mw: f64,
+    /// The loading, in percent, above which this branch counts as over:
+    /// the run's limit, or its monitor's.
+    pub limit_pct: f64,
 }
 
 /// A bus outside its voltage limits after an outage.
@@ -482,9 +530,8 @@ pub(crate) fn outages(
     power: &PowerCase,
     settings: &ContingencySettings,
 ) -> Result<(Vec<Outage>, usize, Vec<String>), String> {
-    if let Some(path) = &settings.lists {
-        let lists = crate::lists::load(path, power)?;
-        return from_lists(power, settings, lists);
+    if let Some(lists) = lists_from(&settings.lists_text, &settings.lists, power) {
+        return from_lists(power, settings, lists?);
     }
     if let Some(p) = &settings.planning {
         let list: Vec<Outage> = planning::events(power, p)?
@@ -877,14 +924,13 @@ struct WatchedInterface {
 }
 
 impl Watch {
-    /// The monitors of the lists file at `path`, resolved to `power`'s
+    /// The monitors of `lists`, resolved to `power`'s
     /// rows, and notes on what was skipped.
     fn from_lists(
         power: &PowerCase,
-        path: &str,
+        lists: crate::lists::Lists,
         settings: &ContingencySettings,
     ) -> Result<(Self, Vec<String>), String> {
-        let lists = crate::lists::load(path, power)?;
         let mut notes = lists.notes;
         if lists.monitors.is_empty() {
             notes.push(
@@ -1069,9 +1115,9 @@ impl ContingencyJob {
         settings: ContingencySettings,
     ) -> Result<Self, String> {
         let (outages, already_out, mut notes) = outages(power, &settings)?;
-        let watch = match &settings.monitors {
-            Some(path) => {
-                let (watch, more) = Watch::from_lists(power, path, &settings)?;
+        let watch = match lists_from(&settings.monitors_text, &settings.monitors, power) {
+            Some(lists) => {
+                let (watch, more) = Watch::from_lists(power, lists?, &settings)?;
                 notes.extend(more);
                 watch
             }
@@ -1119,8 +1165,10 @@ impl ContingencyJob {
         let n = self.outages.len();
 
         handle.set_phase(1, n);
-        let mut rows: Vec<Option<ContingencyRow>> =
-            parallel(handle, n, |i| Some(context.screen(&self.outages[i]).row));
+        let mut rows: Vec<Option<(ContingencyRow, Violations)>> = parallel(handle, n, |i| {
+            let o = context.screen(&self.outages[i]);
+            Some((o.row.clone(), o.violations()))
+        });
         let screen_ms = start.elapsed().as_secs_f64() * 1000.0;
         let mut was_cancelled = rows.iter().any(Option::is_none);
 
@@ -1128,7 +1176,10 @@ impl ContingencyJob {
         let mut ac_checked = 0;
         if !was_cancelled {
             let mut order: Vec<usize> = (0..n).collect();
-            order.sort_by(|&a, &b| severity(&rows[b]).total_cmp(&severity(&rows[a])));
+            order.sort_by(|&a, &b| {
+                severity(rows[b].as_ref().map(|r| &r.0))
+                    .total_cmp(&severity(rows[a].as_ref().map(|r| &r.0)))
+            });
             let count = match self.settings.method {
                 Method::Ac => n,
                 Method::Screen => self.settings.ac_count.min(n),
@@ -1154,7 +1205,10 @@ impl ContingencyJob {
             let solved = parallel(handle, count, |k| {
                 context
                     .ac(&self.outages[chosen[k]], &self.settings.solve, handle)
-                    .map(|d| d.row)
+                    .map(|d| {
+                        let v = d.violations();
+                        (d.row, v)
+                    })
             });
             for (k, row) in solved.into_iter().enumerate() {
                 match row {
@@ -1170,10 +1224,16 @@ impl ContingencyJob {
         let ac_ms = ac_start.elapsed().as_secs_f64() * 1000.0;
 
         // A cancelled screen leaves gaps; those outages aren't reported.
-        let mut ranked: Vec<(usize, ContingencyRow)> = rows
+        let (mut ranked, mut found): (Vec<(usize, ContingencyRow)>, Vec<Violations>) = rows
             .into_iter()
             .enumerate()
-            .filter_map(|(i, r)| r.map(|r| (i, r)))
+            .filter_map(|(i, r)| r.map(|(r, v)| ((i, r), v)))
+            .unzip();
+        // Keep the violations in step with the ranking below.
+        let mut by_outage: HashMap<usize, Violations> = ranked
+            .iter()
+            .map(|(i, _)| *i)
+            .zip(found.drain(..))
             .collect();
         ranked.sort_by(|a, b| {
             // AC results first, then by severity.
@@ -1218,9 +1278,14 @@ impl ContingencyJob {
         log_summary(&summary);
         let (order, rows): (Vec<usize>, Vec<ContingencyRow>) = ranked.into_iter().unzip();
         let outages = order.iter().map(|&i| self.outages[i].clone()).collect();
+        let violations = order
+            .iter()
+            .map(|i| by_outage.remove(i).unwrap_or_default())
+            .collect();
         Ok(ContingencyResults {
             summary,
             rows,
+            violations,
             outages,
             power: self.power,
             base: self.base,
@@ -1283,8 +1348,8 @@ fn tie_break(lost_mw: f64, branches: &[BranchChange]) -> f64 {
     ((lost_mw.abs() + moved) / 10_000.0).min(0.999)
 }
 
-fn severity(row: &Option<ContingencyRow>) -> f64 {
-    row.as_ref().map_or(f64::NEG_INFINITY, |r| r.severity)
+fn severity(row: Option<&ContingencyRow>) -> f64 {
+    row.map_or(f64::NEG_INFINITY, |r| r.severity)
 }
 
 fn log_summary(s: &ContingencySummary) {
@@ -1360,6 +1425,9 @@ struct Context<'a> {
     base: &'a PowerFlowResult,
     factors: DcFactors,
     limit_pct: f64,
+    worse_by_pct: f64,
+    worse_by_pu: f64,
+    report_existing: bool,
     rating: Rating,
     base_rating: Rating,
     /// Base flows at the from and to ends.
@@ -1381,6 +1449,28 @@ struct Outcome {
     buses: Vec<BusChange>,
     cut_off: Vec<u32>,
     interfaces: Vec<InterfaceFlow>,
+    /// The interfaces over their limit, as reported, worst first.
+    interfaces_over: Vec<InterfaceFlow>,
+}
+
+impl Outcome {
+    /// What the outage found outside its limits, to keep with the run.
+    fn violations(&self) -> Violations {
+        Violations {
+            overloads: self.overloads.clone(),
+            voltage_problems: self.voltage_problems.clone(),
+            interfaces: self.interfaces_over.clone(),
+        }
+    }
+}
+
+/// Everything one outage found outside its limits, as reported (new or
+/// worse unless the run reports existing problems too), worst first.
+#[derive(Clone, Debug, Default)]
+pub struct Violations {
+    pub overloads: Vec<Overload>,
+    pub voltage_problems: Vec<VoltageProblem>,
+    pub interfaces: Vec<InterfaceFlow>,
 }
 
 /// Loading of branch row `r`, measured as in the solve report.
@@ -1390,9 +1480,9 @@ fn loading(power: &PowerCase, r: usize, pf: f64, qf: f64, pt: f64, qt: f64, rate
 }
 
 /// A branch is new or worse when it is over the limit now and was under it,
-/// or has grown by more than a point.
-fn new_or_worse(pct: f64, base: f64, limit: f64) -> bool {
-    pct > limit && (base <= limit || pct > base + 1.0)
+/// or has grown by more than `worse_by` points.
+fn new_or_worse(pct: f64, base: f64, limit: f64, worse_by: f64) -> bool {
+    pct > limit && (base <= limit || pct > base + worse_by)
 }
 
 impl<'a> Context<'a> {
@@ -1411,6 +1501,9 @@ impl<'a> Context<'a> {
             base,
             factors,
             limit_pct: settings.limit_pct,
+            worse_by_pct: settings.worse_by_pct.max(0.0),
+            worse_by_pu: settings.worse_by_pu.max(0.0),
+            report_existing: settings.report_existing,
             rating: settings.rating,
             base_rating,
             pf: flows.iter().map(|f| f[0]).collect(),
@@ -1476,6 +1569,17 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// Whether a loading of `pct` (`base` before the outage) over `limit` is
+    /// reported: new or worse, unless the run reports existing ones too.
+    fn reported(&self, pct: f64, base: f64, limit: f64, base_case: bool) -> bool {
+        let before = if base_case || self.report_existing {
+            0.0
+        } else {
+            base
+        };
+        new_or_worse(pct, before, limit, self.worse_by_pct)
+    }
+
     /// Each watched interface's flow, from every branch row's from-end MW
     /// after the outage; and those over their limit, new or worse, worst
     /// first.
@@ -1500,7 +1604,7 @@ impl<'a> Context<'a> {
                 limit_pct: i.limit_pct,
             };
             if let (Some(p), Some(b)) = (flow.pct, flow.base_pct)
-                && new_or_worse(p, if base_case { 0.0 } else { b }, i.limit_pct)
+                && self.reported(p, b, i.limit_pct, base_case)
             {
                 over.push(flow.clone());
             }
@@ -1705,11 +1809,12 @@ impl<'a> Context<'a> {
                     base_pct: base,
                     mw: flows[r],
                     base_mw: self.pf[r],
+                    limit_pct: limit,
                 };
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, if absolute { 0.0 } else { base }, limit) {
+                if self.reported(pct, base, limit, absolute) {
                     overloads.push(o);
                 }
             }
@@ -1766,7 +1871,7 @@ impl<'a> Context<'a> {
             worst_voltage: None,
             voltage_violations: 0,
             interface_violations: over.len(),
-            worst_interface: over.into_iter().next(),
+            worst_interface: over.first().cloned(),
             cut_off_buses: cut.len(),
             lost_load_mw: lost_load,
             lost_generation_mw: lost_gen,
@@ -1779,6 +1884,7 @@ impl<'a> Context<'a> {
             buses: vec![],
             cut_off: cut.iter().map(|&b| case.buses[b].id).collect(),
             interfaces,
+            interfaces_over: over,
         }
     }
 
@@ -1961,11 +2067,12 @@ impl<'a> Context<'a> {
                     base_pct: base,
                     mw: f[0],
                     base_mw: self.pf[r],
+                    limit_pct: limit,
                 };
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, if absolute { 0.0 } else { base }, limit) {
+                if self.reported(pct, base, limit, absolute) {
                     overloads.push(o);
                 }
             }
@@ -2008,9 +2115,13 @@ impl<'a> Context<'a> {
             };
             let (now, was) = (
                 outside(b.vm),
-                if absolute { 0.0 } else { outside(before.vm) },
+                if absolute || self.report_existing {
+                    0.0
+                } else {
+                    outside(before.vm)
+                },
             );
-            if watched.is_some() && now > 0.0 && now > was + 0.001 {
+            if watched.is_some() && now > 0.0 && now > was + self.worse_by_pu {
                 voltage_problems.push(VoltageProblem {
                     bus: b.id,
                     name: self.names.get(i).cloned().unwrap_or_default(),
@@ -2052,7 +2163,7 @@ impl<'a> Context<'a> {
         let worst_interface_pct = over.first().and_then(|i| i.pct).unwrap_or(0.0);
         row.severity = worst_pct.max(voltage_score).max(worst_interface_pct);
         row.interface_violations = over.len();
-        row.worst_interface = over.into_iter().next();
+        row.worst_interface = over.first().cloned();
         row.worst = overloads.first().cloned().or(worst);
         row.overloads = overloads.len();
         row.worst_voltage = voltage_problems.first().cloned();
@@ -2066,6 +2177,7 @@ impl<'a> Context<'a> {
                 buses,
                 cut_off: screened.cut_off,
                 interfaces,
+                interfaces_over: over,
             },
             Some(result),
         ))
@@ -2078,6 +2190,8 @@ pub struct ContingencyResults {
     pub summary: ContingencySummary,
     /// Ranked, worst first.
     pub rows: Vec<ContingencyRow>,
+    /// Each row's violations, in the same order.
+    pub violations: Vec<Violations>,
     outages: Vec<Outage>,
     power: PowerCase,
     base: PowerFlowResult,
@@ -2098,7 +2212,133 @@ fn next_run_id() -> u64 {
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// What [`ContingencyResults::write_violations_csv`] wrote.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct ViolationsExport {
+    /// Lines written, one per violation (and one per outage whose AC solve
+    /// failed), not counting the header.
+    pub rows: usize,
+    /// Outages with at least one line.
+    pub outages: usize,
+}
+
+/// One CSV field: quoted when it holds a comma, quote or line break.
+fn csv_field(v: &str) -> std::borrow::Cow<'_, str> {
+    if v.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", v.replace('"', "\"\"")).into()
+    } else {
+        v.into()
+    }
+}
+
+fn num(v: f64) -> String {
+    if v.is_finite() {
+        format!("{}", (v * 10_000.0).round() / 10_000.0)
+    } else {
+        String::new()
+    }
+}
+
+fn opt(v: Option<f64>) -> String {
+    v.map(num).unwrap_or_default()
+}
+
+/// The header of the violations CSV.
+pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,description,solved,type,element,from_bus,to_bus,bus,name,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note";
+
 impl ContingencyResults {
+    /// Write every violation of the run as CSV, one line each, in rank
+    /// order: branch overloads, bus voltages and interfaces as reported
+    /// (new or worse by the run's thresholds, or every one when it reports
+    /// existing problems), and a line for each outage whose AC solve
+    /// failed. Streams, so a large run never sits in memory as text.
+    pub fn write_violations_csv(
+        &self,
+        out: &mut impl std::io::Write,
+    ) -> std::io::Result<ViolationsExport> {
+        writeln!(out, "{VIOLATIONS_CSV_HEADER}")?;
+        let mut written = ViolationsExport {
+            rows: 0,
+            outages: 0,
+        };
+        for (row, found) in self.rows.iter().zip(&self.violations) {
+            let contingency = if row.kind == "base" {
+                "base case"
+            } else {
+                row.element.as_str()
+            };
+            let solved = match (row.checked, row.converged) {
+                ("ac", Some(false)) => "ac_not_converged",
+                ("ac", _) => "ac",
+                _ => "linear",
+            };
+            let lead = format!(
+                "{},{},{},{},{}",
+                row.rank,
+                csv_field(row.category.as_deref().unwrap_or("")),
+                csv_field(contingency),
+                csv_field(row.description.as_deref().unwrap_or("")),
+                solved,
+            );
+            let before = written.rows;
+            if row.converged == Some(false) {
+                writeln!(
+                    out,
+                    "{lead},not_converged,,,,,,,,,,,,,,,{}",
+                    csv_field(row.note.as_deref().unwrap_or(""))
+                )?;
+                written.rows += 1;
+            } else {
+                for o in &found.overloads {
+                    writeln!(
+                        out,
+                        "{lead},branch,{},{},{},,,{},{},{},{},{},,,,,",
+                        csv_field(&o.element),
+                        o.from,
+                        o.to,
+                        num(o.pct),
+                        num(o.base_pct),
+                        num(o.limit_pct),
+                        num(o.mw),
+                        num(o.base_mw),
+                    )?;
+                }
+                for v in &found.voltage_problems {
+                    writeln!(
+                        out,
+                        "{lead},voltage,bus:{},,,{},{},,,,,,{},{},{},{},",
+                        v.bus,
+                        v.bus,
+                        csv_field(&v.name),
+                        num(v.vm),
+                        num(v.base_vm),
+                        num(v.vmin),
+                        num(v.vmax),
+                    )?;
+                }
+                for i in &found.interfaces {
+                    writeln!(
+                        out,
+                        "{lead},interface,{},,,,,{},{},{},{},{},,,,,",
+                        csv_field(&i.name),
+                        opt(i.pct),
+                        opt(i.base_pct),
+                        num(i.limit_pct),
+                        num(i.mw),
+                        num(i.base_mw),
+                    )?;
+                }
+                written.rows +=
+                    found.overloads.len() + found.voltage_problems.len() + found.interfaces.len();
+            }
+            if written.rows > before {
+                written.outages += 1;
+            }
+        }
+        out.flush()?;
+        Ok(written)
+    }
+
     /// Ranked rows `offset..offset + limit`.
     pub fn page(&self, offset: usize, limit: usize) -> crate::table::Table<ContingencyRow> {
         self.rows.iter().skip(offset).take(limit).cloned().collect()

@@ -393,6 +393,11 @@ export type ContingencySettings = {
    * `pairs`; `planning` is unused.
    */
   lists?: string | null;
+  /**
+   * Lists text (`.stnl`) to run in place of a `lists` file, as the
+   * setup builds it from its subsystems. Wins over `lists`.
+   */
+  lists_text?: string | null;
   method?: Method;
   /**
    * Check only what the `monitor` records of this lists file (`.stnl`)
@@ -400,6 +405,11 @@ export type ContingencySettings = {
    * interfaces. Every rated branch and every bus when absent.
    */
   monitors?: string | null;
+  /**
+   * Lists text (`.stnl`) whose monitor records choose what is checked,
+   * in place of a `monitors` file. Wins over `monitors`.
+   */
+  monitors_text?: string | null;
   /**
    * N-2: take the chosen branches and generators out two at a time,
    * every pair once, instead of one at a time. Buses stay one at a time.
@@ -413,6 +423,11 @@ export type ContingencySettings = {
   /** The rating loadings are measured against after an outage. */
   rating?: Rating;
   /**
+   * Report every branch, interface and bus outside its limits after the
+   * outage, also those that already were before it and got no worse.
+   */
+  report_existing?: boolean;
+  /**
    * Leave out zero-impedance lines: lines with no resistance and a
    * reactance at or below `zero_impedance_pu`, as PSS/E treats them
    * (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
@@ -420,6 +435,17 @@ export type ContingencySettings = {
    */
   skip_zero_impedance?: boolean;
   solve?: SolveSettings;
+  /**
+   * How many percentage points of loading a branch or interface already
+   * over its limit before the outage must gain to be reported. 1 by
+   * default.
+   */
+  worse_by_pct?: number;
+  /**
+   * How many per unit a bus already outside its voltage limits before
+   * the outage must move further out to be reported. 0.001 by default.
+   */
+  worse_by_pu?: number;
   /**
    * The zero-impedance threshold in per unit; 0.0001 by default, as
    * PSS/E's THRSHZ.
@@ -981,6 +1007,25 @@ export type LimitSummary = {
 };
 
 /**
+ * A subsystem record of a lists file, as written: its id, name and
+ * members, for editing and saving again.
+ */
+export type ListedSubsystem = {
+  areas: number[];
+  buses: number[];
+  id: string;
+  /** Only buses at or below this base voltage, kV. */
+  kv_max: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min: number | null;
+  name: string;
+  owners: number[];
+  /** Other subsystems it includes, by id. */
+  subsystems: string[];
+  zones: number[];
+};
+
+/**
  * A bus's load at the solved voltage by part, in MW and Mvar:
  * `[constant power, constant current, constant impedance]`.
  */
@@ -1158,6 +1203,11 @@ export type Overload = {
   base_pct: number;
   element: string;
   from: number;
+  /**
+   * The loading, in percent, above which this branch counts as over:
+   * the run's limit, or its monitor's.
+   */
+  limit_pct: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
   /**
@@ -1889,6 +1939,17 @@ export type TransferSummary = {
   transfer_limit_mw: number | null;
 };
 
+/** What [`ContingencyResults::write_violations_csv`] wrote. */
+export type ViolationsExport = {
+  /** Outages with at least one line. */
+  outages: number;
+  /**
+   * Lines written, one per violation (and one per outage whose AC solve
+   * failed), not counting the header.
+   */
+  rows: number;
+};
+
 /** A bus outside its voltage limits after an outage. */
 export type VoltageProblem = {
   base_vm: number;
@@ -2197,6 +2258,18 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: ElementKind[];
   };
+  /**
+   * Write every violation of the last run to a CSV file, one line each:
+   * branch overloads, bus voltages and interfaces, and a line for each
+   * outage whose AC solve failed.
+   */
+  export_contingency_violations: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: ViolationsExport;
+  };
   /** Write the case, solved or as filed, as a MATPOWER file. */
   export_matpower: {
     args: {
@@ -2242,6 +2315,13 @@ export interface CoreCommands {
   list_commands: {
     args: Record<string, never>;
     result: CommandList;
+  };
+  /** The subsystem records of a lists file (`.stnl`), as written. */
+  lists_subsystems: {
+    args: {
+      path: string;
+    };
+    result: ListedSubsystem[];
   };
   /**
    * Attach a bus coordinates CSV (bus, latitude, longitude, optional
@@ -2436,6 +2516,16 @@ export interface CoreCommands {
     result: RunReport;
   };
   /**
+   * Commands as run file text, for copying from the app's history.
+   * Paths stay as given and settings at their defaults are left out.
+   */
+  run_file_text: {
+    args: {
+      steps: Step[];
+    };
+    result: string;
+  };
+  /**
    * Transfer limits (DFAX and FCITC): how much power can move from the
    * source subsystem to the sink before a monitored branch or interface
    * reaches its limit, in the base case and after each contingency.
@@ -2463,7 +2553,7 @@ export interface CoreCommands {
     result: CaseSummary;
   };
   /**
-   * Write commands as a run file, such as the ones Record kept. Paths in
+   * Write commands as a run file, such as ones from the app's history. Paths in
    * the run file's folder are written relative to it, and settings at
    * their defaults are left out.
    */

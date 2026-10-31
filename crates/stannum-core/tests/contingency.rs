@@ -799,3 +799,128 @@ fn a_lists_file_monitors_what_it_names() {
     assert_eq!(w.name, "gate");
     assert!(w.pct.unwrap() > 100.0 && w.base_pct.unwrap() < 100.0);
 }
+
+/// How much worse an existing overload must get is a setting, and a run can
+/// report existing problems too; the violations CSV lists every one.
+#[test]
+fn worse_by_and_existing_problems_are_settings() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let mut run = |worse_by_pct: f64, report_existing: bool| {
+        open.run_contingencies(ContingencySettings {
+            worse_by_pct,
+            report_existing,
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+        open.contingency_rows(0, 1000)
+            .unwrap()
+            .into_iter()
+            .map(|r| (r.element.clone(), r.overloads))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+    let default = run(1.0, false);
+    let strict = run(1000.0, false);
+    let every = run(1.0, true);
+    let total = |m: &std::collections::HashMap<String, usize>| m.values().sum::<usize>();
+    assert!(total(&default) > 0, "case30 has overloads on rate A");
+    for (element, n) in &default {
+        assert!(strict[element] <= *n, "{element}");
+        assert!(every[element] >= *n, "{element}");
+    }
+    assert!(
+        total(&every) > total(&strict),
+        "existing overloads come back"
+    );
+
+    // The CSV (of the last run, reporting everything) has a line per
+    // violation, each with every column.
+    let summary = open.contingency_summary().unwrap();
+    let rows = open.contingency_rows(0, 1000).unwrap();
+    let path = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
+    let written = open.export_contingency_violations(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let mut lines = text.lines();
+    let header = lines.next().unwrap();
+    assert_eq!(header, stannum_core::contingency::VIOLATIONS_CSV_HEADER);
+    let columns = header.split(',').count();
+    let body: Vec<&str> = lines.collect();
+    assert_eq!(body.len(), written.rows);
+    let expected: usize = rows
+        .iter()
+        .map(|r| {
+            if r.converged == Some(false) {
+                1
+            } else {
+                r.overloads + r.voltage_violations + r.interface_violations
+            }
+        })
+        .sum();
+    assert_eq!(written.rows, expected);
+    assert!(
+        written.rows > summary.with_overloads,
+        "more than one per outage"
+    );
+    for line in &body {
+        assert_eq!(line.split(',').count(), columns, "{line}");
+    }
+    assert!(body.iter().any(|l| l.split(',').nth(5) == Some("branch")));
+}
+
+/// Lists text given inline runs as the same text read from a file would,
+/// and the subsystems of a file read back as written.
+#[test]
+fn inline_lists_match_a_lists_file() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let text = "stannum-lists 0.1\n\
+                subsystem two name=\"Area 2\" areas=[2] kv_min=1\n\
+                contingency_set n1 kind=n_1_branches subsystem=two\n\
+                monitor flows subsystem=two limit_pct=90\n\
+                monitor volts kind=voltage subsystem=two vmin_pu=0.97\n";
+    let path = std::env::temp_dir().join(format!("stannum-inline-{}.stnl", std::process::id()));
+    std::fs::write(&path, text).unwrap();
+    let file = path.to_string_lossy().into_owned();
+    let run = |open: &mut stannum_core::workspace::OpenCase, s: ContingencySettings| {
+        let summary = open.run_contingencies(s).unwrap();
+        let rows = open.contingency_rows(0, 1000).unwrap().0;
+        let found: Vec<_> = rows
+            .iter()
+            .map(|r| (r.element.clone(), r.overloads, r.voltage_violations))
+            .collect();
+        (summary.total, summary.monitored, found)
+    };
+    let from_file = run(
+        open,
+        ContingencySettings {
+            lists: Some(file.clone()),
+            monitors: Some(file.clone()),
+            ..settings(Method::Ac)
+        },
+    );
+    let inline = run(
+        open,
+        ContingencySettings {
+            lists_text: Some(text.into()),
+            monitors_text: Some(text.into()),
+            ..settings(Method::Ac)
+        },
+    );
+    assert!(
+        from_file.0 > 0 && from_file.0 < 41,
+        "area 2's branches only"
+    );
+    assert!(from_file.1);
+    assert_eq!(from_file, inline);
+
+    let subsystems = stannum_core::lists::subsystems(&file).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(subsystems.len(), 1);
+    assert_eq!(
+        (subsystems[0].id.as_str(), subsystems[0].name.as_str()),
+        ("two", "Area 2")
+    );
+    assert_eq!(subsystems[0].members.areas, vec![2]);
+    assert_eq!(subsystems[0].members.kv_min, Some(1.0));
+}

@@ -3,15 +3,17 @@
 // diagram. Or run the NERC TPL-001 planning events the core generates from
 // the case (planning.rs). The run itself is stannum-core's (contingency.rs).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Download, FileText, Network, Play, ShieldAlert, Square, X } from "lucide-react";
-import { PLANNING_CATEGORIES, useContingencies, type ContingencySource } from "../../store/contingencyStore";
+import { Network, Play, ShieldAlert, SlidersHorizontal, Square, X } from "lucide-react";
+import { ContingencySetup, setupSummary } from "./ContingencySetup";
+import { useContingencies } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
-import { LISTS_FILTERS, api, pickFile, saveTextExport } from "../../lib/analysis/api";
-import type { CategoryCount, ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
+import { api, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { OverflowMenu } from "../../ui/OverflowMenu";
+import type { ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
-import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
+import { ratingLabel, type Rating } from "../../lib/analysis/ratings";
 import { Button, EmptyState, ErrorBanner, Metric, Notice, SearchBox, inputClass } from "../../ui/primitives";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { allRows, objectKey, type RowSource } from "../../ui/usePagedRows";
@@ -209,21 +211,6 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   );
 }
 
-/** The last part of a path, for showing a chosen file. */
-function fileName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
-}
-
-/** The most pairs the core runs, as in stannum-core's contingency::MAX_PAIRS. */
-const MAX_PAIRS = 250_000;
-
-/** How many pairs N-2 of `n` elements makes, and whether that is too many. */
-function pairNote(n: number): string {
-  const pairs = (n * (n - 1)) / 2;
-  const base = `${count(n)} elements make ${count(pairs)} pairs.`;
-  return pairs > MAX_PAIRS ? `${base} That is more than ${count(MAX_PAIRS)}: narrow them with the bus filters.` : base;
-}
-
 /** One outage in full, beside the table. */
 function OutagePanel({
   detail,
@@ -407,39 +394,6 @@ function OutagePanel({
   );
 }
 
-/** The planning event categories, each with how many events it gives on the case. */
-function PlanningCategories({
-  counts,
-  chosen,
-  onChange,
-}: {
-  counts: CategoryCount[] | null;
-  chosen: string[];
-  onChange: (categories: string[]) => void;
-}) {
-  const label = (c: string) => counts?.find((k) => k.category === c);
-  const toggle = (c: string, on: boolean) =>
-    onChange(PLANNING_CATEGORIES.filter((k) => (k === c ? on : chosen.includes(k))));
-  return (
-    <fieldset className="flex flex-col gap-1" data-testid="planning-categories">
-      <legend className="text-[11px] font-medium text-slate-600 mb-1">Planning events</legend>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-0.5">
-        {PLANNING_CATEGORIES.map((c) => {
-          const info = label(c);
-          return (
-            <label key={c} className="flex items-center gap-1.5 whitespace-nowrap" title={info?.label}>
-              <input type="checkbox" checked={chosen.includes(c)} onChange={(e) => toggle(c, e.target.checked)} />
-              <span className="font-semibold tabular-nums">{c}</span>
-              <span className="text-slate-600">{info?.label ?? ""}</span>
-              {info && <span className="tabular-nums text-slate-400">{count(info.count)}</span>}
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
 export function ContingencyTab({
   report,
   settings,
@@ -465,11 +419,6 @@ export function ContingencyTab({
   );
   const planning = s.choice.source === "planning";
   const fromLists = s.choice.source === "lists";
-  // Planning event counts, for the categories to pick from.
-  const loadCounts = s.loadCounts;
-  useEffect(() => {
-    if (planning) void loadCounts();
-  }, [planning, report, s.choice.kvMin, loadCounts]);
   useEffect(() => setCategory(""), [s.summary]);
   // The ranked rows are read from the core a page at a time.
   const [clicked, setClicked] = useState<ContingencyRow | null>(null);
@@ -522,14 +471,15 @@ export function ContingencyTab({
 
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
-  const chosenCount = (s.counts ?? []).filter((c) => s.choice.categories.includes(c.category)).reduce((n, c) => n + c.count, 0);
   const noMonitors = s.choice.monitorFromLists && !s.choice.monitorsPath;
   const nothingChosen = noMonitors || fromLists ? noMonitors || !s.choice.listsPath : planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
-  // Branches and generators that N-2 pairs up (buses stay one at a time).
-  const pairElements = scope
-    ? scope.elements.filter((e) => !e.startsWith("bus:")).length
-    : (s.choice.branches ? new Set(report?.branches.filter((b) => b.online && !b.element.startsWith("switch:")).map((b) => b.element)).size : 0) +
-      (s.choice.generators ? (report?.generators.filter((g) => g.online).length ?? 0) : 0);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const runTitle = !acReady ? "Solve the case with the AC model first" : nothingChosen ? "Choose what to take out in the setup" : undefined;
+  async function exportViolations() {
+    const path = await pickSavePath("contingency-violations.csv", [{ name: "CSV", extensions: ["csv"] }]);
+    if (!path) return;
+    await api.exportContingencyViolations(path);
+  }
   async function exportCsv() {
     const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
@@ -564,298 +514,44 @@ export function ContingencyTab({
   const progressPct = s.progress && s.progress.total ? (100 * s.progress.done) / s.progress.total : 0;
   return (
     <div className="h-full flex flex-col" data-testid="contingency-tab">
-      <form
-        className="flex flex-wrap items-end gap-x-4 gap-y-2 px-3 py-2 border-b border-slate-200 bg-white text-xs"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run();
-        }}
-      >
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Outages
-          <select
-            className={inputClass}
-            value={s.choice.source}
-            onChange={(e) => s.setChoice({ source: e.target.value as ContingencySource })}
-            aria-label="Outages"
-            data-testid="contingency-source"
-          >
-            <option value="n1">N-1: each element on its own</option>
-            <option value="planning">NERC TPL-001 planning events</option>
-            <option value="lists">From a lists file (.stnl)</option>
-          </select>
-        </label>
-        {fromLists ? (
-          <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-[11px] font-medium text-slate-600">Lists file</span>
-            <div className="flex items-center gap-2 min-w-0">
-              <Button
-                type="button"
-                onClick={async () => {
-                  const path = await pickFile(LISTS_FILTERS);
-                  if (path) s.setChoice({ listsPath: path });
-                }}
-                data-testid="choose-lists"
-              >
-                <FileText size={13} /> {s.choice.listsPath ? "Change…" : "Choose…"}
-              </Button>
-              <span className="truncate max-w-64 text-[11px] text-slate-600" title={s.choice.listsPath ?? undefined} data-testid="lists-path">
-                {s.choice.listsPath ? fileName(s.choice.listsPath) : "No file chosen"}
-              </span>
-            </div>
-          </div>
-        ) : planning ? (
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-200 bg-white text-xs" data-testid="contingency-toolbar">
+        <Button type="button" onClick={() => setSetupOpen(true)} data-testid="contingency-setup" title="What to take out, what to check, subsystems, limits and solve options">
+          <SlidersHorizontal size={13} /> Set up…
+        </Button>
+        <span className="min-w-0 flex-1 truncate text-slate-600" title={setupSummary(s.choice, !!scope)} data-testid="contingency-setup-summary">
+          {setupSummary(s.choice, !!scope)}
+        </span>
+        {s.running ? (
           <>
-            <PlanningCategories
-              counts={s.counts}
-              chosen={s.choice.categories}
-              onChange={(categories) => s.setChoice({ categories })}
-            />
-            <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-              At or above (kV)
-              <input
-                className={`${inputClass} w-20`}
-                type="number"
-                min={0}
-                step="any"
-                value={s.choice.kvMin}
-                onChange={(e) =>
-                  s.setChoice({
-                    kvMin: Math.max(0, Number(e.target.value) || 0),
-                  })
-                }
-                aria-label="Lowest voltage"
-                title="Branches, shunts and DC lines with a terminal at or above this voltage. Generators are not filtered by voltage."
-              />
-            </label>
+            <span className="flex flex-col gap-1 w-44" data-testid="contingency-progress">
+              <span className="text-[11px] text-slate-600">
+                {s.progress?.phase === "ac" ? "AC solves" : "Screening"} {s.progress ? `${count(s.progress.done)} of ${count(s.progress.total)}` : "…"}
+              </span>
+              <span className="h-1.5 rounded bg-slate-100 overflow-hidden">
+                <span className="block h-full bg-teal-600 transition-[width]" style={{ width: `${progressPct}%` }} />
+              </span>
+            </span>
+            <Button type="button" onClick={s.cancel}>
+              <Square size={12} /> Cancel
+            </Button>
           </>
         ) : (
-          <fieldset className="flex flex-col gap-1">
-            <legend className="text-[11px] font-medium text-slate-600 mb-1">Take out</legend>
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={s.choice.branches} onChange={(e) => s.setChoice({ branches: e.target.checked })} />
-                Branches
-              </label>
-              <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={s.choice.generators} onChange={(e) => s.setChoice({ generators: e.target.checked })} />
-                Generators
-              </label>
-              <label className="flex items-center gap-1.5" title="Each bus with every branch and DC line connected to it, cutting off its loads, generators and shunts">
-                <input type="checkbox" checked={s.choice.buses} onChange={(e) => s.setChoice({ buses: e.target.checked })} data-testid="outage-buses" />
-                Buses
-              </label>
-              <select
-                className={`${inputClass} py-0.5`}
-                value={s.choice.pairs ? "pairs" : "single"}
-                onChange={(e) => s.setChoice({ pairs: e.target.value === "pairs" })}
-                aria-label="How many at a time"
-                data-testid="outage-depth"
-              >
-                <option value="single">One at a time (N-1)</option>
-                <option value="pairs">Two at a time (N-2)</option>
-              </select>
-            </div>
-            {s.choice.pairs && (
-              <span className="text-[11px] text-slate-500" data-testid="pair-count">
-                {pairNote(pairElements)}
-              </span>
-            )}
-          </fieldset>
+          <Button type="button" variant="primary" onClick={run} disabled={!acReady || nothingChosen} title={runTitle} data-testid="run-contingencies">
+            <Play size={13} /> Run contingencies
+          </Button>
         )}
-        <div className="flex flex-col gap-1 min-w-0">
-          <label className="text-[11px] font-medium text-slate-600" htmlFor="contingency-checked">
-            Checked
-          </label>
-          <div className="flex items-center gap-2 min-w-0">
-            <select
-              id="contingency-checked"
-              className={inputClass}
-              value={s.choice.monitorFromLists ? "lists" : "all"}
-              onChange={(e) => {
-                const lists = e.target.value === "lists";
-                s.setChoice({
-                  monitorFromLists: lists,
-                  monitorsPath: s.choice.monitorsPath ?? (lists ? s.choice.listsPath : null),
-                });
-              }}
-              title="What is checked after each outage: every rated branch and every bus, or only what a lists file's monitor records name (with their own limits, and interfaces)"
-              data-testid="contingency-checked"
-            >
-              <option value="all">Every branch and bus</option>
-              <option value="lists">Monitors from a lists file</option>
-            </select>
-            {s.choice.monitorFromLists && (
-              <>
-                <Button
-                  type="button"
-                  onClick={async () => {
-                    const path = await pickFile(LISTS_FILTERS);
-                    if (path) s.setChoice({ monitorsPath: path });
-                  }}
-                  data-testid="choose-monitors"
-                >
-                  <FileText size={13} /> {s.choice.monitorsPath ? "Change…" : "Choose…"}
-                </Button>
-                <span className="truncate max-w-48 text-[11px] text-slate-600" title={s.choice.monitorsPath ?? undefined} data-testid="monitors-path">
-                  {s.choice.monitorsPath ? fileName(s.choice.monitorsPath) : "No file chosen"}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-[11px] font-medium text-slate-600 mb-1">Zero-impedance lines</legend>
-          <div className="flex items-center gap-2">
-            <label
-              className="flex items-center gap-1.5"
-              title="Leave out lines with no resistance and a reactance at or below the threshold, as PSS/E treats them (THRSHZ). A bus outage still opens them."
-            >
-              <input
-                type="checkbox"
-                checked={s.choice.skipZeroImpedance}
-                onChange={(e) => s.setChoice({ skipZeroImpedance: e.target.checked })}
-                data-testid="skip-zero-impedance"
-              />
-              Skip, |X| ≤
-            </label>
-            <input
-              className={`${inputClass} w-20`}
-              type="number"
-              min={0}
-              step="any"
-              value={s.choice.zeroImpedancePu}
-              disabled={!s.choice.skipZeroImpedance}
-              onChange={(e) =>
-                s.setChoice({
-                  zeroImpedancePu: Math.max(0, Number(e.target.value) || 0),
-                })
-              }
-              aria-label="Zero-impedance threshold, p.u."
-              title="THRSHZ, per unit on the system base"
-            />
-            <span className="text-[11px] text-slate-500">p.u.</span>
-          </div>
-        </fieldset>
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Method
-          <select
-            className={inputClass}
-            value={s.choice.method}
-            onChange={(e) => s.setChoice({ method: e.target.value as "screen" | "ac" })}
-            aria-label="Method"
-          >
-            <option value="screen">Linear screen, then AC for the worst</option>
-            <option value="ac">AC solve of every outage</option>
-          </select>
-        </label>
-        {s.choice.method === "screen" && (
-          <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-            Worst checked in AC
-            <input
-              className={`${inputClass} w-20`}
-              type="number"
-              min={0}
-              step={1}
-              value={s.choice.acCount}
-              onChange={(e) =>
-                s.setChoice({
-                  acCount: Math.max(0, Math.round(Number(e.target.value) || 0)),
-                })
-              }
-              aria-label="Worst checked in AC"
-            />
-          </label>
-        )}
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Base case rating
-          <select
-            className={inputClass}
-            value={s.choice.baseRating}
-            onChange={(e) => s.setChoice({ baseRating: e.target.value as Rating })}
-            aria-label="Base case rating"
-            title="The rating for loadings before an outage, and for the base case (P0)"
-            data-testid="base-rating"
-          >
-            {RATINGS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label} ({r.hint})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Contingency rating
-          <select
-            className={inputClass}
-            value={s.choice.rating}
-            onChange={(e) => s.setChoice({ rating: e.target.value as Rating })}
-            aria-label="Contingency rating"
-            title="The rating for loadings after an outage"
-            data-testid="contingency-rating"
-          >
-            {RATINGS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label} ({r.hint})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
-          Overloaded above (%)
-          <input
-            className={`${inputClass} w-20`}
-            type="number"
-            min={1}
-            step="any"
-            value={s.choice.limitPct}
-            onChange={(e) =>
-              s.setChoice({
-                limitPct: Math.max(1, Number(e.target.value) || 100),
-              })
-            }
-            aria-label="Overload limit"
-          />
-        </label>
-        <div className="flex items-center gap-2 ml-auto">
-          {s.running ? (
-            <>
-              <span className="flex flex-col gap-1 w-44" data-testid="contingency-progress">
-                <span className="text-[11px] text-slate-600">
-                  {s.progress?.phase === "ac" ? "AC solves" : "Screening"} {s.progress ? `${count(s.progress.done)} of ${count(s.progress.total)}` : "…"}
-                </span>
-                <span className="h-1.5 rounded bg-slate-100 overflow-hidden">
-                  <span className="block h-full bg-teal-600 transition-[width]" style={{ width: `${progressPct}%` }} />
-                </span>
-              </span>
-              <Button type="button" onClick={s.cancel}>
-                <Square size={12} /> Cancel
-              </Button>
-            </>
-          ) : (
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!acReady || nothingChosen}
-              title={acReady ? undefined : "Solve the case with the AC model first"}
-              data-testid="run-contingencies"
-            >
-              <Play size={13} /> Run contingencies
-            </Button>
-          )}
-        </div>
-        {planning && s.counts && (
-          <p className="basis-full text-[11px] text-slate-500" data-testid="planning-total">
-            {count(chosenCount)} event{chosenCount === 1 ? "" : "s"} in the categories chosen. The base case is always solved in AC; so are the largest shunt outages, as many as are checked in AC, since the screen can't see what a shunt does.
-          </p>
-        )}
-        {scope && !planning && (
-          <p className="basis-full text-[11px] text-slate-500">
-            The bus filters above narrow the outages to {count(scope.elements.length)} branches and generators touching{" "}
-            {count(scope.buses)} matching buses.
-          </p>
-        )}
-      </form>
+      </div>
+      {setupOpen && (
+        <ContingencySetup
+          report={report}
+          solve={settings}
+          scope={scope}
+          canRun={acReady && !nothingChosen && !s.running}
+          runTitle={runTitle}
+          onRun={run}
+          onClose={() => setSetupOpen(false)}
+        />
+      )}
       {s.error && (
         <div className="p-3 pb-0">
           <ErrorBanner>{s.error}</ErrorBanner>
@@ -982,9 +678,26 @@ export function ContingencyTab({
                   Problems only
                   {problemCount === null ? "" : ` (${count(problemCount)})`}
                 </label>
-                <Button variant="ghost" className="ml-auto whitespace-nowrap" onClick={exportCsv}>
-                  <Download size={13} /> Export CSV
-                </Button>
+                <span className="ml-auto" data-testid="contingency-export">
+                  <OverflowMenu
+                    label="Export CSV"
+                    showLabel
+                    items={[
+                      {
+                        id: "violations",
+                        label: "Every violation",
+                        title: "One line per overload, voltage problem and interface violation of every outage",
+                        onClick: () => void exportViolations(),
+                      },
+                      {
+                        id: "outages",
+                        label: "One row per outage",
+                        title: "The table as shown: each outage's worst problem and its counts",
+                        onClick: () => void exportCsv(),
+                      },
+                    ]}
+                  />
+                </span>
               </div>
               <div className="flex-1 min-h-0 bg-white">
                 <DataTable

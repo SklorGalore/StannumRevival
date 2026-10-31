@@ -263,6 +263,18 @@ fn answers_fit_their_schemas() {
         json!({ "query": { "sort": { "field": "worst.loading_pct", "descending": true } } }),
     );
     c.ok("contingency_detail", json!({ "rank": 1 }));
+    let csv = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
+    c.ok("export_contingency_violations", json!({ "path": csv }));
+    std::fs::remove_file(&csv).ok();
+    let stnl = std::env::temp_dir().join(format!("stannum-subsystems-{}.stnl", std::process::id()));
+    std::fs::write(
+        &stnl,
+        "stannum-lists 0.1\nsubsystem a name=\"A\" areas=[1] kv_min=100\n",
+    )
+    .unwrap();
+    let subs = c.ok("lists_subsystems", json!({ "path": stnl }));
+    assert_eq!(subs[0]["areas"][0], 1, "{subs}");
+    std::fs::remove_file(&stnl).ok();
     c.ok("result_report", json!({ "name": "contingency 1" }));
     let counts = c.ok(
         "planning_event_counts",
@@ -343,6 +355,14 @@ fn answers_fit_their_schemas() {
             { "command": "solve_power_flow", "args": { "settings": solve } },
             { "command": "export_matpower", "args": { "path": dir.join("again.m"), "solved": true } },
         ] }),
+    );
+    let text = c.ok(
+        "run_file_text",
+        json!({ "steps": [{ "command": "open_case", "args": { "path": raw } }, { "command": "solve_power_flow", "args": {} }] }),
+    );
+    assert!(
+        text.as_str().unwrap().contains("\nsolve_power_flow\n"),
+        "{text}"
     );
     let report = c.ok("run_file", json!({ "path": run, "results": true }));
     assert_eq!(report["failed"], 0);

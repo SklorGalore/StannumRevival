@@ -1,57 +1,29 @@
-// Run files (.stnrun): Record keeps the commands the app sends while you
-// work and saves them as a run file; Run plays one back. The format and the
-// runner live in stannum-core (run_file.rs); stannum-cli runs the same files
-// without the app.
+// Run files (.stnrun): Run plays one back. The format and the runner live
+// in stannum-core (run_file.rs); stannum-cli runs the same files without the
+// app. Run files are made from the history (historyStore.ts) or with Save as
+// run file (studyFileStore.ts).
 import { create } from "zustand";
-import { api, pickFile, pickSavePath, RUN_FILE_FILTERS, toStannumError, watchCoreCalls } from "../lib/analysis/api";
-import { ACTION_COMMANDS, type CoreCommand, type RunReport, type Step } from "../lib/analysis/commands.gen";
+import { api, pickFile, RUN_FILE_FILTERS, toStannumError } from "../lib/analysis/api";
+import type { RunReport, Step } from "../lib/analysis/commands.gen";
 import { fileName } from "../lib/study/recent";
 import { useStudy } from "./studyStore";
 import { caseChangeOk, useWorkspace } from "./workspaceStore";
 
-const ACTIONS = new Set<CoreCommand>(ACTION_COMMANDS);
-
-/** Setters: calling one again with the same arguments changes nothing. */
-const SETTERS = new Set<CoreCommand>(["set_study_edits", "topology_set_merge"]);
-
-/**
- * Add one call to a recording. Only actions are kept, `case` is left out
- * (a run file works on whatever case it opened), and a setter called again
- * with the same arguments as last time is skipped.
- */
-export function recordStep(steps: Step[], command: CoreCommand, args: Record<string, unknown>): Step[] {
-  if (!ACTIONS.has(command)) return steps;
-  const { case: _case, ...rest } = args;
-  if (SETTERS.has(command)) {
-    const last = [...steps].reverse().find((s) => s.command === command);
-    if (last && JSON.stringify(last.args) === JSON.stringify(rest)) return steps;
-  }
-  return [...steps, { command, args: rest }];
-}
-
 interface RunFileState {
-  recording: boolean;
-  steps: Step[];
   /** The run file running now, if any. */
   running: string | null;
   /** How the last run went, until dismissed. */
   report: RunReport | null;
   error: string | null;
-  startRecording: () => void;
-  /** Ask where to save the recording, save it and stop. False if cancelled. */
-  saveRecording: () => Promise<boolean>;
-  discardRecording: () => void;
   /** Run a run file (asking for one when no path is given), then show what it left. */
-  run: (path?: string) => Promise<RunReport | null>;
+  run: (path?: string, opts?: { confirmed?: boolean }) => Promise<RunReport | null>;
   cancel: () => void;
   dismiss: () => void;
 }
 
-let unwatch: (() => void) | null = null;
-
 /**
- * The case on screen as the first steps, so the run file starts where the
- * recording did: open it, attach its side files, set its study edits.
+ * The case on screen as run file steps: open it, attach its side files, set
+ * its study edits.
  */
 export function startingPoint(): Step[] {
   const summary = useWorkspace.getState().caseSummary;
@@ -65,48 +37,15 @@ export function startingPoint(): Step[] {
 }
 
 export const useRunFile = create<RunFileState>((set, get) => ({
-  recording: false,
-  steps: [],
   running: null,
   report: null,
   error: null,
 
-  startRecording: () => {
-    unwatch?.();
-    unwatch = watchCoreCalls((command, args) => {
-      if (get().recording) set((s) => ({ steps: recordStep(s.steps, command, args) }));
-    });
-    set({ recording: true, steps: startingPoint(), report: null, error: null });
-  },
-
-  saveRecording: async () => {
-    const { steps } = get();
-    const summary = useWorkspace.getState().caseSummary;
-    const base = summary ? summary.name.replace(/\.(raw|m|stnb?)$/i, "") : "recording";
-    const path = await pickSavePath(`${base}.stnrun`, RUN_FILE_FILTERS);
-    if (!path) return false;
-    try {
-      await api.saveRunFile(path, steps);
-    } catch (e) {
-      set({ error: toStannumError(e).message });
-      return false;
-    }
-    get().discardRecording();
-    set({ error: null });
-    return true;
-  },
-
-  discardRecording: () => {
-    unwatch?.();
-    unwatch = null;
-    set({ recording: false, steps: [] });
-  },
-
-  run: async (path) => {
+  run: async (path, opts) => {
     if (get().running) return null;
     const w = useWorkspace.getState();
     // A run file usually opens its own case: ask about unsaved work first.
-    if (!(await caseChangeOk(w.caseSummary))) return null;
+    if (!opts?.confirmed && !(await caseChangeOk(w.caseSummary))) return null;
     const chosen = path ?? (await pickFile(RUN_FILE_FILTERS));
     if (!chosen) return null;
     set({ running: chosen, report: null, error: null });

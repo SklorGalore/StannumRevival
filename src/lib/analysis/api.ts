@@ -36,7 +36,7 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, ListedSubsystem, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -138,7 +138,7 @@ export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: A
   return result;
 }
 
-/** Told about every core command that worked, with its arguments (Record uses it). */
+/** Told about every core command that worked, with its arguments (the history uses it). */
 export type CoreCallWatcher = (command: CoreCommand, args: Record<string, unknown>) => void;
 const watchers = new Set<CoreCallWatcher>();
 
@@ -285,6 +285,11 @@ export const api = {
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
     fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
+  /** Every violation of the last run, one line each, written to a CSV file by the core. */
+  exportContingencyViolations: (path: string): Promise<{ rows: number; outages: number }> =>
+    call("export_contingency_violations", { path }),
+  /** The subsystem records of a .stnl lists file, as written. */
+  listsSubsystems: (path: string): Promise<ListedSubsystem[]> => invokeCore("lists_subsystems", { path }),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
   tripAndCompare: (element: string, limitPct: number, rating: Rating = "a", baseRating: Rating = "a"): Promise<ContingencyDetail> =>
     call("trip_and_compare", { element, limitPct, rating, baseRating }),
@@ -346,6 +351,7 @@ export const api = {
   /** Stops the run file in progress before its next line. */
   cancelRunFile: () => invokeCore("cancel_run_file"),
   saveRunFile: (path: string, steps: Step[]) => call("save_run_file", { path, steps }),
+  runFileText: (steps: Step[]): Promise<string> => invokeCore("run_file_text", { steps }),
   studyEdits: (): Promise<StudyEdit[]> => call("study_edits"),
 
   diffCompare: (baseline: string, comparison: string): Promise<DiffSummary> =>

@@ -997,6 +997,16 @@ commands! {
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
 
+    /// Write every violation of the last run to a CSV file, one line each:
+    /// branch overloads, bus voltages and interfaces, and a line for each
+    /// outage whose AC solve failed.
+    export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
+        |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
+
+    /// The subsystem records of a lists file (`.stnl`), as written.
+    lists_subsystems { path: String } -> Vec<crate::lists::ListedSubsystem> =>
+        |_, a| Ok(crate::lists::subsystems(&a.path)?);
+
     /// Take one element out of the last AC solve and solve again. Loadings
     /// are measured against `rating` after the trip and `base_rating`
     /// before it (both rate A when left out).
@@ -1063,7 +1073,7 @@ commands! {
         Ok(())
     };
 
-    /// Write commands as a run file, such as the ones Record kept. Paths in
+    /// Write commands as a run file, such as ones from the app's history. Paths in
     /// the run file's folder are written relative to it, and settings at
     /// their defaults are left out.
     save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
@@ -1075,6 +1085,14 @@ commands! {
             a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
         ))?;
         std::fs::write(&a.path, text).map_err(|e| Error::file(&a.path, e))
+    };
+
+    /// Commands as run file text, for copying from the app's history.
+    /// Paths stay as given and settings at their defaults are left out.
+    run_file_text { steps: Vec<crate::run_file::Step> } -> String => |_, a| {
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        crate::run_file::format(&steps, None, "Stannum run file, copied from the app's history.")
     };
 }
 

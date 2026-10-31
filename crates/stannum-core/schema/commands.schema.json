@@ -1657,6 +1657,14 @@
             "null"
           ]
         },
+        "lists_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) to run in place of a `lists` file, as the\nsetup builds it from its subsystems. Wins over `lists`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "method": {
           "$ref": "#/$defs/Method",
           "default": "screen"
@@ -1664,6 +1672,14 @@
         "monitors": {
           "default": null,
           "description": "Check only what the `monitor` records of this lists file (`.stnl`)\nname: branch flows and bus voltages with their own limits, and\ninterfaces. Every rated branch and every bus when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monitors_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) whose monitor records choose what is checked,\nin place of a `monitors` file. Wins over `monitors`.",
           "type": [
             "string",
             "null"
@@ -1691,6 +1707,11 @@
           "default": "a",
           "description": "The rating loadings are measured against after an outage."
         },
+        "report_existing": {
+          "default": false,
+          "description": "Report every branch, interface and bus outside its limits after the\noutage, also those that already were before it and got no worse.",
+          "type": "boolean"
+        },
         "skip_zero_impedance": {
           "default": false,
           "description": "Leave out zero-impedance lines: lines with no resistance and a\nreactance at or below `zero_impedance_pu`, as PSS/E treats them\n(THRSHZ). Applies to N-1 and N-2, also to listed single elements;\na bus outage still opens them.",
@@ -1713,6 +1734,18 @@
             "switch_shunts": true,
             "tolerance_mva": 2.0
           }
+        },
+        "worse_by_pct": {
+          "default": 1.0,
+          "description": "How many percentage points of loading a branch or interface already\nover its limit before the outage must gain to be reported. 1 by\ndefault.",
+          "format": "double",
+          "type": "number"
+        },
+        "worse_by_pu": {
+          "default": 0.001,
+          "description": "How many per unit a bus already outside its voltage limits before\nthe outage must move further out to be reported. 0.001 by default.",
+          "format": "double",
+          "type": "number"
         },
         "zero_impedance_pu": {
           "default": 0.0001,
@@ -3872,6 +3905,90 @@
       ],
       "type": "object"
     },
+    "ListedSubsystem": {
+      "description": "A subsystem record of a lists file, as written: its id, name and\nmembers, for editing and saving again.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kv_max": {
+          "default": null,
+          "description": "Only buses at or below this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kv_min": {
+          "default": null,
+          "description": "Only buses at or above this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "owners": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "subsystems": {
+          "description": "Other subsystems it includes, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "areas",
+        "zones",
+        "owners",
+        "buses",
+        "kv_min",
+        "kv_max",
+        "subsystems"
+      ],
+      "type": "object"
+    },
     "LoadParts": {
       "description": "A bus's load at the solved voltage by part, in MW and Mvar:\n`[constant power, constant current, constant impedance]`.",
       "properties": {
@@ -4481,6 +4598,11 @@
           "minimum": 0,
           "type": "integer"
         },
+        "limit_pct": {
+          "description": "The loading, in percent, above which this branch counts as over:\nthe run's limit, or its monitor's.",
+          "format": "double",
+          "type": "number"
+        },
         "mw": {
           "description": "Active flow at the from end, MW, after and before.",
           "format": "double",
@@ -4504,7 +4626,8 @@
         "pct",
         "base_pct",
         "mw",
-        "base_mw"
+        "base_mw",
+        "limit_pct"
       ],
       "type": "object"
     },
@@ -6684,6 +6807,28 @@
       ],
       "type": "object"
     },
+    "ViolationsExport": {
+      "description": "What [`ContingencyResults::write_violations_csv`] wrote.",
+      "properties": {
+        "outages": {
+          "description": "Outages with at least one line.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "description": "Lines written, one per violation (and one per outage whose AC solve\nfailed), not counting the header.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "outages"
+      ],
+      "type": "object"
+    },
     "VoltageProblem": {
       "description": "A bus outside its voltage limits after an outage.",
       "properties": {
@@ -7738,6 +7883,36 @@
       },
       "takes_case": false
     },
+    "export_contingency_violations": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Write every violation of the last run to a CSV file, one line each:\nbranch overloads, bus voltages and interfaces, and a line for each\noutage whose AC solve failed.",
+      "result": {
+        "$ref": "#/$defs/ViolationsExport"
+      },
+      "takes_case": true
+    },
     "export_matpower": {
       "action": true,
       "args": {
@@ -7867,6 +8042,29 @@
       "doc": "The commands this version answers, and the API version.",
       "result": {
         "$ref": "#/$defs/CommandList"
+      },
+      "takes_case": false
+    },
+    "lists_subsystems": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "The subsystem records of a lists file (`.stnl`), as written.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/ListedSubsystem"
+        },
+        "type": "array"
       },
       "takes_case": false
     },
@@ -8470,6 +8668,29 @@
       },
       "takes_case": false
     },
+    "run_file_text": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "type": "object"
+      },
+      "doc": "Commands as run file text, for copying from the app's history.\nPaths stay as given and settings at their defaults are left out.",
+      "result": {
+        "type": "string"
+      },
+      "takes_case": false
+    },
     "run_transfer_limits": {
       "action": true,
       "args": {
@@ -8566,7 +8787,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
+      "doc": "Write commands as a run file, such as ones from the app's history. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
       "result": {
         "type": "null"
       },
