@@ -78,6 +78,17 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Study files are retired; save work as a run file, and keep a history.**
+  **Save study** is now **Save as run file**: a `.stnrun` that opens the
+  case, attaches its DC grid and bus coordinates files, sets the study edits
+  and solves with the app's settings. It leaves out saved solves (study
+  files kept every one as a full report) and the drawing, which has its own
+  file. Older `.stannum` files still open, with their edits, saved solves
+  and drawing, but are no longer written. **Record a run file** is replaced
+  by **History** in the log drawer (**File → History…**): every change and
+  export is kept as you go, and any part of it can be copied or saved as a
+  run file without starting anything first.
+
 - **Solve keeps the current view.** Solving from the toolbar, the menu bar or
   Ctrl+K no longer switches to Power flow; the diagram and tables update in
   place. Power flow comes into view only when the solve fails or does not

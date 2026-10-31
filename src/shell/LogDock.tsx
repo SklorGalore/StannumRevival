@@ -8,6 +8,7 @@ import { asText, clock, duration, linkify, shown, type LevelFilter, type LogEntr
 import { saveTextExport } from "../lib/analysis/api";
 import { saveDiagnostics } from "../lib/diagnostics/save";
 import { SearchBox } from "../ui/primitives";
+import { HistoryPanel } from "./HistoryPanel";
 
 const HEIGHT_KEY = "stannum-log-height";
 /** Lines drawn at once; the rest stay in the log and in Copy and Save. */
@@ -161,7 +162,48 @@ const FILTERS: { id: LevelFilter; label: string }[] = [
   { id: "error", label: "Errors" },
 ];
 
+/** Log and History, the drawer's two pages. */
+function DrawerTabs() {
+  const tab = useLog((s) => s.tab);
+  const setTab = useLog((s) => s.setTab);
+  return (
+    <div role="tablist" aria-label="Log drawer" className="flex shrink-0">
+      {(["log", "history"] as const).map((t) => (
+        <button
+          key={t}
+          role="tab"
+          aria-selected={tab === t}
+          onClick={() => setTab(t)}
+          className={`px-2 py-1 text-[11px] font-semibold border-b-2 ${
+            tab === t ? "border-teal-700 text-slate-800" : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {t === "log" ? "Log" : "History"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function LogDrawer({ height, onClose }: { height: number; onClose: () => void }) {
+  const tab = useLog((s) => s.tab);
+  if (tab === "history")
+    return (
+      <section aria-label="History" className="flex flex-col min-h-0" style={{ height: `min(${height}px, 70vh)` }}>
+        <header className="flex items-center gap-2 px-3 py-1 border-b border-slate-200">
+          <DrawerTabs />
+          <span className="text-[11px] text-slate-500 truncate">Every change and export so far, as run file lines.</span>
+          <button className="ml-auto inline-flex items-center rounded px-2 py-1 text-slate-600 hover:bg-slate-100" onClick={onClose} aria-label="Close log">
+            <ChevronDown size={13} />
+          </button>
+        </header>
+        <HistoryPanel />
+      </section>
+    );
+  return <LogLines height={height} onClose={onClose} />;
+}
+
+function LogLines({ height, onClose }: { height: number; onClose: () => void }) {
   const entries = useLog((s) => s.entries);
   const clear = useLog((s) => s.clear);
   const [filter, setFilter] = useState<LevelFilter>("all");
@@ -215,6 +257,7 @@ function LogDrawer({ height, onClose }: { height: number; onClose: () => void })
   return (
     <section aria-label="Log" className="flex flex-col min-h-0" style={{ height: `min(${height}px, 70vh)` }}>
       <header className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-200">
+        <DrawerTabs />
         <div role="radiogroup" aria-label="Show" className="flex rounded-md border border-slate-300 overflow-hidden">
           {FILTERS.map((f) => (
             <button

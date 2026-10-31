@@ -1063,7 +1063,7 @@ commands! {
         Ok(())
     };
 
-    /// Write commands as a run file, such as the ones Record kept. Paths in
+    /// Write commands as a run file, such as ones from the app's history. Paths in
     /// the run file's folder are written relative to it, and settings at
     /// their defaults are left out.
     save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
@@ -1075,6 +1075,14 @@ commands! {
             a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
         ))?;
         std::fs::write(&a.path, text).map_err(|e| Error::file(&a.path, e))
+    };
+
+    /// Commands as run file text, for copying from the app's history.
+    /// Paths stay as given and settings at their defaults are left out.
+    run_file_text { steps: Vec<crate::run_file::Step> } -> String => |_, a| {
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        crate::run_file::format(&steps, None, "Stannum run file, copied from the app's history.")
     };
 }
 
