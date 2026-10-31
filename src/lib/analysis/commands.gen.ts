@@ -307,6 +307,12 @@ export type ContingencyRow = {
   kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
+  /**
+   * The contingency's name: the one its lists file gives it, or else
+   * built PSS/E style from what goes out, bus names and numbers then the
+   * circuit or unit id, such as "ALPHA 101 BETA 102 1"; "BASE CASE" for P0.
+   */
+  name: string;
   /** AC only: why a solve failed, in a sentence. */
   note: string | null;
   /** Branches over the limit that are new or more than a point worse. */
@@ -346,6 +352,7 @@ export type ContingencyRowColumns = {
   kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
+  name: string[];
   note: (string | null)[];
   overloads: number[];
   rank: number[];

@@ -36,9 +36,14 @@ const PROBLEM_RULES: PageRule[] = [
   { field: "lost_load_mw", operator: "gt", value: "0.05", upper: null },
 ];
 
-/** The outage in words: "Base case" for P0, otherwise the element. */
+/** The contingency's name: its lists file's, or bus names and numbers then the circuit (PSS/E style). */
 export function outageLabel(r: ContingencyRow): string {
-  return r.kind === "base" ? "Base case" : elementLabel(r.element);
+  return r.name || (r.kind === "base" ? "BASE CASE" : elementLabel(r.element));
+}
+
+/** A second line under the name: what the event is, when that says more than the name. */
+function outageNote(r: ContingencyRow): string | null {
+  return r.description && r.description !== r.name && r.kind !== "base" ? r.description : null;
 }
 
 function CategoryBadge({ category }: { category: string }) {
@@ -79,13 +84,13 @@ function columns(limit: number, planning: boolean, rating: Rating, baseRating: R
     { key: "rank", header: "#", value: (r) => r.rank, align: "right" },
     ...category,
     {
-      key: "element",
-      header: "Outage",
+      key: "name",
+      header: "Contingency",
       value: (r) => outageLabel(r),
       render: (r) => (
-        <span className="flex flex-col">
+        <span className="flex flex-col" title={r.kind === "base" ? undefined : r.element.split("&").map(elementLabel).join(" and ")}>
           <span className="font-medium text-slate-800">{outageLabel(r)}</span>
-          {r.description && r.kind !== "base" && <span className="text-[10px] text-slate-500">{r.description}</span>}
+          {outageNote(r) && <span className="text-[10px] text-slate-500">{outageNote(r)}</span>}
         </span>
       ),
     },
@@ -260,7 +265,8 @@ function OutagePanel({
             {row.category && <CategoryBadge category={row.category} />}
           </p>
           <h2 className="text-sm font-semibold text-slate-800">{outageLabel(row)}</h2>
-          {row.description && row.kind !== "base" && <p className="text-[11px] text-slate-600">{row.description}</p>}
+          {outageNote(row) && <p className="text-[11px] text-slate-600">{outageNote(row)}</p>}
+          {row.kind !== "base" && <p className="text-[11px] text-slate-500">{row.element.split("&").map(elementLabel).join(" and ")}</p>}
           <p className="text-[11px] text-slate-500">
             {row.checked === "ac"
               ? row.converged
@@ -486,7 +492,8 @@ export function ContingencyTab({
       rows.map((r) => ({
         rank: r.rank,
         category: r.category ?? "",
-        outage: r.kind === "base" ? "base case" : r.element,
+        contingency: r.name,
+        outage: r.kind === "base" ? "" : r.element,
         description: r.description ?? "",
         solved: r.checked === "ac" ? (r.converged ? "ac" : "ac_not_converged") : "linear",
         worst_branch: r.worst?.element ?? "",

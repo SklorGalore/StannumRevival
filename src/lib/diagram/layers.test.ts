@@ -87,7 +87,7 @@ describe("layers", () => {
 
   it("draws an open contingency: the outage, its overloads and moved flows", () => {
     const row = {
-      rank: 1, element: "line:1:3:1", kind: "branch", checked: "ac", converged: true, iterations: 2, worst: null, overloads: 1,
+      rank: 1, element: "line:1:3:1", name: "1 3 1", kind: "branch", checked: "ac", converged: true, iterations: 2, worst: null, overloads: 1,
       screened_pct: 120, note: null, worst_voltage: null, voltage_violations: 1, cut_off_buses: 0, lost_load_mw: 0, lost_generation_mw: 0, severity: 120,
       category: null, description: null, interface_violations: 0, worst_interface: null,
     } as const;

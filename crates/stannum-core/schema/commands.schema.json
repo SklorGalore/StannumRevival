@@ -1271,6 +1271,10 @@
           "format": "double",
           "type": "number"
         },
+        "name": {
+          "description": "The contingency's name: the one its lists file gives it, or else\nbuilt PSS/E style from what goes out, bus names and numbers then the\ncircuit or unit id, such as \"ALPHA 101 BETA 102 1\"; \"BASE CASE\" for P0.",
+          "type": "string"
+        },
         "note": {
           "description": "AC only: why a solve failed, in a sentence.",
           "type": [
@@ -1346,6 +1350,7 @@
         "element",
         "kind",
         "category",
+        "name",
         "description",
         "checked",
         "converged",
@@ -1482,6 +1487,13 @@
           },
           "type": "array"
         },
+        "name": {
+          "items": {
+            "description": "The contingency's name: the one its lists file gives it, or else\nbuilt PSS/E style from what goes out, bus names and numbers then the\ncircuit or unit id, such as \"ALPHA 101 BETA 102 1\"; \"BASE CASE\" for P0.",
+            "type": "string"
+          },
+          "type": "array"
+        },
         "note": {
           "items": {
             "description": "AC only: why a solve failed, in a sentence.",
@@ -1592,6 +1604,7 @@
         "kind",
         "lost_generation_mw",
         "lost_load_mw",
+        "name",
         "note",
         "overloads",
         "rank",
