@@ -280,8 +280,11 @@ export type ContingencyRow = {
   /** The element taken out; empty for the base case (P0). */
   element: string;
   iterations: number | null;
-  /** "branch", "generator", "shunt", "dc_line", or "base" for P0. */
-  kind: "branch" | "generator" | "shunt" | "dc_line" | "base";
+  /**
+   * "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
+   * elements out together, or "base" for P0.
+   */
+  kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
   /** AC only: why a solve failed, in a sentence. */
@@ -318,7 +321,7 @@ export type ContingencyRowColumns = {
   description: (string | null)[];
   element: string[];
   iterations: (number | null)[];
-  kind: ("branch" | "generator" | "shunt" | "dc_line" | "base")[];
+  kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
   note: (string | null)[];
@@ -342,8 +345,15 @@ export type ContingencySettings = {
   base_rating?: Rating;
   branches?: boolean;
   /**
-   * Branch and generator ids to take out, one at a time. When absent,
-   * every in-service branch and/or generator, as chosen below.
+   * Take out each bus: every branch and DC line connected to it, which
+   * cuts off its loads, generators and shunts.
+   */
+  buses?: boolean;
+  /**
+   * Ids to take out, one at a time. A bus id (bus:101) takes out the
+   * bus, and ids joined by "&" (line:1:2:1&line:2:3:1) go out together.
+   * When absent, every in-service branch, generator and/or bus, as
+   * chosen below.
    */
   elements?: string[] | null;
   generators?: boolean;
@@ -354,13 +364,30 @@ export type ContingencySettings = {
   limit_pct?: number;
   method?: Method;
   /**
+   * N-2: take the chosen branches and generators out two at a time,
+   * every pair once, instead of one at a time. Buses stay one at a time.
+   */
+  pairs?: boolean;
+  /**
    * Run these NERC TPL-001 planning events instead of every branch and
    * generator; `elements`, `branches` and `generators` are then unused.
    */
   planning?: PlanningSettings | null;
   /** The rating loadings are measured against after an outage. */
   rating?: Rating;
+  /**
+   * Leave out zero-impedance lines: lines with no resistance and a
+   * reactance at or below `zero_impedance_pu`, as PSS/E treats them
+   * (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
+   * a bus outage still opens them.
+   */
+  skip_zero_impedance?: boolean;
   solve?: SolveSettings;
+  /**
+   * The zero-impedance threshold in per unit; 0.0001 by default, as
+   * PSS/E's THRSHZ.
+   */
+  zero_impedance_pu?: number;
 };
 
 export type ContingencySummary = {

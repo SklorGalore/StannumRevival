@@ -28,6 +28,13 @@ export interface ContingencyChoice {
   source: ContingencySource;
   branches: boolean;
   generators: boolean;
+  /** Take out each bus with everything connected to it. */
+  buses: boolean;
+  /** N-2: the chosen branches and generators two at a time. */
+  pairs: boolean;
+  /** Leave out lines with no resistance and |X| at or below the threshold (PSS/E THRSHZ), p.u. */
+  skipZeroImpedance: boolean;
+  zeroImpedancePu: number;
   /** Planning events: the categories to run, and the lowest voltage. */
   categories: string[];
   kvMin: number;
@@ -43,6 +50,10 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   source: "n1",
   branches: true,
   generators: true,
+  buses: false,
+  pairs: false,
+  skipZeroImpedance: false,
+  zeroImpedancePu: 0.0001,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "screen",
@@ -135,6 +146,10 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         elements: planning ? null : elements,
         branches: c.branches,
         generators: c.generators,
+        buses: !planning && c.buses,
+        pairs: !planning && c.pairs,
+        skip_zero_impedance: c.skipZeroImpedance,
+        zero_impedance_pu: c.zeroImpedancePu,
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,

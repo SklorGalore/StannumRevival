@@ -8,16 +8,27 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
-## 1.0.0-rc.1 - 2026-10-30
-
 ### Added
 
+- **N-2 and bus outages.** Contingency runs can take the chosen branches
+  and generators out two at a time (every pair once, up to 250,000 pairs;
+  the bus filters narrow them), and can take out each bus with every
+  branch and DC line connected to it. Any elements can also be listed to go
+  out together (`line:1:2:1&line:2:3:1`), and Trip and compare takes a bus.
+- **Skip zero-impedance lines in contingencies.** A toggle leaves out lines
+  with no resistance and a reactance at or below a threshold (0.0001 p.u.
+  by default, PSS/E's THRSHZ) from N-1, N-2 and planning event runs.
 - **Ratings B and C in contingency analysis.** Contingency runs and Trip
   and compare measure loading against rate A, B or C, chosen separately for
   the base case and after each outage (for example rate A before, rate B
   after). Both stay rate A by default. The choice is saved in the study file
   and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
   server.
+
+## 1.0.0-rc.1 - 2026-10-30
+
+### Added
+
 - **Stannum for AI assistants (MCP, preview).** `stannum-cli mcp` serves
   Stannum to Claude and other Model Context Protocol clients: open a case,
   solve, find violations, page through results, run N-1 or the NERC planning

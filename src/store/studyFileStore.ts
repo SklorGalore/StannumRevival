@@ -332,7 +332,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
         lines.push(`${dropped.length} edit${dropped.length === 1 ? "" : "s"} no longer match the case and were left out: ${dropped.join(" ")}`);
       }
       useStudy.getState().restoreSolves(file.solves, file.compare);
-      useContingencies.getState().setChoice({ rating: "a", baseRating: "a", ...file.contingencies });
+      useContingencies.getState().setChoice({ rating: "a", baseRating: "a", buses: false, pairs: false, skipZeroImpedance: false, zeroImpedancePu: 0.0001, ...file.contingencies });
       const diagram = useDiagramStore.getState();
       if (file.diagram) {
         diagram.loadDiagramFromJSON(file.diagram);

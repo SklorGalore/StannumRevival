@@ -200,11 +200,19 @@ function contingencyMarks(d: ContingencyDetail, limit: number, rating: Rating, m
       put(marks.elements, b.element, { color: heavier ? LAYER_COLORS.more : LAYER_COLORS.less, note });
     }
   }
-  if (d.row.kind === "generator") {
-    const bus = Number(outage.split(":")[1]);
-    if (Number.isInteger(bus)) put(marks.buses, bus, { halo: LAYER_COLORS.tripped, note: `${elementLabel(outage)} taken out` });
-  } else {
-    put(marks.elements, outage, { halo: LAYER_COLORS.tripped, dim: true, note: `${elementLabel(outage)} taken out` });
+  // Each element out (two for an N-2 pair). A generator or bus is marked
+  // at its bus; a bus outage's branches are marked as they trip.
+  const out = { halo: LAYER_COLORS.tripped, note: `${elementLabel(outage)} taken out` };
+  for (const part of outage.split("&")) {
+    if (part.startsWith("generator:") || part.startsWith("bus:")) {
+      const bus = Number(part.split(":")[1]);
+      if (Number.isInteger(bus)) put(marks.buses, bus, out);
+    } else {
+      put(marks.elements, part, { ...out, dim: true });
+    }
+  }
+  if (d.row.kind === "bus") {
+    for (const b of d.branches) if (b.tripped) put(marks.elements, b.element, { ...out, dim: true });
   }
   for (const v of d.voltage_problems)
     put(marks.buses, v.bus, { halo: LAYER_COLORS.voltage, note: `${v.vm.toFixed(3)} p.u. after the outage (was ${v.base_vm.toFixed(3)})` });

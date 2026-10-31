@@ -1439,9 +1439,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     const elements = [
       ...(contingencyChoice.branches ? filtered.branches.filter((b) => b.online).map((b) => b.element) : []),
       ...(contingencyChoice.generators ? filtered.generators.filter((g) => g.online).map((g) => g.element) : []),
+      ...(contingencyChoice.buses ? [...passing].map(busElement) : []),
     ];
     return { elements: [...new Set(elements)], buses: passing.size };
-  }, [filtered, passing, contingencyChoice.branches, contingencyChoice.generators]);
+  }, [filtered, passing, contingencyChoice.branches, contingencyChoice.generators, contingencyChoice.buses]);
 
   const tabs = useMemo(
     () => [

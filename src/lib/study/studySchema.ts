@@ -46,6 +46,10 @@ export const studySchema = z.object({
     limitPct: z.number(),
     // Saved since 1.1; older studies used rate A for both.
     rating: z.enum(["a", "b", "c"]).optional(),
+    buses: z.boolean().optional(),
+    pairs: z.boolean().optional(),
+    skipZeroImpedance: z.boolean().optional(),
+    zeroImpedancePu: z.number().optional(),
     baseRating: z.enum(["a", "b", "c"]).optional(),
   }),
   diagram: z.looseObject({ metadata: z.looseObject({}), nodes: z.array(z.unknown()), edges: z.array(z.unknown()) }).nullable(),
