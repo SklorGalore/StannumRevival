@@ -1003,6 +1003,12 @@ commands! {
     export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
         |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
 
+    /// Write the last contingency run to a compact results file (`.stnr`):
+    /// an Arrow IPC stream, zstd compressed, one row per finding and one per
+    /// outage with none. Opens in pyarrow, polars, pandas and DuckDB.
+    export_contingency_results { case: Option<CaseId>, path: PathBuf } -> crate::results_file::ResultsExport =>
+        |s, a| s.workspace()?.case(a.case)?.export_contingency_results(&a.path);
+
     /// The subsystem records of a lists file (`.stnl`), as written.
     lists_subsystems { path: String } -> Vec<crate::lists::ListedSubsystem> =>
         |_, a| Ok(crate::lists::subsystems(&a.path)?);

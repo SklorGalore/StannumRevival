@@ -21,6 +21,13 @@ section into the next version's when a release is cut (see
   buses and circuit, voltage problems by bus name and number, in the table,
   the outage panel, the diagram and the violations CSV (whose `element`
   column holds the name and a new `element_id` column the id).
+- **Compact results file (.stnr, preview).** **Export → Compact results**
+  on the Contingencies tab writes the whole run (every outage, every
+  violation) as one Arrow IPC stream, zstd compressed, names dictionary
+  encoded: 73,000 Texas 2k violations take 450 KB against 13 MB of CSV.
+  pyarrow, polars, pandas and DuckDB read it batch by batch; the schema
+  metadata keeps the case, summary and settings. Also
+  `export_contingency_results` and `Case.export_contingency_results`.
 - **Transfer limit names.** The Transfers tab names limiting elements and
   outages the same PSS/E way (`monitored_name`, `contingency_name` on
   transfer limits, outage limits and PTDFs; a lists file's contingency

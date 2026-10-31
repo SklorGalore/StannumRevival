@@ -2273,7 +2273,6 @@ fn num(v: f64) -> String {
     }
 }
 
-/// A bus named PSS/E style: its name and number, or the number alone.
 /// Element ids named PSS/E style: each element's bus names and numbers,
 /// then its circuit or unit id; elements joined by " & ". `names` is by
 /// bus row and `bus_row` maps bus numbers to rows.
@@ -2312,6 +2311,7 @@ pub(crate) fn element_name(ids: &str, names: &[String], bus_row: &HashMap<u32, u
         .join(" & ")
 }
 
+/// A bus named PSS/E style: its name and number, or the number alone.
 fn bus_name(name: &str, number: u32) -> String {
     let name = name.trim();
     if name.is_empty() {
@@ -2422,6 +2422,11 @@ impl ContingencyResults {
         }
         out.flush()?;
         Ok(written)
+    }
+
+    /// What the run was asked to do.
+    pub fn settings(&self) -> &ContingencySettings {
+        &self.settings
     }
 
     /// Ranked rows `offset..offset + limit`.

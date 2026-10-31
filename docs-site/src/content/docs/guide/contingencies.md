@@ -185,10 +185,14 @@ limits after the outage, whether or not it was before. **Worst branch** is the
 most loaded such branch (or the most loaded branch when nothing is over the
 limit) and **Before** its loading without the outage. **Splits off** gives
 the buses that lose their path to the rest of the network and the load and
-generation on them. **Problems only** hides the rest. **Export CSV** saves
-either **Every violation**, one line per overload, voltage problem and
+generation on them. **Problems only** hides the rest. **Export** saves
+**Every violation (CSV)**, one line per overload, voltage problem and
 interface violation of every outage (and one per outage whose AC solve
-failed), or **One row per outage**, the table as shown.
+failed), **One row per outage (CSV)**, the table as shown, or **Compact
+results (.stnr)**, the whole run in a small binary file to keep or share:
+on Texas 2k, 73,000 violations take 13 MB as CSV and 450 KB as `.stnr`.
+pandas, polars and DuckDB read it directly; see the
+[results file format](/StannumRevival/reference/results-file/).
 
 Click a row to open the outage beside the table: every overload and voltage
 problem, what it splits off, and the largest flow changes. Each element name

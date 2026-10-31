@@ -779,6 +779,29 @@ impl OpenCase {
         Ok(written)
     }
 
+    /// Write the last contingency run to a compact results file (`.stnr`).
+    pub fn export_contingency_results(
+        &self,
+        path: &Path,
+    ) -> Result<crate::results_file::ResultsExport, Error> {
+        let results = self
+            .contingencies
+            .as_ref()
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let file = std::fs::File::create(path)
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        let written = crate::results_file::write_contingency_results(results, &self.name, file)
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        log::info!(
+            "Exported {} outages ({} violations) to {}, {} bytes",
+            written.outages,
+            written.violations,
+            path.display(),
+            written.bytes
+        );
+        Ok(written)
+    }
+
     pub fn contingency_summary(&self) -> Option<ContingencySummary> {
         self.contingencies.as_ref().map(|c| c.summary.clone())
     }

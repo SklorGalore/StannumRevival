@@ -4567,6 +4567,9 @@ dependencies = [
 name = "stannum-core"
 version = "0.2.0"
 dependencies = [
+ "arrow-array",
+ "arrow-ipc",
+ "arrow-schema",
  "encoding_rs",
  "getrandom 0.4.3",
  "log",

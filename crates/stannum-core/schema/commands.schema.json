@@ -5555,6 +5555,42 @@
       ],
       "type": "object"
     },
+    "ResultsExport": {
+      "description": "What [`write_contingency_results`] wrote.",
+      "properties": {
+        "bytes": {
+          "description": "File size.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outages": {
+          "description": "Outages in the file.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "description": "Rows written: one per finding, plus one per outage with none.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "violations": {
+          "description": "Rows that are violations (not `ok`).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "outages",
+        "violations",
+        "bytes"
+      ],
+      "type": "object"
+    },
     "Rule": {
       "description": "One filter rule: a field compared with a value. The same rules as the\napp's filter chips (`src/lib/filters.ts`).",
       "properties": {
@@ -7928,6 +7964,36 @@
         "type": "array"
       },
       "takes_case": false
+    },
+    "export_contingency_results": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Write the last contingency run to a compact results file (`.stnr`):\nan Arrow IPC stream, zstd compressed, one row per finding and one per\noutage with none. Opens in pyarrow, polars, pandas and DuckDB.",
+      "result": {
+        "$ref": "#/$defs/ResultsExport"
+      },
+      "takes_case": true
     },
     "export_contingency_violations": {
       "action": false,

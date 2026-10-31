@@ -318,6 +318,16 @@ class Case:
             return pages[0]
         return Table({c: [_plain(v) for p in pages for v in p[c]] for c in pages[0].columns}, count=got_rows)
 
+    def export_contingency_results(self, path: _PathLike) -> Answer:
+        """Write the last run to a compact results file (``.stnr``).
+
+        An Arrow IPC stream, zstd compressed: one row per violation (and per
+        outage with none, typed ``ok``). Read it back with
+        ``pyarrow.ipc.open_stream(path)`` or ``polars.read_ipc_stream(path)``.
+        Returns the rows, outages, violations and bytes written.
+        """
+        return self.call("export_contingency_results", path=str(path))
+
     def contingency(self, rank: int) -> Answer:
         """One outage's flow and voltage changes, by rank (from 1)."""
         return self.call("contingency_detail", rank=rank)

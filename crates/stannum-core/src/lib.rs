@@ -49,6 +49,7 @@ pub mod raw_export;
 pub mod record_edit;
 pub mod records;
 pub mod results;
+pub mod results_file;
 pub mod run_file;
 pub mod samples;
 pub mod schema;

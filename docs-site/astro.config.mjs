@@ -115,6 +115,7 @@ export default defineConfig({
             { label: "Case file (.stn, .stnb, preview)", slug: "reference/case-file" },
             { label: "Case file tables", slug: "reference/case-file-schema" },
             { label: "Lists file (.stnl, preview)", slug: "reference/lists-file" },
+            { label: "Results file (.stnr, preview)", slug: "reference/results-file" },
             { label: "Lists file tables", slug: "reference/lists-file-schema" },
           ],
         },

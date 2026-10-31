@@ -14,6 +14,10 @@ fault-injection = []
 rs-power = { path = "../rs-power" }
 nodal = { path = "../nodal", features = ["schemars"] }
 stannum-format = { path = "../stannum-format" }
+# Compact results files (.stnr): an Arrow IPC stream, same versions as stannum-format.
+arrow-array = "60.1.0"
+arrow-ipc = { version = "60.1.0", features = ["zstd"] }
+arrow-schema = "60.1.0"
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a number written to a run or study file reads back as the
 # same f64 (the default parser can be one unit in the last place off).

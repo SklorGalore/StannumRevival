@@ -1505,6 +1505,18 @@ export type ResponseTable = {
   units: string;
 };
 
+/** What [`write_contingency_results`] wrote. */
+export type ResultsExport = {
+  /** File size. */
+  bytes: number;
+  /** Outages in the file. */
+  outages: number;
+  /** Rows written: one per finding, plus one per outage with none. */
+  rows: number;
+  /** Rows that are violations (not `ok`). */
+  violations: number;
+};
+
 /**
  * One filter rule: a field compared with a value. The same rules as the
  * app's filter chips (`src/lib/filters.ts`).
@@ -2282,6 +2294,18 @@ export interface CoreCommands {
   element_kinds: {
     args: Record<string, never>;
     result: ElementKind[];
+  };
+  /**
+   * Write the last contingency run to a compact results file (`.stnr`):
+   * an Arrow IPC stream, zstd compressed, one row per finding and one per
+   * outage with none. Opens in pyarrow, polars, pandas and DuckDB.
+   */
+  export_contingency_results: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: ResultsExport;
   };
   /**
    * Write every violation of the last run to a CSV file, one line each:

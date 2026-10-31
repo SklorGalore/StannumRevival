@@ -63,6 +63,7 @@ CLASSES: dict[str, dict[str, str]] = {
         "edit_records": "(self, edits)",
         "edits": "property",
         "element": "(self, element)",
+        "export_contingency_results": "(self, path)",
         "export_matpower": "(self, path, solved=True)",
         "export_raw": "(self, path, revision=35)",
         "id": "property",
