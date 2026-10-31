@@ -198,6 +198,21 @@ impl DcFactors {
     /// flow before (from end, positive into the branch). Rows already out of
     /// service are ignored.
     pub fn trip(&self, rows: &[usize], flows: &[f64]) -> OutageFlows {
+        match self.trip_each(rows, &[flows]) {
+            Ok(mut after) => OutageFlows::Flows(after.pop().unwrap_or_default()),
+            Err(cut) => OutageFlows::Islands(cut),
+        }
+    }
+
+    /// [`trip`](Self::trip) for several sets of flows at once, with one
+    /// solve. Outage factors are linear, so a set can also be a transfer's
+    /// distribution factors: tripping them gives the factors after the
+    /// outage (OTDFs). On islanding, the case bus rows cut off.
+    ///
+    /// # Errors
+    ///
+    /// The bus rows cut off when the outage splits the network.
+    pub fn trip_each(&self, rows: &[usize], sets: &[&[f64]]) -> Result<Vec<Vec<f64>>, Vec<usize>> {
         let tripped: Vec<(usize, usize, usize)> = rows
             .iter()
             .filter_map(|&row| {
@@ -205,9 +220,9 @@ impl DcFactors {
                 Some((row, f, t))
             })
             .collect();
-        let mut after = flows.to_vec();
+        let mut out: Vec<Vec<f64>> = sets.iter().map(|flows| flows.to_vec()).collect();
         if tripped.is_empty() {
-            return OutageFlows::Flows(after);
+            return Ok(out);
         }
         // Flow on every branch from a unit transfer across each tripped one.
         let columns: Vec<Vec<(usize, f64)>> = tripped
@@ -222,26 +237,29 @@ impl DcFactors {
         // Solve (I - T) x = F over the tripped branches, where T[i][j] is the
         // flow on tripped branch i from a transfer across tripped branch j.
         let k = tripped.len();
-        let mut m: Vec<Vec<f64>> = (0..k)
+        let matrix: Vec<Vec<f64>> = (0..k)
             .map(|i| {
                 (0..k)
                     .map(|j| f64::from(i == j) - transfers[j][tripped[i].0])
                     .collect()
             })
             .collect();
-        let mut x: Vec<f64> = tripped.iter().map(|&(row, _, _)| flows[row]).collect();
-        if !solve_dense(&mut m, &mut x) {
-            return OutageFlows::Islands(self.cut_off(rows));
-        }
-        for (j, transfer) in transfers.iter().enumerate() {
-            for (value, &delta) in after.iter_mut().zip(transfer) {
-                *value += delta * x[j];
+        for (after, flows) in out.iter_mut().zip(sets) {
+            let mut m = matrix.clone();
+            let mut x: Vec<f64> = tripped.iter().map(|&(row, _, _)| flows[row]).collect();
+            if !solve_dense(&mut m, &mut x) {
+                return Err(self.cut_off(rows));
+            }
+            for (j, transfer) in transfers.iter().enumerate() {
+                for (value, &delta) in after.iter_mut().zip(transfer) {
+                    *value += delta * x[j];
+                }
+            }
+            for &(row, _, _) in &tripped {
+                after[row] = 0.0;
             }
         }
-        for &(row, _, _) in &tripped {
-            after[row] = 0.0;
-        }
-        OutageFlows::Flows(after)
+        Ok(out)
     }
 
     /// Case bus rows split off when branch `rows` trip: in each island,
@@ -415,6 +433,38 @@ mod tests {
         };
         for (x, y) in together.iter().zip(&second) {
             assert!((x - y).abs() < 1e-9, "{x} vs {y}");
+        }
+    }
+
+    #[test]
+    fn tripping_transfer_factors_gives_otdfs() {
+        // OTDF(m, k) = PTDF(m) + LODF(m, k) * PTDF(k) for a 2-to-3 transfer.
+        let case = case9();
+        let ptdf = make_ptdf(&case, None).unwrap();
+        let lodf = make_lodf_with_bridge_handling(&case, &ptdf, LodfBridgeHandling::Mask).unwrap();
+        let factors = DcFactors::new(&case).unwrap();
+        let transfer = factors.injection_flows(&[(2, 1.0), (3, -1.0)]);
+        let flows = vec![7.0; case.branches.len()];
+        let line = case
+            .branches
+            .iter()
+            .position(|b| (b.from, b.to) == (5, 6))
+            .unwrap();
+        let [after, otdf] =
+            <[Vec<f64>; 2]>::try_from(factors.trip_each(&[line], &[&flows, &transfer]).unwrap())
+                .unwrap();
+        for m in 0..case.branches.len() {
+            if m == line {
+                assert_eq!((after[m], otdf[m]), (0.0, 0.0));
+                continue;
+            }
+            let expected = transfer[m] + lodf[m][line] * transfer[line];
+            assert!(
+                (otdf[m] - expected).abs() < 1e-9,
+                "{m}: {} vs {expected}",
+                otdf[m]
+            );
+            assert!((after[m] - (7.0 + lodf[m][line] * 7.0)).abs() < 1e-9);
         }
     }
 

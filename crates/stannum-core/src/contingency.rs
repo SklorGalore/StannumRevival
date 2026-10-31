@@ -351,27 +351,32 @@ impl RunHandle {
         }
     }
 
-    fn set_phase(&self, phase: usize, total: usize) {
+    pub(crate) fn set_phase(&self, phase: usize, total: usize) {
         self.0.phase.store(phase, Ordering::SeqCst);
         self.0.done.store(0, Ordering::SeqCst);
         self.0.total.store(total, Ordering::SeqCst);
     }
 
-    fn cancelled(&self) -> bool {
+    /// Count one more piece of work done.
+    pub(crate) fn step(&self) {
+        self.0.done.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub(crate) fn cancelled(&self) -> bool {
         self.0.cancel.load(Ordering::SeqCst)
     }
 }
 
 #[derive(Clone, Debug, Default)]
-struct Outage {
-    element: String,
-    kind: &'static str,
-    branch_rows: Vec<usize>,
-    generator_rows: Vec<usize>,
+pub(crate) struct Outage {
+    pub(crate) element: String,
+    pub(crate) kind: &'static str,
+    pub(crate) branch_rows: Vec<usize>,
+    pub(crate) generator_rows: Vec<usize>,
     /// Rows of `PowerCase::shunts`.
-    shunt_rows: Vec<usize>,
+    pub(crate) shunt_rows: Vec<usize>,
     /// `case.dcline` rows with the share of the schedule that stays.
-    dc_rows: Vec<(usize, f64)>,
+    pub(crate) dc_rows: Vec<(usize, f64)>,
     category: Option<&'static str>,
     description: Option<String>,
 }
@@ -420,7 +425,7 @@ pub struct ContingencyJob {
 }
 
 /// Pick the outages `settings` asks for from `power`.
-fn outages(
+pub(crate) fn outages(
     power: &PowerCase,
     settings: &ContingencySettings,
 ) -> Result<(Vec<Outage>, usize), String> {

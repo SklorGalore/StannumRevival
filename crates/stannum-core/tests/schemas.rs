@@ -143,6 +143,8 @@ fn answers_fit_their_schemas() {
     assert_eq!(served, schemas());
     assert!(c.ok("case_summary", json!({})).is_null());
     c.ok("contingency_progress", json!({}));
+    c.ok("transfer_progress", json!({}));
+    c.ok("cancel_transfer_limits", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
     c.ok("diagnostics", json!({}));
 
@@ -276,6 +278,15 @@ fn answers_fit_their_schemas() {
         "trip_and_compare",
         json!({ "element": branch, "limitPct": 100.0 }),
     );
+    let transfer = c.ok(
+        "run_transfer_limits",
+        json!({ "settings": {
+            "source": { "areas": [2] },
+            "sink": { "areas": [1] },
+            "contingencies": {},
+        } }),
+    );
+    assert!(transfer["summary"]["fcitc_mw"].is_number(), "{transfer}");
     c.ok(
         "set_study_edits",
         json!({ "edits": [{ "kind": "generation", "element": generator, "mw": 10.0 }] }),

@@ -33,7 +33,12 @@ create_exception!(
 const SIGNAL_POLL: Duration = Duration::from_millis(50);
 
 /// The commands that stop long work. Each is harmless when nothing runs.
-const CANCEL: [&str; 3] = ["cancel_solve", "cancel_contingencies", "cancel_run_file"];
+const CANCEL: [&str; 4] = [
+    "cancel_solve",
+    "cancel_contingencies",
+    "cancel_transfer_limits",
+    "cancel_run_file",
+];
 
 /// One workspace of Stannum's core, which holds one open case at a time.
 /// `stannum.Case` keeps one each, so cases never share state or a lock.

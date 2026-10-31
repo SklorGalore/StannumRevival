@@ -1149,6 +1149,32 @@
       ],
       "type": "object"
     },
+    "ContingencyLimit": {
+      "description": "The worst limit of one contingency.",
+      "properties": {
+        "contingency": {
+          "type": "string"
+        },
+        "factor": {
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contingency",
+        "fcitc_mw",
+        "monitored",
+        "factor"
+      ],
+      "type": "object"
+    },
     "ContingencyRow": {
       "description": "One outage's outcome, as a row of the ranked results.",
       "properties": {
@@ -3472,6 +3498,43 @@
         }
       ]
     },
+    "Interface": {
+      "description": "A flowgate: branch flows summed with weights, as a `.stnl` interface.",
+      "properties": {
+        "elements": {
+          "description": "Branches as `[element, weight]`; flow measured at the from end of\nthe branch row.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "limit_mw": {
+          "description": "The interface's limit in MW, the same in both directions.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "elements",
+        "limit_mw"
+      ],
+      "type": "object"
+    },
     "IslandWire": {
       "properties": {
         "id": {
@@ -3788,6 +3851,51 @@
         "error",
         "info"
       ],
+      "type": "object"
+    },
+    "MonitorSettings": {
+      "description": "Which branches and interfaces to watch.",
+      "properties": {
+        "branches": {
+          "default": true,
+          "description": "Every rated branch in service (lines and transformers), narrowed by\n`subsystem` and `kv_min`.",
+          "type": "boolean"
+        },
+        "elements": {
+          "default": [],
+          "description": "Branches watched as well as (or, with `branches` off, instead of)\nthe ones above, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interfaces": {
+          "default": [],
+          "description": "Flowgates: weighted sums of branch flows with their own limit.",
+          "items": {
+            "$ref": "#/$defs/Interface"
+          },
+          "type": "array"
+        },
+        "kv_min": {
+          "default": 0.0,
+          "description": "Only branches with a terminal bus at or above this voltage, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "subsystem": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subsystem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only branches with a terminal bus in this subsystem."
+        }
+      },
       "type": "object"
     },
     "MtdcDetail": {
@@ -4580,6 +4688,37 @@
       },
       "type": "object"
     },
+    "Participation": {
+      "description": "How far the source and sink can move before a generator or load runs\nout of room.",
+      "properties": {
+        "available_mw": {
+          "description": "MW the side can move in total: room to Pmax (source) or to Pmin\n(sink) for generator scaling, load to drop for a load source; `None`\nwhen unbounded (a sink of loads).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "buses": {
+          "description": "Buses taking part.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "units": {
+          "description": "Generators (or loads) taking part.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "buses",
+        "units",
+        "available_mw"
+      ],
+      "type": "object"
+    },
     "Path": {
       "properties": {
         "buses": {
@@ -5216,6 +5355,26 @@
       ],
       "type": "object"
     },
+    "Scaling": {
+      "description": "How the source and sink share out the transfer.",
+      "oneOf": [
+        {
+          "const": "generation",
+          "description": "Online generators, in proportion to their output now.",
+          "type": "string"
+        },
+        {
+          "const": "reserve",
+          "description": "Online generators, in proportion to the room they have: up to Pmax\nin the source, down to Pmin in the sink. Every unit reaches its\nlimit at the same transfer.",
+          "type": "string"
+        },
+        {
+          "const": "load",
+          "description": "Loads, in proportion to their MW: the source's loads drop and the\nsink's grow.",
+          "type": "string"
+        }
+      ]
+    },
     "SectionInfo": {
       "description": "One record type in the list, without its rows.",
       "properties": {
@@ -5815,6 +5974,66 @@
       ],
       "type": "object"
     },
+    "Subsystem": {
+      "description": "A set of buses, as a `.stnl` subsystem: listed areas, zones, owners and\nbuses combine as a union (every bus when all are empty), then the kV\nfilters narrow it.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kv_max": {
+          "default": null,
+          "description": "Only buses at or below this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kv_min": {
+          "default": null,
+          "description": "Only buses at or above this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "owners": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "TopologyInfo": {
       "properties": {
         "buses": {
@@ -5884,6 +6103,399 @@
         "case",
         "analysis",
         "graph"
+      ],
+      "type": "object"
+    },
+    "TransferContingencies": {
+      "description": "Which outages to study the transfer under. The base case is always\nstudied too.",
+      "properties": {
+        "branches": {
+          "default": true,
+          "type": "boolean"
+        },
+        "elements": {
+          "default": null,
+          "description": "Ids to take out, one at a time, as for contingency analysis (ids\njoined by \"&\" go out together). When absent, every in-service\nbranch and/or generator, as chosen below.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "generators": {
+          "default": false,
+          "type": "boolean"
+        },
+        "kv_min": {
+          "default": 0.0,
+          "description": "Only branch outages with a terminal bus at or above this voltage, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "skip_zero_impedance": {
+          "default": false,
+          "description": "Leave out zero-impedance lines (PSS/E THRSHZ, 0.0001 p.u.).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "TransferFactor": {
+      "description": "Base case PTDF of one monitored element.",
+      "properties": {
+        "flow_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_mw": {
+          "description": "Base rating limit, MW; 0 when unrated.",
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "type": "string"
+        },
+        "ptdf": {
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "winding": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "monitored",
+        "from",
+        "to",
+        "winding",
+        "ptdf",
+        "flow_mw",
+        "limit_mw"
+      ],
+      "type": "object"
+    },
+    "TransferLimit": {
+      "description": "One limit the transfer runs into: a monitored element, in the base case\nor after a contingency.",
+      "properties": {
+        "contingency": {
+          "description": "What is out, \"\" for the base case.",
+          "type": "string"
+        },
+        "factor": {
+          "description": "Distribution factor: PTDF in the base case, OTDF after an outage.",
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "description": "The transfer that brings the element to its limit, MW. Negative\nwhen it is already past it in the direction the transfer pushes.",
+          "format": "double",
+          "type": "number"
+        },
+        "flow_mw": {
+          "description": "Flow before the transfer (after the contingency), MW, from end.",
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "description": "End buses of a branch; 0 for an interface.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "description": "The branch id, or `interface:<name>`.",
+          "type": "string"
+        },
+        "ptdf": {
+          "description": "Base case PTDF.",
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "winding": {
+          "description": "1-3 for a leg of a three-winding transformer.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "monitored",
+        "from",
+        "to",
+        "winding",
+        "contingency",
+        "fcitc_mw",
+        "flow_mw",
+        "limit_mw",
+        "factor",
+        "ptdf"
+      ],
+      "type": "object"
+    },
+    "TransferResults": {
+      "properties": {
+        "contingencies": {
+          "description": "Each contingency's lowest limit, lowest first; the base case is \"\".",
+          "items": {
+            "$ref": "#/$defs/ContingencyLimit"
+          },
+          "type": "array"
+        },
+        "factors": {
+          "description": "Base case PTDFs at or above the cutoff, largest first.",
+          "items": {
+            "$ref": "#/$defs/TransferFactor"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "description": "Each monitored element's lowest limit over the base case and every\ncontingency, lowest first.",
+          "items": {
+            "$ref": "#/$defs/TransferLimit"
+          },
+          "type": "array"
+        },
+        "past_limits": {
+          "description": "Elements already past their limit before any transfer (where it\npushes them further), each at its worst, lowest FCITC first. Empty\nwhen `include_past_limits` puts them in `limits`.",
+          "items": {
+            "$ref": "#/$defs/TransferLimit"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/TransferSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "limits",
+        "past_limits",
+        "contingencies",
+        "factors"
+      ],
+      "type": "object"
+    },
+    "TransferSettings": {
+      "description": "A transfer limit study.",
+      "properties": {
+        "base_rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a"
+        },
+        "contingencies": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransferContingencies"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Outages to study; `None` studies the base case only."
+        },
+        "cutoff": {
+          "default": 0.05,
+          "description": "Elements whose distribution factor is below this (as a fraction,\n0.05 = 5%) in size don't limit the transfer.",
+          "format": "double",
+          "type": "number"
+        },
+        "include_past_limits": {
+          "default": false,
+          "description": "Let elements already past their limit before any transfer set the\nFCITC (negative). Off by default: they are listed apart in\n`past_limits`, and the FCITC is the transfer that first takes an\nelement within its limit past it.",
+          "type": "boolean"
+        },
+        "limit_pct": {
+          "default": 100.0,
+          "description": "Percent of the rating that counts as the limit.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_rows": {
+          "default": 200,
+          "description": "The most rows kept in each of the results' lists.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "monitor": {
+          "$ref": "#/$defs/MonitorSettings",
+          "default": {
+            "branches": true,
+            "elements": [],
+            "interfaces": [],
+            "kv_min": 0.0,
+            "subsystem": null
+          }
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "Rating after an outage, and in the base case (`base_rating`)."
+        },
+        "scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "generation"
+        },
+        "sink": {
+          "$ref": "#/$defs/Subsystem",
+          "description": "Where it goes."
+        },
+        "source": {
+          "$ref": "#/$defs/Subsystem",
+          "description": "Where the power comes from."
+        }
+      },
+      "required": [
+        "source",
+        "sink"
+      ],
+      "type": "object"
+    },
+    "TransferSummary": {
+      "properties": {
+        "base_rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "contingencies": {
+          "description": "Contingencies studied (the base case not counted), and those left\nout because they split the network.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cutoff": {
+          "format": "double",
+          "type": "number"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "description": "The first change of total transfer capability from network limits,\nMW; `None` when no monitored element reaches the cutoff.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "generation_limit_mw": {
+          "description": "The most the source and sink can move: the smaller of their\navailable MW.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "islanding": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_pct": {
+          "format": "double",
+          "type": "number"
+        },
+        "limited_by": {
+          "description": "\"network\", \"generation\" or \"none\".",
+          "enum": [
+            "network",
+            "generation",
+            "none"
+          ],
+          "type": "string"
+        },
+        "limiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransferLimit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "monitored": {
+          "description": "Monitored branch rows and interfaces.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notes": {
+          "description": "Things worth knowing about the setup, in words.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "sink": {
+          "$ref": "#/$defs/Participation"
+        },
+        "source": {
+          "$ref": "#/$defs/Participation"
+        },
+        "transfer_limit_mw": {
+          "description": "The transfer limit: the smaller of the two above.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fcitc_mw",
+        "limiting",
+        "generation_limit_mw",
+        "transfer_limit_mw",
+        "limited_by",
+        "source",
+        "sink",
+        "scaling",
+        "cutoff",
+        "rating",
+        "base_rating",
+        "limit_pct",
+        "contingencies",
+        "islanding",
+        "monitored",
+        "elapsed_ms",
+        "cancelled",
+        "notes"
       ],
       "type": "object"
     },
@@ -6455,6 +7067,18 @@
         "type": "object"
       },
       "doc": "Stop the solve in progress; the case keeps its previous results.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
+    "cancel_transfer_limits": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the transfer limit study in progress.",
       "result": {
         "type": "null"
       },
@@ -7661,6 +8285,36 @@
       },
       "takes_case": false
     },
+    "run_transfer_limits": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/TransferSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Transfer limits (DFAX and FCITC): how much power can move from the\nsource subsystem to the sink before a monitored branch or interface\nreaches its limit, in the base case and after each contingency.\nLinear factors on top of the AC solve. `cancel_transfer_limits` stops\nthe study and `transfer_progress` follows it.",
+      "result": {
+        "$ref": "#/$defs/TransferResults"
+      },
+      "takes_case": true
+    },
     "sample_cases": {
       "action": false,
       "args": {
@@ -8060,6 +8714,18 @@
         ]
       },
       "takes_case": true
+    },
+    "transfer_progress": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the transfer limit study in progress has got.",
+      "result": {
+        "$ref": "#/$defs/Progress"
+      },
+      "takes_case": false
     },
     "trip_and_compare": {
       "action": true,

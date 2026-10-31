@@ -56,6 +56,7 @@ pub mod study;
 pub mod study_file;
 pub mod table;
 pub mod topology_wire;
+pub mod transfer;
 pub mod working_case;
 pub mod workspace;
 
