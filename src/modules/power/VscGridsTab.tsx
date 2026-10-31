@@ -202,7 +202,7 @@ export function VscGridsTab({
                     detail={`${count(vsc.ac_iterations)} AC Newton steps in all`}
                     tone={vsc.converged ? "good" : "bad"}
                   />
-                  <Metric label="Converters settled to" value={`${fixed(vsc.last_change_mva, 4)} MVA`} detail="largest change in the last iteration" />
+                  <Metric label="Converters settled to" value={`${fixed(vsc.last_change_mva, 3)} MVA`} detail="largest change in the last iteration" />
                   <Metric label="DC grid losses" value={`${fixed(lost, 2)} MW`} detail="converters and DC lines" />
                 </div>
               ) : (

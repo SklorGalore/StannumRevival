@@ -31,6 +31,11 @@ section into the next version's when a release is cut (see
   final residual to three decimals (for example 0.669 MVA) instead of six
   significant digits. Only the display changed; the solver and the per-unit
   value under it are unchanged.
+- **Shorter sensitivity values.** Flow sensitivities show three decimals
+  (factors below 0.001 show as 0.000). Voltage and angle sensitivities, which
+  are small by nature, show three significant digits (0.000149 p.u./MW).
+  Hover a value for the full number. The VSC grids "Converters settled to"
+  figure shows three decimals of MVA, like the residual.
 
 ## 1.0.0-rc.1 - 2026-10-30
 
