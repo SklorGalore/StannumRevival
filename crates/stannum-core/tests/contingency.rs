@@ -865,7 +865,7 @@ fn worse_by_and_existing_problems_are_settings() {
     for line in &body {
         assert_eq!(line.split(',').count(), columns, "{line}");
     }
-    assert!(body.iter().any(|l| l.split(',').nth(5) == Some("branch")));
+    assert!(body.iter().any(|l| l.split(',').nth(6) == Some("branch")));
 }
 
 /// Lists text given inline runs as the same text read from a file would,
@@ -923,4 +923,63 @@ fn inline_lists_match_a_lists_file() {
     );
     assert_eq!(subsystems[0].members.areas, vec![2]);
     assert_eq!(subsystems[0].members.kv_min, Some(1.0));
+}
+
+/// Outages are named PSS/E style: bus names and numbers, then the circuit or
+/// unit id; a lists file's own names win.
+#[test]
+fn outages_are_named_by_bus_names_and_numbers() {
+    let mut ws = Workspace::default();
+    let raw = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus.raw");
+    ws.open(&raw).unwrap();
+    let open = ws.current_mut().unwrap();
+    assert!(open.solve(SolveSettings::default()).unwrap().converged);
+    open.run_contingencies(ContingencySettings {
+        buses: true,
+        ..settings(Method::Ac)
+    })
+    .unwrap();
+    let rows = open.contingency_rows(0, 1000).unwrap().0;
+    let name = |element: &str| {
+        rows.iter()
+            .find(|r| r.element == element)
+            .map(|r| r.name.clone())
+    };
+    assert_eq!(
+        name("line:1:2:1").as_deref(),
+        Some("North_138 1 Central_138 2 1")
+    );
+    assert_eq!(name("bus:5").as_deref(), Some("Spur_69 5"));
+    let generator = rows.iter().find(|r| r.kind == "generator").unwrap();
+    assert!(
+        generator.name.ends_with(&format!(
+            " {}",
+            generator.element.rsplit(':').next().unwrap()
+        )),
+        "{}",
+        generator.name
+    );
+
+    // What an outage overloads is named the same way.
+    let w = rows.iter().find_map(|r| r.worst.clone()).unwrap();
+    assert!(!w.name.contains(':'), "{}", w.name);
+    assert!(
+        w.name.contains(&format!(" {} ", w.from)) || w.name.starts_with(&format!("{} ", w.from)),
+        "{}",
+        w.name
+    );
+    let path = std::env::temp_dir().join(format!("stannum-names-{}.stnl", std::process::id()));
+    std::fs::write(
+        &path,
+        "stannum-lists 0.1\ncontingency \"Loss of 1-2\" events=[[open, line:1:2:1]]\n",
+    )
+    .unwrap();
+    open.run_contingencies(ContingencySettings {
+        lists: Some(path.to_string_lossy().into_owned()),
+        ..settings(Method::Ac)
+    })
+    .unwrap();
+    std::fs::remove_file(&path).ok();
+    let rows = open.contingency_rows(0, 10).unwrap().0;
+    assert_eq!(rows[0].name, "Loss of 1-2");
 }
