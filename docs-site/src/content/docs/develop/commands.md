@@ -71,7 +71,7 @@ before anything else happens.
 ### Actions
 
 `run_file.rs` keeps a list, `ACTIONS`, of commands that change the case or
-write a file. Those are the ones **Record** keeps in a run file, and
+write a file. Those are the ones the **history** keeps for run files, and
 `CommandInfo::action` reports it. Add a new command there if it changes
 state; leave read-only commands out.
 

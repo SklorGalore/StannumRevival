@@ -1,36 +1,48 @@
 ---
 title: Run files
-description: Record what you do as a run file, play it back in the app, or run it without the app from a terminal.
+description: Save what you did from the history as a run file, play it back in the app, or run it without the app from a terminal.
 ---
 
 A **run file** (`.stnrun`) is a list of Stannum commands, one per line, that
 run in order: open a case, set study edits, solve, run contingencies, export.
-Record one while you work, edit it as text, and play it back in the app or
-from a terminal with `stannum-cli`. The format is described in
+Save one from the history of what you did, edit it as text, and play it back
+in the app or from a terminal with `stannum-cli`. The format is described in
 [Run file format](/StannumRevival/reference/run-file/).
 
-## Recording
+## History
 
-**File → Record a run file** (or Ctrl+K) starts recording. A red bar under the toolbar
-counts the steps kept so far. Work as usual: opening a case, solving, study
-edits, attaching DC grids or bus coordinates, contingencies, Trip and
-compare, Records edits and exports are all kept. Looking around (selecting,
-opening tables, drawing) isn't.
+Stannum keeps a **history** of everything that changes the case or writes a
+file, in run file form, from the moment it starts. Nothing has to be switched
+on. Open it with **File → History…**, **Show history** in the command palette
+(Ctrl+K), or the **History** tab of the [log](/StannumRevival/guide/log/)
+drawer.
 
-If a case is open when you start, the run file begins by opening it, with
-its DC grid file, bus coordinates and study edits, so it starts where you
-did.
+Opening a case, solving, study edits, attaching DC grids or bus coordinates,
+contingencies, transfer limits, Trip and compare, Records edits and exports
+are all kept. Looking around (selecting, opening tables, drawing) isn't.
+Each line is shown as it would be written in a run file; solve settings at
+their defaults are left out.
 
-![Recording a run file: the red bar under the toolbar counts the steps](../../../assets/screens/run-file-recording.png)
+![The History tab: steps picked from the open of a case to the last solve](../../../assets/screens/history.png)
 
-**Stop and save…** asks where to save the file. Paths to files in the same
-folder (or below it) are written relative to the run file, so the folder can
-be moved or shared as a whole. Solve and contingency settings are written
-only where they differ from the defaults. **Discard** stops without saving.
+Click lines to pick them (Shift+click picks a range), or leave none picked to
+take them all. Then:
 
-A recording made with study edits looks like this:
+- **Copy** puts them on the clipboard as run file text, ready to paste into
+  a file you are writing.
+- **Save as run file…** asks where and writes them as a run file. Paths to
+  files in the same folder (or below it) are written relative to the run
+  file, so the folder can be moved or shared as a whole.
+- **Clear** empties the history. Nothing in the case changes.
+
+A part of the history that doesn't start by opening a case begins with the
+case that was open at its first line, so it runs on its own. Commands run by
+a run file or by an attached Python script aren't listed.
+
+Saved from the history, the steps above look like this:
 
 ```text
+# stannum-run-file version 1
 # Stannum run file, recorded in the app.
 # Run it from Ctrl+K > Run a run file, or: stannum-cli run case9_outage.stnrun
 
@@ -40,9 +52,13 @@ set_study_edits edits=[{"element": "line:4:5:1", "kind": "status", "online": fal
 solve_power_flow
 ```
 
+To keep just where you are now (the case, its side files, the study edits
+and a solve), use **Save as run file** in the toolbar; see
+[Studies](/StannumRevival/guide/studies/#saving-the-work-as-a-run-file).
+
 ## Running in the app
 
-**Ctrl+K → Run a run file…**, or drop a `.stnrun` file on the window. Before
+**Open** (or **File → Open case or run file…**), **Ctrl+K → Run a run file…**, or drop a `.stnrun` file on the window. Before
 anything runs, every line is checked, so a misspelled command on the last
 line stops the file before the first line changes anything. While it runs,
 the bar under the toolbar has a **Cancel** button, which stops the run

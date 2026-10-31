@@ -1,9 +1,9 @@
-import { AlertTriangle, FlaskConical, Info, Save, X } from "lucide-react";
+import { AlertTriangle, FileCode, Info, Save, X } from "lucide-react";
 import { fileName } from "../lib/study/recent";
 import { useStudyFile } from "../store/studyFileStore";
 import { useWorkspace } from "../store/workspaceStore";
 
-/** In the toolbar: the study file the case belongs to, and Save study. */
+/** In the toolbar: Save as run file, showing the run file once the work is saved to one. */
 export function StudyFileButton({ narrow }: { narrow: boolean }) {
   const summary = useWorkspace((s) => s.caseSummary);
   const path = useStudyFile((s) => s.path);
@@ -12,7 +12,7 @@ export function StudyFileButton({ narrow }: { narrow: boolean }) {
   const save = useStudyFile((s) => s.save);
   if (!summary) return null;
   const name = path ? fileName(path) : null;
-  const label = busy === "saving" ? "Saving…" : name ? name : "Save study";
+  const label = busy === "saving" ? "Saving…" : name ? name : "Save as run file";
   return (
     <button
       type="button"
@@ -22,19 +22,19 @@ export function StudyFileButton({ narrow }: { narrow: boolean }) {
       title={
         name
           ? `${path}\n${dirty ? "Changed since it was saved. Click to save." : "Saved."}`
-          : "Save the study edits, saved solves, settings and drawing to a .stannum file, with a link to this case"
+          : "Save a run file that opens this case, attaches its side files, sets the study edits and solves"
       }
-      aria-label={name ? `Save study ${name}` : "Save study"}
-      data-testid="save-study"
+      aria-label={name ? `Save run file ${name}` : "Save as run file"}
+      data-testid="save-run-file"
     >
-      {name ? <FlaskConical size={14} className="shrink-0 text-teal-700" /> : <Save size={14} className="shrink-0" />}
+      {name ? <FileCode size={14} className="shrink-0 text-teal-700" /> : <Save size={14} className="shrink-0" />}
       {!narrow && <span className="truncate">{label}</span>}
       {name && dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-label="unsaved changes" />}
     </button>
   );
 }
 
-/** Under the toolbar: what opening a study found (a changed or moved case), or why saving failed. */
+/** Under the toolbar: what opening an old study found (a changed or moved case), or why saving failed. */
 export function StudyNoticeBar() {
   const notice = useStudyFile((s) => s.notice);
   const error = useStudyFile((s) => s.error);

@@ -1,10 +1,10 @@
-// Recently opened cases and studies, newest first, for the empty screens.
+// Recently opened cases, run files and studies, newest first, for the empty screens.
 // Kept in this browser profile only; a missing or unreadable list is empty.
 
 export interface RecentFile {
   path: string;
   name: string;
-  kind: "case" | "study";
+  kind: "case" | "run" | "study";
   /** Milliseconds since 1970. */
   at: number;
 }
@@ -31,7 +31,7 @@ export function recentFiles(): RecentFile[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (f): f is RecentFile =>
-        !!f && typeof f.path === "string" && typeof f.name === "string" && (f.kind === "case" || f.kind === "study") && typeof f.at === "number"
+        !!f && typeof f.path === "string" && typeof f.name === "string" && (f.kind === "case" || f.kind === "run" || f.kind === "study") && typeof f.at === "number"
     );
   } catch {
     return [];

@@ -80,7 +80,7 @@ function fileMenu(): MenuEntry[] {
   const samples = knownSampleCases();
   const busy = w.opening || study.busy === "opening";
   const list: MenuEntry[] = [
-    item("open", "Open case or study…", () => void study.openFile(), { disabled: busy }),
+    item("open", "Open case or run file…", () => void study.openFile(), { disabled: busy }),
     {
       kind: "submenu",
       id: "recent",
@@ -114,8 +114,11 @@ function fileMenu(): MenuEntry[] {
     );
     list.push(
       sep,
-      item("save-study", "Save study", () => void study.save(), { disabled: !!study.busy }),
-      item("save-study-as", "Save study as…", () => void study.save({ as: true }), { disabled: !!study.busy }),
+      item("save-run-file", "Save as run file", () => void study.save(), {
+        disabled: !!study.busy,
+        title: "Write a run file that opens this case, attaches its side files, sets the study edits and solves",
+      }),
+      item("save-run-file-as", "Save run file as…", () => void study.save({ as: true }), { disabled: !!study.busy }),
       item("save-case-as", "Save case as…", saveCaseAs, { title: "Write the case, with its Records edits, to a new file" }),
       { kind: "submenu", id: "export", label: "Export case", items: exports }
     );
@@ -130,9 +133,7 @@ function fileMenu(): MenuEntry[] {
   }
   list.push(
     sep,
-    runFile.recording
-      ? item("record-stop", "Stop recording and save run file…", () => void runFile.saveRecording())
-      : item("record", "Record a run file", runFile.startRecording),
+    item("history", "History…", () => useLog.getState().showHistory(), { title: "Every change and export so far, to copy or save as a run file" }),
     item("run-file", "Run a run file…", () => void runFile.run())
   );
   if (summary) list.push(sep, item("close", "Close case", () => void w.closeCase()));
