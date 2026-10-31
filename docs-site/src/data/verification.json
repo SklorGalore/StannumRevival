@@ -1,6 +1,6 @@
 {
-  "commit": "8150d80fad2a586157b89ddd5f9998715cb4651e",
-  "date": "2026-10-31T13:09:47-04:00",
+  "commit": "279960838f63b1817625320f047fa34f385907f2",
+  "date": "2026-10-31T18:31:26Z",
   "checks": 201,
   "suites": [
     {
@@ -21,47 +21,7 @@
       ],
       "rows": [
         {
-          "case": "case9 AC (all five methods)",
-          "cells": [
-            {
-              "max_diff": 7.943762314610581e-10,
-              "tolerance": 1e-6,
-              "compared": 45
-            },
-            {
-              "max_diff": 4.9971426108186285e-8,
-              "tolerance": 0.00001,
-              "compared": 45
-            },
-            {
-              "max_diff": 6.208843039701151e-7,
-              "tolerance": 0.0001,
-              "compared": 210
-            }
-          ]
-        },
-        {
-          "case": "case9 DC",
-          "cells": [
-            {
-              "max_diff": 0.0,
-              "tolerance": 1e-6,
-              "compared": 9
-            },
-            {
-              "max_diff": 4.440892098500626e-15,
-              "tolerance": 0.00001,
-              "compared": 9
-            },
-            {
-              "max_diff": 5.684341886080803e-14,
-              "tolerance": 0.0001,
-              "compared": 42
-            }
-          ]
-        },
-        {
-          "case": "case9 with generators sharing a bus AC (all five methods)",
+          "case": "case9 with generators sharing a bus, AC (all five methods)",
           "cells": [
             {
               "max_diff": 7.943762314610581e-10,
@@ -81,7 +41,7 @@
           ]
         },
         {
-          "case": "case9 with generators sharing a bus DC",
+          "case": "case9 with generators sharing a bus, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -101,7 +61,7 @@
           ]
         },
         {
-          "case": "case9 with infeasible reactive limits DC",
+          "case": "case9 with infeasible reactive limits, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -121,7 +81,7 @@
           ]
         },
         {
-          "case": "case9 with infinite reactive ranges AC (all five methods)",
+          "case": "case9 with infinite reactive ranges, AC (all five methods)",
           "cells": [
             {
               "max_diff": 7.943762314610581e-10,
@@ -141,7 +101,7 @@
           ]
         },
         {
-          "case": "case9 with infinite reactive ranges DC",
+          "case": "case9 with infinite reactive ranges, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -161,7 +121,7 @@
           ]
         },
         {
-          "case": "case9 with reactive limits AC (all five methods)",
+          "case": "case9 with reactive limits, AC (all five methods)",
           "cells": [
             {
               "max_diff": 1.3879246640868812e-9,
@@ -181,7 +141,7 @@
           ]
         },
         {
-          "case": "case9 with reactive limits DC",
+          "case": "case9 with reactive limits, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -201,7 +161,7 @@
           ]
         },
         {
-          "case": "case9 with taps, shifters, shunts, offline and parallel equipment AC (all five methods)",
+          "case": "case9 with taps, shifters, shunts, offline and parallel equipment, AC (all five methods)",
           "cells": [
             {
               "max_diff": 6.331313251450864e-10,
@@ -221,7 +181,7 @@
           ]
         },
         {
-          "case": "case9 with taps, shifters, shunts, offline and parallel equipment DC",
+          "case": "case9 with taps, shifters, shunts, offline and parallel equipment, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -241,7 +201,7 @@
           ]
         },
         {
-          "case": "case9 with the slack at its limit AC (all five methods)",
+          "case": "case9 with the slack at its limit, AC (all five methods)",
           "cells": [
             {
               "max_diff": 1.0209896261770266e-9,
@@ -261,7 +221,7 @@
           ]
         },
         {
-          "case": "case9 with the slack at its limit DC",
+          "case": "case9 with the slack at its limit, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -281,7 +241,7 @@
           ]
         },
         {
-          "case": "case9 with zero-width reactive ranges AC (all five methods)",
+          "case": "case9 with zero-width reactive ranges, AC (all five methods)",
           "cells": [
             {
               "max_diff": 7.943762314610581e-10,
@@ -301,7 +261,7 @@
           ]
         },
         {
-          "case": "case9 with zero-width reactive ranges DC",
+          "case": "case9 with zero-width reactive ranges, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -321,7 +281,47 @@
           ]
         },
         {
-          "case": "case14 AC (all five methods)",
+          "case": "case9, AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 7.943762314610581e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.9971426108186285e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.208843039701151e-7,
+              "tolerance": 0.0001,
+              "compared": 210
+            }
+          ]
+        },
+        {
+          "case": "case9, DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 42
+            }
+          ]
+        },
+        {
+          "case": "case14, AC (all five methods)",
           "cells": [
             {
               "max_diff": 2.2532353760595922e-10,
@@ -341,7 +341,7 @@
           ]
         },
         {
-          "case": "case14 DC",
+          "case": "case14, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -361,7 +361,7 @@
           ]
         },
         {
-          "case": "case30 AC (all five methods)",
+          "case": "case30, AC (all five methods)",
           "cells": [
             {
               "max_diff": 8.341645152398768e-10,
@@ -381,7 +381,7 @@
           ]
         },
         {
-          "case": "case30 DC",
+          "case": "case30, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -401,7 +401,7 @@
           ]
         },
         {
-          "case": "case57 AC (all five methods)",
+          "case": "case57, AC (all five methods)",
           "cells": [
             {
               "max_diff": 1.330401899757305e-9,
@@ -421,7 +421,7 @@
           ]
         },
         {
-          "case": "case57 DC",
+          "case": "case57, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -441,7 +441,7 @@
           ]
         },
         {
-          "case": "case118 AC (all five methods)",
+          "case": "case118, AC (all five methods)",
           "cells": [
             {
               "max_diff": 2.5837554318286493e-11,
@@ -461,7 +461,7 @@
           ]
         },
         {
-          "case": "case118 DC",
+          "case": "case118, DC",
           "cells": [
             {
               "max_diff": 0.0,
@@ -481,7 +481,7 @@
           ]
         },
         {
-          "case": "case300 AC (all five methods)",
+          "case": "case300, AC (all five methods)",
           "cells": [
             {
               "max_diff": 2.0136474709886443e-9,
@@ -501,7 +501,7 @@
           ]
         },
         {
-          "case": "case300 DC",
+          "case": "case300, DC",
           "cells": [
             {
               "max_diff": 0.0,
