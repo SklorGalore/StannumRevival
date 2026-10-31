@@ -191,6 +191,10 @@ function analysisMenu(): MenuEntry[] {
       disabled: !w.solveReport,
       title: w.solveReport ? undefined : "Solve the case first",
     }),
+    item("transfers", "Transfer limits", () => w.showPowerTab("transfers"), {
+      disabled: !w.solveReport,
+      title: w.solveReport ? undefined : "Solve the case first",
+    }),
     sep,
     item("study", "Study edits", () => w.showPowerTab("study"), { disabled: !power }),
   ];

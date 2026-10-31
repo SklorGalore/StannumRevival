@@ -718,8 +718,10 @@ impl TransferJob {
             notes,
         };
         log::info!(
-            "Transfer limit: FCITC {:?} MW over {} contingencies and {} monitored elements in {:.0} ms",
-            summary.fcitc_mw,
+            "Transfer limit: FCITC {} over {} contingencies and {} monitored elements in {:.0} ms",
+            summary
+                .fcitc_mw
+                .map_or("not reached".to_string(), |v| format!("{v:.1} MW")),
             n,
             summary.monitored,
             summary.elapsed_ms

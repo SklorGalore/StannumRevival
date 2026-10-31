@@ -36,7 +36,7 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, Rating, RunReport, SampleCase, Step } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -278,6 +278,10 @@ export const api = {
   // Polled while a run is going, so they skip the log.
   planningEventCounts: (settings: PlanningSettings): Promise<CategoryCount[]> => call("planning_event_counts", { settings }),
   cancelContingencies: () => invokeCore("cancel_contingencies"),
+  /** A transfer limit study (DFAX and FCITC) on the latest AC solve. */
+  runTransferLimits: (settings: TransferSettings): Promise<TransferResults> => call("run_transfer_limits", { settings }),
+  cancelTransferLimits: () => invokeCore("cancel_transfer_limits"),
+  transferProgress: (): Promise<ContingencyProgress> => invokeCore("transfer_progress"),
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
     fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
