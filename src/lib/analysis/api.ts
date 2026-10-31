@@ -36,7 +36,7 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, ListedSubsystem, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -288,6 +288,8 @@ export const api = {
   /** Every violation of the last run, one line each, written to a CSV file by the core. */
   exportContingencyViolations: (path: string): Promise<{ rows: number; outages: number }> =>
     call("export_contingency_violations", { path }),
+  /** The subsystem records of a .stnl lists file, as written. */
+  listsSubsystems: (path: string): Promise<ListedSubsystem[]> => invokeCore("lists_subsystems", { path }),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
   tripAndCompare: (element: string, limitPct: number, rating: Rating = "a", baseRating: Rating = "a"): Promise<ContingencyDetail> =>
     call("trip_and_compare", { element, limitPct, rating, baseRating }),

@@ -1657,6 +1657,14 @@
             "null"
           ]
         },
+        "lists_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) to run in place of a `lists` file, as the\nsetup builds it from its subsystems. Wins over `lists`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "method": {
           "$ref": "#/$defs/Method",
           "default": "screen"
@@ -1664,6 +1672,14 @@
         "monitors": {
           "default": null,
           "description": "Check only what the `monitor` records of this lists file (`.stnl`)\nname: branch flows and bus voltages with their own limits, and\ninterfaces. Every rated branch and every bus when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monitors_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) whose monitor records choose what is checked,\nin place of a `monitors` file. Wins over `monitors`.",
           "type": [
             "string",
             "null"
@@ -3886,6 +3902,90 @@
         "worst_reactive",
         "branch_overloads",
         "worst_branch"
+      ],
+      "type": "object"
+    },
+    "ListedSubsystem": {
+      "description": "A subsystem record of a lists file, as written: its id, name and\nmembers, for editing and saving again.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kv_max": {
+          "default": null,
+          "description": "Only buses at or below this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kv_min": {
+          "default": null,
+          "description": "Only buses at or above this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "owners": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "subsystems": {
+          "description": "Other subsystems it includes, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "areas",
+        "zones",
+        "owners",
+        "buses",
+        "kv_min",
+        "kv_max",
+        "subsystems"
       ],
       "type": "object"
     },
@@ -7942,6 +8042,29 @@
       "doc": "The commands this version answers, and the API version.",
       "result": {
         "$ref": "#/$defs/CommandList"
+      },
+      "takes_case": false
+    },
+    "lists_subsystems": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "The subsystem records of a lists file (`.stnl`), as written.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/ListedSubsystem"
+        },
+        "type": "array"
       },
       "takes_case": false
     },

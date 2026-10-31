@@ -292,6 +292,8 @@ class Case:
         voltage problem already there before the outage must get to count;
         1 point and 0.001 p.u. by default), ``report_existing`` (count every
         problem after the outage, also those already there),
+        ``lists_text`` and ``monitors_text`` (lists text, as in a ``.stnl``
+        file, in place of the ``lists`` and ``monitors`` files),
         ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
         loadings are measured against after an outage and before it; rate A
         by default), ``solve`` (settings as for :meth:`solve`).
