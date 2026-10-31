@@ -79,6 +79,7 @@ CLASSES: dict[str, dict[str, str]] = {
         "solve": "(self, settings=None, **options)",
         "summary": "property",
         "topology": "(self)",
+        "transfer_limits": "(self, source, sink, settings=None, **options)",
         "trip": "(self, element, limit_pct=100.0, rating='a', base_rating='a')",
     },
     "App": {

@@ -335,6 +335,51 @@ class Case:
             base_rating=base_rating,
         )
 
+    # Transfer limits
+
+    def transfer_limits(
+        self,
+        source: Mapping[str, Any],
+        sink: Mapping[str, Any],
+        settings: Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> Answer:
+        """How much power can move from ``source`` to ``sink`` before a
+        monitored branch or interface reaches its limit (DFAX and FCITC),
+        in the base case and after each contingency. Solve with the AC
+        model first.
+
+        ``source`` and ``sink`` are subsystems: dicts of ``areas``,
+        ``zones``, ``owners`` and ``buses`` (lists of numbers, combined as a
+        union; every bus when all are empty) and ``kv_min``/``kv_max``.
+
+        Options (all optional): ``scaling`` ("generation", "reserve" or
+        "load"), ``monitor`` (dict: ``branches``, ``subsystem``, ``kv_min``,
+        ``elements``, ``interfaces`` as ``{"name", "elements": [[id,
+        weight], ...], "limit_mw"}``), ``contingencies`` (dict: ``{}`` for
+        every branch outage; ``elements``, ``branches``, ``generators``,
+        ``kv_min``, ``skip_zero_impedance``; the base case only when left
+        out), ``cutoff`` (smallest distribution factor that limits, 0.05),
+        ``rating`` and ``base_rating`` ("a", "b" or "c"), ``limit_pct``,
+        ``include_past_limits`` and ``max_rows``.
+
+        Returns the ``summary`` (``fcitc_mw``, ``limiting``,
+        ``generation_limit_mw``, ``transfer_limit_mw``, ``notes``, ...) and
+        the ``limits``, ``past_limits``, ``contingencies`` and ``factors``
+        lists as :class:`Table` objects, lowest FCITC (or largest factor)
+        first.
+        """
+        merged = _settings(settings, options) or {}
+        result = self.call(
+            "run_transfer_limits",
+            settings={**merged, "source": dict(source), "sink": dict(sink)},
+        )
+        for key in ("limits", "past_limits", "contingencies", "factors"):
+            rows = result.get(key) or []
+            result[key] = Table.from_rows(rows) if rows else Table({})
+        result["summary"] = Answer(result["summary"])
+        return result
+
     # Records and elements
 
     def records(self, section: str | None = None) -> Any:
