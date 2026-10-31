@@ -285,6 +285,9 @@ export const api = {
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
     fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
+  /** Every violation of the last run, one line each, written to a CSV file by the core. */
+  exportContingencyViolations: (path: string): Promise<{ rows: number; outages: number }> =>
+    call("export_contingency_violations", { path }),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
   tripAndCompare: (element: string, limitPct: number, rating: Rating = "a", baseRating: Rating = "a"): Promise<ContingencyDetail> =>
     call("trip_and_compare", { element, limitPct, rating, baseRating }),

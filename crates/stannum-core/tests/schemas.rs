@@ -263,6 +263,9 @@ fn answers_fit_their_schemas() {
         json!({ "query": { "sort": { "field": "worst.loading_pct", "descending": true } } }),
     );
     c.ok("contingency_detail", json!({ "rank": 1 }));
+    let csv = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
+    c.ok("export_contingency_violations", json!({ "path": csv }));
+    std::fs::remove_file(&csv).ok();
     c.ok("result_report", json!({ "name": "contingency 1" }));
     let counts = c.ok(
         "planning_event_counts",

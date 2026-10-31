@@ -840,3 +840,71 @@ fn a_lists_file_monitors_what_it_names() {
     assert_eq!(w.name, "gate");
     assert!(w.pct.unwrap() > 100.0 && w.base_pct.unwrap() < 100.0);
 }
+
+/// How much worse an existing overload must get is a setting, and a run can
+/// report existing problems too; the violations CSV lists every one.
+#[test]
+fn worse_by_and_existing_problems_are_settings() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let mut run = |worse_by_pct: f64, report_existing: bool| {
+        open.run_contingencies(ContingencySettings {
+            worse_by_pct,
+            report_existing,
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+        open.contingency_rows(0, 1000)
+            .unwrap()
+            .into_iter()
+            .map(|r| (r.element.clone(), r.overloads))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+    let default = run(1.0, false);
+    let strict = run(1000.0, false);
+    let every = run(1.0, true);
+    let total = |m: &std::collections::HashMap<String, usize>| m.values().sum::<usize>();
+    assert!(total(&default) > 0, "case30 has overloads on rate A");
+    for (element, n) in &default {
+        assert!(strict[element] <= *n, "{element}");
+        assert!(every[element] >= *n, "{element}");
+    }
+    assert!(
+        total(&every) > total(&strict),
+        "existing overloads come back"
+    );
+
+    // The CSV (of the last run, reporting everything) has a line per
+    // violation, each with every column.
+    let summary = open.contingency_summary().unwrap();
+    let rows = open.contingency_rows(0, 1000).unwrap();
+    let path = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
+    let written = open.export_contingency_violations(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let mut lines = text.lines();
+    let header = lines.next().unwrap();
+    assert_eq!(header, stannum_core::contingency::VIOLATIONS_CSV_HEADER);
+    let columns = header.split(',').count();
+    let body: Vec<&str> = lines.collect();
+    assert_eq!(body.len(), written.rows);
+    let expected: usize = rows
+        .iter()
+        .map(|r| {
+            if r.converged == Some(false) {
+                1
+            } else {
+                r.overloads + r.voltage_violations + r.interface_violations
+            }
+        })
+        .sum();
+    assert_eq!(written.rows, expected);
+    assert!(
+        written.rows > summary.with_overloads,
+        "more than one per outage"
+    );
+    for line in &body {
+        assert_eq!(line.split(',').count(), columns, "{line}");
+    }
+    assert!(body.iter().any(|l| l.split(',').nth(5) == Some("branch")));
+}

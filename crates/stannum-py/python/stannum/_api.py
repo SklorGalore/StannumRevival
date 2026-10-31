@@ -288,6 +288,10 @@ class Case:
         with no resistance and a reactance at or below the threshold,
         0.0001 p.u. by default as PSS/E's THRSHZ),
         ``method`` ("screen" or "ac"), ``ac_count``, ``limit_pct``,
+        ``worse_by_pct`` and ``worse_by_pu`` (how much worse an overload or
+        voltage problem already there before the outage must get to count;
+        1 point and 0.001 p.u. by default), ``report_existing`` (count every
+        problem after the outage, also those already there),
         ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
         loadings are measured against after an outage and before it; rate A
         by default), ``solve`` (settings as for :meth:`solve`).
