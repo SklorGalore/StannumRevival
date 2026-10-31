@@ -435,6 +435,9 @@ pub fn parse_matpower(input: &str) -> Result<Case, Error> {
                 angmin: r[11],
                 angmax: r[12],
                 extra: r[13..].to_vec(),
+                mag_g: 0.0,
+                mag_b: 0.0,
+                correction: None,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;

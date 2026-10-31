@@ -548,6 +548,19 @@ fn model_exports_keep_dc_lines_facts_and_every_control() {
     assert!(!power.flow_controls.phase_shifters.is_empty());
     assert!(!power.lcc_lines.is_empty() && !power.vsc_lines.is_empty());
     assert!(power.areas.iter().any(|a| a.desired_mw != 0.0));
+    // Impedance correction tables (by ratio and by angle) and magnetizing.
+    let branches = &power.case.branches;
+    assert!(
+        branches
+            .iter()
+            .any(|b| b.correction.as_ref().is_some_and(|c| c.by_angle))
+    );
+    assert!(
+        branches
+            .iter()
+            .any(|b| b.correction.as_ref().is_some_and(|c| !c.by_angle))
+    );
+    assert!(branches.iter().any(|b| b.mag_b != 0.0));
 
     for revision in [33, 35] {
         let (out, report) = export(&original, revision, &dir);

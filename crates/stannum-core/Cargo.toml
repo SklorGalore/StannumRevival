@@ -27,6 +27,8 @@ sha2 = "0.11"
 getrandom = "0.4"
 
 [dev-dependencies]
+# Reference tests record their largest differences for the docs.
+stannum-verify = { path = "../stannum-verify" }
 stannum-synth = { path = "../stannum-synth" }
 # The budgets test times commands with the app's allocator.
 mimalloc = { version = "0.1", default-features = false }

@@ -33,6 +33,32 @@ pub enum Method {
     Ac,
 }
 
+/// Which of a branch's three ratings a loading is measured against.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Rating {
+    /// Rate A (RAW RATE1): normal, long-term.
+    #[default]
+    A,
+    /// Rate B (RAW RATE2): short-term, often the post-contingency rating.
+    B,
+    /// Rate C (RAW RATE3): emergency.
+    C,
+}
+
+impl Rating {
+    /// The branch's rating in MVA; zero means unrated.
+    pub fn of(self, b: &rs_power::Branch) -> f64 {
+        match self {
+            Rating::A => b.rate_a,
+            Rating::B => b.rate_b,
+            Rating::C => b.rate_c,
+        }
+    }
+}
+
 fn yes() -> bool {
     true
 }
@@ -42,32 +68,115 @@ fn default_ac_count() -> usize {
 fn default_limit() -> f64 {
     100.0
 }
+fn default_zero_impedance() -> f64 {
+    0.0001
+}
+fn default_worse_by_pct() -> f64 {
+    1.0
+}
+fn default_worse_by_pu() -> f64 {
+    0.001
+}
 
 /// What to run.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ContingencySettings {
-    /// Branch and generator ids to take out, one at a time. When absent,
-    /// every in-service branch and/or generator, as chosen below.
+    /// Ids to take out, one at a time. A bus id (bus:101) takes out the
+    /// bus, and ids joined by "&" (line:1:2:1&line:2:3:1) go out together.
+    /// When absent, every in-service branch, generator and/or bus, as
+    /// chosen below.
     #[serde(default)]
     pub elements: Option<Vec<String>>,
     #[serde(default = "yes")]
     pub branches: bool,
     #[serde(default = "yes")]
     pub generators: bool,
+    /// Take out each bus: every branch and DC line connected to it, which
+    /// cuts off its loads, generators and shunts.
+    #[serde(default)]
+    pub buses: bool,
+    /// N-2: take the chosen branches and generators out two at a time,
+    /// every pair once, instead of one at a time. Buses stay one at a time.
+    #[serde(default)]
+    pub pairs: bool,
+    /// Leave out zero-impedance lines: lines with no resistance and a
+    /// reactance at or below `zero_impedance_pu`, as PSS/E treats them
+    /// (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
+    /// a bus outage still opens them.
+    #[serde(default)]
+    pub skip_zero_impedance: bool,
+    /// The zero-impedance threshold in per unit; 0.0001 by default, as
+    /// PSS/E's THRSHZ.
+    #[serde(default = "default_zero_impedance")]
+    pub zero_impedance_pu: f64,
     #[serde(default)]
     pub method: Method,
     /// How many of the worst screened outages get an AC solve.
     #[serde(default = "default_ac_count")]
     pub ac_count: usize,
-    /// Loading, as a percent of rate A, above which a branch is overloaded.
+    /// Loading, as a percent of the rating, above which a branch is
+    /// overloaded.
     #[serde(default = "default_limit")]
     pub limit_pct: f64,
+    /// How many percentage points of loading a branch or interface already
+    /// over its limit before the outage must gain to be reported. 1 by
+    /// default.
+    #[serde(default = "default_worse_by_pct")]
+    pub worse_by_pct: f64,
+    /// How many per unit a bus already outside its voltage limits before
+    /// the outage must move further out to be reported. 0.001 by default.
+    #[serde(default = "default_worse_by_pu")]
+    pub worse_by_pu: f64,
+    /// Report every branch, interface and bus outside its limits after the
+    /// outage, also those that already were before it and got no worse.
+    #[serde(default)]
+    pub report_existing: bool,
+    /// The rating loadings are measured against after an outage.
+    #[serde(default)]
+    pub rating: Rating,
+    /// The rating for the base case: its loadings (the "before" figures)
+    /// and the P0 event.
+    #[serde(default)]
+    pub base_rating: Rating,
     #[serde(default)]
     pub solve: SolveSettings,
     /// Run these NERC TPL-001 planning events instead of every branch and
     /// generator; `elements`, `branches` and `generators` are then unused.
     #[serde(default)]
     pub planning: Option<PlanningSettings>,
+    /// Run the contingencies of this lists file (`.stnl`): its
+    /// `contingency` records and `contingency_set` rules. Equipment the
+    /// case lacks is reported in the summary's notes and skipped. Takes
+    /// the place of `elements`, `branches`, `generators`, `buses` and
+    /// `pairs`; `planning` is unused.
+    #[serde(default)]
+    pub lists: Option<String>,
+    /// Check only what the `monitor` records of this lists file (`.stnl`)
+    /// name: branch flows and bus voltages with their own limits, and
+    /// interfaces. Every rated branch and every bus when absent.
+    #[serde(default)]
+    pub monitors: Option<String>,
+    /// Lists text (`.stnl`) to run in place of a `lists` file, as the
+    /// setup builds it from its subsystems. Wins over `lists`.
+    #[serde(default)]
+    pub lists_text: Option<String>,
+    /// Lists text (`.stnl`) whose monitor records choose what is checked,
+    /// in place of a `monitors` file. Wins over `monitors`.
+    #[serde(default)]
+    pub monitors_text: Option<String>,
+}
+
+/// Lists read from inline `text` when given, else from the file at `path`.
+fn lists_from(
+    text: &Option<String>,
+    path: &Option<String>,
+    power: &PowerCase,
+) -> Option<Result<crate::lists::Lists, String>> {
+    match (text, path) {
+        (Some(t), _) => Some(crate::lists::parse(t, power)),
+        (None, Some(p)) => Some(crate::lists::load(p, power)),
+        (None, None) => None,
+    }
 }
 
 impl Default for ContingencySettings {
@@ -76,11 +185,24 @@ impl Default for ContingencySettings {
             elements: None,
             branches: true,
             generators: true,
+            buses: false,
+            pairs: false,
+            skip_zero_impedance: false,
+            zero_impedance_pu: default_zero_impedance(),
             method: Method::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
+            worse_by_pct: default_worse_by_pct(),
+            worse_by_pu: default_worse_by_pu(),
+            report_existing: false,
+            rating: Rating::default(),
+            base_rating: Rating::default(),
             solve: SolveSettings::default(),
             planning: None,
+            lists: None,
+            monitors: None,
+            lists_text: None,
+            monitors_text: None,
         }
     }
 }
@@ -89,14 +211,20 @@ impl Default for ContingencySettings {
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Overload {
     pub element: String,
+    /// The branch named PSS/E style: bus names and numbers, then the circuit.
+    pub name: String,
     pub from: u32,
     pub to: u32,
-    /// MVA as a percent of rate A, after the outage and before it.
+    /// MVA as a percent of the run's rating after the outage, and of its
+    /// base rating before it.
     pub pct: f64,
     pub base_pct: f64,
     /// Active flow at the from end, MW, after and before.
     pub mw: f64,
     pub base_mw: f64,
+    /// The loading, in percent, above which this branch counts as over:
+    /// the run's limit, or its monitor's.
+    pub limit_pct: f64,
 }
 
 /// A bus outside its voltage limits after an outage.
@@ -112,6 +240,22 @@ pub struct VoltageProblem {
     pub outside: f64,
 }
 
+/// An interface's summed flow after an outage, from a lists file monitor.
+#[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
+pub struct InterfaceFlow {
+    pub name: String,
+    /// Weighted sum of its branch flows, MW, after and before.
+    pub mw: f64,
+    pub base_mw: f64,
+    /// Its limit; none when the interface has no limit.
+    pub limit_mw: Option<f64>,
+    /// |MW| as a percent of the limit, after and before.
+    pub pct: Option<f64>,
+    pub base_pct: Option<f64>,
+    /// Percent of the limit that counts as a violation.
+    pub limit_pct: f64,
+}
+
 /// One outage's outcome, as a row of the ranked results.
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ContingencyRow {
@@ -119,11 +263,16 @@ pub struct ContingencyRow {
     pub rank: usize,
     /// The element taken out; empty for the base case (P0).
     pub element: String,
-    /// "branch", "generator", "shunt", "dc_line", or "base" for P0.
-    #[schemars(extend("enum" = ["branch", "generator", "shunt", "dc_line", "base"]))]
+    /// "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
+    /// elements out together, "group" for more, or "base" for P0.
+    #[schemars(extend("enum" = ["branch", "generator", "shunt", "dc_line", "bus", "pair", "group", "base"]))]
     pub kind: &'static str,
     /// The planning event category, such as "P1.2"; none in an N-1 run.
     pub category: Option<String>,
+    /// The contingency's name: the one its lists file gives it, or else
+    /// built PSS/E style from what goes out, bus names and numbers then the
+    /// circuit or unit id, such as "ALPHA 101 BETA 102 1"; "BASE CASE" for P0.
+    pub name: String,
     /// What the event is, in words, when the element alone doesn't say.
     pub description: Option<String>,
     /// "ac" when solved in AC, "linear" when only screened.
@@ -144,6 +293,11 @@ pub struct ContingencyRow {
     /// AC only: the worst bus outside its limits that is new or worse.
     pub worst_voltage: Option<VoltageProblem>,
     pub voltage_violations: usize,
+    /// Monitored interfaces over their limit that are new or worse, and
+    /// the worst of them.
+    #[serde(default)]
+    pub interface_violations: usize,
+    pub worst_interface: Option<InterfaceFlow>,
     /// Buses split off from the rest of the network, and what they carried.
     pub cut_off_buses: usize,
     pub lost_load_mw: f64,
@@ -158,6 +312,10 @@ pub struct ContingencyRow {
 pub struct ContingencySummary {
     pub method: Option<Method>,
     pub limit_pct: f64,
+    /// The ratings loadings were measured against, after outages and in
+    /// the base case.
+    pub rating: Rating,
+    pub base_rating: Rating,
     /// Outages run, and in-service checks skipped because the element was
     /// already out.
     pub total: usize,
@@ -165,6 +323,9 @@ pub struct ContingencySummary {
     pub ac_checked: usize,
     pub with_overloads: usize,
     pub with_voltage_problems: usize,
+    /// Outages that take a monitored interface over its limit.
+    #[serde(default)]
+    pub with_interface_problems: usize,
     pub not_converged: usize,
     pub islanding: usize,
     pub screen_ms: f64,
@@ -176,6 +337,12 @@ pub struct ContingencySummary {
     /// Planning event runs: outages and problems in each category, in
     /// category order. Empty in an N-1 run.
     pub categories: Vec<CategorySummary>,
+    /// Lists file runs: what was skipped and why, in sentences.
+    #[serde(default)]
+    pub notes: Vec<String>,
+    /// Whether a lists file's monitors chose what was checked.
+    #[serde(default)]
+    pub monitored: bool,
 }
 
 /// One planning event category's share of a run.
@@ -187,17 +354,24 @@ pub struct CategorySummary {
     pub with_voltage_problems: usize,
     pub not_converged: usize,
     pub islanding: usize,
+    /// Events with any overload, voltage problem or failed solve, each
+    /// counted once.
+    #[serde(default)]
+    pub with_problems: usize,
 }
 
 /// A branch's flow after one outage, for drawing the change on a diagram.
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BranchChange {
     pub element: String,
+    /// The branch named PSS/E style: bus names and numbers, then the circuit.
+    pub name: String,
     pub from: u32,
     pub to: u32,
     pub mw: f64,
     pub base_mw: f64,
-    /// Percent of rate A, after and before; `None` when unrated.
+    /// Percent of the run's rating after, and of its base rating before;
+    /// `None` when unrated.
     pub pct: Option<f64>,
     pub base_pct: Option<f64>,
     pub tripped: bool,
@@ -227,6 +401,9 @@ pub struct ContingencyDetail {
     pub buses: Vec<BusChange>,
     /// Buses split off by the outage.
     pub cut_off: Vec<u32>,
+    /// Every monitored interface's flow.
+    #[serde(default)]
+    pub interfaces: Vec<InterfaceFlow>,
 }
 
 /// Progress of the run in hand, for a progress bar.
@@ -281,29 +458,36 @@ impl RunHandle {
         }
     }
 
-    fn set_phase(&self, phase: usize, total: usize) {
+    pub(crate) fn set_phase(&self, phase: usize, total: usize) {
         self.0.phase.store(phase, Ordering::SeqCst);
         self.0.done.store(0, Ordering::SeqCst);
         self.0.total.store(total, Ordering::SeqCst);
     }
 
-    fn cancelled(&self) -> bool {
+    /// Count one more piece of work done.
+    pub(crate) fn step(&self) {
+        self.0.done.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub(crate) fn cancelled(&self) -> bool {
         self.0.cancel.load(Ordering::SeqCst)
     }
 }
 
 #[derive(Clone, Debug, Default)]
-struct Outage {
-    element: String,
-    kind: &'static str,
-    branch_rows: Vec<usize>,
-    generator_rows: Vec<usize>,
+pub(crate) struct Outage {
+    pub(crate) element: String,
+    pub(crate) kind: &'static str,
+    pub(crate) branch_rows: Vec<usize>,
+    pub(crate) generator_rows: Vec<usize>,
     /// Rows of `PowerCase::shunts`.
-    shunt_rows: Vec<usize>,
+    pub(crate) shunt_rows: Vec<usize>,
     /// `case.dcline` rows with the share of the schedule that stays.
-    dc_rows: Vec<(usize, f64)>,
-    category: Option<&'static str>,
+    pub(crate) dc_rows: Vec<(usize, f64)>,
+    category: Option<String>,
     description: Option<String>,
+    /// The name a lists file gives it.
+    name: Option<String>,
 }
 
 impl Outage {
@@ -332,8 +516,9 @@ impl From<planning::PlanningEvent> for Outage {
             generator_rows: e.generator_rows,
             shunt_rows: e.shunt_rows,
             dc_rows: e.dc_rows,
-            category: Some(e.category),
+            category: Some(e.category.to_string()),
             description: e.description,
+            name: None,
         }
     }
 }
@@ -346,77 +531,591 @@ pub struct ContingencyJob {
     settings: ContingencySettings,
     outages: Vec<Outage>,
     already_out: usize,
+    notes: Vec<String>,
+    watch: Watch,
     handle: RunHandle,
 }
 
 /// Pick the outages `settings` asks for from `power`.
-fn outages(
+pub(crate) fn outages(
     power: &PowerCase,
     settings: &ContingencySettings,
-) -> Result<(Vec<Outage>, usize), String> {
+) -> Result<(Vec<Outage>, usize, Vec<String>), String> {
+    if let Some(lists) = lists_from(&settings.lists_text, &settings.lists, power) {
+        return from_lists(power, settings, lists?);
+    }
     if let Some(p) = &settings.planning {
         let list: Vec<Outage> = planning::events(power, p)?
             .into_iter()
             .map(Outage::from)
+            .filter(|o| !zero_impedance_line(&power.case, settings, o))
             .collect();
-        return Ok((list, 0));
+        return Ok((list, 0, vec![]));
     }
-    let mut list: Vec<Outage> = Vec::new();
-    let mut index: HashMap<String, usize> = HashMap::new();
-    let wanted: Option<std::collections::HashSet<&str>> = settings
+    let case = &power.case;
+    let wanted: Option<Vec<&str>> = settings
         .elements
         .as_ref()
         .map(|e| e.iter().map(String::as_str).collect());
-    let mut take = |element: &str, kind: &'static str, row: usize, is_branch: bool| {
-        let i = *index.entry(element.to_string()).or_insert_with(|| {
-            list.push(Outage {
-                element: element.to_string(),
-                kind,
-                ..Default::default()
-            });
-            list.len() - 1
-        });
-        if is_branch {
-            list[i].branch_rows.push(row);
-        } else {
-            list[i].generator_rows.push(row);
-        }
+    let wants_buses = settings.buses
+        || wanted
+            .iter()
+            .flatten()
+            .any(|w| w.split('&').any(|p| p.starts_with("bus:")));
+    let Singles {
+        list: singles,
+        index,
+    } = Singles::new(power, wants_buses);
+    let in_service = |o: &Outage| {
+        o.branch_rows.iter().any(|&r| case.branches[r].online)
+            || o.generator_rows.iter().any(|&r| case.generators[r].online)
+            || o.dc_rows.iter().any(|&(r, _)| {
+                case.dcline
+                    .as_ref()
+                    .and_then(|t| t.get(r))
+                    .is_some_and(|l| l[2] != 0.0)
+            })
     };
-    for (row, e) in power.elements.branches.iter().enumerate() {
-        // Switching devices run only when listed: opening one is a
-        // switching study, not a branch outage.
-        let chosen = match &wanted {
-            Some(w) => w.contains(e.element.as_str()),
-            None => settings.branches && !e.element.starts_with("switch:"),
-        };
-        if chosen {
-            take(&e.element, "branch", row, true);
+
+    let zero_impedance = |o: &Outage| zero_impedance_line(case, settings, o);
+
+    // The outages asked for, one element (or one "&" group) each.
+    let mut list: Vec<Outage> = Vec::new();
+    match &wanted {
+        Some(w) => {
+            for id in w {
+                if !id.contains('&')
+                    && let Some(&i) = index.get(*id)
+                    && zero_impedance(&singles[i])
+                {
+                    continue;
+                }
+                let mut parts = Vec::new();
+                for part in id.split('&') {
+                    let i = *index.get(part).ok_or_else(|| {
+                        format!("{part} isn't a branch, generator or bus in this case.")
+                    })?;
+                    parts.push(&singles[i]);
+                }
+                list.push(combine(&parts));
+            }
+        }
+        None => {
+            for o in &singles {
+                // Switching devices run only when listed: opening one is a
+                // switching study, not a branch outage.
+                let chosen = match o.kind {
+                    "branch" => {
+                        settings.branches && !o.element.starts_with("switch:") && !zero_impedance(o)
+                    }
+                    "generator" => settings.generators,
+                    _ => false,
+                };
+                if chosen {
+                    list.push(o.clone());
+                }
+            }
         }
     }
-    for (row, e) in power.elements.generators.iter().enumerate() {
-        let chosen = match &wanted {
-            Some(w) => w.contains(e.element.as_str()),
-            None => settings.generators,
-        };
-        if chosen {
-            take(&e.element, "generator", row, false);
+    if settings.pairs {
+        let (single_ones, buses): (Vec<Outage>, Vec<Outage>) =
+            list.into_iter().partition(|o| o.kind != "bus");
+        let usable: Vec<Outage> = single_ones.into_iter().filter(&in_service).collect();
+        let n = usable.len();
+        let pairs = n * n.saturating_sub(1) / 2;
+        if pairs > MAX_PAIRS {
+            return Err(format!(
+                "N-2 of {n} elements is {pairs} pairs. Narrow the outages with the bus filters to {MAX_PAIRS} pairs or fewer (about {} elements).",
+                max_pair_elements()
+            ));
         }
+        list = Vec::with_capacity(pairs + buses.len());
+        for a in 0..n {
+            for b in a + 1..n {
+                list.push(combine(&[&usable[a], &usable[b]]));
+            }
+        }
+        list.extend(buses);
+    } else if settings.buses && wanted.is_none() {
+        list.extend(singles.iter().filter(|o| o.kind == "bus").cloned());
     }
-    if let Some(w) = &wanted
-        && let Some(missing) = w.iter().find(|e| !index.contains_key(**e))
-    {
-        return Err(format!(
-            "{missing} isn't a branch or generator in this case."
-        ));
-    }
+    let before = list.len();
+    list.retain(in_service);
+    let already_out = before - list.len();
+    Ok((list, already_out, vec![]))
+}
+
+/// The outages a lists file asks for: its named contingencies, then what
+/// each contingency set generates.
+fn from_lists(
+    power: &PowerCase,
+    settings: &ContingencySettings,
+    lists: crate::lists::Lists,
+) -> Result<(Vec<Outage>, usize, Vec<String>), String> {
+    use crate::lists::SetKind;
     let case = &power.case;
+    let mut notes = lists.notes;
+    let with_buses = lists
+        .named
+        .iter()
+        .any(|n| n.elements.iter().any(|e| e.starts_with("bus:")))
+        || lists.sets.iter().any(|s| s.kind == SetKind::Buses);
+    let singles = Singles::new(power, with_buses);
+    let mut list = Vec::new();
+    'named: for n in &lists.named {
+        let mut parts = Vec::new();
+        for id in &n.elements {
+            match singles.get(id) {
+                Some(o) => parts.push(o),
+                None => {
+                    notes.push(format!(
+                        "Contingency \"{}\": {id} isn't in this case; skipped.",
+                        n.name
+                    ));
+                    continue 'named;
+                }
+            }
+        }
+        let mut o = combine(&parts);
+        if parts.len() > 2 {
+            o.kind = "group";
+        }
+        o.description = Some(n.name.clone());
+        o.name = Some(n.name.clone());
+        o.category = n.category.clone();
+        list.push(o);
+    }
+    let kv: HashMap<u32, f64> = case.buses.iter().map(|b| (b.id, b.base_kv)).collect();
+    for set in &lists.sets {
+        let fits = |o: &Outage| {
+            let buses = Singles::buses(case, o);
+            let inside = set
+                .buses
+                .as_ref()
+                .is_none_or(|s| buses.iter().any(|b| s.contains(b)));
+            let high = set
+                .kv_min
+                .is_none_or(|k| buses.iter().any(|b| kv.get(b).copied().unwrap_or(0.0) >= k));
+            inside && high
+        };
+        let want = match set.kind {
+            SetKind::Branches | SetKind::BranchPairs => "branch",
+            SetKind::Generators => "generator",
+            SetKind::Buses => "bus",
+        };
+        let chosen: Vec<&Outage> = singles
+            .list
+            .iter()
+            .filter(|o| o.kind == want)
+            .filter(|o| !o.element.starts_with("switch:"))
+            .filter(|o| !zero_impedance_line(case, settings, o))
+            .filter(|o| fits(o))
+            .collect();
+        let category = Some(set.name.clone());
+        if set.kind == SetKind::BranchPairs {
+            let n = chosen.len();
+            let pairs = n * n.saturating_sub(1) / 2;
+            if list.len() + pairs > MAX_PAIRS {
+                return Err(format!(
+                    "Contingency set \"{}\" makes {pairs} pairs from {n} branches; narrow its subsystem to {MAX_PAIRS} outages or fewer in all.",
+                    set.name
+                ));
+            }
+            for a in 0..n {
+                for b in a + 1..n {
+                    let mut o = combine(&[chosen[a], chosen[b]]);
+                    o.category = category.clone();
+                    list.push(o);
+                }
+            }
+        } else {
+            for o in chosen {
+                let mut o = o.clone();
+                o.category = category.clone();
+                list.push(o);
+            }
+        }
+    }
     let before = list.len();
     list.retain(|o| {
         o.branch_rows.iter().any(|&r| case.branches[r].online)
             || o.generator_rows.iter().any(|&r| case.generators[r].online)
+            || o.shunt_rows.iter().any(|&r| power.shunts[r].online)
+            || o.dc_rows.iter().any(|&(r, _)| {
+                case.dcline
+                    .as_ref()
+                    .and_then(|t| t.get(r))
+                    .is_some_and(|l| l[2] != 0.0)
+            })
     });
     let already_out = before - list.len();
-    Ok((list, already_out))
+    Ok((list, already_out, notes))
+}
+
+/// Notes kept from a lists file; the rest are counted.
+const MAX_NOTES: usize = 50;
+
+fn cap_notes(notes: &mut Vec<String>) {
+    if notes.len() > MAX_NOTES {
+        let more = notes.len() - MAX_NOTES;
+        notes.truncate(MAX_NOTES);
+        notes.push(format!("And {more} more."));
+    }
+}
+
+/// A zero-impedance line, when the settings leave them out: no resistance
+/// and a reactance at or below the threshold (PSS/E's THRSHZ).
+/// Transformers never count.
+fn zero_impedance_line(case: &Case, settings: &ContingencySettings, o: &Outage) -> bool {
+    settings.skip_zero_impedance
+        && o.kind == "branch"
+        && o.element.starts_with("line:")
+        && !o.branch_rows.is_empty()
+        && o.branch_rows.iter().all(|&r| {
+            let b = &case.branches[r];
+            b.r == 0.0 && b.x.abs() <= settings.zero_impedance_pu
+        })
+}
+
+/// Every single outage a case offers, by element id: branches (a
+/// three-winding transformer is one element over its windings),
+/// generators, shunts, DC lines and, when asked, buses.
+struct Singles {
+    list: Vec<Outage>,
+    index: HashMap<String, usize>,
+}
+
+impl Singles {
+    fn new(power: &PowerCase, with_buses: bool) -> Self {
+        let case = &power.case;
+        let mut s = Singles {
+            list: Vec::new(),
+            index: HashMap::new(),
+        };
+        for (row, e) in power.elements.branches.iter().enumerate() {
+            let i = s.add(&e.element, "branch");
+            s.list[i].branch_rows.push(row);
+        }
+        for (row, e) in power.elements.generators.iter().enumerate() {
+            let i = s.add(&e.element, "generator");
+            s.list[i].generator_rows.push(row);
+        }
+        for (row, sh) in power.shunts.iter().enumerate() {
+            let id = if sh.kind == rs_power::ShuntKind::Switched {
+                crate::elements::switched_shunt(sh.bus, &sh.id)
+            } else {
+                crate::elements::shunt(sh.bus, &sh.id)
+            };
+            let i = s.add(&id, "shunt");
+            s.list[i].shunt_rows.push(row);
+        }
+        for (row, id) in power.elements.dc_lines.iter().enumerate() {
+            if !id.is_empty() {
+                let i = s.add(id, "dc_line");
+                s.list[i].dc_rows.push((row, 0.0));
+            }
+        }
+        if with_buses {
+            let mut at: HashMap<u32, Outage> = HashMap::new();
+            for (r, b) in case.branches.iter().enumerate() {
+                at.entry(b.from).or_default().branch_rows.push(r);
+                if b.to != b.from {
+                    at.entry(b.to).or_default().branch_rows.push(r);
+                }
+            }
+            for (r, l) in case.dcline.iter().flatten().enumerate() {
+                let (from, to) = (l[0] as u32, l[1] as u32);
+                at.entry(from).or_default().dc_rows.push((r, 0.0));
+                if to != from {
+                    at.entry(to).or_default().dc_rows.push((r, 0.0));
+                }
+            }
+            for bus in &case.buses {
+                let i = s.add(&crate::elements::bus(bus.id), "bus");
+                let found = at.remove(&bus.id).unwrap_or_default();
+                s.list[i].branch_rows = found.branch_rows;
+                s.list[i].dc_rows = found.dc_rows;
+            }
+        }
+        s
+    }
+
+    fn add(&mut self, element: &str, kind: &'static str) -> usize {
+        *self.index.entry(element.to_string()).or_insert_with(|| {
+            self.list.push(Outage {
+                element: element.to_string(),
+                kind,
+                ..Default::default()
+            });
+            self.list.len() - 1
+        })
+    }
+
+    /// The single outage an id names. Branch ids are also found with
+    /// their bus numbers in another order (line:2:1:1 for line:1:2:1).
+    fn get(&self, id: &str) -> Option<&Outage> {
+        if let Some(&i) = self.index.get(id) {
+            return Some(&self.list[i]);
+        }
+        let mut parts: Vec<&str> = id.split(':').collect();
+        let kind = *parts.first()?;
+        let buses = match kind {
+            "line" | "switch" => 2,
+            "transformer" if parts.len() >= 5 => 3,
+            "transformer" => 2,
+            _ => return None,
+        };
+        if parts.len() < 1 + buses + 1 {
+            return None;
+        }
+        let nums = &mut parts[1..1 + buses];
+        if nums.iter().any(|n| n.parse::<u32>().is_err()) {
+            return None;
+        }
+        nums.sort_by_key(|n| n.parse::<u32>().unwrap_or(0));
+        self.index.get(&parts.join(":")).map(|&i| &self.list[i])
+    }
+
+    /// The buses an outage touches.
+    fn buses(case: &Case, o: &Outage) -> Vec<u32> {
+        let mut out = Vec::new();
+        for &r in &o.branch_rows {
+            out.push(case.branches[r].from);
+            out.push(case.branches[r].to);
+        }
+        for &r in &o.generator_rows {
+            out.push(case.generators[r].bus);
+        }
+        for &(r, _) in &o.dc_rows {
+            if let Some(l) = case.dcline.as_ref().and_then(|t| t.get(r)) {
+                out.push(l[0] as u32);
+                out.push(l[1] as u32);
+            }
+        }
+        if o.kind == "bus"
+            && let Some(n) = o.element.strip_prefix("bus:").and_then(|n| n.parse().ok())
+        {
+            out.push(n);
+        }
+        out
+    }
+}
+
+/// N-2 runs at most this many pairs: each is a row of the results.
+pub const MAX_PAIRS: usize = 250_000;
+
+/// A watched branch's limit (percent) and the rating a monitor sets.
+type BranchWatch = Option<(f64, Option<Rating>)>;
+/// A watched bus's limits, in place of its own.
+type BusWatch = Option<(Option<f64>, Option<f64>)>;
+
+/// What a run checks after each outage: every rated branch and every bus
+/// by default, or only what a lists file's monitors name.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Watch {
+    /// By branch row: the limit (percent) and the rating a monitor sets
+    /// (the run's when `None`); unwatched rows are `None`. Every branch at
+    /// the run's limit when absent.
+    branches: Option<Vec<BranchWatch>>,
+    /// By bus row: limits that replace the bus's own; unwatched rows are
+    /// `None`. Every bus at its own limits when absent.
+    buses: Option<Vec<BusWatch>>,
+    interfaces: Vec<WatchedInterface>,
+    /// Chosen by a lists file's monitors.
+    from_file: bool,
+}
+
+#[derive(Clone, Debug)]
+struct WatchedInterface {
+    name: String,
+    /// Branch rows and weights, signed so the from-end flow counts in the
+    /// direction the interface's ids are written.
+    rows: Vec<(usize, f64)>,
+    limit_mw: Option<f64>,
+    limit_pct: f64,
+}
+
+impl Watch {
+    /// The monitors of `lists`, resolved to `power`'s
+    /// rows, and notes on what was skipped.
+    fn from_lists(
+        power: &PowerCase,
+        lists: crate::lists::Lists,
+        settings: &ContingencySettings,
+    ) -> Result<(Self, Vec<String>), String> {
+        let mut notes = lists.notes;
+        if lists.monitors.is_empty() {
+            notes.push(
+                "The monitors file has no monitor records; every branch and bus was checked."
+                    .into(),
+            );
+            return Ok((Self::default(), notes));
+        }
+        let case = &power.case;
+        let singles = Singles::new(power, false);
+        let branch_rows = |id: &str| -> Option<Vec<usize>> {
+            singles
+                .get(id)
+                .map(|o| o.branch_rows.clone())
+                .filter(|r| !r.is_empty())
+        };
+        let bus_row: HashMap<u32, usize> = case
+            .buses
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.id, i))
+            .collect();
+        let mut branches: Vec<BranchWatch> = vec![None; case.branches.len()];
+        let mut buses: Vec<BusWatch> = vec![None; case.buses.len()];
+        let mut interfaces = Vec::new();
+        // A branch under more than one monitor keeps the lowest limit in MVA.
+        let mut watch_branch = |r: usize, limit: f64, rating: Option<Rating>| {
+            let b = &case.branches[r];
+            let mva = |l: f64, rt: Option<Rating>| l * rt.unwrap_or(settings.rating).of(b);
+            if branches[r].is_none_or(|(l, rt)| mva(limit, rating) < mva(l, rt)) {
+                branches[r] = Some((limit, rating));
+            }
+        };
+        for m in &lists.monitors {
+            let skip = |why: String| format!("Monitor \"{}\": {why}; skipped.", m.name);
+            match &m.watched {
+                crate::lists::Watched::Flow {
+                    element,
+                    buses: within,
+                    rating,
+                } => {
+                    let rating = rating.map(|n| match n {
+                        2 => Rating::B,
+                        3 => Rating::C,
+                        _ => Rating::A,
+                    });
+                    match element {
+                        Some(id) => match branch_rows(id) {
+                            Some(rows) => rows
+                                .into_iter()
+                                .for_each(|r| watch_branch(r, m.limit_pct, rating)),
+                            None => notes.push(skip(format!("{id} isn't a branch in this case"))),
+                        },
+                        None => {
+                            for (r, b) in case.branches.iter().enumerate() {
+                                if within
+                                    .as_ref()
+                                    .is_none_or(|ids| ids.contains(&b.from) || ids.contains(&b.to))
+                                {
+                                    watch_branch(r, m.limit_pct, rating);
+                                }
+                            }
+                        }
+                    }
+                }
+                crate::lists::Watched::Voltage {
+                    element,
+                    buses: within,
+                    vmin,
+                    vmax,
+                } => {
+                    let limits = Some((*vmin, *vmax));
+                    match element {
+                        Some(id) => match id
+                            .strip_prefix("bus:")
+                            .and_then(|n| n.parse::<u32>().ok())
+                            .and_then(|n| bus_row.get(&n))
+                        {
+                            Some(&i) => buses[i] = limits,
+                            None => notes.push(skip(format!("{id} isn't a bus in this case"))),
+                        },
+                        None => {
+                            for (i, b) in case.buses.iter().enumerate() {
+                                if within.as_ref().is_none_or(|ids| ids.contains(&b.id)) {
+                                    buses[i] = limits;
+                                }
+                            }
+                        }
+                    }
+                }
+                crate::lists::Watched::Interface(i) => {
+                    let mut rows = Vec::new();
+                    let mut missing = None;
+                    for (id, w) in &i.elements {
+                        // A three-winding transformer counts at its first
+                        // winding.
+                        let Some(&r) = branch_rows(id).as_ref().and_then(|r| r.first()) else {
+                            missing = Some(id.clone());
+                            break;
+                        };
+                        let first: Option<u32> = id.split(':').nth(1).and_then(|n| n.parse().ok());
+                        let sign = if first.is_some_and(|f| f != case.branches[r].from) {
+                            -1.0
+                        } else {
+                            1.0
+                        };
+                        rows.push((r, w * sign));
+                    }
+                    match missing {
+                        Some(id) => notes.push(skip(format!(
+                            "{id} in interface {} isn't a branch in this case",
+                            i.name
+                        ))),
+                        None => interfaces.push(WatchedInterface {
+                            name: i.name.clone(),
+                            rows,
+                            limit_mw: i.limit_mw.filter(|l| *l > 0.0),
+                            limit_pct: m.limit_pct,
+                        }),
+                    }
+                }
+            }
+        }
+        Ok((
+            Self {
+                branches: Some(branches),
+                buses: Some(buses),
+                interfaces,
+                from_file: true,
+            },
+            notes,
+        ))
+    }
+}
+
+/// The most elements whose pairs fit in [`MAX_PAIRS`].
+fn max_pair_elements() -> usize {
+    let mut n = 1;
+    while (n + 1) * n / 2 <= MAX_PAIRS {
+        n += 1;
+    }
+    n
+}
+
+/// Several outages taken together, as one.
+fn combine(parts: &[&Outage]) -> Outage {
+    if let [one] = parts {
+        return (*one).clone();
+    }
+    let mut out = Outage {
+        element: parts
+            .iter()
+            .map(|p| p.element.as_str())
+            .collect::<Vec<_>>()
+            .join("&"),
+        kind: "pair",
+        ..Default::default()
+    };
+    for p in parts {
+        for &r in &p.branch_rows {
+            if !out.branch_rows.contains(&r) {
+                out.branch_rows.push(r);
+            }
+        }
+        for &r in &p.generator_rows {
+            if !out.generator_rows.contains(&r) {
+                out.generator_rows.push(r);
+            }
+        }
+        out.shunt_rows.extend(&p.shunt_rows);
+        out.dc_rows.extend(&p.dc_rows);
+    }
+    out
 }
 
 impl ContingencyJob {
@@ -427,7 +1126,16 @@ impl ContingencyJob {
         base: &PowerFlowResult,
         settings: ContingencySettings,
     ) -> Result<Self, String> {
-        let (outages, already_out) = outages(power, &settings)?;
+        let (outages, already_out, mut notes) = outages(power, &settings)?;
+        let watch = match lists_from(&settings.monitors_text, &settings.monitors, power) {
+            Some(lists) => {
+                let (watch, more) = Watch::from_lists(power, lists?, &settings)?;
+                notes.extend(more);
+                watch
+            }
+            None => Watch::default(),
+        };
+        cap_notes(&mut notes);
         if outages.is_empty() {
             return Err(if settings.planning.is_some() {
                 "Nothing to take out: no in-service element fits the planning event filters.".into()
@@ -441,6 +1149,8 @@ impl ContingencyJob {
             settings,
             outages,
             already_out,
+            notes,
+            watch,
             handle: RunHandle::default(),
         })
     }
@@ -463,12 +1173,14 @@ impl ContingencyJob {
     pub fn run(self) -> Result<ContingencyResults, String> {
         let handle = &self.handle;
         let start = Instant::now();
-        let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+        let context = Context::new(&self.power, &self.base, &self.settings, &self.watch)?;
         let n = self.outages.len();
 
         handle.set_phase(1, n);
-        let mut rows: Vec<Option<ContingencyRow>> =
-            parallel(handle, n, |i| Some(context.screen(&self.outages[i]).row));
+        let mut rows: Vec<Option<(ContingencyRow, Violations)>> = parallel(handle, n, |i| {
+            let o = context.screen(&self.outages[i]);
+            Some((o.row.clone(), o.violations()))
+        });
         let screen_ms = start.elapsed().as_secs_f64() * 1000.0;
         let mut was_cancelled = rows.iter().any(Option::is_none);
 
@@ -476,7 +1188,10 @@ impl ContingencyJob {
         let mut ac_checked = 0;
         if !was_cancelled {
             let mut order: Vec<usize> = (0..n).collect();
-            order.sort_by(|&a, &b| severity(&rows[b]).total_cmp(&severity(&rows[a])));
+            order.sort_by(|&a, &b| {
+                severity(rows[b].as_ref().map(|r| &r.0))
+                    .total_cmp(&severity(rows[a].as_ref().map(|r| &r.0)))
+            });
             let count = match self.settings.method {
                 Method::Ac => n,
                 Method::Screen => self.settings.ac_count.min(n),
@@ -502,7 +1217,10 @@ impl ContingencyJob {
             let solved = parallel(handle, count, |k| {
                 context
                     .ac(&self.outages[chosen[k]], &self.settings.solve, handle)
-                    .map(|d| d.row)
+                    .map(|d| {
+                        let v = d.violations();
+                        (d.row, v)
+                    })
             });
             for (k, row) in solved.into_iter().enumerate() {
                 match row {
@@ -518,10 +1236,16 @@ impl ContingencyJob {
         let ac_ms = ac_start.elapsed().as_secs_f64() * 1000.0;
 
         // A cancelled screen leaves gaps; those outages aren't reported.
-        let mut ranked: Vec<(usize, ContingencyRow)> = rows
+        let (mut ranked, mut found): (Vec<(usize, ContingencyRow)>, Vec<Violations>) = rows
             .into_iter()
             .enumerate()
-            .filter_map(|(i, r)| r.map(|r| (i, r)))
+            .filter_map(|(i, r)| r.map(|(r, v)| ((i, r), v)))
+            .unzip();
+        // Keep the violations in step with the ranking below.
+        let mut by_outage: HashMap<usize, Violations> = ranked
+            .iter()
+            .map(|(i, _)| *i)
+            .zip(found.drain(..))
             .collect();
         ranked.sort_by(|a, b| {
             // AC results first, then by severity.
@@ -535,14 +1259,22 @@ impl ContingencyJob {
         let summary = ContingencySummary {
             method: Some(self.settings.method),
             limit_pct: self.settings.limit_pct,
+            rating: self.settings.rating,
+            base_rating: self.settings.base_rating,
             total: ranked.len(),
             already_out: self.already_out,
+            notes: self.notes.clone(),
             ac_checked,
             with_overloads: ranked.iter().filter(|(_, r)| r.overloads > 0).count(),
             with_voltage_problems: ranked
                 .iter()
                 .filter(|(_, r)| r.voltage_violations > 0)
                 .count(),
+            with_interface_problems: ranked
+                .iter()
+                .filter(|(_, r)| r.interface_violations > 0)
+                .count(),
+            monitored: self.watch.from_file,
             not_converged: ranked
                 .iter()
                 .filter(|(_, r)| r.converged == Some(false))
@@ -558,13 +1290,19 @@ impl ContingencyJob {
         log_summary(&summary);
         let (order, rows): (Vec<usize>, Vec<ContingencyRow>) = ranked.into_iter().unzip();
         let outages = order.iter().map(|&i| self.outages[i].clone()).collect();
+        let violations = order
+            .iter()
+            .map(|i| by_outage.remove(i).unwrap_or_default())
+            .collect();
         Ok(ContingencyResults {
             summary,
             rows,
+            violations,
             outages,
             power: self.power,
             base: self.base,
             settings: self.settings,
+            watch: self.watch,
             id: next_run_id(),
             last_detail: None,
             last_solution: None,
@@ -584,6 +1322,13 @@ fn category_summaries(ranked: &[(usize, ContingencyRow)]) -> Vec<CategorySummary
         .collect();
     for (_, r) in ranked {
         let Some(c) = &r.category else { continue };
+        // Lists file categories follow the planning ones, as first seen.
+        if !out.iter().any(|s| &s.category == c) {
+            out.push(CategorySummary {
+                category: c.clone(),
+                ..Default::default()
+            });
+        }
         let Some(s) = out.iter_mut().find(|s| &s.category == c) else {
             continue;
         };
@@ -592,6 +1337,12 @@ fn category_summaries(ranked: &[(usize, ContingencyRow)]) -> Vec<CategorySummary
         s.with_voltage_problems += usize::from(r.voltage_violations > 0);
         s.not_converged += usize::from(r.converged == Some(false));
         s.islanding += usize::from(r.cut_off_buses > 0);
+        s.with_problems += usize::from(
+            r.overloads > 0
+                || r.voltage_violations > 0
+                || r.interface_violations > 0
+                || r.converged == Some(false),
+        );
     }
     out.retain(|s| s.total > 0);
     out
@@ -609,8 +1360,8 @@ fn tie_break(lost_mw: f64, branches: &[BranchChange]) -> f64 {
     ((lost_mw.abs() + moved) / 10_000.0).min(0.999)
 }
 
-fn severity(row: &Option<ContingencyRow>) -> f64 {
-    row.as_ref().map_or(f64::NEG_INFINITY, |r| r.severity)
+fn severity(row: Option<&ContingencyRow>) -> f64 {
+    row.map_or(f64::NEG_INFINITY, |r| r.severity)
 }
 
 fn log_summary(s: &ContingencySummary) {
@@ -686,6 +1437,11 @@ struct Context<'a> {
     base: &'a PowerFlowResult,
     factors: DcFactors,
     limit_pct: f64,
+    worse_by_pct: f64,
+    worse_by_pu: f64,
+    report_existing: bool,
+    rating: Rating,
+    base_rating: Rating,
     /// Base flows at the from and to ends.
     pf: Vec<f64>,
     qf: Vec<f64>,
@@ -694,6 +1450,7 @@ struct Context<'a> {
     base_pct: Vec<Option<f64>>,
     names: Vec<String>,
     bus_row: HashMap<u32, usize>,
+    watch: &'a Watch,
 }
 
 struct Outcome {
@@ -703,6 +1460,29 @@ struct Outcome {
     branches: Vec<BranchChange>,
     buses: Vec<BusChange>,
     cut_off: Vec<u32>,
+    interfaces: Vec<InterfaceFlow>,
+    /// The interfaces over their limit, as reported, worst first.
+    interfaces_over: Vec<InterfaceFlow>,
+}
+
+impl Outcome {
+    /// What the outage found outside its limits, to keep with the run.
+    fn violations(&self) -> Violations {
+        Violations {
+            overloads: self.overloads.clone(),
+            voltage_problems: self.voltage_problems.clone(),
+            interfaces: self.interfaces_over.clone(),
+        }
+    }
+}
+
+/// Everything one outage found outside its limits, as reported (new or
+/// worse unless the run reports existing problems too), worst first.
+#[derive(Clone, Debug, Default)]
+pub struct Violations {
+    pub overloads: Vec<Overload>,
+    pub voltage_problems: Vec<VoltageProblem>,
+    pub interfaces: Vec<InterfaceFlow>,
 }
 
 /// Loading of branch row `r`, measured as in the solve report.
@@ -712,17 +1492,19 @@ fn loading(power: &PowerCase, r: usize, pf: f64, qf: f64, pt: f64, qt: f64, rate
 }
 
 /// A branch is new or worse when it is over the limit now and was under it,
-/// or has grown by more than a point.
-fn new_or_worse(pct: f64, base: f64, limit: f64) -> bool {
-    pct > limit && (base <= limit || pct > base + 1.0)
+/// or has grown by more than `worse_by` points.
+fn new_or_worse(pct: f64, base: f64, limit: f64, worse_by: f64) -> bool {
+    pct > limit && (base <= limit || pct > base + worse_by)
 }
 
 impl<'a> Context<'a> {
     fn new(
         power: &'a PowerCase,
         base: &'a PowerFlowResult,
-        limit_pct: f64,
+        settings: &ContingencySettings,
+        watch: &'a Watch,
     ) -> Result<Self, String> {
+        let base_rating = settings.base_rating;
         let factors = DcFactors::new(&power.case).map_err(|e| e.to_string())?;
         let flows = &base.branch_flows;
         let case = &base.case;
@@ -730,7 +1512,12 @@ impl<'a> Context<'a> {
             power,
             base,
             factors,
-            limit_pct,
+            limit_pct: settings.limit_pct,
+            worse_by_pct: settings.worse_by_pct.max(0.0),
+            worse_by_pu: settings.worse_by_pu.max(0.0),
+            report_existing: settings.report_existing,
+            rating: settings.rating,
+            base_rating,
             pf: flows.iter().map(|f| f[0]).collect(),
             qf: flows.iter().map(|f| f[1]).collect(),
             pt: flows.iter().map(|f| f[2]).collect(),
@@ -741,8 +1528,9 @@ impl<'a> Context<'a> {
                 .zip(flows)
                 .enumerate()
                 .map(|(r, (b, f))| {
-                    (b.online && b.rate_a > 0.0)
-                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], b.rate_a))
+                    let rate = base_rating.of(b);
+                    (b.online && rate > 0.0)
+                        .then(|| loading(power, r, f[0], f[1], f[2], f[3], rate))
                 })
                 .collect(),
             names: power::bus_names(case),
@@ -752,11 +1540,133 @@ impl<'a> Context<'a> {
                 .enumerate()
                 .map(|(i, b)| (b.id, i))
                 .collect(),
+            watch,
         })
     }
 
     fn case(&self) -> &Case {
         &self.power.case
+    }
+
+    /// The base case (P0) is held to the base rating; outages to the run's.
+    fn rating_for(&self, base_case: bool) -> Rating {
+        if base_case {
+            self.base_rating
+        } else {
+            self.rating
+        }
+    }
+
+    /// Branch row `r`'s limit (percent) and rating, or `None` when it
+    /// isn't watched.
+    fn branch_limit(&self, r: usize, base_case: bool) -> Option<(f64, Rating)> {
+        match &self.watch.branches {
+            None => Some((self.limit_pct, self.rating_for(base_case))),
+            Some(rows) => rows[r].map(|(limit, rating)| {
+                let rating = if base_case {
+                    self.base_rating
+                } else {
+                    rating.unwrap_or(self.rating)
+                };
+                (limit, rating)
+            }),
+        }
+    }
+
+    /// Bus row `i`'s voltage limits, or `None` when it isn't watched.
+    fn bus_limits(&self, i: usize, b: &rs_power::Bus) -> Option<(f64, f64)> {
+        match &self.watch.buses {
+            None => Some((b.vmin, b.vmax)),
+            Some(rows) => rows[i].map(|(lo, hi)| (lo.unwrap_or(b.vmin), hi.unwrap_or(b.vmax))),
+        }
+    }
+
+    /// Whether a loading of `pct` (`base` before the outage) over `limit` is
+    /// reported: new or worse, unless the run reports existing ones too.
+    fn reported(&self, pct: f64, base: f64, limit: f64, base_case: bool) -> bool {
+        let before = if base_case || self.report_existing {
+            0.0
+        } else {
+            base
+        };
+        new_or_worse(pct, before, limit, self.worse_by_pct)
+    }
+
+    /// Each watched interface's flow, from every branch row's from-end MW
+    /// after the outage; and those over their limit, new or worse, worst
+    /// first.
+    fn interfaces(
+        &self,
+        mw: impl Fn(usize) -> f64,
+        base_case: bool,
+    ) -> (Vec<InterfaceFlow>, Vec<InterfaceFlow>) {
+        let mut all = Vec::new();
+        let mut over = Vec::new();
+        for i in &self.watch.interfaces {
+            let now: f64 = i.rows.iter().map(|&(r, w)| w * mw(r)).sum();
+            let before: f64 = i.rows.iter().map(|&(r, w)| w * self.pf[r]).sum();
+            let pct = |v: f64| i.limit_mw.map(|l| v.abs() / l * 100.0);
+            let flow = InterfaceFlow {
+                name: i.name.clone(),
+                mw: now,
+                base_mw: before,
+                limit_mw: i.limit_mw,
+                pct: pct(now),
+                base_pct: pct(before),
+                limit_pct: i.limit_pct,
+            };
+            if let (Some(p), Some(b)) = (flow.pct, flow.base_pct)
+                && self.reported(p, b, i.limit_pct, base_case)
+            {
+                over.push(flow.clone());
+            }
+            all.push(flow);
+        }
+        over.sort_by(|a, b| b.pct.unwrap_or(0.0).total_cmp(&a.pct.unwrap_or(0.0)));
+        (all, over)
+    }
+
+    /// An outage's name, PSS/E style: each element's bus names and numbers,
+    /// then its circuit or unit id; elements out together joined by " & ".
+    fn auto_name(&self, outage: &Outage) -> String {
+        if outage.is_base() {
+            return "BASE CASE".into();
+        }
+        self.name_of(&outage.element)
+    }
+
+    /// Element ids named PSS/E style: each element's bus names and numbers,
+    /// then its circuit or unit id; elements joined by " & ".
+    fn name_of(&self, ids: &str) -> String {
+        let bus = |n: &str| -> String {
+            let name = n
+                .parse::<u32>()
+                .ok()
+                .and_then(|id| self.bus_row.get(&id))
+                .and_then(|&i| self.names.get(i))
+                .map(|s| s.trim())
+                .unwrap_or("");
+            if name.is_empty() {
+                n.to_string()
+            } else {
+                format!("{name} {n}")
+            }
+        };
+        ids.split('&')
+            .map(|id| {
+                let parts: Vec<&str> = id.split(':').collect();
+                match parts.as_slice() {
+                    ["bus", n] => bus(n),
+                    [_, rest @ .., last] if !rest.is_empty() => {
+                        let mut out: Vec<String> = rest.iter().map(|b| bus(b)).collect();
+                        out.push((*last).to_string());
+                        out.join(" ")
+                    }
+                    _ => id.to_string(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" & ")
     }
 
     fn element(&self, row: usize) -> String {
@@ -926,12 +1836,15 @@ impl<'a> Context<'a> {
         let mut branches = Vec::new();
         let mut worst: Option<Overload> = None;
         for (r, b) in case.branches.iter().enumerate() {
+            let watched = self.branch_limit(r, absolute);
+            let (limit, rating) = watched.unwrap_or((self.limit_pct, self.rating_for(absolute)));
+            let rate = rating.of(b);
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
             // The linear model only moves active power: both ends move by
             // the same MW, and Q and losses stay as they were.
             let delta = flows[r] - self.pf[r];
-            let pct = (!tripped && b.online && b.rate_a > 0.0).then(|| {
+            let pct = (!tripped && b.online && rate > 0.0).then(|| {
                 loading(
                     self.power,
                     r,
@@ -939,33 +1852,36 @@ impl<'a> Context<'a> {
                     self.qf[r],
                     self.pt[r] - delta,
                     self.qt[r],
-                    b.rate_a,
+                    rate,
                 )
             });
-            if let (Some(pct), Some(base)) = (pct, base_pct) {
+            if let (Some(pct), Some(base), true) = (pct, base_pct, watched.is_some()) {
                 let o = Overload {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     pct,
                     base_pct: base,
                     mw: flows[r],
                     base_mw: self.pf[r],
+                    limit_pct: limit,
                 };
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, if absolute { 0.0 } else { base }, self.limit_pct) {
+                if self.reported(pct, base, limit, absolute) {
                     overloads.push(o);
                 }
             }
             if b.online
                 && ((flows[r] - self.pf[r]).abs() >= 0.5
                     || tripped
-                    || pct.is_some_and(|p| p > self.limit_pct))
+                    || pct.is_some_and(|p| p > limit))
             {
                 branches.push(BranchChange {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     mw: flows[r],
@@ -980,16 +1896,34 @@ impl<'a> Context<'a> {
         let shown = overloads.first().cloned().or(worst);
         let screened = shown.as_ref().map(|w| w.pct);
         let (lost_load, lost_gen) = self.lost(&cut, outage);
+        let (interfaces, over) = self.interfaces(
+            |r| {
+                if outage.branch_rows.contains(&r) {
+                    0.0
+                } else {
+                    flows[r]
+                }
+            },
+            absolute,
+        );
+        let worst_interface_pct = over.first().and_then(|i| i.pct).unwrap_or(0.0);
         let row = ContingencyRow {
             rank: 0,
             element: outage.element.clone(),
             kind: outage.kind,
-            category: outage.category.map(str::to_string),
+            category: outage.category.clone(),
+            name: outage
+                .name
+                .clone()
+                .unwrap_or_else(|| self.auto_name(outage)),
             description: outage.description.clone(),
             checked: "linear",
             converged: None,
             iterations: None,
-            severity: overloads.first().map_or(0.0, |o| o.pct)
+            severity: overloads
+                .first()
+                .map_or(0.0, |o| o.pct)
+                .max(worst_interface_pct)
                 + tie_break(lost_load + lost_gen, &branches),
             worst: shown,
             overloads: overloads.len(),
@@ -997,6 +1931,8 @@ impl<'a> Context<'a> {
             note: None,
             worst_voltage: None,
             voltage_violations: 0,
+            interface_violations: over.len(),
+            worst_interface: over.first().cloned(),
             cut_off_buses: cut.len(),
             lost_load_mw: lost_load,
             lost_generation_mw: lost_gen,
@@ -1008,6 +1944,8 @@ impl<'a> Context<'a> {
             branches,
             buses: vec![],
             cut_off: cut.iter().map(|&b| case.buses[b].id).collect(),
+            interfaces,
+            interfaces_over: over,
         }
     }
 
@@ -1176,22 +2114,27 @@ impl<'a> Context<'a> {
         for (r, (b, f)) in solved.branches.iter().zip(&result.branch_flows).enumerate() {
             let tripped = outage.branch_rows.contains(&r);
             let base_pct = self.base_pct[r];
-            let pct = (b.online && b.rate_a > 0.0)
-                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], b.rate_a));
-            if let (Some(pct), Some(base)) = (pct, base_pct) {
+            let watched = self.branch_limit(r, absolute);
+            let (limit, rating) = watched.unwrap_or((self.limit_pct, self.rating_for(absolute)));
+            let rate = rating.of(b);
+            let pct = (b.online && rate > 0.0)
+                .then(|| loading(self.power, r, f[0], f[1], f[2], f[3], rate));
+            if let (Some(pct), Some(base), true) = (pct, base_pct, watched.is_some()) {
                 let o = Overload {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     pct,
                     base_pct: base,
                     mw: f[0],
                     base_mw: self.pf[r],
+                    limit_pct: limit,
                 };
                 if worst.as_ref().is_none_or(|w| pct > w.pct) {
                     worst = Some(o.clone());
                 }
-                if new_or_worse(pct, if absolute { 0.0 } else { base }, self.limit_pct) {
+                if self.reported(pct, base, limit, absolute) {
                     overloads.push(o);
                 }
             }
@@ -1200,10 +2143,11 @@ impl<'a> Context<'a> {
                 && ((f[0] - self.pf[r]).abs() >= 0.5
                     || tripped
                     || !b.online
-                    || pct.is_some_and(|p| p > self.limit_pct))
+                    || pct.is_some_and(|p| p > limit))
             {
                 branches.push(BranchChange {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     mw: if b.online { f[0] } else { 0.0 },
@@ -1221,27 +2165,33 @@ impl<'a> Context<'a> {
             if b.kind == BusType::Isolated {
                 continue;
             }
+            let watched = self.bus_limits(i, b);
+            let (vmin, vmax) = watched.unwrap_or((b.vmin, b.vmax));
             let outside = |vm: f64| {
-                if vm < b.vmin {
-                    b.vmin - vm
-                } else if vm > b.vmax {
-                    vm - b.vmax
+                if vm < vmin {
+                    vmin - vm
+                } else if vm > vmax {
+                    vm - vmax
                 } else {
                     0.0
                 }
             };
             let (now, was) = (
                 outside(b.vm),
-                if absolute { 0.0 } else { outside(before.vm) },
+                if absolute || self.report_existing {
+                    0.0
+                } else {
+                    outside(before.vm)
+                },
             );
-            if now > 0.0 && now > was + 0.001 {
+            if watched.is_some() && now > 0.0 && now > was + self.worse_by_pu {
                 voltage_problems.push(VoltageProblem {
                     bus: b.id,
                     name: self.names.get(i).cloned().unwrap_or_default(),
                     vm: b.vm,
                     base_vm: before.vm,
-                    vmin: b.vmin,
-                    vmax: b.vmax,
+                    vmin,
+                    vmax,
                     outside: now,
                 });
             }
@@ -1250,8 +2200,8 @@ impl<'a> Context<'a> {
                     bus: b.id,
                     vm: b.vm,
                     base_vm: before.vm,
-                    vmin: b.vmin,
-                    vmax: b.vmax,
+                    vmin,
+                    vmax,
                 });
             }
         }
@@ -1262,7 +2212,21 @@ impl<'a> Context<'a> {
         let voltage_score = voltage_problems
             .first()
             .map_or(0.0, |v| self.limit_pct + 2000.0 * v.outside);
-        row.severity = worst_pct.max(voltage_score);
+        let (interfaces, over) = self.interfaces(
+            |r| {
+                let b = &solved.branches[r];
+                if b.online {
+                    result.branch_flows[r][0]
+                } else {
+                    0.0
+                }
+            },
+            absolute,
+        );
+        let worst_interface_pct = over.first().and_then(|i| i.pct).unwrap_or(0.0);
+        row.severity = worst_pct.max(voltage_score).max(worst_interface_pct);
+        row.interface_violations = over.len();
+        row.worst_interface = over.first().cloned();
         row.worst = overloads.first().cloned().or(worst);
         row.overloads = overloads.len();
         row.worst_voltage = voltage_problems.first().cloned();
@@ -1275,6 +2239,8 @@ impl<'a> Context<'a> {
                 branches,
                 buses,
                 cut_off: screened.cut_off,
+                interfaces,
+                interfaces_over: over,
             },
             Some(result),
         ))
@@ -1287,10 +2253,13 @@ pub struct ContingencyResults {
     pub summary: ContingencySummary,
     /// Ranked, worst first.
     pub rows: Vec<ContingencyRow>,
+    /// Each row's violations, in the same order.
+    pub violations: Vec<Violations>,
     outages: Vec<Outage>,
     power: PowerCase,
     base: PowerFlowResult,
     settings: ContingencySettings,
+    watch: Watch,
     /// Different for every run, so a sorted order kept for one run's rows
     /// is never used for another's.
     pub id: u64,
@@ -1306,7 +2275,146 @@ fn next_run_id() -> u64 {
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// What [`ContingencyResults::write_violations_csv`] wrote.
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct ViolationsExport {
+    /// Lines written, one per violation (and one per outage whose AC solve
+    /// failed), not counting the header.
+    pub rows: usize,
+    /// Outages with at least one line.
+    pub outages: usize,
+}
+
+/// One CSV field: quoted when it holds a comma, quote or line break.
+fn csv_field(v: &str) -> std::borrow::Cow<'_, str> {
+    if v.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", v.replace('"', "\"\"")).into()
+    } else {
+        v.into()
+    }
+}
+
+fn num(v: f64) -> String {
+    if v.is_finite() {
+        format!("{}", (v * 10_000.0).round() / 10_000.0)
+    } else {
+        String::new()
+    }
+}
+
+/// A bus named PSS/E style: its name and number, or the number alone.
+fn bus_name(name: &str, number: u32) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        number.to_string()
+    } else {
+        format!("{name} {number}")
+    }
+}
+
+fn opt(v: Option<f64>) -> String {
+    v.map(num).unwrap_or_default()
+}
+
+/// The header of the violations CSV.
+pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,outage,description,solved,type,element,element_id,from_bus,to_bus,bus,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note";
+
 impl ContingencyResults {
+    /// Write every violation of the run as CSV, one line each, in rank
+    /// order: branch overloads, bus voltages and interfaces as reported
+    /// (new or worse by the run's thresholds, or every one when it reports
+    /// existing problems), and a line for each outage whose AC solve
+    /// failed. Streams, so a large run never sits in memory as text.
+    pub fn write_violations_csv(
+        &self,
+        out: &mut impl std::io::Write,
+    ) -> std::io::Result<ViolationsExport> {
+        writeln!(out, "{VIOLATIONS_CSV_HEADER}")?;
+        let mut written = ViolationsExport {
+            rows: 0,
+            outages: 0,
+        };
+        for (row, found) in self.rows.iter().zip(&self.violations) {
+            // The name, then the ids of what goes out (none for P0).
+            let outage = if row.kind == "base" {
+                ""
+            } else {
+                row.element.as_str()
+            };
+            let solved = match (row.checked, row.converged) {
+                ("ac", Some(false)) => "ac_not_converged",
+                ("ac", _) => "ac",
+                _ => "linear",
+            };
+            let lead = format!(
+                "{},{},{},{},{},{}",
+                row.rank,
+                csv_field(row.category.as_deref().unwrap_or("")),
+                csv_field(&row.name),
+                csv_field(outage),
+                csv_field(row.description.as_deref().unwrap_or("")),
+                solved,
+            );
+            let before = written.rows;
+            if row.converged == Some(false) {
+                writeln!(
+                    out,
+                    "{lead},not_converged,,,,,,,,,,,,,,,{}",
+                    csv_field(row.note.as_deref().unwrap_or(""))
+                )?;
+                written.rows += 1;
+            } else {
+                for o in &found.overloads {
+                    writeln!(
+                        out,
+                        "{lead},branch,{},{},{},{},,{},{},{},{},{},,,,,",
+                        csv_field(&o.name),
+                        csv_field(&o.element),
+                        o.from,
+                        o.to,
+                        num(o.pct),
+                        num(o.base_pct),
+                        num(o.limit_pct),
+                        num(o.mw),
+                        num(o.base_mw),
+                    )?;
+                }
+                for v in &found.voltage_problems {
+                    writeln!(
+                        out,
+                        "{lead},voltage,{},bus:{},,,{},,,,,,{},{},{},{},",
+                        csv_field(&bus_name(&v.name, v.bus)),
+                        v.bus,
+                        v.bus,
+                        num(v.vm),
+                        num(v.base_vm),
+                        num(v.vmin),
+                        num(v.vmax),
+                    )?;
+                }
+                for i in &found.interfaces {
+                    writeln!(
+                        out,
+                        "{lead},interface,{},,,,,{},{},{},{},{},,,,,",
+                        csv_field(&i.name),
+                        opt(i.pct),
+                        opt(i.base_pct),
+                        num(i.limit_pct),
+                        num(i.mw),
+                        num(i.base_mw),
+                    )?;
+                }
+                written.rows +=
+                    found.overloads.len() + found.voltage_problems.len() + found.interfaces.len();
+            }
+            if written.rows > before {
+                written.outages += 1;
+            }
+        }
+        out.flush()?;
+        Ok(written)
+    }
+
     /// Ranked rows `offset..offset + limit`.
     pub fn page(&self, offset: usize, limit: usize) -> crate::table::Table<ContingencyRow> {
         self.rows.iter().skip(offset).take(limit).cloned().collect()
@@ -1327,7 +2435,7 @@ impl ContingencyResults {
             return Ok(d.clone());
         }
         let i = self.index(rank)?;
-        let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+        let context = Context::new(&self.power, &self.base, &self.settings, &self.watch)?;
         let row = &self.rows[i];
         let (outcome, solution) = if row.checked == "ac" {
             context
@@ -1350,6 +2458,7 @@ impl ContingencyResults {
             branches: outcome.branches,
             buses: outcome.buses,
             cut_off: outcome.cut_off,
+            interfaces: outcome.interfaces,
         };
         self.last_detail = Some((rank, detail.clone()));
         if let Some(solution) = solution {
@@ -1385,7 +2494,7 @@ impl ContingencyResults {
         let start = Instant::now();
         let cached = matches!(&self.last_solution, Some((r, _)) if *r == rank);
         if !cached {
-            let context = Context::new(&self.power, &self.base, self.settings.limit_pct)?;
+            let context = Context::new(&self.power, &self.base, &self.settings, &self.watch)?;
             let (outcome, solution) = context
                 .ac_solved(
                     &self.outages[i],

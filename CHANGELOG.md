@@ -8,6 +8,148 @@ section into the next version's when a release is cut (see
 
 ## Unreleased
 
+## 1.0.0 - 2026-10-31
+
+The first stable release. Coming from 0.5.0, it also holds everything in
+1.0.0-rc.1 below.
+
+### Added
+
+- **Verification tables.** The [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
+  page now shows, for every solver, the largest difference from its
+  reference and the limit the test allows: power flow and RAW import
+  against MATPOWER 8.1, the Texas 2000-bus and Memphis cases against their
+  saved PowerWorld solutions, meshed VSC grids against Beerten et al.
+  (2012) and MatACDC, contingency results against DC and AC solves, transfer
+  factors against DC solves, and transformer tables against hand
+  calculations. The reference tests write the numbers as they run
+  (`pwsh scripts/verify.ps1`), and the docs build reruns them for every
+  commit.
+- **Contingency names.** Contingencies are named the way PSS/E names them
+  when no name is given: bus name and number at each end, then the circuit
+  (`NORTH 101 SOUTH 102 1`), a generator's bus then its id, a bus outage by
+  its bus, and `BASE CASE` for P0; elements out together are joined by
+  `&`. Lists file contingencies keep their own names. The name leads each
+  row, the outage panel and both CSV exports (which add the element ids in
+  an `outage` column), and the table search finds it. Violations are
+  named the same way: overloaded branches and flow changes by their end
+  buses and circuit, voltage problems by bus name and number, in the table,
+  the outage panel, the diagram and the violations CSV (whose `element`
+  column holds the name and a new `element_id` column the id).
+
+- **Contingency setup.** The Contingencies tab's settings moved into a
+  setup dialog with five steps: Outages, Monitor, Subsystems, Limits &
+  reporting, and Solution. The tab keeps a one-line summary, **Set up…**
+  and **Run**. New in it: subsystems built from areas, zones, owners, buses
+  and a kV range (saved to and loaded from `.stnl` lists files), N-1 and
+  N-2 within a subsystem, monitoring one subsystem's branches and voltages,
+  a voltage "worse by" threshold, and generator Q limit, tap and switched
+  shunt settings for the contingency solves alone. The core takes lists
+  text inline (`lists_text`, `monitors_text`) and reads a file's
+  subsystems (`lists_subsystems`); a contingency set's `name` now names
+  its category.
+
+- **Every contingency violation in one CSV.** The Contingencies tab's
+  **Export CSV** can now save every violation: one line per overload,
+  voltage problem and interface violation of every outage, written by the
+  core straight to the file (command `export_contingency_violations`), as
+  well as the one-row-per-outage table. How much worse a problem already
+  there before the outage must get to count is now a setting (**Worse by**,
+  `worse_by_pct` and `worse_by_pu`; 1 point and 0.001 p.u. as before), and
+  **Include existing** (`report_existing`) reports every problem after the
+  outage. Each overload now carries the limit it was judged against.
+
+- **Transformer magnetizing and impedance correction tables.** RAW cases'
+  magnetizing admittance (`MAG1`, `MAG2`, either `CM`) now draws at the
+  winding one bus, and impedance correction tables (`TAB1`–`TAB3`) scale a
+  winding's impedance with its ratio or phase shift angle, worked out again
+  each time a tap or shifter moves in the solve. Both were ignored before,
+  as MATPOWER does; RAW export writes them back. Against the voltages saved
+  in the PSS/E sample case, the largest angle difference drops from 1.19 to
+  0.50 degrees.
+
+- **Monitored elements and interfaces.** Contingency runs can check only
+  what a `.stnl` lists file's `monitor` records name: branches at their own
+  limit and rating, buses at their own voltage limits, and interfaces,
+  whose summed flow is reported and flagged against their MW limit after
+  each outage. In the app, set **Checked** to **Monitors from a lists
+  file**; from Python, the CLI and run files, set `monitors` to the path.
+- **Transfer limits (DFAX and FCITC), preview.** A study moves power from a
+  source subsystem to a sink (scaled by generation, generator reserve or
+  load) and finds the first change of total transfer capability: the
+  transfer at which a monitored branch or interface reaches its rating, in
+  the base case or after each contingency, from linear PTDFs and OTDFs on
+  top of the AC solve. It also reports the generation limit of each side.
+  Runs from the new Transfers tab in Power flow (source and sink by area,
+  zone, owner or bus list), run files (`run_transfer_limits`), Python
+  (`Case.transfer_limits`) and the MCP server (`transfer_limits`).
+  Lists files (`.stnl`) gain `transfer` records (source and sink
+  subsystems, scaling, cutoff, ratings); a run with `lists` studies the
+  file's contingencies and watches its flow and interface monitors.
+- **Your own contingency list.** Contingencies can run from a `.stnl`
+  lists file (preview): its named contingencies (`open` and `trip_bus`
+  events) and its `contingency_set` rules for single branches, generators,
+  branch pairs or buses in a subsystem. Equipment the case lacks is noted
+  and skipped. In the app, pick **From a lists file** under Outages; from
+  Python, the CLI and run files, set `lists` to the file's path.
+- **Mvar flow direction on the one-line.** Each branch shows an open violet
+  arrow for the way its reactive power flows, beside the filled MW arrow;
+  the Mvar number beside it is violet too, and now a magnitude, like MW.
+- **Animated flow arrows.** **Canvas > Animated flow arrows** (also under
+  **View** and in Ctrl+K) moves the MW and Mvar arrows along the wires, each
+  the way its flow goes and in its own colour, faster with more flow. Off by default; exports and reduced motion
+  keep still arrows.
+- **N-2 and bus outages.** Contingency runs can take the chosen branches
+  and generators out two at a time (every pair once, up to 250,000 pairs;
+  the bus filters narrow them), and can take out each bus with every
+  branch and DC line connected to it. Any elements can also be listed to go
+  out together (`line:1:2:1&line:2:3:1`), and Trip and compare takes a bus.
+- **Skip zero-impedance lines in contingencies.** A toggle leaves out lines
+  with no resistance and a reactance at or below a threshold (0.0001 p.u.
+  by default, PSS/E's THRSHZ) from N-1, N-2 and planning event runs.
+- **Ratings B and C in contingency analysis.** Contingency runs and Trip
+  and compare measure loading against rate A, B or C, chosen separately for
+  the base case and after each outage (for example rate A before, rate B
+  after). Both stay rate A by default. The choice is saved in the study file
+  and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
+  server.
+
+### Changed
+
+- **Study files are retired; save work as a run file, and keep a history.**
+  **Save study** is now **Save as run file**: a `.stnrun` that opens the
+  case, attaches its DC grid and bus coordinates files, sets the study edits
+  and solves with the app's settings. It leaves out saved solves (study
+  files kept every one as a full report) and the drawing, which has its own
+  file. Older `.stannum` files still open, with their edits, saved solves
+  and drawing, but are no longer written. **Record a run file** is replaced
+  by **History** in the log drawer (**File → History…**): every change and
+  export is kept as you go, and any part of it can be copied or saved as a
+  run file without starting anything first.
+
+- **Solve keeps the current view.** Solving from the toolbar, the menu bar or
+  Ctrl+K no longer switches to Power flow; the diagram and tables update in
+  place. Power flow comes into view only when the solve fails or does not
+  converge.
+- **Final residual rounded to 0.001 MVA.** The Power flow overview shows the
+  final residual to three decimals (for example 0.669 MVA) instead of six
+  significant digits. Only the display changed; the solver and the per-unit
+  value under it are unchanged.
+- **Shorter sensitivity values.** Flow sensitivities show three decimals
+  (factors below 0.001 show as 0.000). Voltage and angle sensitivities, which
+  are small by nature, show three significant digits (0.000149 p.u./MW).
+  Hover a value for the full number. The VSC grids "Converters settled to"
+  figure shows three decimals of MVA, like the residual.
+
+### Fixed
+
+- **Confirm prompts in the app.** Questions such as "Discard unsaved
+  changes?" and "Restart to update?" failed with "dialog.message not
+  allowed", and even when allowed they went ahead without waiting for the
+  answer. The app now allows the dialog plugin's confirm prompts and waits
+  for OK or Cancel before discarding a diagram, Records edits or unsaved
+  study edits, or restarting for an update.
+
 ## 1.0.0-rc.1 - 2026-10-30
 
 ### Added

@@ -45,7 +45,7 @@ part carry nothing.
 its island: $\Delta F = -\text{PTDF}_{\cdot,i}\, P_g$, from one solve
 $B\,\theta = e_i$.
 
-**Shunt and DC line outages** (planning events only) are injection changes
+**Shunt and DC line outages** (planning events and lists files) are injection changes
 in the same way. A shunt gives back its conductance, $G\,V^2$ MW at the base
 voltage $V$; its reactive power doesn't move MW in the linear model. A DC
 line keeping a share $k$ of its scheduled flow $P$ (0 when it goes out, 0.5
@@ -73,6 +73,42 @@ point](/StannumRevival/manual/ac-power-flow/#starting-point), with the outage ap
 
 When a solve with generator Q limits doesn't converge, it runs again without
 them, to say whether reactive limits are the cause.
+
+## N-2 and bus outages
+
+N-2 runs every pair of the chosen branches and generators: $n$ elements
+make $n(n-1)/2$ outages, at most 250,000. Each pair is screened like an N-1
+outage with the linear factors of both elements out together, and the worst
+are solved in AC. Listing ids joined by `&` (for example
+`line:1:2:1&generator:22:1`) runs exactly those elements together, from run
+files, Python or Trip and compare.
+
+A bus outage opens every branch and DC line at the bus. The bus is then
+cut off, and its load, generation and shunts count as lost, the same as any
+other outage that splits the network.
+
+## Lists files
+
+`crates/stannum-core/src/lists.rs` reads a `.stnl` file against the open
+case. Each `contingency` record becomes one outage of every element its
+`open` and `trip_bus` events name (a group of three or more is screened the
+same way as a pair). Each `contingency_set` generates single branches,
+single generators, branch pairs or buses whose terminals are in its
+subsystem and at or above its `kv_min`; switches and, when skipped,
+zero-impedance lines are left out. Element ids are matched with branch
+buses in either order. Anything the case lacks, and `close` or setpoint
+events, skip their contingency with a note rather than failing the run.
+
+A run's `monitors` file narrows what is checked. Branch rows named by flow
+monitors keep the strictest limit in MVA (`limit_pct` times the monitor's
+rating, or the run's); every other row is still solved but never counts
+as an overload or as the worst branch. Voltage monitors replace the bus's
+limits. An interface's flow after an outage is
+$\sum_k w_k\, s_k\, P_k$, where $P_k$ is branch $k$'s from-end MW (from the
+linear screen or the AC solve, 0 when tripped) and $s_k = -1$ when the id
+is written from the branch's to bus; it is a violation by the same new or
+worse rule as a branch, with the sum's size as a percent of `limit_mw`,
+and ranks the outage on the same scale.
 
 ## Planning events
 
@@ -105,10 +141,17 @@ bus is in the chosen areas. Generators only take the area filter.
 ## Ranking
 
 A branch counts as overloaded when its MVA after the outage is above the
-limit (100% of rate A by default) and it was under the limit before, or has
-grown by more than one point. Pre-existing overloads that don't get worse
+limit (100% by default) of the contingency rating, and it was under the
+limit of the base case rating before, or has grown by more than one point
+(`worse_by_pct`).
+Both ratings are rate A unless chosen otherwise; a common planning choice
+is rate A before and rate B after. A branch whose chosen rating is zero is
+unrated and never overloads. The base case event (P0) is held to the base
+case rating. Pre-existing overloads that don't get worse
 don't rank an outage. A bus counts when it is outside its voltage limits and
-more than 0.001 p.u. further out than before.
+more than 0.001 p.u. (`worse_by_pu`) further out than before. With
+`report_existing`, every branch over the limit and every bus outside its
+limits counts, as for P0, and ranks the outage.
 
 Each outage's severity is its worst such overload in percent, or
 $\text{limit} + 2000\,\Delta V$ for a voltage problem $\Delta V$ p.u.

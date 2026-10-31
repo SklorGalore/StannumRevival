@@ -49,7 +49,8 @@ function Get-ChangelogSection([string] $Path, [string] $Heading) {
 
 # Git flow branch names. Releases are cut from development as release/vX.Y.Z;
 # urgent fixes to the released code are cut from main as hotfix/vX.Y.Z. Both
-# merge into main, where the merge commit is tagged vX.Y.Z.
+# are squashed into main, where that commit is tagged vX.Y.Z, and main is
+# merged back into development with a merge commit.
 $script:SemVerPattern = '\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?'
 $script:DevelopBranch = 'development'
 $script:MainBranch = 'main'
@@ -67,4 +68,48 @@ function Invoke-Git {
     $out = & git @args
     if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed" }
     $out
+}
+
+# The changelog for a back-merge after a release or hotfix was squashed into
+# main: main's file (which has the new version's section), with every entry
+# that development added under Unreleased since the release was cut, and that
+# main doesn't hold, put back under main's Unreleased. Both are text.
+function Merge-BackChangelog([string] $Main, [string] $Development) {
+    $lines = $Development -split "`r?`n"
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^##\s+\[?Unreleased\]?(\s|$)') { $start = $i + 1; break }
+    }
+    $groups = [ordered]@{}
+    if ($start -ge 0) {
+        $heading = ''
+        $entry = $null
+        $flush = {
+            if ($null -ne $entry) {
+                if (-not $groups.Contains($heading)) { $groups[$heading] = [System.Collections.Generic.List[string]]::new() }
+                $groups[$heading].Add(($entry -join "`n").TrimEnd())
+            }
+        }
+        for ($i = $start; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line -match '^##\s') { break }
+            if ($line -match '^###\s') { . $flush; $entry = $null; $heading = $line.Trim(); continue }
+            if ($line -match '^[-*]\s') { . $flush; $entry = [System.Collections.Generic.List[string]]::new(); $entry.Add($line); continue }
+            if ($null -ne $entry -and ($line -match '^\s+\S' -or $line.Trim() -eq '')) { $entry.Add($line); continue }
+        }
+        . $flush
+    }
+    $mainNormal = ($Main -replace '\s+', ' ')
+    $kept = [System.Collections.Generic.List[string]]::new()
+    foreach ($heading in $groups.Keys) {
+        $new = @($groups[$heading] | Where-Object { -not $mainNormal.Contains(($_ -replace '\s+', ' ').Trim()) })
+        if ($new.Count -eq 0) { continue }
+        if ($heading) { $kept.Add($heading); $kept.Add('') }
+        foreach ($e in $new) { $kept.Add($e); $kept.Add('') }
+    }
+    if ($kept.Count -eq 0) { return $Main }
+    $pattern = '(?m)^(##\s+\[?Unreleased\]?[^\r\n]*\r?\n)(\r?\n)?'
+    if ($Main -notmatch $pattern) { throw "main's CHANGELOG.md has no '## Unreleased' heading." }
+    $block = "`n" + ($kept -join "`n") + "`n"
+    ([regex]$pattern).Replace($Main, { param($m) $m.Groups[1].Value + $block }, 1)
 }

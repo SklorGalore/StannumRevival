@@ -44,7 +44,12 @@ export type BranchChange = {
   element: string;
   from: number;
   mw: number;
-  /** Percent of rate A, after and before; `None` when unrated. */
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
+  /**
+   * Percent of the run's rating after, and of its base rating before;
+   * `None` when unrated.
+   */
   pct: number | null;
   to: number;
   tripped: boolean;
@@ -215,6 +220,11 @@ export type CategorySummary = {
   not_converged: number;
   total: number;
   with_overloads: number;
+  /**
+   * Events with any overload, voltage problem or failed solve, each
+   * counted once.
+   */
+  with_problems: number;
   with_voltage_problems: number;
 };
 
@@ -257,9 +267,19 @@ export type ContingencyDetail = {
   buses: BusChange[];
   /** Buses split off by the outage. */
   cut_off: number[];
+  /** Every monitored interface's flow. */
+  interfaces: InterfaceFlow[];
   overloads: Overload[];
   row: ContingencyRow;
   voltage_problems: VoltageProblem[];
+};
+
+/** The worst limit of one contingency. */
+export type ContingencyLimit = {
+  contingency: string;
+  factor: number;
+  fcitc_mw: number;
+  monitored: string;
 };
 
 /** One outage's outcome, as a row of the ranked results. */
@@ -276,11 +296,25 @@ export type ContingencyRow = {
   description: string | null;
   /** The element taken out; empty for the base case (P0). */
   element: string;
+  /**
+   * Monitored interfaces over their limit that are new or worse, and
+   * the worst of them.
+   */
+  interface_violations: number;
   iterations: number | null;
-  /** "branch", "generator", "shunt", "dc_line", or "base" for P0. */
-  kind: "branch" | "generator" | "shunt" | "dc_line" | "base";
+  /**
+   * "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
+   * elements out together, "group" for more, or "base" for P0.
+   */
+  kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
+  /**
+   * The contingency's name: the one its lists file gives it, or else
+   * built PSS/E style from what goes out, bus names and numbers then the
+   * circuit or unit id, such as "ALPHA 101 BETA 102 1"; "BASE CASE" for P0.
+   */
+  name: string;
   /** AC only: why a solve failed, in a sentence. */
   note: string | null;
   /** Branches over the limit that are new or more than a point worse. */
@@ -301,6 +335,7 @@ export type ContingencyRow = {
    * before the outage; otherwise the most loaded branch.
    */
   worst: Overload | null;
+  worst_interface: InterfaceFlow | null;
   /** AC only: the worst bus outside its limits that is new or worse. */
   worst_voltage: VoltageProblem | null;
 };
@@ -314,10 +349,12 @@ export type ContingencyRowColumns = {
   cut_off_buses: number[];
   description: (string | null)[];
   element: string[];
+  interface_violations: number[];
   iterations: (number | null)[];
-  kind: ("branch" | "generator" | "shunt" | "dc_line" | "base")[];
+  kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
+  name: string[];
   note: (string | null)[];
   overloads: number[];
   rank: number[];
@@ -325,6 +362,7 @@ export type ContingencyRowColumns = {
   severity: number[];
   voltage_violations: number[];
   worst: (Overload | null)[];
+  worst_interface: (InterfaceFlow | null)[];
   worst_voltage: (VoltageProblem | null)[];
 };
 
@@ -332,28 +370,103 @@ export type ContingencyRowColumns = {
 export type ContingencySettings = {
   /** How many of the worst screened outages get an AC solve. */
   ac_count?: number;
+  /**
+   * The rating for the base case: its loadings (the "before" figures)
+   * and the P0 event.
+   */
+  base_rating?: Rating;
   branches?: boolean;
   /**
-   * Branch and generator ids to take out, one at a time. When absent,
-   * every in-service branch and/or generator, as chosen below.
+   * Take out each bus: every branch and DC line connected to it, which
+   * cuts off its loads, generators and shunts.
+   */
+  buses?: boolean;
+  /**
+   * Ids to take out, one at a time. A bus id (bus:101) takes out the
+   * bus, and ids joined by "&" (line:1:2:1&line:2:3:1) go out together.
+   * When absent, every in-service branch, generator and/or bus, as
+   * chosen below.
    */
   elements?: string[] | null;
   generators?: boolean;
-  /** Loading, as a percent of rate A, above which a branch is overloaded. */
+  /**
+   * Loading, as a percent of the rating, above which a branch is
+   * overloaded.
+   */
   limit_pct?: number;
+  /**
+   * Run the contingencies of this lists file (`.stnl`): its
+   * `contingency` records and `contingency_set` rules. Equipment the
+   * case lacks is reported in the summary's notes and skipped. Takes
+   * the place of `elements`, `branches`, `generators`, `buses` and
+   * `pairs`; `planning` is unused.
+   */
+  lists?: string | null;
+  /**
+   * Lists text (`.stnl`) to run in place of a `lists` file, as the
+   * setup builds it from its subsystems. Wins over `lists`.
+   */
+  lists_text?: string | null;
   method?: Method;
+  /**
+   * Check only what the `monitor` records of this lists file (`.stnl`)
+   * name: branch flows and bus voltages with their own limits, and
+   * interfaces. Every rated branch and every bus when absent.
+   */
+  monitors?: string | null;
+  /**
+   * Lists text (`.stnl`) whose monitor records choose what is checked,
+   * in place of a `monitors` file. Wins over `monitors`.
+   */
+  monitors_text?: string | null;
+  /**
+   * N-2: take the chosen branches and generators out two at a time,
+   * every pair once, instead of one at a time. Buses stay one at a time.
+   */
+  pairs?: boolean;
   /**
    * Run these NERC TPL-001 planning events instead of every branch and
    * generator; `elements`, `branches` and `generators` are then unused.
    */
   planning?: PlanningSettings | null;
+  /** The rating loadings are measured against after an outage. */
+  rating?: Rating;
+  /**
+   * Report every branch, interface and bus outside its limits after the
+   * outage, also those that already were before it and got no worse.
+   */
+  report_existing?: boolean;
+  /**
+   * Leave out zero-impedance lines: lines with no resistance and a
+   * reactance at or below `zero_impedance_pu`, as PSS/E treats them
+   * (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
+   * a bus outage still opens them.
+   */
+  skip_zero_impedance?: boolean;
   solve?: SolveSettings;
+  /**
+   * How many percentage points of loading a branch or interface already
+   * over its limit before the outage must gain to be reported. 1 by
+   * default.
+   */
+  worse_by_pct?: number;
+  /**
+   * How many per unit a bus already outside its voltage limits before
+   * the outage must move further out to be reported. 0.001 by default.
+   */
+  worse_by_pu?: number;
+  /**
+   * The zero-impedance threshold in per unit; 0.0001 by default, as
+   * PSS/E's THRSHZ.
+   */
+  zero_impedance_pu?: number;
 };
 
 export type ContingencySummary = {
   ac_checked: number;
   ac_ms: number;
   already_out: number;
+  base_rating: Rating;
   /** Stopped early: outages after the stop keep their screened result. */
   cancelled: boolean;
   /**
@@ -365,13 +478,24 @@ export type ContingencySummary = {
   islanding: number;
   limit_pct: number;
   method: Method | null;
+  /** Whether a lists file's monitors chose what was checked. */
+  monitored: boolean;
   not_converged: number;
+  /** Lists file runs: what was skipped and why, in sentences. */
+  notes: string[];
+  /**
+   * The ratings loadings were measured against, after outages and in
+   * the base case.
+   */
+  rating: Rating;
   screen_ms: number;
   /**
    * Outages run, and in-service checks skipped because the element was
    * already out.
    */
   total: number;
+  /** Outages that take a monitored interface over its limit. */
+  with_interface_problems: number;
   with_overloads: number;
   with_voltage_problems: number;
   worst: ContingencyRow | null;
@@ -829,6 +953,33 @@ export type InjectionColumns = {
  */
 export type InterchangeChoice = "off" | "tie_lines" | "tie_lines_and_loads";
 
+/** A flowgate: branch flows summed with weights, as a `.stnl` interface. */
+export type Interface = {
+  /**
+   * Branches as `[element, weight]`; flow measured at the from end of
+   * the branch row.
+   */
+  elements: ([string, number])[];
+  /** The interface's limit in MW, the same in both directions. */
+  limit_mw: number;
+  name: string;
+};
+
+/** An interface's summed flow after an outage, from a lists file monitor. */
+export type InterfaceFlow = {
+  base_mw: number;
+  base_pct: number | null;
+  /** Its limit; none when the interface has no limit. */
+  limit_mw: number | null;
+  /** Percent of the limit that counts as a violation. */
+  limit_pct: number;
+  /** Weighted sum of its branch flows, MW, after and before. */
+  mw: number;
+  name: string;
+  /** |MW| as a percent of the limit, after and before. */
+  pct: number | null;
+};
+
 export type IslandWire = {
   id: number;
   synthetic_nodes: string[];
@@ -865,6 +1016,25 @@ export type LimitSummary = {
 };
 
 /**
+ * A subsystem record of a lists file, as written: its id, name and
+ * members, for editing and saving again.
+ */
+export type ListedSubsystem = {
+  areas: number[];
+  buses: number[];
+  id: string;
+  /** Only buses at or below this base voltage, kV. */
+  kv_max: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min: number | null;
+  name: string;
+  owners: number[];
+  /** Other subsystems it includes, by id. */
+  subsystems: string[];
+  zones: number[];
+};
+
+/**
  * A bus's load at the solved voltage by part, in MW and Mvar:
  * `[constant power, constant current, constant impedance]`.
  */
@@ -894,6 +1064,26 @@ export type ModuleStatusOfTopologyInfo = {
   available: boolean;
   error: string | null;
   info: TopologyInfo | null;
+};
+
+/** Which branches and interfaces to watch. */
+export type MonitorSettings = {
+  /**
+   * Every rated branch in service (lines and transformers), narrowed by
+   * `subsystem` and `kv_min`.
+   */
+  branches?: boolean;
+  /**
+   * Branches watched as well as (or, with `branches` off, instead of)
+   * the ones above, by id.
+   */
+  elements?: string[];
+  /** Flowgates: weighted sums of branch flows with their own limit. */
+  interfaces?: Interface[];
+  /** Only branches with a terminal bus at or above this voltage, kV. */
+  kv_min?: number;
+  /** Only branches with a terminal bus in this subsystem. */
+  subsystem?: Subsystem | null;
 };
 
 /**
@@ -1022,9 +1212,19 @@ export type Overload = {
   base_pct: number;
   element: string;
   from: number;
+  /**
+   * The loading, in percent, above which this branch counts as over:
+   * the run's limit, or its monitor's.
+   */
+  limit_pct: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
-  /** MVA as a percent of rate A, after the outage and before it. */
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
+  /**
+   * MVA as a percent of the run's rating after the outage, and of its
+   * base rating before it.
+   */
   pct: number;
   to: number;
 };
@@ -1130,6 +1330,23 @@ export type PageQuery = {
   sort?: Sort | null;
 };
 
+/**
+ * How far the source and sink can move before a generator or load runs
+ * out of room.
+ */
+export type Participation = {
+  /**
+   * MW the side can move in total: room to Pmax (source) or to Pmin
+   * (sink) for generator scaling, load to drop for a load source; `None`
+   * when unbounded (a sink of loads).
+   */
+  available_mw: number | null;
+  /** Buses taking part. */
+  buses: number;
+  /** Generators (or loads) taking part. */
+  units: number;
+};
+
 export type Path = {
   buses: number[];
   connection_ids: string[];
@@ -1184,6 +1401,9 @@ export type QuantityInfo = {
   key: string;
   title: string;
 };
+
+/** Which of a branch's three ratings a loading is measured against. */
+export type Rating = "a" | "b" | "c";
 
 /** What an export wrote, and what it couldn't keep. */
 export type RawExport = {
@@ -1320,6 +1540,9 @@ export type SampleCase = {
   id: string;
   title: string;
 };
+
+/** How the source and sink share out the transfer. */
+export type Scaling = "generation" | "reserve" | "load";
 
 /** One record type in the list, without its rows. */
 export type SectionInfo = {
@@ -1530,6 +1753,22 @@ export type StnExport = {
   records: number;
 };
 
+/**
+ * A set of buses, as a `.stnl` subsystem: listed areas, zones, owners and
+ * buses combine as a union (every bus when all are empty), then the kV
+ * filters narrow it.
+ */
+export type Subsystem = {
+  areas?: number[];
+  buses?: number[];
+  /** Only buses at or below this base voltage, kV. */
+  kv_max?: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min?: number | null;
+  owners?: number[];
+  zones?: number[];
+};
+
 export type TopologyInfo = {
   buses: number;
   /** Built from the power flow model (MATPOWER, RAW other than revision 35). */
@@ -1550,6 +1789,176 @@ export type TopologyWire = {
   analysis: AnalysisWire;
   case: CaseWire;
   graph: GraphWire;
+};
+
+/**
+ * Which outages to study the transfer under. The base case is always
+ * studied too.
+ */
+export type TransferContingencies = {
+  branches?: boolean;
+  /**
+   * Ids to take out, one at a time, as for contingency analysis (ids
+   * joined by "&" go out together). When absent, every in-service
+   * branch and/or generator, as chosen below.
+   */
+  elements?: string[] | null;
+  generators?: boolean;
+  /** Only branch outages with a terminal bus at or above this voltage, kV. */
+  kv_min?: number;
+  /** Leave out zero-impedance lines (PSS/E THRSHZ, 0.0001 p.u.). */
+  skip_zero_impedance?: boolean;
+};
+
+/** Base case PTDF of one monitored element. */
+export type TransferFactor = {
+  flow_mw: number;
+  from: number;
+  /** Base rating limit, MW; 0 when unrated. */
+  limit_mw: number;
+  monitored: string;
+  ptdf: number;
+  to: number;
+  winding: number;
+};
+
+/**
+ * One limit the transfer runs into: a monitored element, in the base case
+ * or after a contingency.
+ */
+export type TransferLimit = {
+  /** What is out, "" for the base case. */
+  contingency: string;
+  /** Distribution factor: PTDF in the base case, OTDF after an outage. */
+  factor: number;
+  /**
+   * The transfer that brings the element to its limit, MW. Negative
+   * when it is already past it in the direction the transfer pushes.
+   */
+  fcitc_mw: number;
+  /** Flow before the transfer (after the contingency), MW, from end. */
+  flow_mw: number;
+  /** End buses of a branch; 0 for an interface. */
+  from: number;
+  limit_mw: number;
+  /** The branch id, or `interface:<name>`. */
+  monitored: string;
+  /** Base case PTDF. */
+  ptdf: number;
+  to: number;
+  /** 1-3 for a leg of a three-winding transformer. */
+  winding: number;
+};
+
+export type TransferResults = {
+  /** Each contingency's lowest limit, lowest first; the base case is "". */
+  contingencies: ContingencyLimit[];
+  /** Base case PTDFs at or above the cutoff, largest first. */
+  factors: TransferFactor[];
+  /**
+   * Each monitored element's lowest limit over the base case and every
+   * contingency, lowest first.
+   */
+  limits: TransferLimit[];
+  /**
+   * Elements already past their limit before any transfer (where it
+   * pushes them further), each at its worst, lowest FCITC first. Empty
+   * when `include_past_limits` puts them in `limits`.
+   */
+  past_limits: TransferLimit[];
+  summary: TransferSummary;
+};
+
+/** A transfer limit study. */
+export type TransferSettings = {
+  base_rating?: Rating;
+  /** Outages to study; `None` studies the base case only. */
+  contingencies?: TransferContingencies | null;
+  /**
+   * Elements whose distribution factor is below this (as a fraction,
+   * 0.05 = 5%) in size don't limit the transfer.
+   */
+  cutoff?: number;
+  /**
+   * Let elements already past their limit before any transfer set the
+   * FCITC (negative). Off by default: they are listed apart in
+   * `past_limits`, and the FCITC is the transfer that first takes an
+   * element within its limit past it.
+   */
+  include_past_limits?: boolean;
+  /** Percent of the rating that counts as the limit. */
+  limit_pct?: number;
+  /**
+   * A lists file (`.stnl`). Its contingencies and contingency sets,
+   * when it has any, are the outages studied instead of
+   * `contingencies`; its flow and interface monitors, when it has any,
+   * are what is watched instead of `monitor`.
+   */
+  lists?: string | null;
+  /** The most rows kept in each of the results' lists. */
+  max_rows?: number;
+  monitor?: MonitorSettings;
+  /** Rating after an outage, and in the base case (`base_rating`). */
+  rating?: Rating;
+  scaling?: Scaling;
+  /** Where it goes. */
+  sink?: Subsystem;
+  /** Where the power comes from. */
+  source?: Subsystem;
+  /**
+   * The lists file's `transfer` record to run: its source, sink,
+   * scaling, cutoff, ratings and limit replace the ones above. The
+   * file's only transfer when absent.
+   */
+  transfer?: string | null;
+};
+
+export type TransferSummary = {
+  base_rating: Rating;
+  cancelled: boolean;
+  /**
+   * Contingencies studied (the base case not counted), and those left
+   * out because they split the network.
+   */
+  contingencies: number;
+  cutoff: number;
+  elapsed_ms: number;
+  /**
+   * The first change of total transfer capability from network limits,
+   * MW; `None` when no monitored element reaches the cutoff.
+   */
+  fcitc_mw: number | null;
+  /**
+   * The most the source and sink can move: the smaller of their
+   * available MW.
+   */
+  generation_limit_mw: number | null;
+  islanding: number;
+  limit_pct: number;
+  /** "network", "generation" or "none". */
+  limited_by: "network" | "generation" | "none";
+  limiting: TransferLimit | null;
+  /** Monitored branch rows and interfaces. */
+  monitored: number;
+  /** Things worth knowing about the setup, in words. */
+  notes: string[];
+  rating: Rating;
+  scaling: Scaling;
+  sink: Participation;
+  source: Participation;
+  /** The transfer limit: the smaller of the two above. */
+  transfer_limit_mw: number | null;
+};
+
+/** What [`ContingencyResults::write_violations_csv`] wrote. */
+export type ViolationsExport = {
+  /** Outages with at least one line. */
+  outages: number;
+  /**
+   * Lines written, one per violation (and one per outage whose AC solve
+   * failed), not counting the header.
+   */
+  rows: number;
 };
 
 /** A bus outside its voltage limits after an outage. */
@@ -1711,6 +2120,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: null;
   };
+  /** Stop the transfer limit study in progress. */
+  cancel_transfer_limits: {
+    args: Record<string, never>;
+    result: null;
+  };
   /** The case's record types and their counts. */
   case_records: {
     args: {
@@ -1855,6 +2269,18 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: ElementKind[];
   };
+  /**
+   * Write every violation of the last run to a CSV file, one line each:
+   * branch overloads, bus voltages and interfaces, and a line for each
+   * outage whose AC solve failed.
+   */
+  export_contingency_violations: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: ViolationsExport;
+  };
   /** Write the case, solved or as filed, as a MATPOWER file. */
   export_matpower: {
     args: {
@@ -1900,6 +2326,13 @@ export interface CoreCommands {
   list_commands: {
     args: Record<string, never>;
     result: CommandList;
+  };
+  /** The subsystem records of a lists file (`.stnl`), as written. */
+  lists_subsystems: {
+    args: {
+      path: string;
+    };
+    result: ListedSubsystem[];
   };
   /**
    * Attach a bus coordinates CSV (bus, latitude, longitude, optional
@@ -2093,6 +2526,30 @@ export interface CoreCommands {
     };
     result: RunReport;
   };
+  /**
+   * Commands as run file text, for copying from the app's history.
+   * Paths stay as given and settings at their defaults are left out.
+   */
+  run_file_text: {
+    args: {
+      steps: Step[];
+    };
+    result: string;
+  };
+  /**
+   * Transfer limits (DFAX and FCITC): how much power can move from the
+   * source subsystem to the sink before a monitored branch or interface
+   * reaches its limit, in the base case and after each contingency.
+   * Linear factors on top of the AC solve. `cancel_transfer_limits` stops
+   * the study and `transfer_progress` follows it.
+   */
+  run_transfer_limits: {
+    args: {
+      case?: CaseId | null;
+      settings: TransferSettings;
+    };
+    result: TransferResults;
+  };
   /** The small cases built into Stannum, to open with `open_sample`. */
   sample_cases: {
     args: Record<string, never>;
@@ -2107,7 +2564,7 @@ export interface CoreCommands {
     result: CaseSummary;
   };
   /**
-   * Write commands as a run file, such as the ones Record kept. Paths in
+   * Write commands as a run file, such as ones from the app's history. Paths in
    * the run file's folder are written relative to it, and settings at
    * their defaults are left out.
    */
@@ -2210,12 +2667,23 @@ export interface CoreCommands {
     };
     result: SourceRecord | null;
   };
-  /** Take one element out of the last AC solve and solve again. */
+  /** How far the transfer limit study in progress has got. */
+  transfer_progress: {
+    args: Record<string, never>;
+    result: Progress;
+  };
+  /**
+   * Take one element out of the last AC solve and solve again. Loadings
+   * are measured against `rating` after the trip and `base_rating`
+   * before it (both rate A when left out).
+   */
   trip_and_compare: {
     args: {
+      baseRating?: Rating | null;
       case?: CaseId | null;
       element: string;
       limitPct: number;
+      rating?: Rating | null;
     };
     result: ContingencyDetail;
   };
@@ -2242,6 +2710,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "open_case",
   "open_sample",
   "run_contingencies",
+  "run_transfer_limits",
   "save_case_as",
   "set_study_edits",
   "solve_power_flow",

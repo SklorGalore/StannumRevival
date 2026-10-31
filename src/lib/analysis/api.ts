@@ -36,7 +36,7 @@ import type {
 import type { BranchRow, BusRow, FieldType, GeneratorRow, Page, PageQuery, PageRule, RecordPage } from "./types";
 import { decodeSolveReport, fromColumns, type Columns } from "./wire";
 import { decodeTopology, decodeView } from "./topologyWire";
-import type { CoreArgs, CoreCommand, CoreError, CoreResult, RunReport, SampleCase, Step } from "./commands.gen";
+import type { CoreArgs, CoreCommand, CoreError, CoreResult, ListedSubsystem, Rating, RunReport, SampleCase, Step, TransferResults, TransferSettings } from "./commands.gen";
 
 export type CoreErrorKind = CoreError["kind"];
 
@@ -138,7 +138,7 @@ export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: A
   return result;
 }
 
-/** Told about every core command that worked, with its arguments (Record uses it). */
+/** Told about every core command that worked, with its arguments (the history uses it). */
 export type CoreCallWatcher = (command: CoreCommand, args: Record<string, unknown>) => void;
 const watchers = new Set<CoreCallWatcher>();
 
@@ -205,6 +205,7 @@ export const COORDINATE_FILTERS = [{ name: "Bus coordinates (CSV)", extensions: 
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 export const STN_FILTERS = [{ name: "Stannum case (preview)", extensions: ["stn"] }];
 export const STNB_FILTERS = [{ name: "Binary Stannum case (preview)", extensions: ["stnb"] }];
+export const LISTS_FILTERS = [{ name: "Stannum lists (preview)", extensions: ["stnl"] }];
 export const RUN_FILE_FILTERS = [{ name: "Stannum run file", extensions: ["stnrun"] }];
 export const RUN_FILE_EXTENSION = /\.stnrun$/i;
 
@@ -277,11 +278,21 @@ export const api = {
   // Polled while a run is going, so they skip the log.
   planningEventCounts: (settings: PlanningSettings): Promise<CategoryCount[]> => call("planning_event_counts", { settings }),
   cancelContingencies: () => invokeCore("cancel_contingencies"),
+  /** A transfer limit study (DFAX and FCITC) on the latest AC solve. */
+  runTransferLimits: (settings: TransferSettings): Promise<TransferResults> => call("run_transfer_limits", { settings }),
+  cancelTransferLimits: () => invokeCore("cancel_transfer_limits"),
+  transferProgress: (): Promise<ContingencyProgress> => invokeCore("transfer_progress"),
   contingencyProgress: (): Promise<ContingencyProgress> => invokeCore("contingency_progress"),
   contingencyRows: async (offset: number, limit: number): Promise<ContingencyRow[]> =>
     fromColumns<ContingencyRow>(await call("contingency_rows", { offset, limit })),
+  /** Every violation of the last run, one line each, written to a CSV file by the core. */
+  exportContingencyViolations: (path: string): Promise<{ rows: number; outages: number }> =>
+    call("export_contingency_violations", { path }),
+  /** The subsystem records of a .stnl lists file, as written. */
+  listsSubsystems: (path: string): Promise<ListedSubsystem[]> => invokeCore("lists_subsystems", { path }),
   contingencyDetail: (rank: number): Promise<ContingencyDetail> => call("contingency_detail", { rank }),
-  tripAndCompare: (element: string, limitPct: number): Promise<ContingencyDetail> => call("trip_and_compare", { element, limitPct }),
+  tripAndCompare: (element: string, limitPct: number, rating: Rating = "a", baseRating: Rating = "a"): Promise<ContingencyDetail> =>
+    call("trip_and_compare", { element, limitPct, rating, baseRating }),
   /** A named result ("base", "study", "contingency 3", "trip line:1-2-1") as a full solve report. */
   resultReport: async (name: string): Promise<SolveReport> =>
     decodeSolveReport(await call("result_report", { name })),
@@ -340,6 +351,7 @@ export const api = {
   /** Stops the run file in progress before its next line. */
   cancelRunFile: () => invokeCore("cancel_run_file"),
   saveRunFile: (path: string, steps: Step[]) => call("save_run_file", { path, steps }),
+  runFileText: (steps: Step[]): Promise<string> => invokeCore("run_file_text", { steps }),
   studyEdits: (): Promise<StudyEdit[]> => call("study_edits"),
 
   diffCompare: (baseline: string, comparison: string): Promise<DiffSummary> =>

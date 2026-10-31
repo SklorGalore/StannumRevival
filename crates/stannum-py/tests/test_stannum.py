@@ -127,6 +127,40 @@ def test_contingencies_rank_every_outage(case9: sn.Case) -> None:
     assert case9.contingency_rows(offset=1, limit=2)["rank"].tolist() == [2, 3]
 
 
+def test_transfer_limits(case9: sn.Case) -> None:
+    case9.solve()
+    run = case9.transfer_limits({"buses": [2]}, {"buses": [3]}, contingencies={})
+    limiting = run.summary.limiting
+    assert run.summary.fcitc_mw == limiting["fcitc_mw"]
+    assert len(run.limits) > 0
+    assert run.limits["fcitc_mw"][0] == run.summary.fcitc_mw
+    assert np.all(np.diff(run.limits["fcitc_mw"]) >= 0)
+    # Moving the FCITC brings the limiting element to its limit.
+    at = limiting["flow_mw"] + limiting["factor"] * limiting["fcitc_mw"]
+    assert abs(abs(at) - limiting["limit_mw"]) < 1e-6
+    assert run.summary.contingencies == 9
+    with pytest.raises(sn.StannumError):
+        case9.transfer_limits({"buses": [5]}, {"buses": [3]})
+
+
+def test_transfer_limits_from_a_lists_file(case9: sn.Case, tmp_path) -> None:
+    case9.solve()
+    lists = tmp_path / "transfers.stnl"
+    lists.write_text(
+        "stannum-lists 0.1\n"
+        "subsystem two buses=[2]\n"
+        "subsystem three buses=[3]\n"
+        "contingency_set n1 kind=n_1_branches\n"
+        "transfer east source=two sink=three rating=2\n"
+    )
+    run = case9.transfer_limits(lists=str(lists))
+    direct = case9.transfer_limits({"buses": [2]}, {"buses": [3]}, contingencies={}, rating="b")
+    assert run.summary.fcitc_mw == direct.summary.fcitc_mw
+    assert run.summary.contingencies == direct.summary.contingencies == 9
+    with pytest.raises(sn.StannumError):
+        case9.transfer_limits(lists=str(lists), transfer="west")
+
+
 def test_records_and_record_edits(case9: sn.Case) -> None:
     book = case9.records()
     assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]

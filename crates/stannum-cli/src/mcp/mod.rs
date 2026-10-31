@@ -195,7 +195,12 @@ fn handle(
             let r = running.lock().unwrap_or_else(|p| p.into_inner());
             if r.id.as_ref() == Some(&params["requestId"]) {
                 r.cancelled.store(true, Ordering::SeqCst);
-                for command in ["cancel_solve", "cancel_contingencies", "cancel_run_file"] {
+                for command in [
+                    "cancel_solve",
+                    "cancel_contingencies",
+                    "cancel_transfer_limits",
+                    "cancel_run_file",
+                ] {
                     let _ = backend.side(command);
                 }
             }

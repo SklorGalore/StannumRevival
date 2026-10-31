@@ -971,6 +971,7 @@ impl DcTerminal<'_> {
                     let stepped = dc::step_tap(converter, target, round);
                     if (stepped - ratio).abs() > 1e-9 {
                         branch.tap = stepped;
+                        branch.correct_impedance();
                         moved = true;
                         let factor = if tap.on_from {
                             stepped / ratio

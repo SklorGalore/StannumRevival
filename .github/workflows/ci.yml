@@ -56,7 +56,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
-        run: cargo test --locked -p stannum-core -p stannum-format -p stannum-cli -p stannum-synth -p rs-power -p nodal
+        run: cargo test --locked -p stannum-core -p stannum-format -p stannum-cli -p stannum-synth -p stannum-verify -p rs-power -p nodal
 
   budgets:
     name: Large case budgets
@@ -141,7 +141,9 @@ jobs:
           cargo build --locked --release -p stannum-core --example dev_bridge --features fault-injection
           STANNUM_FAULT_COMMAND=fault_test ./target/release/examples/dev_bridge &
           npx vite preview --port 1420 --strictPort &
-          npx wait-on -t 60000 http://localhost:1420
+          # Wait with curl: fetching wait-on from npm at run time failed when
+          # a dependency's tarball 404ed on the registry.
+          timeout 60 sh -c 'until curl -sf http://localhost:1420 > /dev/null; do sleep 1; done'
           F=crates/stannum-core/tests/fixtures
           STANNUM_CRASH_TEST=1 STANNUM_MATPOWER=$PWD/$F/case9.m STANNUM_RAW=$PWD/$F/five_bus.raw STANNUM_RAW_B=$PWD/$F/five_bus_modified.raw \
             STANNUM_RAW_DC=$PWD/crates/rs-power/tests/fixtures/raw/t_psse_case3.raw \

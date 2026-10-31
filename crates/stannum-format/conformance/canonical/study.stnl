@@ -3,6 +3,7 @@ stannum-lists 0.1
 # subsystem
 # Subsystems, contingencies and monitors that work on any case with these buses.
 subsystem north name="North 138" areas=[1] kv_min=100
+subsystem south areas=[2, 3]
 
 # contingency
 contingency "Line 1-2" category=P1 events=[[open, line:1:2:1]]
@@ -18,3 +19,6 @@ monitor gate kind=interface interface=flowgate
 
 # interface
 interface flowgate elements=[[line:1:2:1, 1], [line:1:3:1, 1]] limit_mw=180
+
+# transfer
+transfer north_south name="North to South" source=north sink=south scaling=reserve rating=2

@@ -134,6 +134,7 @@ fn default_n_minus_1_leaves_devices_out_unless_listed() {
         limit_pct: 100.0,
         solve: SolveSettings::default(),
         planning: None,
+        ..Default::default()
     };
     case.run_contingencies(settings.clone()).unwrap();
     let rows = case.contingency_rows(0, 100).unwrap();

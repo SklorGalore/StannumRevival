@@ -12,21 +12,70 @@ overloads and voltage problems they cause.
 
 ## Running
 
-Solve the case with the AC model first. Then choose:
+Solve the case with the AC model first. The bar above the results sums up
+the setup in one line; **Set up…** opens the contingency setup, a dialog with
+five steps:
 
-- **Take out, one at a time**: branches, generators or both. A
-  three-winding transformer goes out as one element. Elements already out of
-  service are skipped.
+1. **Outages**: what to take out, and where.
+2. **Monitor**: what is checked after each outage.
+3. **Subsystems**: named sets of buses (areas, zones, owners, bus numbers
+   and a kV range) that Outages and Monitor pick from.
+4. **Limits & reporting**: ratings, the overload limit, and what counts as
+   a problem.
+5. **Solution**: the screen, and the AC solve options.
+
+**Run contingencies** runs from the dialog or from the bar. The choices are:
+
+- **Take out**: branches, generators, buses, or any mix. A three-winding
+  transformer goes out as one element. A bus goes out with every branch and
+  DC line connected to it, so its loads, generators and shunts are cut off.
+  Elements already out of service are skipped.
+- **One at a time (N-1)** or **Two at a time (N-2)**: N-2 takes every pair
+  of the chosen branches and generators once (buses stay one at a time).
+  The count of pairs shows under the choice; a run takes at most 250,000,
+  so on a large case narrow the elements with the bus filters first, for
+  example to one area at 230 kV and up.
+- **Zero-impedance lines**: tick **Skip** to leave out lines with no
+  resistance and a reactance at or below the threshold (0.0001 p.u. by
+  default, PSS/E's THRSHZ), as PSS/E does. It applies to N-1, N-2 and the
+  planning events; a bus outage still opens them. Transformers never count.
 - **Method**: **Linear screen, then AC for the worst** (the default) screens
   every outage with linear outage factors in a fraction of a second, then
   solves the worst N in AC. **AC solve of every outage** is slower on large
   cases but needs no screen.
 - **Worst checked in AC**: N, 50 by default.
-- **Overloaded above**: the loading, as a percent of rate A, that counts as
-  an overload.
+- **Base case rating** and **Contingency rating**: which of each branch's
+  ratings (rate A normal, B short-term, C emergency) the loading is measured
+  against before and after an outage. Both are rate A by default; many
+  planners use rate A before and rate B after. A branch with no value for
+  the chosen rating is unrated.
+- **Overloaded above**: the loading, as a percent of the chosen rating, that
+  counts as an overload.
+
+- **Within** (Outages): a subsystem, to take out only the elements in it:
+  a branch counts when either end is in it. With N-2, pairs are of
+  branches only.
+- **Overloads worse by** and **Voltages worse by** (Limits & reporting):
+  how much worse a problem already there before the outage must get to
+  count (1 point and 0.001 p.u. by default). **Include existing problems**
+  counts every problem after the outage.
+- **Generator Q limits**, **Transformer taps** and **Switched shunts**
+  (Solution): **Same as Power flow** follows the Power flow tab's settings;
+  **On** or **Off** sets them for the contingency solves only.
 
 The bus filters above the tab narrow the outages to branches and generators
-touching the matching buses, for example one area or one voltage level.
+touching the matching buses, for example one area or one voltage level. A
+subsystem chosen under **Within** takes their place.
+
+## Subsystems
+
+The **Subsystems** step builds the sets of buses the other steps pick from.
+**New** adds one; tick areas, zones and owners (each with its bus count),
+list bus numbers, and give a kV range. Listed members combine, and the kV
+range narrows them; with nothing listed, every bus in the range is in it.
+**Save…** writes them as a `.stnl` lists file and **Load…** reads the
+subsystems of one, so the same subsystems work on any case. A subsystem
+that includes other subsystems loads without those links.
 
 ## Planning events
 
@@ -73,21 +122,73 @@ outages it didn't reach in AC keep their linear result. Texas 2k (6,080
 outages) screens in about half a second and solves the worst 50 in AC in
 under two seconds.
 
+## Your own contingency list
+
+Set **Outages** to **From a lists file (.stnl)** and choose the file to run
+the contingencies it defines, the way PSS/E runs a `.con` file:
+
+- each `contingency` record is one outage, named in the results by its
+  record name, with its `category` as a chip above the table. `open` events
+  take an element out; `trip_bus` takes out a bus;
+- each `contingency_set` generates outages for the case at hand: single
+  branches, single generators, pairs of branches, or whole buses, in its
+  subsystem and above its `kv_min`. Its name becomes the category.
+
+A list doesn't belong to one case. Elements the case doesn't have, and
+events Stannum doesn't apply yet (`close`, `set_p_mw`, `set_q_mvar`), skip
+their contingency and are listed in a note above the results. The
+[lists file format](/StannumRevival/reference/lists-file/) page has the
+syntax and an example.
+
+## Checking only what you monitor
+
+By default every rated branch and every bus is checked after each outage.
+Under **Monitor**, choose **A subsystem** to check only the branches with an
+end in it (at the limit and ratings of Limits & reporting) and, with **Bus
+voltages too**, its buses. Or choose **Monitors from a lists file** and a file (the
+lists file you run, or another) to check only what its `monitor` records
+name, as a PSS/E `.mon` file does:
+
+- a `flow` monitor watches one branch, or every branch with an end in its
+  subsystem, at its own `limit_pct` and, when it names one, its own rating
+  slot (1 to 3 for rates A to C);
+- a `voltage` monitor watches one bus, or every bus in its subsystem, with
+  its own `vmin_pu` and `vmax_pu` in place of the bus's limits;
+- an `interface` monitor sums an interface's weighted branch flows after
+  each outage, measured from the first bus of each id as written, and
+  flags it when the sum goes past `limit_pct` of the interface's
+  `limit_mw` and is new or worse. The Overloads column counts interfaces
+  beside branches, and an outage's detail lists every monitored interface.
+
+Branches and buses no monitor names aren't checked, so a file with only
+voltage monitors reports no overloads. Monitors naming equipment the case
+doesn't have are skipped and noted with the results.
+
 ## Reading the results
 
 The figures at the top count outages that cause overloads, voltage problems
 (AC only), AC solves that didn't converge, and outages that split buses off
 from the rest of the network.
 
+Each contingency is named the way PSS/E names one: the bus name and number
+at each end of a branch, then its circuit (`NORTH 101 SOUTH 102 1`); a
+generator's bus name and number, then its id; a bus by its name and
+number; `BASE CASE` for P0. A contingency from a lists file keeps the name
+the file gives it. Search finds a contingency by its name.
+
 The table lists one row per outage, worst first: AC results first, then the
 linear-only ones. An overload counts when a branch goes over the limit, or
 was already over it and gets more than one point worse, so a branch that is
-overloaded before any outage doesn't fill the list. **Worst branch** is the
+overloaded before any outage doesn't fill the list. **Worse by** sets that
+one point, and **Include existing** reports every branch and bus outside its
+limits after the outage, whether or not it was before. **Worst branch** is the
 most loaded such branch (or the most loaded branch when nothing is over the
 limit) and **Before** its loading without the outage. **Splits off** gives
 the buses that lose their path to the rest of the network and the load and
-generation on them. **Problems only** hides the rest, and **Export CSV**
-saves the list.
+generation on them. **Problems only** hides the rest. **Export CSV** saves
+either **Every violation**, one line per overload, voltage problem and
+interface violation of every outage (and one per outage whose AC solve
+failed), or **One row per outage**, the table as shown.
 
 Click a row to open the outage beside the table: every overload and voltage
 problem, what it splits off, and the largest flow changes. Each element name

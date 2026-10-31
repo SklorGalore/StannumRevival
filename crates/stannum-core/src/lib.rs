@@ -40,6 +40,7 @@ pub mod error;
 pub mod file_version;
 pub mod geo;
 pub mod inspect;
+pub mod lists;
 pub mod logbook;
 pub mod paging;
 pub mod planning;
@@ -56,6 +57,7 @@ pub mod study;
 pub mod study_file;
 pub mod table;
 pub mod topology_wire;
+pub mod transfer;
 pub mod working_case;
 pub mod workspace;
 

@@ -275,9 +275,28 @@ class Case:
         outage as a :class:`Table` under ``rows``.
 
         Options (all optional): ``elements`` (ids to take out; every
-        branch and generator by default), ``branches``, ``generators``,
+        branch and generator by default; ``bus:101`` takes out a bus, and
+        ids joined by ``&`` go out together), ``branches``, ``generators``,
+        ``buses`` (each bus with everything connected), ``pairs`` (N-2:
+        the chosen branches and generators two at a time),
+        ``lists`` (the path of a ``.stnl`` lists file whose contingencies
+        run instead; skipped equipment is listed under ``notes``),
+        ``monitors`` (the path of a ``.stnl`` lists file whose monitor
+        records choose what is checked, with their own limits, and whose
+        interfaces are summed per outage),
+        ``skip_zero_impedance`` and ``zero_impedance_pu`` (leave out lines
+        with no resistance and a reactance at or below the threshold,
+        0.0001 p.u. by default as PSS/E's THRSHZ),
         ``method`` ("screen" or "ac"), ``ac_count``, ``limit_pct``,
-        ``solve`` (settings as for :meth:`solve`).
+        ``worse_by_pct`` and ``worse_by_pu`` (how much worse an overload or
+        voltage problem already there before the outage must get to count;
+        1 point and 0.001 p.u. by default), ``report_existing`` (count every
+        problem after the outage, also those already there),
+        ``lists_text`` and ``monitors_text`` (lists text, as in a ``.stnl``
+        file, in place of the ``lists`` and ``monitors`` files),
+        ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
+        loadings are measured against after an outage and before it; rate A
+        by default), ``solve`` (settings as for :meth:`solve`).
         """
         summary = self.call("run_contingencies", settings=_settings(settings, options))
         summary["rows"] = self.contingency_rows()
@@ -303,10 +322,80 @@ class Case:
         """One outage's flow and voltage changes, by rank (from 1)."""
         return self.call("contingency_detail", rank=rank)
 
-    def trip(self, element: str, limit_pct: float = 100.0) -> Answer:
+    def trip(
+        self,
+        element: str,
+        limit_pct: float = 100.0,
+        rating: str = "a",
+        base_rating: str = "a",
+    ) -> Answer:
         """Take one element out of the last AC solve, solve again and
-        compare."""
-        return self.call("trip_and_compare", element=element, limit_pct=limit_pct)
+        compare. ``rating`` and ``base_rating`` ("a", "b" or "c") are the
+        branch ratings loadings are measured against after the trip and
+        before it."""
+        return self.call(
+            "trip_and_compare",
+            element=element,
+            limit_pct=limit_pct,
+            rating=rating,
+            base_rating=base_rating,
+        )
+
+    # Transfer limits
+
+    def transfer_limits(
+        self,
+        source: Mapping[str, Any] | None = None,
+        sink: Mapping[str, Any] | None = None,
+        settings: Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> Answer:
+        """How much power can move from ``source`` to ``sink`` before a
+        monitored branch or interface reaches its limit (DFAX and FCITC),
+        in the base case and after each contingency. Solve with the AC
+        model first.
+
+        ``source`` and ``sink`` are subsystems: dicts of ``areas``,
+        ``zones``, ``owners`` and ``buses`` (lists of numbers, combined as a
+        union; every bus when all are empty) and ``kv_min``/``kv_max``.
+
+        Options (all optional): ``scaling`` ("generation", "reserve" or
+        "load"), ``monitor`` (dict: ``branches``, ``subsystem``, ``kv_min``,
+        ``elements``, ``interfaces`` as ``{"name", "elements": [[id,
+        weight], ...], "limit_mw"}``), ``contingencies`` (dict: ``{}`` for
+        every branch outage; ``elements``, ``branches``, ``generators``,
+        ``kv_min``, ``skip_zero_impedance``; the base case only when left
+        out), ``cutoff`` (smallest distribution factor that limits, 0.05),
+        ``rating`` and ``base_rating`` ("a", "b" or "c"), ``limit_pct``,
+        ``include_past_limits`` and ``max_rows``.
+
+        ``lists`` (a ``.stnl`` path) takes the outages from the file's
+        contingencies and contingency sets and what is watched from its flow
+        and interface monitors, when it has them. Its ``transfer`` records
+        name whole transfers: ``transfer="north_south"`` (or the file's only
+        one) supplies the source, sink, scaling, cutoff, ratings and limit,
+        so ``source`` and ``sink`` can be left out.
+
+        Returns the ``summary`` (``fcitc_mw``, ``limiting``,
+        ``generation_limit_mw``, ``transfer_limit_mw``, ``notes``, ...) and
+        the ``limits``, ``past_limits``, ``contingencies`` and ``factors``
+        lists as :class:`Table` objects, lowest FCITC (or largest factor)
+        first.
+        """
+        merged = _settings(settings, options) or {}
+        result = self.call(
+            "run_transfer_limits",
+            settings={
+                **merged,
+                **({"source": dict(source)} if source is not None else {}),
+                **({"sink": dict(sink)} if sink is not None else {}),
+            },
+        )
+        for key in ("limits", "past_limits", "contingencies", "factors"):
+            rows = result.get(key) or []
+            result[key] = Table.from_rows(rows) if rows else Table({})
+        result["summary"] = Answer(result["summary"])
+        return result
 
     # Records and elements
 

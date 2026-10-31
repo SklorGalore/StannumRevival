@@ -47,6 +47,7 @@ export default defineConfig({
             { label: "Diagram", slug: "guide/diagram" },
             { label: "Power flow", slug: "guide/power-flow" },
             { label: "Contingencies", slug: "guide/contingencies" },
+            { label: "Transfer limits", slug: "guide/transfers" },
             { label: "Records", slug: "guide/records" },
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },
@@ -72,6 +73,7 @@ export default defineConfig({
             { label: "Area interchange control", slug: "manual/area-interchange" },
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
             { label: "Contingency analysis", slug: "manual/contingencies" },
+            { label: "Transfer limits (DFAX)", slug: "manual/transfer-limits" },
             {
               label: "HVDC",
               items: [

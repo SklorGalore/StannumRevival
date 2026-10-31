@@ -183,8 +183,12 @@
           "format": "double",
           "type": "number"
         },
+        "name": {
+          "description": "The branch named PSS/E style: bus names and numbers, then the circuit.",
+          "type": "string"
+        },
         "pct": {
-          "description": "Percent of rate A, after and before; `None` when unrated.",
+          "description": "Percent of the run's rating after, and of its base rating before;\n`None` when unrated.",
           "format": "double",
           "type": [
             "number",
@@ -202,6 +206,7 @@
       },
       "required": [
         "element",
+        "name",
         "from",
         "to",
         "mw",
@@ -1025,6 +1030,13 @@
           "minimum": 0,
           "type": "integer"
         },
+        "with_problems": {
+          "default": 0,
+          "description": "Events with any overload, voltage problem or failed solve, each\ncounted once.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "with_voltage_problems": {
           "format": "uint",
           "minimum": 0,
@@ -1037,7 +1049,8 @@
         "with_overloads",
         "with_voltage_problems",
         "not_converged",
-        "islanding"
+        "islanding",
+        "with_problems"
       ],
       "type": "object"
     },
@@ -1123,6 +1136,14 @@
           },
           "type": "array"
         },
+        "interfaces": {
+          "default": [],
+          "description": "Every monitored interface's flow.",
+          "items": {
+            "$ref": "#/$defs/InterfaceFlow"
+          },
+          "type": "array"
+        },
         "overloads": {
           "items": {
             "$ref": "#/$defs/Overload"
@@ -1145,7 +1166,34 @@
         "voltage_problems",
         "branches",
         "buses",
-        "cut_off"
+        "cut_off",
+        "interfaces"
+      ],
+      "type": "object"
+    },
+    "ContingencyLimit": {
+      "description": "The worst limit of one contingency.",
+      "properties": {
+        "contingency": {
+          "type": "string"
+        },
+        "factor": {
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contingency",
+        "fcitc_mw",
+        "monitored",
+        "factor"
       ],
       "type": "object"
     },
@@ -1191,6 +1239,13 @@
           "description": "The element taken out; empty for the base case (P0).",
           "type": "string"
         },
+        "interface_violations": {
+          "default": 0,
+          "description": "Monitored interfaces over their limit that are new or worse, and\nthe worst of them.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "iterations": {
           "format": "uint",
           "minimum": 0,
@@ -1200,12 +1255,15 @@
           ]
         },
         "kind": {
-          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
+          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, \"group\" for more, or \"base\" for P0.",
           "enum": [
             "branch",
             "generator",
             "shunt",
             "dc_line",
+            "bus",
+            "pair",
+            "group",
             "base"
           ],
           "type": "string"
@@ -1217,6 +1275,10 @@
         "lost_load_mw": {
           "format": "double",
           "type": "number"
+        },
+        "name": {
+          "description": "The contingency's name: the one its lists file gives it, or else\nbuilt PSS/E style from what goes out, bus names and numbers then the\ncircuit or unit id, such as \"ALPHA 101 BETA 102 1\"; \"BASE CASE\" for P0.",
+          "type": "string"
         },
         "note": {
           "description": "AC only: why a solve failed, in a sentence.",
@@ -1266,6 +1328,16 @@
           ],
           "description": "The most loaded branch that is over its limit and new or worse than\nbefore the outage; otherwise the most loaded branch."
         },
+        "worst_interface": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InterfaceFlow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "worst_voltage": {
           "anyOf": [
             {
@@ -1283,6 +1355,7 @@
         "element",
         "kind",
         "category",
+        "name",
         "description",
         "checked",
         "converged",
@@ -1293,6 +1366,8 @@
         "note",
         "worst_voltage",
         "voltage_violations",
+        "interface_violations",
+        "worst_interface",
         "cut_off_buses",
         "lost_load_mw",
         "lost_generation_mw",
@@ -1365,6 +1440,16 @@
           },
           "type": "array"
         },
+        "interface_violations": {
+          "items": {
+            "default": 0,
+            "description": "Monitored interfaces over their limit that are new or worse, and\nthe worst of them.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
         "iterations": {
           "items": {
             "format": "uint",
@@ -1378,12 +1463,15 @@
         },
         "kind": {
           "items": {
-            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
+            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, \"group\" for more, or \"base\" for P0.",
             "enum": [
               "branch",
               "generator",
               "shunt",
               "dc_line",
+              "bus",
+              "pair",
+              "group",
               "base"
             ],
             "type": "string"
@@ -1401,6 +1489,13 @@
           "items": {
             "format": "double",
             "type": "number"
+          },
+          "type": "array"
+        },
+        "name": {
+          "items": {
+            "description": "The contingency's name: the one its lists file gives it, or else\nbuilt PSS/E style from what goes out, bus names and numbers then the\ncircuit or unit id, such as \"ALPHA 101 BETA 102 1\"; \"BASE CASE\" for P0.",
+            "type": "string"
           },
           "type": "array"
         },
@@ -1473,6 +1568,19 @@
           },
           "type": "array"
         },
+        "worst_interface": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/InterfaceFlow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
         "worst_voltage": {
           "items": {
             "anyOf": [
@@ -1496,10 +1604,12 @@
         "cut_off_buses",
         "description",
         "element",
+        "interface_violations",
         "iterations",
         "kind",
         "lost_generation_mw",
         "lost_load_mw",
+        "name",
         "note",
         "overloads",
         "rank",
@@ -1507,6 +1617,7 @@
         "severity",
         "voltage_violations",
         "worst",
+        "worst_interface",
         "worst_voltage"
       ],
       "type": "object"
@@ -1521,13 +1632,23 @@
           "minimum": 0,
           "type": "integer"
         },
+        "base_rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "The rating for the base case: its loadings (the \"before\" figures)\nand the P0 event."
+        },
         "branches": {
           "default": true,
           "type": "boolean"
         },
+        "buses": {
+          "default": false,
+          "description": "Take out each bus: every branch and DC line connected to it, which\ncuts off its loads, generators and shunts.",
+          "type": "boolean"
+        },
         "elements": {
           "default": null,
-          "description": "Branch and generator ids to take out, one at a time. When absent,\nevery in-service branch and/or generator, as chosen below.",
+          "description": "Ids to take out, one at a time. A bus id (bus:101) takes out the\nbus, and ids joined by \"&\" (line:1:2:1&line:2:3:1) go out together.\nWhen absent, every in-service branch, generator and/or bus, as\nchosen below.",
           "items": {
             "type": "string"
           },
@@ -1542,13 +1663,50 @@
         },
         "limit_pct": {
           "default": 100.0,
-          "description": "Loading, as a percent of rate A, above which a branch is overloaded.",
+          "description": "Loading, as a percent of the rating, above which a branch is\noverloaded.",
           "format": "double",
           "type": "number"
+        },
+        "lists": {
+          "default": null,
+          "description": "Run the contingencies of this lists file (`.stnl`): its\n`contingency` records and `contingency_set` rules. Equipment the\ncase lacks is reported in the summary's notes and skipped. Takes\nthe place of `elements`, `branches`, `generators`, `buses` and\n`pairs`; `planning` is unused.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lists_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) to run in place of a `lists` file, as the\nsetup builds it from its subsystems. Wins over `lists`.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "method": {
           "$ref": "#/$defs/Method",
           "default": "screen"
+        },
+        "monitors": {
+          "default": null,
+          "description": "Check only what the `monitor` records of this lists file (`.stnl`)\nname: branch flows and bus voltages with their own limits, and\ninterfaces. Every rated branch and every bus when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monitors_text": {
+          "default": null,
+          "description": "Lists text (`.stnl`) whose monitor records choose what is checked,\nin place of a `monitors` file. Wins over `monitors`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairs": {
+          "default": false,
+          "description": "N-2: take the chosen branches and generators out two at a time,\nevery pair once, instead of one at a time. Buses stay one at a time.",
+          "type": "boolean"
         },
         "planning": {
           "anyOf": [
@@ -1561,6 +1719,21 @@
           ],
           "default": null,
           "description": "Run these NERC TPL-001 planning events instead of every branch and\ngenerator; `elements`, `branches` and `generators` are then unused."
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "The rating loadings are measured against after an outage."
+        },
+        "report_existing": {
+          "default": false,
+          "description": "Report every branch, interface and bus outside its limits after the\noutage, also those that already were before it and got no worse.",
+          "type": "boolean"
+        },
+        "skip_zero_impedance": {
+          "default": false,
+          "description": "Leave out zero-impedance lines: lines with no resistance and a\nreactance at or below `zero_impedance_pu`, as PSS/E treats them\n(THRSHZ). Applies to N-1 and N-2, also to listed single elements;\na bus outage still opens them.",
+          "type": "boolean"
         },
         "solve": {
           "$ref": "#/$defs/SolveSettings",
@@ -1579,6 +1752,24 @@
             "switch_shunts": true,
             "tolerance_mva": 2.0
           }
+        },
+        "worse_by_pct": {
+          "default": 1.0,
+          "description": "How many percentage points of loading a branch or interface already\nover its limit before the outage must gain to be reported. 1 by\ndefault.",
+          "format": "double",
+          "type": "number"
+        },
+        "worse_by_pu": {
+          "default": 0.001,
+          "description": "How many per unit a bus already outside its voltage limits before\nthe outage must move further out to be reported. 0.001 by default.",
+          "format": "double",
+          "type": "number"
+        },
+        "zero_impedance_pu": {
+          "default": 0.0001,
+          "description": "The zero-impedance threshold in per unit; 0.0001 by default, as\nPSS/E's THRSHZ.",
+          "format": "double",
+          "type": "number"
         }
       },
       "type": "object"
@@ -1598,6 +1789,9 @@
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "base_rating": {
+          "$ref": "#/$defs/Rating"
         },
         "cancelled": {
           "description": "Stopped early: outages after the stop keep their screened result.",
@@ -1633,10 +1827,27 @@
             }
           ]
         },
+        "monitored": {
+          "default": false,
+          "description": "Whether a lists file's monitors chose what was checked.",
+          "type": "boolean"
+        },
         "not_converged": {
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "notes": {
+          "default": [],
+          "description": "Lists file runs: what was skipped and why, in sentences.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "description": "The ratings loadings were measured against, after outages and in\nthe base case."
         },
         "screen_ms": {
           "format": "double",
@@ -1644,6 +1855,13 @@
         },
         "total": {
           "description": "Outages run, and in-service checks skipped because the element was\nalready out.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_interface_problems": {
+          "default": 0,
+          "description": "Outages that take a monitored interface over its limit.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -1672,11 +1890,14 @@
       "required": [
         "method",
         "limit_pct",
+        "rating",
+        "base_rating",
         "total",
         "already_out",
         "ac_checked",
         "with_overloads",
         "with_voltage_problems",
+        "with_interface_problems",
         "not_converged",
         "islanding",
         "screen_ms",
@@ -1684,7 +1905,9 @@
         "elapsed_ms",
         "cancelled",
         "worst",
-        "categories"
+        "categories",
+        "notes",
+        "monitored"
       ],
       "type": "object"
     },
@@ -3428,6 +3651,98 @@
         }
       ]
     },
+    "Interface": {
+      "description": "A flowgate: branch flows summed with weights, as a `.stnl` interface.",
+      "properties": {
+        "elements": {
+          "description": "Branches as `[element, weight]`; flow measured at the from end of\nthe branch row.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "limit_mw": {
+          "description": "The interface's limit in MW, the same in both directions.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "elements",
+        "limit_mw"
+      ],
+      "type": "object"
+    },
+    "InterfaceFlow": {
+      "description": "An interface's summed flow after an outage, from a lists file monitor.",
+      "properties": {
+        "base_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "base_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limit_mw": {
+          "description": "Its limit; none when the interface has no limit.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limit_pct": {
+          "description": "Percent of the limit that counts as a violation.",
+          "format": "double",
+          "type": "number"
+        },
+        "mw": {
+          "description": "Weighted sum of its branch flows, MW, after and before.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pct": {
+          "description": "|MW| as a percent of the limit, after and before.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "mw",
+        "base_mw",
+        "limit_mw",
+        "pct",
+        "base_pct",
+        "limit_pct"
+      ],
+      "type": "object"
+    },
     "IslandWire": {
       "properties": {
         "id": {
@@ -3608,6 +3923,90 @@
       ],
       "type": "object"
     },
+    "ListedSubsystem": {
+      "description": "A subsystem record of a lists file, as written: its id, name and\nmembers, for editing and saving again.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kv_max": {
+          "default": null,
+          "description": "Only buses at or below this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kv_min": {
+          "default": null,
+          "description": "Only buses at or above this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "owners": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "subsystems": {
+          "description": "Other subsystems it includes, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "areas",
+        "zones",
+        "owners",
+        "buses",
+        "kv_min",
+        "kv_max",
+        "subsystems"
+      ],
+      "type": "object"
+    },
     "LoadParts": {
       "description": "A bus's load at the solved voltage by part, in MW and Mvar:\n`[constant power, constant current, constant impedance]`.",
       "properties": {
@@ -3744,6 +4143,51 @@
         "error",
         "info"
       ],
+      "type": "object"
+    },
+    "MonitorSettings": {
+      "description": "Which branches and interfaces to watch.",
+      "properties": {
+        "branches": {
+          "default": true,
+          "description": "Every rated branch in service (lines and transformers), narrowed by\n`subsystem` and `kv_min`.",
+          "type": "boolean"
+        },
+        "elements": {
+          "default": [],
+          "description": "Branches watched as well as (or, with `branches` off, instead of)\nthe ones above, by id.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interfaces": {
+          "default": [],
+          "description": "Flowgates: weighted sums of branch flows with their own limit.",
+          "items": {
+            "$ref": "#/$defs/Interface"
+          },
+          "type": "array"
+        },
+        "kv_min": {
+          "default": 0.0,
+          "description": "Only branches with a terminal bus at or above this voltage, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "subsystem": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subsystem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only branches with a terminal bus in this subsystem."
+        }
+      },
       "type": "object"
     },
     "MtdcDetail": {
@@ -4172,13 +4616,22 @@
           "minimum": 0,
           "type": "integer"
         },
+        "limit_pct": {
+          "description": "The loading, in percent, above which this branch counts as over:\nthe run's limit, or its monitor's.",
+          "format": "double",
+          "type": "number"
+        },
         "mw": {
           "description": "Active flow at the from end, MW, after and before.",
           "format": "double",
           "type": "number"
         },
+        "name": {
+          "description": "The branch named PSS/E style: bus names and numbers, then the circuit.",
+          "type": "string"
+        },
         "pct": {
-          "description": "MVA as a percent of rate A, after the outage and before it.",
+          "description": "MVA as a percent of the run's rating after the outage, and of its\nbase rating before it.",
           "format": "double",
           "type": "number"
         },
@@ -4190,12 +4643,14 @@
       },
       "required": [
         "element",
+        "name",
         "from",
         "to",
         "pct",
         "base_pct",
         "mw",
-        "base_mw"
+        "base_mw",
+        "limit_pct"
       ],
       "type": "object"
     },
@@ -4536,6 +4991,37 @@
       },
       "type": "object"
     },
+    "Participation": {
+      "description": "How far the source and sink can move before a generator or load runs\nout of room.",
+      "properties": {
+        "available_mw": {
+          "description": "MW the side can move in total: room to Pmax (source) or to Pmin\n(sink) for generator scaling, load to drop for a load source; `None`\nwhen unbounded (a sink of loads).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "buses": {
+          "description": "Buses taking part.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "units": {
+          "description": "Generators (or loads) taking part.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "buses",
+        "units",
+        "available_mw"
+      ],
+      "type": "object"
+    },
     "Path": {
       "properties": {
         "buses": {
@@ -4707,6 +5193,26 @@
         "title"
       ],
       "type": "object"
+    },
+    "Rating": {
+      "description": "Which of a branch's three ratings a loading is measured against.",
+      "oneOf": [
+        {
+          "const": "a",
+          "description": "Rate A (RAW RATE1): normal, long-term.",
+          "type": "string"
+        },
+        {
+          "const": "b",
+          "description": "Rate B (RAW RATE2): short-term, often the post-contingency rating.",
+          "type": "string"
+        },
+        {
+          "const": "c",
+          "description": "Rate C (RAW RATE3): emergency.",
+          "type": "string"
+        }
+      ]
     },
     "RawExport": {
       "description": "What an export wrote, and what it couldn't keep.",
@@ -5151,6 +5657,26 @@
         "file_name"
       ],
       "type": "object"
+    },
+    "Scaling": {
+      "description": "How the source and sink share out the transfer.",
+      "oneOf": [
+        {
+          "const": "generation",
+          "description": "Online generators, in proportion to their output now.",
+          "type": "string"
+        },
+        {
+          "const": "reserve",
+          "description": "Online generators, in proportion to the room they have: up to Pmax\nin the source, down to Pmin in the sink. Every unit reaches its\nlimit at the same transfer.",
+          "type": "string"
+        },
+        {
+          "const": "load",
+          "description": "Loads, in proportion to their MW: the source's loads drop and the\nsink's grow.",
+          "type": "string"
+        }
+      ]
     },
     "SectionInfo": {
       "description": "One record type in the list, without its rows.",
@@ -5751,6 +6277,66 @@
       ],
       "type": "object"
     },
+    "Subsystem": {
+      "description": "A set of buses, as a `.stnl` subsystem: listed areas, zones, owners and\nbuses combine as a union (every bus when all are empty), then the kV\nfilters narrow it.",
+      "properties": {
+        "areas": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buses": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kv_max": {
+          "default": null,
+          "description": "Only buses at or below this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kv_min": {
+          "default": null,
+          "description": "Only buses at or above this base voltage, kV.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "owners": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "default": [],
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "TopologyInfo": {
       "properties": {
         "buses": {
@@ -5820,6 +6406,449 @@
         "case",
         "analysis",
         "graph"
+      ],
+      "type": "object"
+    },
+    "TransferContingencies": {
+      "description": "Which outages to study the transfer under. The base case is always\nstudied too.",
+      "properties": {
+        "branches": {
+          "default": true,
+          "type": "boolean"
+        },
+        "elements": {
+          "default": null,
+          "description": "Ids to take out, one at a time, as for contingency analysis (ids\njoined by \"&\" go out together). When absent, every in-service\nbranch and/or generator, as chosen below.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "generators": {
+          "default": false,
+          "type": "boolean"
+        },
+        "kv_min": {
+          "default": 0.0,
+          "description": "Only branch outages with a terminal bus at or above this voltage, kV.",
+          "format": "double",
+          "type": "number"
+        },
+        "skip_zero_impedance": {
+          "default": false,
+          "description": "Leave out zero-impedance lines (PSS/E THRSHZ, 0.0001 p.u.).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "TransferFactor": {
+      "description": "Base case PTDF of one monitored element.",
+      "properties": {
+        "flow_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_mw": {
+          "description": "Base rating limit, MW; 0 when unrated.",
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "type": "string"
+        },
+        "ptdf": {
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "winding": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "monitored",
+        "from",
+        "to",
+        "winding",
+        "ptdf",
+        "flow_mw",
+        "limit_mw"
+      ],
+      "type": "object"
+    },
+    "TransferLimit": {
+      "description": "One limit the transfer runs into: a monitored element, in the base case\nor after a contingency.",
+      "properties": {
+        "contingency": {
+          "description": "What is out, \"\" for the base case.",
+          "type": "string"
+        },
+        "factor": {
+          "description": "Distribution factor: PTDF in the base case, OTDF after an outage.",
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "description": "The transfer that brings the element to its limit, MW. Negative\nwhen it is already past it in the direction the transfer pushes.",
+          "format": "double",
+          "type": "number"
+        },
+        "flow_mw": {
+          "description": "Flow before the transfer (after the contingency), MW, from end.",
+          "format": "double",
+          "type": "number"
+        },
+        "from": {
+          "description": "End buses of a branch; 0 for an interface.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "description": "The branch id, or `interface:<name>`.",
+          "type": "string"
+        },
+        "ptdf": {
+          "description": "Base case PTDF.",
+          "format": "double",
+          "type": "number"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "winding": {
+          "description": "1-3 for a leg of a three-winding transformer.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "monitored",
+        "from",
+        "to",
+        "winding",
+        "contingency",
+        "fcitc_mw",
+        "flow_mw",
+        "limit_mw",
+        "factor",
+        "ptdf"
+      ],
+      "type": "object"
+    },
+    "TransferResults": {
+      "properties": {
+        "contingencies": {
+          "description": "Each contingency's lowest limit, lowest first; the base case is \"\".",
+          "items": {
+            "$ref": "#/$defs/ContingencyLimit"
+          },
+          "type": "array"
+        },
+        "factors": {
+          "description": "Base case PTDFs at or above the cutoff, largest first.",
+          "items": {
+            "$ref": "#/$defs/TransferFactor"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "description": "Each monitored element's lowest limit over the base case and every\ncontingency, lowest first.",
+          "items": {
+            "$ref": "#/$defs/TransferLimit"
+          },
+          "type": "array"
+        },
+        "past_limits": {
+          "description": "Elements already past their limit before any transfer (where it\npushes them further), each at its worst, lowest FCITC first. Empty\nwhen `include_past_limits` puts them in `limits`.",
+          "items": {
+            "$ref": "#/$defs/TransferLimit"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/TransferSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "limits",
+        "past_limits",
+        "contingencies",
+        "factors"
+      ],
+      "type": "object"
+    },
+    "TransferSettings": {
+      "description": "A transfer limit study.",
+      "properties": {
+        "base_rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a"
+        },
+        "contingencies": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransferContingencies"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Outages to study; `None` studies the base case only."
+        },
+        "cutoff": {
+          "default": 0.05,
+          "description": "Elements whose distribution factor is below this (as a fraction,\n0.05 = 5%) in size don't limit the transfer.",
+          "format": "double",
+          "type": "number"
+        },
+        "include_past_limits": {
+          "default": false,
+          "description": "Let elements already past their limit before any transfer set the\nFCITC (negative). Off by default: they are listed apart in\n`past_limits`, and the FCITC is the transfer that first takes an\nelement within its limit past it.",
+          "type": "boolean"
+        },
+        "limit_pct": {
+          "default": 100.0,
+          "description": "Percent of the rating that counts as the limit.",
+          "format": "double",
+          "type": "number"
+        },
+        "lists": {
+          "default": null,
+          "description": "A lists file (`.stnl`). Its contingencies and contingency sets,\nwhen it has any, are the outages studied instead of\n`contingencies`; its flow and interface monitors, when it has any,\nare what is watched instead of `monitor`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_rows": {
+          "default": 200,
+          "description": "The most rows kept in each of the results' lists.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "monitor": {
+          "$ref": "#/$defs/MonitorSettings",
+          "default": {
+            "branches": true,
+            "elements": [],
+            "interfaces": [],
+            "kv_min": 0.0,
+            "subsystem": null
+          }
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "Rating after an outage, and in the base case (`base_rating`)."
+        },
+        "scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "generation"
+        },
+        "sink": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where it goes."
+        },
+        "source": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where the power comes from."
+        },
+        "transfer": {
+          "default": null,
+          "description": "The lists file's `transfer` record to run: its source, sink,\nscaling, cutoff, ratings and limit replace the ones above. The\nfile's only transfer when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TransferSummary": {
+      "properties": {
+        "base_rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "contingencies": {
+          "description": "Contingencies studied (the base case not counted), and those left\nout because they split the network.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cutoff": {
+          "format": "double",
+          "type": "number"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "fcitc_mw": {
+          "description": "The first change of total transfer capability from network limits,\nMW; `None` when no monitored element reaches the cutoff.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "generation_limit_mw": {
+          "description": "The most the source and sink can move: the smaller of their\navailable MW.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "islanding": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_pct": {
+          "format": "double",
+          "type": "number"
+        },
+        "limited_by": {
+          "description": "\"network\", \"generation\" or \"none\".",
+          "enum": [
+            "network",
+            "generation",
+            "none"
+          ],
+          "type": "string"
+        },
+        "limiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransferLimit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "monitored": {
+          "description": "Monitored branch rows and interfaces.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notes": {
+          "description": "Things worth knowing about the setup, in words.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "sink": {
+          "$ref": "#/$defs/Participation"
+        },
+        "source": {
+          "$ref": "#/$defs/Participation"
+        },
+        "transfer_limit_mw": {
+          "description": "The transfer limit: the smaller of the two above.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fcitc_mw",
+        "limiting",
+        "generation_limit_mw",
+        "transfer_limit_mw",
+        "limited_by",
+        "source",
+        "sink",
+        "scaling",
+        "cutoff",
+        "rating",
+        "base_rating",
+        "limit_pct",
+        "contingencies",
+        "islanding",
+        "monitored",
+        "elapsed_ms",
+        "cancelled",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "ViolationsExport": {
+      "description": "What [`ContingencyResults::write_violations_csv`] wrote.",
+      "properties": {
+        "outages": {
+          "description": "Outages with at least one line.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "description": "Lines written, one per violation (and one per outage whose AC solve\nfailed), not counting the header.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "outages"
       ],
       "type": "object"
     },
@@ -6396,6 +7425,18 @@
       },
       "takes_case": false
     },
+    "cancel_transfer_limits": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the transfer limit study in progress.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "case_records": {
       "action": false,
       "args": {
@@ -6865,6 +7906,36 @@
       },
       "takes_case": false
     },
+    "export_contingency_violations": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Write every violation of the last run to a CSV file, one line each:\nbranch overloads, bus voltages and interfaces, and a line for each\noutage whose AC solve failed.",
+      "result": {
+        "$ref": "#/$defs/ViolationsExport"
+      },
+      "takes_case": true
+    },
     "export_matpower": {
       "action": true,
       "args": {
@@ -6994,6 +8065,29 @@
       "doc": "The commands this version answers, and the API version.",
       "result": {
         "$ref": "#/$defs/CommandList"
+      },
+      "takes_case": false
+    },
+    "lists_subsystems": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "The subsystem records of a lists file (`.stnl`), as written.",
+      "result": {
+        "items": {
+          "$ref": "#/$defs/ListedSubsystem"
+        },
+        "type": "array"
       },
       "takes_case": false
     },
@@ -7597,6 +8691,59 @@
       },
       "takes_case": false
     },
+    "run_file_text": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "type": "object"
+      },
+      "doc": "Commands as run file text, for copying from the app's history.\nPaths stay as given and settings at their defaults are left out.",
+      "result": {
+        "type": "string"
+      },
+      "takes_case": false
+    },
+    "run_transfer_limits": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/TransferSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Transfer limits (DFAX and FCITC): how much power can move from the\nsource subsystem to the sink before a monitored branch or interface\nreaches its limit, in the base case and after each contingency.\nLinear factors on top of the AC solve. `cancel_transfer_limits` stops\nthe study and `transfer_progress` follows it.",
+      "result": {
+        "$ref": "#/$defs/TransferResults"
+      },
+      "takes_case": true
+    },
     "sample_cases": {
       "action": false,
       "args": {
@@ -7663,7 +8810,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
+      "doc": "Write commands as a run file, such as ones from the app's history. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
       "result": {
         "type": "null"
       },
@@ -7997,11 +9144,33 @@
       },
       "takes_case": true
     },
+    "transfer_progress": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the transfer limit study in progress has got.",
+      "result": {
+        "$ref": "#/$defs/Progress"
+      },
+      "takes_case": false
+    },
     "trip_and_compare": {
       "action": true,
       "args": {
         "additionalProperties": false,
         "properties": {
+          "baseRating": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "case": {
             "anyOf": [
               {
@@ -8018,6 +9187,16 @@
           "limitPct": {
             "format": "double",
             "type": "number"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Rating"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -8026,7 +9205,7 @@
         ],
         "type": "object"
       },
-      "doc": "Take one element out of the last AC solve and solve again.",
+      "doc": "Take one element out of the last AC solve and solve again. Loadings\nare measured against `rating` after the trip and `base_rating`\nbefore it (both rate A when left out).",
       "result": {
         "$ref": "#/$defs/ContingencyDetail"
       },

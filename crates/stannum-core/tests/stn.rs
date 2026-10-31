@@ -116,6 +116,7 @@ fn raw_cases_round_trip() {
         "five_bus_substations.raw",
         "five_bus_phase_shifter.raw",
         "five_bus_reactive_tap.raw",
+        "five_bus_tab_mag.raw",
         "raw_export/five_bus_everything.raw",
     ] {
         round_trip(&core_fixture(name), &dir);

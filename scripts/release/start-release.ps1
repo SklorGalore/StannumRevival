@@ -106,7 +106,7 @@ try {
     $body = @"
 Release v$Version, cut from ``$base``.
 
-Merge with **Create a merge commit** (not squash), then run
+Merge with **Squash and merge**, then run
 ``pwsh scripts/release/finish-release.ps1 -Version $Version`` to tag it and
 merge ``$MainBranch`` back into ``$DevelopBranch``.
 

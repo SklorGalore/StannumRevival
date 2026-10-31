@@ -11,6 +11,7 @@ import type { ContingencySummary, SolveReport } from "../lib/analysis/types";
 import { paletteCommands } from "../shell/CommandPalette";
 import { centreBus } from "../ui/DrawAround";
 import { FIRST_PAGE, useContingencies } from "./contingencyStore";
+import { useTransfers } from "./transferStore";
 import { useLog } from "./logStore";
 import { useStudy } from "./studyStore";
 import { useTheme } from "./themeStore";
@@ -150,6 +151,7 @@ export async function catchUp(command: string, args: Record<string, unknown>, an
       module: s.module === "power" && summary && !summary.power.available && summary.topology.available ? "diagram" : s.module,
     }));
     useContingencies.getState().clear();
+    useTransfers.getState().clear();
     // The new case version cleared the study; a run file may have left edits.
     if (summary?.power.available) await adoptStudyEdits();
     return;

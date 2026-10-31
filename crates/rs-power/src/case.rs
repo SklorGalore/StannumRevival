@@ -153,6 +153,104 @@ pub struct Branch {
     pub angmax: f64,
     /// Columns after ANGMAX, retained without updating stored flow results.
     pub extra: Vec<f64>,
+    /// Magnetizing conductance in per unit on the system base, connected
+    /// from the from bus to ground on the bus side of the tap (PSS/E MAG1,
+    /// modelled on winding one). Not a MATPOWER column; zero for lines.
+    pub mag_g: f64,
+    /// Magnetizing susceptance in per unit on the system base (PSS/E MAG2,
+    /// negative for an inductive exciting current). Not a MATPOWER column.
+    pub mag_b: f64,
+    /// The impedance correction table (PSS/E TAB) that scales this
+    /// winding's impedance with its ratio or angle. When set, `r` and `x`
+    /// are the corrected values; [`Branch::correct_impedance`] works them
+    /// out again after `tap` or `shift` changes. Not a MATPOWER column.
+    pub correction: Option<Box<ImpedanceCorrection>>,
+}
+
+/// A transformer winding's impedance correction table (PSS/E impedance
+/// correction data), with the winding's nominal impedance it scales.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImpedanceCorrection {
+    /// The table's number in the source case.
+    pub table: u32,
+    /// `(T, F)` points in strictly ascending `T`: the winding's ratio in per
+    /// unit of its bus base voltage (or, with [`Self::by_angle`], its phase
+    /// shift in degrees) and the complex factor that multiplies the nominal
+    /// impedance. Revisions before 34 give real factors.
+    pub points: Vec<(f64, f64, f64)>,
+    /// Whether `T` is the phase shift angle rather than the ratio.
+    pub by_angle: bool,
+    /// The winding's ratio is `branch.tap / tap_per_ratio` (a two-winding
+    /// transformer's tap is the ratio of its winding ratios).
+    pub tap_per_ratio: f64,
+    /// Nominal series resistance and reactance, per unit on the system base.
+    pub r: f64,
+    pub x: f64,
+}
+
+impl ImpedanceCorrection {
+    /// The factor at `t`, linear between points and held at the end
+    /// points' factors beyond them.
+    pub fn factor(&self, t: f64) -> (f64, f64) {
+        let p = &self.points;
+        match p.len() {
+            0 => return (1.0, 0.0),
+            1 => return (p[0].1, p[0].2),
+            _ => {}
+        }
+        if t <= p[0].0 {
+            return (p[0].1, p[0].2);
+        }
+        for w in p.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            if t <= b.0 {
+                let s = (t - a.0) / (b.0 - a.0);
+                return (a.1 + s * (b.1 - a.1), a.2 + s * (b.2 - a.2));
+            }
+        }
+        let last = p[p.len() - 1];
+        (last.1, last.2)
+    }
+}
+
+impl Branch {
+    /// Work out `r` and `x` again from the impedance correction table at
+    /// the branch's present tap or angle. Does nothing without a table.
+    pub fn correct_impedance(&mut self) {
+        let Some(c) = &self.correction else { return };
+        let t = if c.by_angle {
+            self.shift
+        } else {
+            let tap = if self.tap == 0.0 { 1.0 } else { self.tap };
+            tap / c.tap_per_ratio
+        };
+        let (fr, fi) = c.factor(t);
+        // (r + jx)(fr + j fi)
+        self.r = c.r * fr - c.x * fi;
+        self.x = c.r * fi + c.x * fr;
+    }
+
+    /// Set the corrected impedance directly (an edit of `r` or `x`): the
+    /// nominal impedance becomes what the present factor turns into it.
+    pub fn set_impedance(&mut self, r: f64, x: f64) {
+        (self.r, self.x) = (r, x);
+        let tap = self.tap;
+        let shift = self.shift;
+        if let Some(c) = &mut self.correction {
+            let t = if c.by_angle {
+                shift
+            } else {
+                (if tap == 0.0 { 1.0 } else { tap }) / c.tap_per_ratio
+            };
+            let (fr, fi) = c.factor(t);
+            let d = fr * fr + fi * fi;
+            if d > 0.0 {
+                // (r + jx) / (fr + j fi)
+                c.r = (r * fr + x * fi) / d;
+                c.x = (x * fr - r * fi) / d;
+            }
+        }
+    }
 }
 
 /// An editable case. Parsing preserves data; [`crate::solve`] validates the network.

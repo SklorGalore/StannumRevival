@@ -1,12 +1,20 @@
 ---
 title: Study file format
-description: "The .stannum file: a JSON record of a piece of work on one case, without the case itself."
+description: "The .stannum file from Stannum 0.3 to 1.0: still opened, no longer written."
 ---
+
+:::note[Retired]
+Stannum no longer writes study files. **Save as run file** keeps the case,
+its side files, the study edits and the solve settings as a
+[run file](/StannumRevival/reference/run-file/), and the drawing has its own
+[diagram file](/StannumRevival/reference/diagram-file/). Study files saved by
+earlier versions still open, as described below.
+:::
 
 A study file (`.stannum`) keeps a piece of work on one case: the study edits,
 the saved solves, the settings, the one-line drawing and which modules were
-showing. [Studies](/StannumRevival/guide/studies/) explains how to save and
-open one. The case itself isn't copied in; the study names it by path and
+showing. [Studies](/StannumRevival/guide/studies/#older-study-files) explains
+how one opens. The case itself isn't copied in; the study names it by path and
 fingerprint.
 
 The file is UTF-8 JSON, written by the app. It isn't meant to be written by
@@ -60,7 +68,7 @@ Shortened: the saved solve's report and the drawing are cut down.
 | `edits` | The study edits, in the order they apply; see [Edits](#edits). |
 | `solves` | Saved solves: each has a `name`, the edits it used (`entries`, as in `edits`) and the solve `report` as the core returned it. |
 | `compare` | Which two solves Compare shows: `a` and `b` are each a position in `solves` (from 0) or `"current"`. `null` when nothing is being compared. |
-| `contingencies` | The contingency settings: `branches` and `generators` (true or false), `method` (`"screen"` or `"ac"`), `acCount` and `limitPct`. |
+| `contingencies` | The contingency settings: `branches` and `generators` (true or false), `method` (`"screen"` or `"ac"`), `acCount` and `limitPct`, and from 1.1 on, optionally, `rating`, `baseRating`, `buses`, `pairs`, `skipZeroImpedance`, `zeroImpedancePu`, `source`, `listsPath`, `monitorFromLists` and `monitorsPath`. |
 | `diagram` | The one-line drawing, in the same shape as a [diagram file](/StannumRevival/reference/diagram-file/), or `null`. |
 | `view` | The modules showing: `module` and `split` (one of `"diagram"`, `"power"`, `"records"`, `"diff"`; `split` is `null` with one pane) and `splitRatio` (0 to 1). |
 
@@ -108,12 +116,11 @@ needs is taken away. Adding a field that older versions can do without (as
   it reads them.
 - A study with a higher `version` than the Stannum reading it is refused with
   "This study was saved by a newer Stannum", not opened partly.
-- Fields Stannum doesn't know are ignored, and aren't kept when the study is
-  saved again.
+- Fields Stannum doesn't know are ignored.
 
 | `version` | Written by | Changes |
 | --- | --- | --- |
-| 1 | 0.3.0 and later | The first version. 0.4 added `coordinates`. |
+| 1 | 0.3.0 to 1.0 | The first and last version. 0.4 added `coordinates`; 1.1 opens it without writing it. |
 
 Throughout 1.x, Stannum keeps opening every study a 1.x release wrote. Studies
 saved by 0.3.0 and 0.4.1 are kept in the repository under

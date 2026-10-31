@@ -133,7 +133,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "run_contingencies",
         title: "Run contingencies",
-        description: "Run N-1 contingencies (every branch and generator, or the `elements` given), or with `planning` the NERC TPL-001 planning events (P0, P1.1-P1.5, P2.1, P7.2). By default each outage is screened linearly and the worst `ac_count` get an AC solve; method=ac solves every one. Answers the run's summary and worst outage; query_contingencies pages the ranked results. Long runs report progress and stop when the call is cancelled.",
+        description: "Run N-1 contingencies (every branch and generator, or the `elements` given; bus:N takes out a bus, ids joined by & go out together), bus outages with `buses`, N-2 with `pairs` (every pair of the chosen branches and generators, at most 250,000), the contingencies of a `.stnl` lists file with `lists` (path; skipped equipment comes back in `notes`), checking only what a `.stnl` file's monitor records name (branch flows and bus voltages at their own limits, and interfaces) with `monitors` (path), or with `planning` the NERC TPL-001 planning events (P0, P1.1-P1.5, P2.1, P7.2). By default each outage is screened linearly and the worst `ac_count` get an AC solve; method=ac solves every one. Answers the run's summary and worst outage; query_contingencies pages the ranked results. Long runs report progress and stop when the call is cancelled.",
         input: contingencies_input,
         read_only: false,
         destructive: false,
@@ -179,6 +179,17 @@ const TOOLS: &[Tool] = &[
         destructive: false,
         app: false,
         run: trip_and_compare,
+    },
+    // Transfer limits
+    Tool {
+        name: "transfer_limits",
+        title: "Transfer limits (DFAX, FCITC)",
+        description: "How many MW can move from a `source` subsystem to a `sink` (areas, zones, owners, buses, kV) before a monitored branch or interface reaches its rating, in the base case and after each contingency (`contingencies: {}` for every branch outage): the first change of total transfer capability (FCITC), from linear PTDFs and OTDFs on the AC solve. Solve with the AC model first. Answers the summary (FCITC, the limiting element and contingency, generation limit, notes) and the lowest limits, elements already past their limit, each contingency's worst limit and the largest PTDFs, `max_rows` each (default 20).",
+        input: transfer_input,
+        read_only: false,
+        destructive: false,
+        app: false,
+        run: transfer_limits,
     },
     // Topology
     Tool {
@@ -565,6 +576,13 @@ fn contingencies_input() -> Value {
     schema
 }
 
+fn transfer_input() -> Value {
+    let mut schema = core_schema("TransferSettings", false);
+    schema["properties"]["max_rows"]["description"] =
+        json!("Most rows in each list (default 20 here).");
+    schema
+}
+
 fn planning_input() -> Value {
     core_schema("PlanningSettings", true)
 }
@@ -587,7 +605,9 @@ fn trip_input() -> Value {
     object(
         json!({
             "element": { "type": "string", "description": "Branch or generator id, such as line:4:5:1." },
-            "limit_pct": { "type": "number", "description": "Loading, percent of rate A, above which a branch is overloaded (default 100)." },
+            "limit_pct": { "type": "number", "description": "Loading, percent of the rating, above which a branch is overloaded (default 100)." },
+            "rating": { "type": "string", "enum": ["a", "b", "c"], "description": "The rating loadings are measured against after the trip (default a: rate A)." },
+            "base_rating": { "type": "string", "enum": ["a", "b", "c"], "description": "The rating for loadings before the trip (default a: rate A)." },
             "limit": { "type": "integer", "minimum": 1, "maximum": MAX_ROWS, "description": "Most changed branches and buses to list (default 20)." },
         }),
         &["element"],
@@ -1222,6 +1242,69 @@ fn run_contingencies(c: &Call, args: &Value) -> Answer {
     Ok(out)
 }
 
+fn transfer_limits(c: &Call, args: &Value) -> Answer {
+    let mut settings = args.clone();
+    if settings.get("max_rows").is_none() {
+        settings["max_rows"] = json!(20);
+    }
+    let stop = AtomicBool::new(false);
+    let r = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = usize::MAX;
+            while !stop.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(p) = c.backend.side("transfer_progress") else {
+                    continue;
+                };
+                let done = p["done"].as_u64().unwrap_or(0) as usize;
+                if p["phase"] == "idle" || done == last {
+                    continue;
+                }
+                let total = p["total"].as_u64().unwrap_or(0);
+                (c.progress)(
+                    done as f64,
+                    Some(total as f64),
+                    &format!("cases studied: {done} of {total}"),
+                );
+                last = done;
+            }
+        });
+        let _follow = Follow { stop: &stop };
+        c.backend
+            .call("run_transfer_limits", json!({ "settings": settings }))
+    })?;
+    let rows = |key: &str, lead: &[&str]| {
+        let mut rows = Rows::from_records(r[key].as_array().map(Vec::as_slice).unwrap_or(&[]));
+        rows.lead(lead);
+        rows.to_json()
+    };
+    let limit_cols = [
+        "monitored",
+        "contingency",
+        "fcitc_mw",
+        "flow_mw",
+        "limit_mw",
+        "factor",
+    ];
+    let mut summary = r["summary"].clone();
+    if let Some(o) = summary.as_object_mut() {
+        o.remove("elapsed_ms");
+    }
+    if c.cancelled.load(Ordering::SeqCst) || summary["cancelled"].as_bool() == Some(true) {
+        summary["note"] = json!("Cancelled: these are the cases studied before it stopped.");
+    }
+    Ok(json!({
+        "summary": summary,
+        "limits": rows("limits", &limit_cols),
+        "past_limits": rows("past_limits", &limit_cols),
+        "contingencies": rows("contingencies", &["contingency", "fcitc_mw", "monitored", "factor"]),
+        "factors": rows("factors", &["monitored", "ptdf", "flow_mw", "limit_mw"]),
+    }))
+}
+
 fn planning_counts(c: &Call, args: &Value) -> Answer {
     let counts = c
         .backend
@@ -1296,6 +1379,8 @@ fn trip_and_compare(c: &Call, args: &Value) -> Answer {
         json!({
             "element": text(args, "element")?,
             "limitPct": args["limit_pct"].as_f64().unwrap_or(100.0),
+            "rating": args["rating"].as_str().unwrap_or("a"),
+            "baseRating": args["base_rating"].as_str().unwrap_or("a"),
         }),
     )?;
     Ok(detail_answer(&d, count(args, "limit", 20) as usize))

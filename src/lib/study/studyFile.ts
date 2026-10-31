@@ -38,7 +38,27 @@ export interface StudyFile {
   edits: { edit: StudyEdit; was?: string }[];
   solves: { name: string; entries: { edit: StudyEdit; was?: string }[]; report: SolveReport }[];
   compare: { a: StudyCompareSide; b: StudyCompareSide } | null;
-  contingencies: { branches: boolean; generators: boolean; method: "screen" | "ac"; acCount: number; limitPct: number };
+  contingencies: {
+    branches: boolean;
+    generators: boolean;
+    method: "screen" | "ac";
+    acCount: number;
+    limitPct: number;
+    /** Missing from studies saved before 1.1, which used rate A. */
+    rating?: "a" | "b" | "c";
+    /** Bus outages and N-2; missing from studies saved before 1.1. */
+    buses?: boolean;
+    pairs?: boolean;
+    skipZeroImpedance?: boolean;
+    /** Where the outages come from, and the lists file; studies before 1.1 lack them. */
+    source?: "n1" | "planning" | "lists";
+    listsPath?: string | null;
+    /** Monitors from a lists file; studies before 1.1 lack them. */
+    monitorFromLists?: boolean;
+    monitorsPath?: string | null;
+    zeroImpedancePu?: number;
+    baseRating?: "a" | "b" | "c";
+  };
   /** The one-line drawing, when there is one. */
   diagram: SLDDiagram | null;
   view: { module: ModuleId; split: ModuleId | null; splitRatio: number };

@@ -49,6 +49,8 @@ import { StudyPanel } from "./StudyPanel";
 import { WarningsTab } from "./WarningsTab";
 import { ContingencyTab } from "./ContingencyTab";
 import { useContingencies } from "../../store/contingencyStore";
+import { TransferTab } from "./TransferTab";
+import { useTransfers } from "../../store/transferStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
@@ -70,11 +72,12 @@ type Tab =
   | "vsc"
   | "sensitivities"
   | "contingencies"
+  | "transfers"
   | "study"
   | "warnings";
 
 /** Tabs with nothing to solve: the solve settings fold to their narrow rail there. */
-const QUIET_TABS = new Set<Tab>(["contingencies", "study", "vsc", "warnings"]);
+const QUIET_TABS = new Set<Tab>(["contingencies", "transfers", "study", "vsc", "warnings"]);
 
 
 const busColumns: Column<BusRow>[] = [
@@ -936,7 +939,7 @@ function Overview({
             detail={flowControlsDetail(report)}
           />
         )}
-        <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
+        <Metric label="Final residual" value={`${fixed(report.residual_mva, 3)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />
         <Metric label="Load" value={`${fixed(report.total_load_mw, 1)} MW`} />
@@ -1318,6 +1321,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setPicked(null);
     setJump({ n: 0, problems: false });
     useContingencies.getState().clear();
+    useTransfers.getState().clear();
   }, [caseVersion]);
 
   const power = summary?.power;
@@ -1326,15 +1330,19 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [dcGrids, setDcGrids] = useState<DcGridsSummary | null>(summary?.dc_grids ?? null);
   useEffect(() => setDcGrids(summary?.dc_grids ?? null), [summary]);
 
-  async function run<T>(kind: string, work: () => Promise<T>, done: (v: T) => void) {
+  /** Runs a backend call; false when it failed for the case still open. */
+  async function run<T>(kind: string, work: () => Promise<T>, done: (v: T) => void): Promise<boolean> {
     const version = useWorkspace.getState().caseVersion;
     setBusy(kind);
     setError(null);
     try {
       const value = await work();
       if (version === useWorkspace.getState().caseVersion) done(value);
+      return true;
     } catch (e) {
-      if (version === useWorkspace.getState().caseVersion) setError(toStannumError(e));
+      if (version !== useWorkspace.getState().caseVersion) return true;
+      setError(toStannumError(e));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -1381,6 +1389,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
+    useTransfers.getState().clear();
     // A script that changed the study solves when it wants to.
     if (latest && power?.available && !useStudy.getState().fromScript) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1402,7 +1411,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("study");
   }, [studyShowRequest]);
 
-  // "Contingencies", "Show import warnings" and "Attach VSC DC grids" from the toolbar, menus and Ctrl+K.
+  // "Contingencies", "Transfer limits", "Show import warnings" and "Attach VSC DC grids" from the toolbar, menus and Ctrl+K.
   const powerTabRequest = useWorkspace((s) => s.powerTabRequest);
   useEffect(() => {
     if (powerTabRequest) setTab(powerTabRequest.tab);
@@ -1427,11 +1436,17 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     lastSolveRequest.current = solveRequest;
     if (!power?.available || busy) return;
     setTab("overview");
-    void solve();
+    // The solve runs where the user is; only a failure (an error, or no
+    // convergence) brings Power flow into view, since it explains it here.
+    void solve().then((ok) => {
+      const w = useWorkspace.getState();
+      if (!ok || w.solveReport?.converged === false) w.setModule("power");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solveRequest]);
 
   const contingencyTotal = useContingencies((s) => s.summary?.total);
+  const transferCount = useTransfers((s) => s.results?.limits.length);
   const contingencyChoice = useContingencies((s) => s.choice);
   // Bus filters narrow the outages to what touches the matching buses.
   const contingencyScope = useMemo(() => {
@@ -1439,9 +1454,10 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     const elements = [
       ...(contingencyChoice.branches ? filtered.branches.filter((b) => b.online).map((b) => b.element) : []),
       ...(contingencyChoice.generators ? filtered.generators.filter((g) => g.online).map((g) => g.element) : []),
+      ...(contingencyChoice.buses ? [...passing].map(busElement) : []),
     ];
     return { elements: [...new Set(elements)], buses: passing.size };
-  }, [filtered, passing, contingencyChoice.branches, contingencyChoice.generators]);
+  }, [filtered, passing, contingencyChoice.branches, contingencyChoice.generators, contingencyChoice.buses]);
 
   const tabs = useMemo(
     () => [
@@ -1466,11 +1482,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(sensitivity ? [{ id: "sensitivities" as const, label: "Sensitivities", disabled: false }] : []),
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
+      { id: "transfers" as const, label: "Transfers", count: transferCount, disabled: !latest },
       ...(tab === "warnings" && warnings.length
         ? [{ id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: false }]
         : []),
     ],
-    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, tab]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, transferCount, tab]
   );
 
   if (!summary) {
@@ -1724,6 +1741,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                 />
               )}
+              {tab === "transfers" && <TransferTab report={latest} onPick={pick} />}
               {tab === "study" && <StudyPanel onShow={pick} report={latest} stale={stale} />}
               {tab === "warnings" && (
                 <WarningsTab

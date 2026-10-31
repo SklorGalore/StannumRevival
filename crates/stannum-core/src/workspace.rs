@@ -7,7 +7,7 @@
 
 use crate::contingency::{
     ContingencyDetail, ContingencyJob, ContingencyResults, ContingencyRow, ContingencySettings,
-    ContingencySummary,
+    ContingencySummary, Rating,
 };
 use crate::dc_grids::{self, DcGridsSummary, LoadedDcGrids};
 use crate::diff::{self, Comparison};
@@ -689,6 +689,25 @@ impl OpenCase {
         Ok(job)
     }
 
+    /// A transfer limit study of the case from its AC solve, to run
+    /// without the workspace.
+    pub fn transfer_job(
+        &self,
+        settings: crate::transfer::TransferSettings,
+    ) -> Result<crate::transfer::TransferJob, Error> {
+        let power = self.power_case()?;
+        let base = &resumable(&self.solved)
+            .ok_or_else(|| {
+                Error::not_ready(
+                    "Solve the case with the AC model first: transfer limits start from that solution.",
+                )
+            })?
+            .0;
+        let job = crate::transfer::TransferJob::new(power, base, settings)?;
+        log::info!("Studying a transfer under {} contingencies", job.len());
+        Ok(job)
+    }
+
     /// How many planning events each category asked for gives on the case
     /// as the study has it, before running them.
     pub fn planning_event_counts(
@@ -738,6 +757,28 @@ impl OpenCase {
             .ok_or_else(|| Error::not_ready("Run contingencies first."))
     }
 
+    /// Write every violation of the last contingency run to a CSV file.
+    pub fn export_contingency_violations(
+        &self,
+        path: &Path,
+    ) -> Result<crate::contingency::ViolationsExport, Error> {
+        let results = self
+            .contingencies
+            .as_ref()
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let file = std::fs::File::create(path)
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        let written = results
+            .write_violations_csv(&mut std::io::BufWriter::new(file))
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        log::info!(
+            "Exported {} contingency violations to {}",
+            written.rows,
+            path.display()
+        );
+        Ok(written)
+    }
+
     pub fn contingency_summary(&self) -> Option<ContingencySummary> {
         self.contingencies.as_ref().map(|c| c.summary.clone())
     }
@@ -751,14 +792,16 @@ impl OpenCase {
     }
 
     /// Take one branch or generator out of the last AC solve and solve again
-    /// in AC with the same settings: "Trip and compare". The contingency
+    /// in AC with the same settings: "Trip and compare". `ratings` are the
+    /// ratings after the trip and before it. The contingency
     /// run in hand, if any, is kept.
     pub fn trip_and_compare(
         &mut self,
         element: &str,
         limit_pct: f64,
+        ratings: (Rating, Rating),
     ) -> Result<ContingencyDetail, Error> {
-        let done = self.trip_job(element, limit_pct)?.run()?;
+        let done = self.trip_job(element, limit_pct, ratings)?.run()?;
         self.finish_trip(done)
     }
 
@@ -772,7 +815,12 @@ impl OpenCase {
 
     /// [`Self::trip_and_compare`]'s solve, to run with [`TripJob::run`]
     /// without the workspace.
-    pub fn trip_job(&self, element: &str, limit_pct: f64) -> Result<TripJob, Error> {
+    pub fn trip_job(
+        &self,
+        element: &str,
+        limit_pct: f64,
+        ratings: (Rating, Rating),
+    ) -> Result<TripJob, Error> {
         let power = self.power_case()?;
         let (base, solve) = &**resumable(&self.solved).ok_or_else(|| {
             Error::not_ready(
@@ -783,11 +831,17 @@ impl OpenCase {
             elements: Some(vec![element.to_string()]),
             branches: true,
             generators: true,
+            buses: false,
+            pairs: false,
+            skip_zero_impedance: false,
+            zero_impedance_pu: 0.0001,
             method: crate::contingency::Method::Ac,
             ac_count: 1,
             limit_pct,
+            rating: ratings.0,
+            base_rating: ratings.1,
             solve: solve.clone(),
-            planning: None,
+            ..ContingencySettings::default()
         };
         let job = ContingencyJob::new(power, base, settings).map_err(|e| {
             if e.starts_with("Nothing to take out") {

@@ -222,6 +222,8 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         .map(|t| (t.branch, t))
         .collect();
     let mut circuits: HashSet<(u32, u32, String)> = HashSet::new();
+    // Impedance correction tables as written: points, then their number.
+    let mut tables: Vec<Vec<(f64, f64, f64)>> = Vec::new();
     let mut three_winding = 0;
     let mut charging_ids: HashMap<u32, u32> = HashMap::new();
     for (k, br) in case.branches.iter().enumerate() {
@@ -229,6 +231,9 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         // Older RAW revisions give lines an off-nominal ratio too.
         let transformer = (br.tap != 0.0 && br.tap != 1.0)
             || br.shift != 0.0
+            || br.mag_g != 0.0
+            || br.mag_b != 0.0
+            || br.correction.is_some()
             || element.is_some_and(|e| e.element.starts_with("transformer:"));
         if element.is_some_and(|e| e.winding > 0) {
             three_winding += 1;
@@ -301,8 +306,8 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             ("CW", int(1)),
             ("CZ", int(1)),
             ("CM", int(1)),
-            ("MAG1", num(0.0)),
-            ("MAG2", num(0.0)),
+            ("MAG1", num(br.mag_g)),
+            ("MAG2", num(br.mag_b)),
             ("NMETR", int(2)),
             ("NAME", text("")),
             ("STAT", int(i64::from(br.online))),
@@ -310,8 +315,8 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
         owned(&mut fields);
         fields.extend([
             ("VECGRP", text("")),
-            ("R1-2", num(br.r)),
-            ("X1-2", num(br.x)),
+            ("R1-2", num(br.correction.as_ref().map_or(br.r, |c| c.r))),
+            ("X1-2", num(br.correction.as_ref().map_or(br.x, |c| c.x))),
             ("SBASE1-2", num(case.base_mva)),
             ("WINDV1", num(ratio)),
             ("NOMV1", num(0.0)),
@@ -374,6 +379,26 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
                 },
             },
         };
+        // The winding ratio written is the whole tap (WINDV2 is 1), so a
+        // table of ratios is scaled to it.
+        let table = match &br.correction {
+            Some(c) => {
+                let points: Vec<_> = c
+                    .points
+                    .iter()
+                    .map(|&(t, re, im)| {
+                        let t = if c.by_angle { t } else { t * c.tap_per_ratio };
+                        (t, re, im)
+                    })
+                    .collect();
+                let at = tables.iter().position(|p| *p == points).unwrap_or_else(|| {
+                    tables.push(points);
+                    tables.len() - 1
+                });
+                at as i64 + 1
+            }
+            None => 0,
+        };
         let cnxa = shifters
             .get(&k)
             .and_then(|ps| ps.asymmetric)
@@ -387,7 +412,7 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             ("VMA1", num(vma)),
             ("VMI1", num(vmi)),
             ("NTP1", int(ntp)),
-            ("TAB1", int(0)),
+            ("TAB1", int(table)),
             ("CR1", num(0.0)),
             ("CX1", num(0.0)),
             ("CNXA1", num(cnxa)),
@@ -395,6 +420,27 @@ pub(crate) fn doc(case_name: &str, power: &PowerCase, notes: &mut Notes) -> Doc 
             ("NOMV2", num(0.0)),
         ]);
         push("TRANSFORMER", rec(fields));
+    }
+    for (n, points) in tables.iter().enumerate() {
+        // Revision 35: (T, Re F, Im F) points, six to a line, ended by 0, 0, 0.
+        let mut triples: Vec<String> = points
+            .iter()
+            .map(|(t, re, im)| format!("{t},{re},{im}"))
+            .collect();
+        triples.push("0.0,0.0,0.0".into());
+        let lines = triples
+            .chunks(6)
+            .enumerate()
+            .map(|(i, chunk)| {
+                let body = chunk.join(",");
+                if i == 0 {
+                    format!("{},{body}", n + 1)
+                } else {
+                    body
+                }
+            })
+            .collect();
+        push("IMPEDANCE CORRECTION", Item::Lines(lines));
     }
     if three_winding > 0 {
         notes.add(format!(

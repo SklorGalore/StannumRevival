@@ -13,12 +13,17 @@ import type {
   ContingencySummary,
   SolveSettings,
 } from "../lib/analysis/types";
+import type { Rating } from "../lib/analysis/ratings";
+import { monitorsText, outagesText, type SetupSubsystem } from "../lib/analysis/stnl";
+
+/** AC solve options the setup can set apart from the Power flow tab's. */
+export type SolveOverrides = Partial<Pick<SolveSettings, "enforce_q_limits" | "adjust_transformer_taps" | "switch_shunts">>;
 
 /** Rows kept here: the worst outages, to open the first. The table reads pages from the core. */
 export const FIRST_PAGE = 100;
 
 /** Every branch and generator on its own, or the NERC TPL-001 planning events. */
-export type ContingencySource = "n1" | "planning";
+export type ContingencySource = "n1" | "planning" | "lists";
 
 /** The planning event categories the core generates, in its order. */
 export const PLANNING_CATEGORIES = ["P0", "P1.1", "P1.2", "P1.3", "P1.4", "P1.5", "P2.1", "P7.2"];
@@ -27,23 +32,70 @@ export interface ContingencyChoice {
   source: ContingencySource;
   branches: boolean;
   generators: boolean;
+  /** Take out each bus with everything connected to it. */
+  buses: boolean;
+  /** N-2: the chosen branches and generators two at a time. */
+  pairs: boolean;
+  /** Leave out lines with no resistance and |X| at or below the threshold (PSS/E THRSHZ), p.u. */
+  skipZeroImpedance: boolean;
+  zeroImpedancePu: number;
+  /** The lists file (.stnl) whose contingencies run, for source "lists". */
+  listsPath: string | null;
+  /** Check only what a lists file's monitor records name, and its file. */
+  monitorFromLists: boolean;
+  monitorsPath: string | null;
   /** Planning events: the categories to run, and the lowest voltage. */
   categories: string[];
   kvMin: number;
   method: ContingencyMethod;
   acCount: number;
   limitPct: number;
+  /** Points an overload already there before the outage must gain to be reported. */
+  worseByPct: number;
+  /** Per unit a voltage problem already there must worsen by to be reported. */
+  worseByPu: number;
+  /** Report every problem after the outage, also those already there before it. */
+  reportExisting: boolean;
+  /** The rating loadings are measured against after an outage, and before. */
+  rating: Rating;
+  baseRating: Rating;
+  /** Subsystems built in the setup; saved to and read from .stnl files. */
+  subsystems: SetupSubsystem[];
+  /** N-1/N-2 outages only within this subsystem (by id); the whole case when null. */
+  outageSubsystem: string | null;
+  /** Check only this subsystem's branches (and voltages); every branch and bus when null. */
+  monitorSubsystem: string | null;
+  monitorVoltages: boolean;
+  /** AC solve options set apart from the Power flow tab's; empty to follow it. */
+  solveOverrides: SolveOverrides;
 }
 
 export const DEFAULT_CHOICE: ContingencyChoice = {
   source: "n1",
   branches: true,
   generators: true,
+  buses: false,
+  pairs: false,
+  skipZeroImpedance: false,
+  zeroImpedancePu: 0.0001,
+  listsPath: null,
+  monitorFromLists: false,
+  monitorsPath: null,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "screen",
   acCount: 50,
   limitPct: 100,
+  worseByPct: 1,
+  worseByPu: 0.001,
+  reportExisting: false,
+  rating: "a",
+  baseRating: "a",
+  subsystems: [],
+  outageSubsystem: null,
+  monitorSubsystem: null,
+  monitorVoltages: true,
+  solveOverrides: {},
 };
 
 interface ContingencyState {
@@ -125,14 +177,34 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
     }, 250);
     try {
       const planning = c.source === "planning";
+      const lists = c.source === "lists" ? c.listsPath : null;
+      const known = (id: string | null) => (id && c.subsystems.some((x) => x.id === id) ? id : null);
+      // Outages within a subsystem and subsystem monitors run as lists text.
+      const inSubsystem = c.source === "n1" ? known(c.outageSubsystem) : null;
+      const watched = known(c.monitorSubsystem);
       const summary = await api.runContingencies({
-        elements: planning ? null : elements,
+        elements: planning || lists || inSubsystem ? null : elements,
+        lists,
+        lists_text: inSubsystem
+          ? outagesText(c.subsystems, { subsystem: inSubsystem, branches: c.branches, generators: c.generators, buses: c.buses, pairs: c.pairs })
+          : null,
+        monitors: c.monitorFromLists ? c.monitorsPath : null,
+        monitors_text: watched && !c.monitorFromLists ? monitorsText(c.subsystems, watched, c.limitPct, c.monitorVoltages) : null,
         branches: c.branches,
         generators: c.generators,
+        buses: !planning && c.buses,
+        pairs: !planning && c.pairs,
+        skip_zero_impedance: c.skipZeroImpedance,
+        zero_impedance_pu: c.zeroImpedancePu,
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,
-        solve: { ...solve, model: "ac" },
+        worse_by_pct: c.worseByPct,
+        worse_by_pu: c.worseByPu,
+        report_existing: c.reportExisting,
+        rating: c.rating,
+        base_rating: c.baseRating,
+        solve: { ...solve, ...c.solveOverrides, model: "ac" },
         planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
       });
       const rows = await api.contingencyRows(0, FIRST_PAGE);
@@ -170,7 +242,7 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
   async trip(element) {
     set({ tripping: element });
     try {
-      const detail = await api.tripAndCompare(element, get().choice.limitPct);
+      const detail = await api.tripAndCompare(element, get().choice.limitPct, get().choice.rating, get().choice.baseRating);
       // Shown on its own, not as a row of the last run.
       set({ detail, open: null, onDiagram: true });
       followShown(get());

@@ -184,6 +184,9 @@ fn line_branch(from: u32, to: u32, p: crate::params::LineParams) -> Branch {
         angmin: -360.0,
         angmax: 360.0,
         extra: vec![],
+        mag_g: 0.0,
+        mag_b: 0.0,
+        correction: None,
     }
 }
 
@@ -204,6 +207,9 @@ fn transformer(from: u32, to: u32, mva: f64, x_own: f64, base: f64) -> Branch {
         angmin: -360.0,
         angmax: 360.0,
         extra: vec![],
+        mag_g: 0.0,
+        mag_b: 0.0,
+        correction: None,
     }
 }
 

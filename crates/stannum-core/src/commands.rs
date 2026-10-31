@@ -122,6 +122,8 @@ pub struct Session {
     solving: Mutex<Option<Arc<AtomicBool>>>,
     /// The contingency run in progress, if one is running.
     contingencies: Mutex<Option<RunHandle>>,
+    /// The transfer limit study in progress, if one is running.
+    transfers: Mutex<Option<RunHandle>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
     /// Sorted, filtered orders of the tables being paged through, newest
@@ -372,6 +374,20 @@ impl Session {
             .keep_contingencies(version, results)
     }
 
+    /// A transfer limit study, run without the workspace lock.
+    fn transfer_limits(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::transfer::TransferSettings,
+    ) -> Result<crate::transfer::TransferResults, Error> {
+        let job = self.workspace()?.case(case)?.transfer_job(settings)?;
+        *relock(&self.transfers) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.transfers) = None);
+        let results = job.run();
+        drop(clear);
+        Ok(results?)
+    }
+
     /// Sensitivities, calculated without the workspace lock.
     fn sensitivities(
         &self,
@@ -389,8 +405,12 @@ impl Session {
         case: Option<CaseId>,
         element: &str,
         limit_pct: f64,
+        ratings: (crate::contingency::Rating, crate::contingency::Rating),
     ) -> Result<crate::contingency::ContingencyDetail, Error> {
-        let job = self.workspace()?.case(case)?.trip_job(element, limit_pct)?;
+        let job = self
+            .workspace()?
+            .case(case)?
+            .trip_job(element, limit_pct, ratings)?;
         let done = job.run()?;
         self.workspace()?.case_mut(case)?.finish_trip(done)
     }
@@ -548,6 +568,7 @@ impl Session {
             flag.store(true, Ordering::Relaxed);
             self.cancel_solve();
             self.cancel_contingencies();
+            self.cancel_transfers();
         }
     }
 
@@ -555,6 +576,19 @@ impl Session {
         if let Some(handle) = relock(&self.contingencies).clone() {
             handle.cancel();
         }
+    }
+
+    fn cancel_transfers(&self) {
+        if let Some(handle) = relock(&self.transfers).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn transfer_progress(&self) -> Progress {
+        relock(&self.transfers)
+            .as_ref()
+            .map(RunHandle::progress)
+            .unwrap_or_default()
     }
 
     fn contingency_progress(&self) -> Progress {
@@ -929,6 +963,23 @@ commands! {
     /// How far the contingency run in progress has got.
     contingency_progress {} -> Progress => |s, _| Ok(s.contingency_progress());
 
+    /// Transfer limits (DFAX and FCITC): how much power can move from the
+    /// source subsystem to the sink before a monitored branch or interface
+    /// reaches its limit, in the base case and after each contingency.
+    /// Linear factors on top of the AC solve. `cancel_transfer_limits` stops
+    /// the study and `transfer_progress` follows it.
+    run_transfer_limits { case: Option<CaseId>, settings: crate::transfer::TransferSettings } -> crate::transfer::TransferResults =>
+        |s, a| s.transfer_limits(a.case, a.settings);
+
+    /// Stop the transfer limit study in progress.
+    cancel_transfer_limits {} -> () => |s, _| {
+        s.cancel_transfers();
+        Ok(())
+    };
+
+    /// How far the transfer limit study in progress has got.
+    transfer_progress {} -> Progress => |s, _| Ok(s.transfer_progress());
+
     /// The last contingency run's summary, or null.
     contingency_summary { case: Option<CaseId> } -> Option<ContingencySummary> =>
         |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
@@ -946,9 +997,21 @@ commands! {
     contingency_detail { case: Option<CaseId>, rank: usize } -> crate::contingency::ContingencyDetail =>
         |s, a| s.workspace()?.case_mut(a.case)?.contingency_detail(a.rank);
 
-    /// Take one element out of the last AC solve and solve again.
-    trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64 } -> crate::contingency::ContingencyDetail =>
-        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct);
+    /// Write every violation of the last run to a CSV file, one line each:
+    /// branch overloads, bus voltages and interfaces, and a line for each
+    /// outage whose AC solve failed.
+    export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
+        |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
+
+    /// The subsystem records of a lists file (`.stnl`), as written.
+    lists_subsystems { path: String } -> Vec<crate::lists::ListedSubsystem> =>
+        |_, a| Ok(crate::lists::subsystems(&a.path)?);
+
+    /// Take one element out of the last AC solve and solve again. Loadings
+    /// are measured against `rating` after the trip and `base_rating`
+    /// before it (both rate A when left out).
+    trip_and_compare { case: Option<CaseId>, element: String, limit_pct: f64, rating: Option<crate::contingency::Rating>, base_rating: Option<crate::contingency::Rating> } -> crate::contingency::ContingencyDetail =>
+        |s, a| s.trip_and_compare(a.case, &a.element, a.limit_pct, (a.rating.unwrap_or_default(), a.base_rating.unwrap_or_default()));
 
     /// A result by name ("base", "study", "contingency 3", "trip line:1:2:1"),
     /// as a full solve report.
@@ -1010,7 +1073,7 @@ commands! {
         Ok(())
     };
 
-    /// Write commands as a run file, such as the ones Record kept. Paths in
+    /// Write commands as a run file, such as ones from the app's history. Paths in
     /// the run file's folder are written relative to it, and settings at
     /// their defaults are left out.
     save_run_file { path: PathBuf, steps: Vec<crate::run_file::Step> } -> () => |_, a| {
@@ -1022,6 +1085,14 @@ commands! {
             a.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
         ))?;
         std::fs::write(&a.path, text).map_err(|e| Error::file(&a.path, e))
+    };
+
+    /// Commands as run file text, for copying from the app's history.
+    /// Paths stay as given and settings at their defaults are left out.
+    run_file_text { steps: Vec<crate::run_file::Step> } -> String => |_, a| {
+        let mut steps = a.steps;
+        crate::run_file::without_defaults(&mut steps);
+        crate::run_file::format(&steps, None, "Stannum run file, copied from the app's history.")
     };
 }
 
@@ -1136,6 +1207,7 @@ mod tests {
             "query" => json!({}),
             "engineering" | "solved" | "enabled" => json!(false),
             "limit_pct" => json!(100.0),
+            "rating" | "base_rating" => json!("b"),
             _ => json!(1),
         };
         for (c, names) in COMMANDS.iter().zip(ARGS).filter(|(c, _)| c.takes_case) {
@@ -1143,7 +1215,9 @@ mod tests {
             for (name, _) in *names {
                 args.insert(camel(name), value(name));
             }
-            if c.name != "run_contingencies" && args.contains_key("settings") {
+            if c.name == "run_transfer_limits" {
+                args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
+            } else if c.name != "run_contingencies" && args.contains_key("settings") {
                 args.insert("settings".into(), json!(SolveSettings::default()));
             }
             args.insert("case".into(), json!(id + 1));

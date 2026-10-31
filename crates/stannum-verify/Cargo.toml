@@ -1,0 +1,11 @@
+[package]
+name = "stannum-verify"
+version = "0.1.0"
+edition = "2024"
+description = "Records how close Stannum's reference tests come to their references, for the Verification page"
+publish = false
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

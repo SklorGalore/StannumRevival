@@ -71,7 +71,7 @@ before anything else happens.
 ### Actions
 
 `run_file.rs` keeps a list, `ACTIONS`, of commands that change the case or
-write a file. Those are the ones **Record** keeps in a run file, and
+write a file. Those are the ones the **history** keeps for run files, and
 `CommandInfo::action` reports it. Add a new command there if it changes
 state; leave read-only commands out.
 
@@ -136,8 +136,9 @@ of a case's records and Records edits all follow the same pattern:
 
 `Session::solve` and `Session::run_contingencies` are the examples to copy.
 Cancellation goes through handles the `Session` keeps outside the lock
-(`solving`, `contingencies`, `running_file`), so `cancel_solve`,
-`cancel_contingencies`, `cancel_run_file` and `contingency_progress` answer
+(`solving`, `contingencies`, `transfers`, `running_file`), so
+`cancel_solve`, `cancel_contingencies`, `cancel_transfer_limits`,
+`cancel_run_file`, `contingency_progress` and `transfer_progress` answer
 while the work runs. `tests/lock_free_work.rs` checks this.
 
 ## Versioning

@@ -3,9 +3,12 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  ArrowRightLeft,
+  ArrowBigRightDash,
   ArrowDownCircle,
   BellOff,
   Circle,
+  History,
   Columns2,
   AlertTriangle,
   Cable,
@@ -46,6 +49,7 @@ import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { useUpdate } from "../store/updateStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
+import { useDiagramStore } from "../store/diagramStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
 import { useShortcuts } from "./ShortcutsDialog";
@@ -76,11 +80,10 @@ function useCommands(): Command[] {
   const split = useWorkspace((s) => s.split);
   const logOpen = useLog((s) => s.open);
   const studyPath = useStudyFile((s) => s.path);
-  const recording = useRunFile((s) => s.recording);
   const autoCheck = useUpdate((s) => s.autoCheck);
   const updatePhase = useUpdate((s) => s.phase);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, recording, autoCheck, updatePhase]);
+  return useMemo(paletteCommands, [summary, linked, selection, preference, module, split, logOpen, studyPath, autoCheck, updatePhase]);
 }
 
 /**
@@ -93,11 +96,10 @@ export function paletteCommands(): Command[] {
   const preference = useTheme.getState().preference;
   const logOpen = useLog.getState().open;
   const studyPath = useStudyFile.getState().path;
-  const recording = useRunFile.getState().recording;
   const next = NEXT_PREFERENCE[preference];
   const list: Command[] = [
     { id: "open", title: summary ? "Open another case…" : "Open case…", icon: <FolderOpen size={14} />, keywords: "file load raw matpower", run: () => void w.openCase() },
-    { id: "open-study", title: "Open study…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
+    { id: "open-study", title: "Open old study file…", icon: <FlaskConical size={14} />, keywords: "file load stannum saved work", run: () => void useStudyFile.getState().open() },
     ...knownSampleCases().map((c) => ({
       id: `open-sample-${c.id}`,
       title: `Open sample: ${c.title}`,
@@ -108,9 +110,9 @@ export function paletteCommands(): Command[] {
   ];
   if (summary) {
     const studyFile = useStudyFile.getState();
-    list.push({ id: "save-study", title: "Save study", icon: <Save size={14} />, keywords: "file keep stannum edits work", run: () => void studyFile.save() });
+    list.push({ id: "save-run-file", title: "Save as run file", icon: <Save size={14} />, keywords: "file keep study edits work stnrun", run: () => void studyFile.save() });
     if (studyPath)
-      list.push({ id: "save-study-as", title: "Save study as…", icon: <Save size={14} />, keywords: "file copy stannum", run: () => void studyFile.save({ as: true }) });
+      list.push({ id: "save-run-file-as", title: "Save run file as…", icon: <Save size={14} />, keywords: "file copy study stnrun", run: () => void studyFile.save({ as: true }) });
     list.push({ id: "save-case-as", title: "Save case as…", icon: <Save size={14} />, keywords: "file write raw stn stnb records edits", run: saveCaseAs });
     if (summary.power.available)
       for (const solved of [false, true])
@@ -139,6 +141,16 @@ export function paletteCommands(): Command[] {
         run: () => void studyFile.exportStn(binary),
       });
   }
+  {
+    const diagram = useDiagramStore.getState();
+    list.push({
+      id: "animate-flows",
+      title: diagram.animateFlows ? "Stop animating flow arrows" : "Animate flow arrows",
+      icon: <ArrowBigRightDash size={14} />,
+      keywords: "diagram one-line moving flow arrows animate animation motion still mw mvar",
+      run: diagram.toggleAnimateFlows,
+    });
+  }
   if (summary?.power.available)
     list.push(
       { id: "solve", title: "Solve power flow", icon: <Play size={14} />, keywords: "run newton ac dc load flow", run: w.requestSolve },
@@ -146,6 +158,8 @@ export function paletteCommands(): Command[] {
     );
   if (w.solveReport)
     list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });
+  if (w.solveReport)
+    list.push({ id: "transfers", title: "Show transfer limits", icon: <ArrowRightLeft size={14} />, keywords: "dfax fcitc atc ttc transfer capability ptdf otdf source sink", run: () => w.showPowerTab("transfers") });
   for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
   if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
   else
@@ -228,11 +242,13 @@ export function paletteCommands(): Command[] {
     list.push({ id: "close", title: "Close case", icon: <X size={14} />, keywords: "file", run: () => void w.closeCase() });
   }
   const runFile = useRunFile.getState();
-  list.push(
-    recording
-      ? { id: "record-stop", title: "Stop recording and save run file…", icon: <Save size={14} />, keywords: "record macro script automation stnrun", run: () => void runFile.saveRecording() }
-      : { id: "record", title: "Record a run file", icon: <Circle size={14} />, keywords: "record macro script automation stnrun replay", run: runFile.startRecording }
-  );
+  list.push({
+    id: "history",
+    title: "Show history",
+    icon: <History size={14} />,
+    keywords: "record macro script automation stnrun replay copy export run file changes undo",
+    run: () => useLog.getState().showHistory(),
+  });
   list.push({
     id: "shortcuts",
     title: "Keyboard shortcuts",

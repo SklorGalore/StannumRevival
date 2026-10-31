@@ -12,12 +12,14 @@ import {
   Undo2,
   Redo2,
   Printer,
+  ArrowBigRightDash,
 } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
 import { GenerateDialog } from "../dialogs/GenerateDialog";
 import { useDiagramStore } from "../../store/diagramStore";
 import { openDiagram, saveDiagram, saveAsDialog } from "../../lib/tauri/fileOps";
+import { confirmDialog } from "../../lib/tauri/commands";
 import { useState } from "react";
 import { ExportDialog } from "../dialogs/ExportDialog";
 import { StyleSwitch } from "../../modules/diagram/network/StyleSwitch";
@@ -135,13 +137,15 @@ export function Toolbar() {
   const redo = useDiagramStore((s) => s.redo);
   const mono = useDiagramStore((s) => s.colorMode === "mono");
   const toggleColorMode = useDiagramStore((s) => s.toggleColorMode);
+  const animateFlows = useDiagramStore((s) => s.animateFlows);
+  const toggleAnimateFlows = useDiagramStore((s) => s.toggleAnimateFlows);
 
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
   const [ref, width] = useWidth<HTMLDivElement>(1440);
 
   async function handleNew() {
     if (isDirty) {
-      const ok = window.confirm(
+      const ok = await confirmDialog(
         "You have unsaved changes. Create a new diagram anyway?"
       );
       if (!ok) return;
@@ -163,6 +167,14 @@ export function Toolbar() {
   const viewItems: MenuItem[] = [
     { id: "grid", label: "Grid", icon: <Grid size={14} />, onClick: toggleGrid, active: gridVisible },
     { id: "snap", label: "Snap", icon: <Magnet size={14} />, onClick: toggleSnap, active: snapToGrid },
+    {
+      id: "animate-flows",
+      label: "Animated flow arrows",
+      icon: <ArrowBigRightDash size={14} />,
+      onClick: toggleAnimateFlows,
+      active: animateFlows,
+      title: "Flow arrows move along the wires the way the power goes",
+    },
     { id: "print", label: "Print style", icon: <Printer size={14} />, onClick: toggleColorMode, active: mono, title: "Black and white, for printing and export" },
   ];
 

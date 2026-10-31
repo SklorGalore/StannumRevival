@@ -68,10 +68,16 @@ const ACTIONS: &[&str] = &[
     "diff_compare_working",
     "run_contingencies",
     "trip_and_compare",
+    "run_transfer_limits",
 ];
 
-/// Commands a run file can't hold: running a run file from inside one.
-const NOT_IN_RUN_FILES: &[&str] = &["run_file", "cancel_run_file", "save_run_file"];
+/// Commands a run file can't hold: running or writing run files from inside one.
+const NOT_IN_RUN_FILES: &[&str] = &[
+    "run_file",
+    "cancel_run_file",
+    "save_run_file",
+    "run_file_text",
+];
 
 const fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());

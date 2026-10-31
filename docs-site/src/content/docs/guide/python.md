@@ -119,6 +119,31 @@ case.call("planning_event_counts", settings={"kv_min": 230})
 Each row then has a `category` (such as `"P1.4"`) and, where the element
 alone doesn't say, a `description`.
 
+## Transfer limits
+
+```python
+case.solve()
+run = case.transfer_limits(
+    {"areas": [1]},                  # source
+    {"areas": [7]},                  # sink
+    contingencies={"kv_min": 100},   # every branch outage at 100 kV and up
+    monitor={"kv_min": 100},
+)
+run.summary.fcitc_mw                 # MW before the first limit
+run.summary.limiting                 # the element and contingency that set it
+run.limits                           # each element's lowest limit, as a table
+run.factors                          # base case PTDFs, largest first
+```
+
+Settings are those of the `run_transfer_limits` command: `scaling`,
+`monitor` (with `interfaces`), `contingencies`, `cutoff`, `rating`,
+`base_rating`, `limit_pct`, `include_past_limits`, `max_rows`, and
+`lists` and `transfer` to run a transfer kept in a lists file, with its
+contingencies and monitors:
+`case.transfer_limits(lists="summer.stnl", transfer="far_west_coast")`. The
+method and every setting are in
+[Transfer limits](/StannumRevival/manual/transfer-limits/).
+
 ## Records, elements and topology
 
 ```python

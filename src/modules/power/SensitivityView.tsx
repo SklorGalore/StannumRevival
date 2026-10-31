@@ -56,6 +56,12 @@ export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
     return r;
   }, [table, order]);
 
+  // Flow factors below 0.001 don't matter to a planner, so flows get three
+  // decimals. Voltage and angle responses are small by nature (0.0002 p.u. per
+  // MVAr is a real effect), so they keep three significant digits instead.
+  const response = (v: number) =>
+    quantity.startsWith("flow") ? fixed(Math.abs(v) < 0.0005 ? 0 : v, 3) : sig(v, 3, -6);
+
   const drawAround = useWorkspace((s) => s.drawAround);
   const showSensitivity = useLayers((s) => s.showSensitivity);
   // Colour the diagram by this column, around the injection bus.
@@ -169,7 +175,7 @@ export function SensitivityView({ summary }: { summary: SensitivitySummary }) {
                 key: "value",
                 header: `Response (${table.units})`,
                 value: (r) => r.value,
-                render: (r) => <span title={String(r.value)}>{sig(r.value)}</span>,
+                render: (r) => <span title={String(r.value)}>{response(r.value)}</span>,
                 align: "right",
               },
             ]}

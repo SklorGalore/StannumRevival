@@ -96,7 +96,7 @@ const showComponents = async () => {
 
 // Power flow on a MATPOWER case.
 await queue(STANNUM_MATPOWER);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText("Converged").first().waitFor();
 await page.getByText("Operating limits").waitFor();
@@ -230,23 +230,22 @@ await page.getByTestId("solve-comparison").scrollIntoViewIfNeeded();
 await shot("study-compare");
 await page.getByRole("tab", { name: "Overview" }).click();
 await shot("study-overview");
-// Save the study to a .stannum file: the edits, the saved solve and a
-// fingerprint of the case file.
+// Save the work as a run file: open the case, set both edits, solve.
 const { mkdtempSync, readFileSync, writeFileSync, copyFileSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { createHash } = await import("node:crypto");
 const studyDir = mkdtempSync(`${tmpdir()}/stannum-study-`);
-const studyPath = `${studyDir}/case9-outage.stannum`;
-await queue(studyPath);
-await page.getByTestId("save-study").click();
-await page.getByTestId("save-study").filter({ hasText: "case9-outage.stannum" }).waitFor();
+const workRun = `${studyDir}/case9-outage.stnrun`;
+await queue(workRun);
+await page.getByTestId("save-run-file").click();
+await page.getByTestId("save-run-file").filter({ hasText: "case9-outage.stnrun" }).waitFor();
 await shot("study-saved");
-const savedStudy = JSON.parse(await page.evaluate((p) => window.__files[p], studyPath));
-assert.equal(savedStudy.format, "stannum-study");
-assert.equal(savedStudy.edits.length, 2, "both study edits saved");
-assert.equal(savedStudy.solves.length, 1, "the saved solve is kept");
-assert.equal(savedStudy.solves[0].name, "Case as filed");
-assert.equal(savedStudy.case.fingerprint.sha256, createHash("sha256").update(readFileSync(STANNUM_MATPOWER)).digest("hex"));
+const savedRun = readFileSync(workRun, "utf8");
+assert.match(savedRun, /^# stannum-run-file version 1\n/, savedRun);
+assert.match(savedRun, /^open_case path=/m, savedRun);
+assert.match(savedRun, /^set_study_edits edits=\[\{"element": "line:4:5:1", "kind": "status", "online": false\}, \{"element": "generator:2:1", "kind": "generation", "mw": 120\}\]$/m, savedRun);
+assert.match(savedRun, /^solve_power_flow\b/m, savedRun);
+assert.doesNotMatch(savedRun, /diagram|solves/, "no drawing or saved solves in the run file");
 await page.getByRole("tab", { name: /Study/ }).click();
 await page.getByRole("button", { name: "Clear all" }).click();
 await page.getByTestId("study-badge").waitFor({ state: "detached" });
@@ -254,7 +253,7 @@ await page.getByTestId("study-badge").waitFor({ state: "detached" });
 // Topology on a RAW v35 case: the Diagram's Network style, its tables and
 // its layers.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 await page.getByRole("button", { name: "Diagram", exact: true }).click();
 await page.getByRole("radio", { name: "Network" }).click();
 await page.locator('[data-testid="network-view"] canvas').first().waitFor();
@@ -327,6 +326,21 @@ assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
 await page.locator("svg text", { hasText: /\d\.\d{3} pu/ }).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
+// Mvar flow gets its own open arrow beside the MW one.
+assert((await page.getByTestId("mvar-arrow").count()) > 0, "Mvar arrows on the AC results");
+// Solving from the toolbar keeps the diagram in view and redraws in place.
+await page.getByRole("toolbar", { name: "Case" }).getByRole("button", { name: "Solve power flow" }).click();
+await page.waitForTimeout(1500);
+assert.equal(await page.locator("[data-module=diagram]:not(.module-hidden)").count(), 1, "Solve stays on the diagram");
+// Flow arrows can move along the wires (Canvas menu, menu bar, Ctrl+K).
+assert.equal(await page.getByTestId("flow-arrows-moving").count(), 0, "still arrows by default");
+await diagramMenu("Canvas", "Animated flow arrows");
+await page.getByTestId("flow-arrows-moving").first().waitFor();
+assert.equal(await page.getByTestId("flow-arrow").count(), 0, "no still MW arrows while they move");
+await page.getByTestId("mvar-arrows-moving").first().waitFor();
+assert.equal(await page.getByTestId("mvar-arrow").count(), 0, "no still Mvar arrows while they move");
+await diagramMenu("Canvas", "Animated flow arrows");
+await page.getByTestId("flow-arrow").first().waitFor();
 
 // One selection, seen in every module: pick a bus in Power flow, then follow
 // the chip to Case diff and the diagram.
@@ -777,7 +791,7 @@ assert.notEqual(bodyBg, await page.evaluate(() => getComputedStyle(document.docu
 // converter pair down to its inverter bus, and the legend names it.
 if (STANNUM_RAW_DC) {
   await queue(STANNUM_RAW_DC);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.getByRole("button", { name: "Diagram", exact: true }).click();
   await page.getByRole("button", { name: "From case" }).click();
   await page.getByLabel(/Around a bus/).check();
@@ -873,7 +887,7 @@ if (STANNUM_RAW_DC) {
 if (STANNUM_DC_A && STANNUM_DC_B) {
   const chip = page.getByTestId("selection-chip");
   await queue(STANNUM_DC_A);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.getByRole("button", { name: "Case diff", exact: true }).click();
   await page.getByText(/Use the open case/).click();
   await queue(STANNUM_DC_B);
@@ -917,7 +931,7 @@ if (STANNUM_DC_A && STANNUM_DC_B) {
 // converters, DC buses and DC lines of each grid.
 if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
   await queue(STANNUM_VSC_CASE);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   await page.getByTestId("open-vsc-grids").click();
   await queue(STANNUM_VSC_GRIDS);
@@ -944,7 +958,7 @@ if (STANNUM_VSC_CASE && STANNUM_VSC_GRIDS) {
 // Selections are unlinked here, so this works without linking.
 if (STANNUM_VIOLATIONS) {
   await queue(STANNUM_VIOLATIONS);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   const linkedToggle = page.getByRole("button", { name: "Linked", exact: true });
   if (await linkedToggle.count()) await linkedToggle.click();
@@ -1226,7 +1240,7 @@ if (STANNUM_VIOLATIONS) {
 // Records: every record type of the open case with every field, sorted,
 // filtered, and picked into the inspector and onto the diagram.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 const recordTypes = page.getByTestId("record-types");
 await recordTypes.getByRole("button", { name: /^Buses/ }).waitFor();
@@ -1303,7 +1317,7 @@ await recordInspector.getByRole("button", { name: "Draw around" }).click();
 await page.locator(".react-flow__node-bus").first().waitFor();
 // A MATPOWER case lists the power flow model's tables.
 await queue(STANNUM_MATPOWER);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 await page.getByRole("button", { name: "Records", exact: true }).click();
 await recordTypes.getByRole("button", { name: /^Generators/ }).waitFor();
 await records.getByRole("columnheader", { name: "BUS_I", exact: true }).waitFor();
@@ -1312,36 +1326,55 @@ await recordRows.nth(8).waitFor();
 assert.equal(await recordRows.count(), 9, "nine buses in case9");
 await shot("records-matpower");
 
-// Open the study again after the case moved beside it and changed: the
-// case is found, the change is pointed out, and the edits and saved solve
-// come back.
+// An old study file still opens after its case moved beside it and
+// changed: the case is found, the change is pointed out, the edits and
+// saved solve come back, and the notice says to save a run file instead.
 const movedCase = `${studyDir}/case9.m`;
 copyFileSync(STANNUM_MATPOWER, movedCase);
 writeFileSync(movedCase, readFileSync(movedCase, "utf8") + "\n% edited after the study was saved\n");
 const movedStudy = `${studyDir}/moved.stannum`;
-const moved = { ...savedStudy, case: { ...savedStudy.case, path: `${studyDir}/gone/case9.m`, relative: "case9.m" } };
+const sha256 = createHash("sha256").update(readFileSync(STANNUM_MATPOWER)).digest("hex");
+const solveReport = JSON.parse(readFileSync(new URL("../compat/0.4.1/case9-outage.stannum", import.meta.url), "utf8")).solves[0]?.report;
+const moved = {
+  format: "stannum-study",
+  version: 1,
+  app: "1.0.0",
+  savedAt: "2026-10-30T12:00:00.000Z",
+  case: { path: `${studyDir}/gone/case9.m`, relative: "case9.m", name: "case9.m", format: "matpower", fingerprint: { size: 1, sha256, modified_ms: null } },
+  dcGrids: null,
+  coordinates: null,
+  solveSettings: { model: "ac" },
+  edits: [
+    { edit: { kind: "status", element: "line:4:5:1", online: false } },
+    { edit: { kind: "generation", element: "generator:2:1", mw: 120 }, was: "163.0 MW" },
+  ],
+  solves: solveReport ? [{ name: "Case as filed", entries: [], report: solveReport }] : [],
+  compare: null,
+  contingencies: { branches: true, generators: true, method: "screen", acCount: 50, limitPct: 100 },
+  diagram: null,
+  view: { module: "power", split: null, splitRatio: 0.5 },
+};
 await page.evaluate(([p, c]) => (window.__files[p] = c), [movedStudy, JSON.stringify(moved)]);
 await queue(movedStudy);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 const studyNotice = page.getByTestId("study-notice");
 await studyNotice.getByText("Opened moved.stannum").waitFor();
 await studyNotice.getByText(/The case was found at .*case9\.m/).waitFor();
 await studyNotice.getByText(/case9\.m has changed since the study was saved/).waitFor();
+await studyNotice.getByText(/Study files are no longer saved\. Save as run file keeps/).waitFor();
 await page.getByTestId("study-badge").filter({ hasText: "2 edits" }).waitFor();
-await page.getByTestId("save-study").filter({ hasText: "moved.stannum" }).waitFor();
+await page.getByTestId("save-run-file").filter({ hasText: "Save as run file" }).waitFor();
 await page.getByText("Converged").first().waitFor();
-assert.equal(await page.getByTestId("save-study").getByLabel("unsaved changes").count(), 0, "a study just opened has nothing to save");
 await page.getByTestId("study-badge").click();
 await page.getByTestId("study-edits").getByText("Line 4–5 circuit 1 out of service").waitFor();
-assert.equal(await page.getByTestId("saved-solves").getByRole("textbox").first().inputValue(), "Case as filed");
+if (solveReport) assert.equal(await page.getByTestId("saved-solves").getByRole("textbox").first().inputValue(), "Case as filed");
 await shot("study-reopened");
-// Closing a changed study asks first; then the empty screen lists it.
-await page.getByRole("button", { name: "Clear all" }).click();
-await page.getByTestId("study-badge").waitFor({ state: "detached" });
+// Closing with edits that aren't in a run file asks first; then the empty
+// screen lists the study.
 const asked = dialogs.length;
 await appMenu("File", "Close case");
 await page.getByText("No case open", { exact: true }).waitFor();
-assert.match(dialogs[asked] ?? "", /moved\.stannum has changes that aren't saved/);
+assert.match(dialogs[asked] ?? "", /The study edits aren't saved to a run file/);
 const recent = page.getByTestId("recent-files").first();
 await recent.getByText("moved.stannum").waitFor();
 await recent.getByText("case9.m").first().waitFor();
@@ -1350,7 +1383,7 @@ await shot("recent-files");
 // Case diff of the working case: a study outage on a RAW case shows as the
 // branch record's status changing from the file.
 await queue(STANNUM_RAW);
-await page.getByRole("button", { name: "Open case or study…" }).click();
+await page.getByRole("button", { name: "Open case or run file…" }).click();
 await page.getByRole("button", { name: "Solve", exact: true }).click();
 await page.getByText(/Converged|Iteration limit/).first().waitFor();
 await page.getByRole("tab", { name: /Branches/ }).click();
@@ -1372,7 +1405,7 @@ assert.deepEqual(
 );
 await shot("diff-working");
 
-// Run files: Record keeps what you do as a run file, and Run plays one back.
+// Run files: the history keeps what you do, ready to save as a run file, and Run plays one back.
 {
   const palette = page.getByRole("dialog", { name: "Search and commands" });
   const command = async (text, option) => {
@@ -1383,11 +1416,9 @@ await shot("diff-working");
   const runDir = mkdtempSync(`${tmpdir()}/stannum-run-`);
   copyFileSync(STANNUM_MATPOWER, `${runDir}/case9.m`);
   await queue(`${runDir}/case9.m`);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.locator("[data-case-summary]").getByText("case9.m").waitFor();
-  await command("record", /Record a run file/);
-  const bar = page.getByTestId("recording-bar");
-  await bar.getByText("1 step so far.").waitFor();
+  const history = page.getByTestId("history");
   await page.getByRole("button", { name: "Power flow", exact: true }).click();
   await page.getByRole("button", { name: "Solve", exact: true }).click();
   await page.locator("text=Converged >> visible=true").first().waitFor();
@@ -1395,19 +1426,22 @@ await shot("diff-working");
   await page.locator("table:visible tbody tr:not([data-spacer])").nth(1).click();
   await inspector.getByRole("button", { name: "Take out" }).click();
   await page.getByTestId("study-badge").filter({ hasText: "1 edit" }).waitFor();
-  // The edit, then the solve that follows it.
-  await bar.getByText("4 steps so far.").waitFor();
   await page.getByRole("tab", { name: "Overview" }).click();
-  await shot("run-file-recording");
-  await page.keyboard.press("Control+k");
-  await palette.getByRole("combobox").fill("run file");
-  await palette.getByRole("option", { name: /Stop recording and save run file/ }).waitFor();
-  await shot("run-file-palette");
-  await page.keyboard.press("Escape");
+  await command("history", /Show history/);
+  // Pick from the open of the copy on: the open, the solve, the edit and the solve that follows it.
+  const lines = history.getByRole("listitem");
+  const openAt = (await lines.allInnerTexts()).findLastIndex((t) => t.includes("open_case") && t.includes(runDir));
+  assert.notEqual(openAt, -1, "the history has the open of the copy");
+  await lines.nth(openAt).click();
+  await lines.last().click({ modifiers: ["Shift"] });
+  await history.getByText("4 picked").waitFor();
+  await shot("history");
   const runFile = `${runDir}/case9_outage.stnrun`;
   await queue(runFile);
-  await page.getByTestId("save-recording").click();
-  await bar.waitFor({ state: "detached" });
+  await page.getByTestId("history-save").click();
+  const { existsSync } = await import("node:fs");
+  for (let i = 0; i < 50 && !existsSync(runFile); i++) await page.waitForTimeout(100);
+  await page.getByRole("button", { name: "Close log" }).click();
   const recorded = readFileSync(runFile, "utf8");
   assert.match(recorded, /^# stannum-run-file version 1\n/, recorded);
   assert.match(recorded, /^open_case path=case9\.m$/m, recorded);
@@ -1491,7 +1525,7 @@ if (STANNUM_CRASH_TEST) {
 // shortcut list, and focus going back where it was after the palette.
 {
   await queue(STANNUM_RAW);
-  await page.getByRole("button", { name: "Open case or study…" }).click();
+  await page.getByRole("button", { name: "Open case or run file…" }).click();
   await page.locator("[data-case-summary]").getByText("five_bus.raw").waitFor();
   await page.keyboard.press("Control+3");
   const recordsPane = page.locator('[data-module="records"]');

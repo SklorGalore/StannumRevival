@@ -84,3 +84,20 @@ fields = [
   { name = "elements", type = "list", item = ["element", "float"], default = [], doc = "Branches as `[element, weight]`, flow measured from the first bus of the element's id." },
   { name = "limit_mw", type = "float", unit = "MW", doc = "Limit; none when absent." },
 ]
+
+[[table]]
+name = "transfer"
+kind = "transfer"
+id = "{name}"
+order = []
+doc = "A transfer to find the limit of (DFAX and FCITC): power moved from one subsystem to another. Its outages are the file's contingencies and contingency sets, and it watches the file's flow and interface monitors (with this record's ratings and limit); without them, the run's own settings apply."
+fields = [
+  { name = "name", type = "string", default = "", doc = "Display name." },
+  { name = "source", type = "ref", to = "subsystem", required = true, doc = "Where the power comes from." },
+  { name = "sink", type = "ref", to = "subsystem", required = true, doc = "Where it goes." },
+  { name = "scaling", type = "enum", values = ["generation", "reserve", "load"], default = "generation", doc = "How each side shares out the transfer: online generators by output, by room to their limits, or loads." },
+  { name = "cutoff_pct", type = "float", unit = "%", default = 5.0, doc = "Elements whose distribution factor is smaller than this don't limit the transfer." },
+  { name = "base_rating", type = "int", default = 1, doc = "Rating slot in the base case (1 to 3, A to C)." },
+  { name = "rating", type = "int", default = 1, doc = "Rating slot after an outage (1 to 3, A to C)." },
+  { name = "limit_pct", type = "float", unit = "%", default = 100.0, doc = "Percent of the rating that counts as the limit." },
+]

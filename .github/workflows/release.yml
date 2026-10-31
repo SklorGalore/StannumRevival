@@ -4,7 +4,7 @@ name: Release
 # each of them the stannum Python wheel and the stannum-cli binary.
 #
 # Releases follow git flow: release/vX.Y.Z is cut from development (hotfix/vX.Y.Z
-# from main), merged into main, and the merge commit is tagged vX.Y.Z.
+# from main), squashed into main, and that commit is tagged vX.Y.Z.
 #
 # - Pushing a v* tag builds them and attaches them to a draft GitHub release
 #   whose notes are that version's section of CHANGELOG.md. Publish the draft
