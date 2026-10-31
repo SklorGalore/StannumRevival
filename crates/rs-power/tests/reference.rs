@@ -2,6 +2,7 @@ use rs_power::{
     AcMethod, BusType, Model, PowerFlowOptions, SolveStatus, load_matpower, parse_matpower, solve,
 };
 use serde_json::Value;
+use stannum_verify::Check;
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> Value {
@@ -33,13 +34,43 @@ fn input(data: &Value) -> rs_power::Case {
     parse_matpower(&text).unwrap()
 }
 
-fn close(actual: f64, expected: &Value, tolerance: f64, context: &str) {
+fn close(check: &mut Check, actual: f64, expected: &Value, context: &str) {
     let expected = expected.as_f64().unwrap();
+    let tolerance = check.tolerance();
+    let error = check.compare(actual, expected);
     assert!(
-        actual.is_finite() && (actual - expected).abs() <= tolerance,
-        "{context}: actual={actual:.12}, expected={expected:.12}, error={:.3e}",
-        (actual - expected).abs()
+        actual.is_finite() && error <= tolerance,
+        "{context}: actual={actual:.12}, expected={expected:.12}, error={error:.3e}"
     );
+}
+
+/// The row name on the Verification page.
+fn label(name: &str) -> &str {
+    match name {
+        "q_limit" => "case9 with reactive limits",
+        "slack_limit" => "case9 with the slack at its limit",
+        "q_infeasible" => "case9 with infeasible reactive limits",
+        "shared_gen" => "case9 with generators sharing a bus",
+        "infinite_q" => "case9 with infinite reactive ranges",
+        "zero_q_range" => "case9 with zero-width reactive ranges",
+        "equipment" => "case9 with taps, shifters, shunts, offline and parallel equipment",
+        _ => name,
+    }
+}
+
+/// Largest differences for one row: voltage magnitude, angle and power.
+fn checks(row: &str) -> [Check; 3] {
+    [
+        Check::new("matpower", row, "Voltage magnitude", "p.u.", 1e-6),
+        Check::new("matpower", row, "Voltage angle", "deg", 1e-5),
+        Check::new(
+            "matpower",
+            row,
+            "Generator output and branch flows",
+            "MW, Mvar",
+            1e-4,
+        ),
+    ]
 }
 
 fn reference(name: &str) {
@@ -58,7 +89,11 @@ fn reference(name: &str) {
     .map(|m| (Model::Ac, m))
     .into_iter()
     .chain([(Model::Dc, AcMethod::Newton)]);
+    // Every AC method shares a row, so it shows the worst of them.
+    let mut ac = checks(&format!("{}, AC (all five methods)", label(name)));
+    let mut dc = checks(&format!("{}, DC", label(name)));
     for (model, method) in runs {
+        let [vm, va, power] = if model == Model::Ac { &mut ac } else { &mut dc };
         let key = if model == Model::Ac { "ac" } else { "dc" };
         let opt = PowerFlowOptions {
             model,
@@ -82,15 +117,15 @@ fn reference(name: &str) {
         assert!(result.residual < opt.tolerance);
         for (i, b) in result.case.buses.iter().enumerate() {
             close(
+                vm,
                 b.vm,
                 &expected["bus"][i][7],
-                1e-6,
                 &format!("{name} {key} bus {i} Vm"),
             );
             close(
+                va,
                 b.va,
                 &expected["bus"][i][8],
-                1e-5,
                 &format!("{name} {key} bus {i} Va"),
             );
             let kind = match b.kind {
@@ -108,26 +143,35 @@ fn reference(name: &str) {
         }
         for (i, g) in result.case.generators.iter().enumerate() {
             close(
+                power,
                 g.pg,
                 &expected["gen"][i][1],
-                1e-4,
                 &format!("{name} {key} generator {i} Pg"),
             );
             close(
+                power,
                 g.qg,
                 &expected["gen"][i][2],
-                1e-4,
                 &format!("{name} {key} generator {i} Qg"),
             );
         }
         for (i, f) in result.branch_flows.iter().enumerate() {
             for (j, &x) in f.iter().enumerate() {
                 close(
+                    power,
                     x,
                     &expected["branch"][i][13 + j],
-                    1e-4,
                     &format!("{name} {key} branch {i} component {j}"),
                 );
+            }
+        }
+    }
+    // q_infeasible has no AC solution to compare: MATPOWER and every
+    // method report the reactive limits as infeasible.
+    for row in [ac, dc] {
+        for check in row {
+            if check.compared() > 0 {
+                check.finish();
             }
         }
     }

@@ -1,0 +1,102 @@
+---
+// One suite of the Verification page: a row per case, a column per
+// quantity, each cell the largest difference from the reference with the
+// tolerance the test holds it to. The numbers come from
+// src/data/verification.json, which scripts/verify.ps1 writes by running
+// the reference tests; the docs workflow reruns it before every build.
+import report from "../data/verification.json";
+
+interface Props {
+  suite: string;
+  /** Column heading for the case, such as "Case" or "Converter". */
+  label?: string;
+}
+
+const { suite, label = "Case" } = Astro.props;
+const data = report.suites.find((s) => s.id === suite);
+if (!data) throw new Error(`verification.json has no suite "${suite}"`);
+
+const superscript: Record<string, string> = {
+  "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+  "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+};
+
+/** 4.4e-16 as "4.4 × 10⁻¹⁶", 1e-6 as "10⁻⁶", 0.0015 as "0.0015". */
+function format(x: number): string {
+  if (x === 0) return "0";
+  if (!Number.isFinite(x)) return "∞";
+  if (x >= 0.001 && x < 1000) return Number(x.toPrecision(2)).toString();
+  const [raw, exponent] = x.toExponential(1).split("e");
+  const mantissa = raw.replace(/\.0$/, "");
+  const power = "10" + exponent.replace("+", "").replace(/./g, (c) => superscript[c] ?? c);
+  return mantissa === "1" ? power : `${mantissa} × ${power}`;
+}
+---
+
+<div class="verification">
+  <table>
+    <thead>
+      <tr>
+        <th>{label}</th>
+        {data.quantities.map((q) => <th>{q.name} <span class="unit">({q.unit})</span></th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {data.rows.map((row) => (
+        <tr>
+          <td>{row.case}</td>
+          {row.cells.map((cell) =>
+            cell ? (
+              <td class={cell.max_diff <= cell.tolerance ? "pass" : "fail"}>
+                <span class="diff">{format(cell.max_diff)}</span>
+                <span class="tolerance">limit {format(cell.tolerance)}</span>
+              </td>
+            ) : (
+              <td class="none">–</td>
+            ),
+          )}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .verification {
+    overflow-x: auto;
+  }
+  .verification table {
+    display: table;
+    width: 100%;
+    font-size: var(--sl-text-sm);
+  }
+  .verification th {
+    vertical-align: bottom;
+  }
+  .unit {
+    font-weight: normal;
+    color: var(--sl-color-gray-3);
+    white-space: nowrap;
+  }
+  td.pass,
+  td.fail,
+  td.none {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .diff {
+    display: block;
+  }
+  .tolerance {
+    display: block;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  td.fail .diff {
+    color: var(--sl-color-red-high, #f87171);
+    font-weight: 600;
+  }
+  td.none {
+    color: var(--sl-color-gray-4);
+  }
+</style>

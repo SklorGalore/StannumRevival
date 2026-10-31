@@ -3945,6 +3945,7 @@ dependencies = [
  "log",
  "num-complex",
  "serde_json",
+ "stannum-verify",
  "thiserror 2.0.21",
 ]
 
@@ -4580,6 +4581,7 @@ dependencies = [
  "sha2 0.11.1",
  "stannum-format",
  "stannum-synth",
+ "stannum-verify",
  "thiserror 2.0.21",
 ]
 
@@ -4617,6 +4619,14 @@ dependencies = [
  "serde",
  "serde_json",
  "stannum-core",
+]
+
+[[package]]
+name = "stannum-verify"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

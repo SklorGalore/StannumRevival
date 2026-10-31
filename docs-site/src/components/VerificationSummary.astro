@@ -1,0 +1,17 @@
+---
+// The line at the top of the Verification page: how many checks ran, how
+// many are within tolerance, and the commit they ran on.
+import report from "../data/verification.json";
+
+const cells = report.suites.flatMap((s) => s.rows.flatMap((r) => r.cells)).filter((c) => c !== null);
+const over = cells.filter((c) => !(c.max_diff <= c.tolerance)).length;
+const short = report.commit.slice(0, 7);
+const date = report.date.slice(0, 10);
+const link = `https://github.com/SklorGalore/StannumRevival/commit/${report.commit}`;
+---
+
+<p class="verification-summary">
+  <strong>{report.checks} checks in {report.suites.length} groups</strong>,{" "}
+  {over === 0 ? "every one within its tolerance" : `${over} over tolerance`}. Run on {date} at commit{" "}
+  <a href={link}><code>{short}</code></a>.
+</p>

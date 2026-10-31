@@ -9,7 +9,7 @@ description: Where Stannum's tests live, how to run each kind, what CI runs on a
 | --- | --- | --- |
 | Rust unit tests | `#[cfg(test)]` modules in each crate | `cargo test -p <crate>` |
 | Rust integration tests | `crates/*/tests/` | `cargo test -p <crate>` |
-| MATPOWER reference checks | `crates/rs-power/tests/reference.rs`, `raw_reference.rs` | part of `cargo test -p rs-power` |
+| Reference checks (the [Verification](/StannumRevival/reference/verification/) page) | `reference.rs`, `raw_reference.rs`, `transformer_detail.rs` in rs-power; `saved_solutions.rs`, `matacdc_benchmark.rs`, `contingency.rs` in stannum-core; listed in `scripts/verify.ps1` | part of `cargo test`; `pwsh scripts/verify.ps1` also rewrites the page's tables |
 | Large cases (ignored) | `crates/rs-power/tests/large_cases.rs` | `cargo test --release -p rs-power --test large_cases -- --ignored` after `pwsh scripts/fetch-test-cases.ps1` |
 | Time and size budgets (ignored) | `crates/stannum-core/tests/budgets.rs` | `cargo test --release -p stannum-core --test budgets -- --ignored --nocapture` |
 | Bad files (field sweeps ignored) | `crates/stannum-core/tests/bad_files.rs` | `cargo test -p stannum-core --test bad_files`; sweeps with `--release ... -- --ignored` |
@@ -42,6 +42,9 @@ normally:
   `commands.gen.ts`.
 - `stannum-core --test topology_wire` with `STANNUM_WRITE_FIXTURES=1`
   rewrites `src/lib/analysis/__fixtures__/topology-wire.json`.
+- The reference tests, with `STANNUM_VERIFY` naming a file, append their
+  largest differences to it; `pwsh scripts/verify.ps1` runs them that way
+  and rewrites `docs-site/src/data/verification.json`.
 
 ## The browser smoke test
 
@@ -78,7 +81,7 @@ and checks the result, not only that it renders.
 
 | Job | Steps | Required |
 | --- | --- | --- |
-| **Rust core and desktop shell** | `cargo fmt --check`, `cargo clippy --all-targets -D warnings` (including `src-tauri`), `cargo test` for stannum-core, stannum-cli, stannum-synth, rs-power and nodal | Yes |
+| **Rust core and desktop shell** | `cargo fmt --check`, `cargo clippy --all-targets -D warnings` (including `src-tauri`), `cargo test` for stannum-core, stannum-cli, stannum-synth, stannum-verify, rs-power and nodal | Yes |
 | **Frontend build and browser smoke test** | `npm ci`, `npm run build`, `npm test`, then the smoke test | Yes |
 | **Large case budgets** | The budgets test on a 12,000-bus synthetic case; the timings go in the run summary | No |
 | **Large case budgets (80,000 buses)** (`budgets-large.yml`, weekly and on request) | The same test on an 80,000-bus synthetic case, the size of the large cases people open | No |
@@ -86,7 +89,9 @@ and checks the result, not only that it renders.
 | **Python package** (Linux, Windows, macOS) | Builds the abi3 wheel, installs it in a fresh venv, runs its tests, uploads the wheel | No |
 
 `.github/workflows/docs.yml` builds this site on pull requests that touch
-`docs-site/` and publishes it to GitHub Pages from `main`. The build checks
+`docs-site/` or the Rust crates, and publishes it to GitHub Pages from
+`main`. It first runs `scripts/verify.ps1`, so the Verification page's
+numbers come from the commit being built. The build checks
 every internal link and heading anchor
 ([starlight-links-validator](https://github.com/HiDeoo/starlight-links-validator))
 and fails on one that goes nowhere, including a link written without the

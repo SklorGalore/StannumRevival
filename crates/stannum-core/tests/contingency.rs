@@ -56,6 +56,13 @@ fn linear_trips_match_dc_solves() {
         .collect();
     let factors = DcFactors::new(&base).unwrap();
     let mut meshed = 0;
+    let mut check = stannum_verify::Check::new(
+        "contingency",
+        "case30: every meshed branch outage, linear screen",
+        "Branch flows after the outage",
+        "MW",
+        1e-6,
+    );
     for row in 0..base.branches.len() {
         let OutageFlows::Flows(after) = factors.trip(&[row], &flows) else {
             continue;
@@ -66,7 +73,7 @@ fn linear_trips_match_dc_solves() {
         let expected = rs_power::solve(&out, &dc).unwrap();
         for (m, f) in expected.branch_flows.iter().enumerate() {
             assert!(
-                (after[m] - f[0]).abs() < 1e-6,
+                check.compare(after[m], f[0]) < 1e-6,
                 "trip {row}, branch {m}: {} vs {}",
                 after[m],
                 f[0]
@@ -74,17 +81,27 @@ fn linear_trips_match_dc_solves() {
         }
     }
     assert!(meshed > 30, "only {meshed} meshed branches");
+    check.finish();
 }
 
 /// Every AC-checked row matches solving that outage as a study edit.
 #[test]
 fn ac_rows_match_a_study_outage() {
-    // case30 has branch ratings (case300 has none).
+    // case30 has branch ratings (case300 has none). Its ratings are small
+    // (16 MVA on some lines), so both sides solve far tighter than the
+    // default 2 MVA to compare them closely.
+    let tight = SolveSettings {
+        tolerance_mva: 1e-6,
+        ..Default::default()
+    };
     let mut ws = solved("case30.m");
     let summary = ws
         .current_mut()
         .unwrap()
-        .run_contingencies(settings(Method::Screen))
+        .run_contingencies(ContingencySettings {
+            solve: tight.clone(),
+            ..settings(Method::Screen)
+        })
         .unwrap();
     assert!(summary.total > 40, "{} outages", summary.total);
     assert_eq!(summary.ac_checked, 20);
@@ -118,21 +135,45 @@ fn ac_rows_match_a_study_outage() {
     }])
     .unwrap();
     assert!(open.contingencies.is_none(), "edits clear the results");
-    let report = open.solve(SolveSettings::default()).unwrap();
-    assert!(report.converged);
-    let worst = row.worst.unwrap();
-    let branch = report
-        .branches
-        .iter()
-        .filter(|b| b.element == worst.element && b.from == worst.from && b.to == worst.to)
-        .find_map(|b| b.loading_pct)
-        .unwrap();
-    assert!(
-        (branch - worst.pct).abs() < 1.0,
-        "{}: {branch:.2}% in the study vs {:.2}% in the run",
-        row.element,
-        worst.pct
+
+    // Every ordinary AC row, solved again as a study edit.
+    let mut check = stannum_verify::Check::new(
+        "contingency",
+        "case30: AC-checked outages against the same outage solved as a study",
+        "Loading of the worst branch",
+        "% of rating",
+        1e-4,
     );
+    let ordinary: Vec<_> = rows[..20]
+        .iter()
+        .filter(|r| r.converged == Some(true) && r.cut_off_buses == 0 && r.worst.is_some())
+        .collect();
+    assert!(ordinary.len() > 10, "{} ordinary rows", ordinary.len());
+    for row in ordinary {
+        let open = ws.current_mut().unwrap();
+        open.set_edits(vec![Edit::Status {
+            element: row.element.clone(),
+            online: false,
+        }])
+        .unwrap();
+        let report = open.solve(tight.clone()).unwrap();
+        assert!(report.converged);
+        let worst = row.worst.as_ref().unwrap();
+        let branch = report
+            .branches
+            .iter()
+            .filter(|b| b.element == worst.element && b.from == worst.from && b.to == worst.to)
+            .find_map(|b| b.loading_pct)
+            .unwrap();
+        let d = check.compare(branch, worst.pct);
+        assert!(
+            d < 1e-4,
+            "{}: {branch:.2}% in the study vs {:.2}% in the run",
+            row.element,
+            worst.pct
+        );
+    }
+    check.finish();
 }
 
 #[test]
