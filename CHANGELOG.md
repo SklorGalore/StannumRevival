@@ -20,6 +20,18 @@ section into the next version's when a release is cut (see
   calculations. The reference tests write the numbers as they run
   (`pwsh scripts/verify.ps1`), and the docs build reruns them for every
   commit.
+- **Contingency names.** Contingencies are named the way PSS/E names them
+  when no name is given: bus name and number at each end, then the circuit
+  (`NORTH 101 SOUTH 102 1`), a generator's bus then its id, a bus outage by
+  its bus, and `BASE CASE` for P0; elements out together are joined by
+  `&`. Lists file contingencies keep their own names. The name leads each
+  row, the outage panel and both CSV exports (which add the element ids in
+  an `outage` column), and the table search finds it. Violations are
+  named the same way: overloaded branches and flow changes by their end
+  buses and circuit, voltage problems by bus name and number, in the table,
+  the outage panel, the diagram and the violations CSV (whose `element`
+  column holds the name and a new `element_id` column the id).
+
 - **Contingency setup.** The Contingencies tab's settings moved into a
   setup dialog with five steps: Outages, Monitor, Subsystems, Limits &
   reporting, and Solution. The tab keeps a one-line summary, **Set up…**
@@ -123,6 +135,15 @@ section into the next version's when a release is cut (see
   are small by nature, show three significant digits (0.000149 p.u./MW).
   Hover a value for the full number. The VSC grids "Converters settled to"
   figure shows three decimals of MVA, like the residual.
+
+### Fixed
+
+- **Confirm prompts in the app.** Questions such as "Discard unsaved
+  changes?" and "Restart to update?" failed with "dialog.message not
+  allowed", and even when allowed they went ahead without waiting for the
+  answer. The app now allows the dialog plugin's confirm prompts and waits
+  for OK or Cancel before discarding a diagram, Records edits or unsaved
+  study edits, or restarting for an update.
 
 ## 1.0.0-rc.1 - 2026-10-30
 

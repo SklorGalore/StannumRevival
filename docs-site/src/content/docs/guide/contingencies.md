@@ -170,6 +170,12 @@ The figures at the top count outages that cause overloads, voltage problems
 (AC only), AC solves that didn't converge, and outages that split buses off
 from the rest of the network.
 
+Each contingency is named the way PSS/E names one: the bus name and number
+at each end of a branch, then its circuit (`NORTH 101 SOUTH 102 1`); a
+generator's bus name and number, then its id; a bus by its name and
+number; `BASE CASE` for P0. A contingency from a lists file keeps the name
+the file gives it. Search finds a contingency by its name.
+
 The table lists one row per outage, worst first: AC results first, then the
 linear-only ones. An overload counts when a branch goes over the limit, or
 was already over it and gets more than one point worse, so a branch that is

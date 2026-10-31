@@ -211,6 +211,8 @@ impl Default for ContingencySettings {
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct Overload {
     pub element: String,
+    /// The branch named PSS/E style: bus names and numbers, then the circuit.
+    pub name: String,
     pub from: u32,
     pub to: u32,
     /// MVA as a percent of the run's rating after the outage, and of its
@@ -267,6 +269,10 @@ pub struct ContingencyRow {
     pub kind: &'static str,
     /// The planning event category, such as "P1.2"; none in an N-1 run.
     pub category: Option<String>,
+    /// The contingency's name: the one its lists file gives it, or else
+    /// built PSS/E style from what goes out, bus names and numbers then the
+    /// circuit or unit id, such as "ALPHA 101 BETA 102 1"; "BASE CASE" for P0.
+    pub name: String,
     /// What the event is, in words, when the element alone doesn't say.
     pub description: Option<String>,
     /// "ac" when solved in AC, "linear" when only screened.
@@ -358,6 +364,8 @@ pub struct CategorySummary {
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct BranchChange {
     pub element: String,
+    /// The branch named PSS/E style: bus names and numbers, then the circuit.
+    pub name: String,
     pub from: u32,
     pub to: u32,
     pub mw: f64,
@@ -478,6 +486,8 @@ pub(crate) struct Outage {
     pub(crate) dc_rows: Vec<(usize, f64)>,
     category: Option<String>,
     description: Option<String>,
+    /// The name a lists file gives it.
+    name: Option<String>,
 }
 
 impl Outage {
@@ -508,6 +518,7 @@ impl From<planning::PlanningEvent> for Outage {
             dc_rows: e.dc_rows,
             category: Some(e.category.to_string()),
             description: e.description,
+            name: None,
         }
     }
 }
@@ -670,6 +681,7 @@ fn from_lists(
             o.kind = "group";
         }
         o.description = Some(n.name.clone());
+        o.name = Some(n.name.clone());
         o.category = n.category.clone();
         list.push(o);
     }
@@ -1614,6 +1626,49 @@ impl<'a> Context<'a> {
         (all, over)
     }
 
+    /// An outage's name, PSS/E style: each element's bus names and numbers,
+    /// then its circuit or unit id; elements out together joined by " & ".
+    fn auto_name(&self, outage: &Outage) -> String {
+        if outage.is_base() {
+            return "BASE CASE".into();
+        }
+        self.name_of(&outage.element)
+    }
+
+    /// Element ids named PSS/E style: each element's bus names and numbers,
+    /// then its circuit or unit id; elements joined by " & ".
+    fn name_of(&self, ids: &str) -> String {
+        let bus = |n: &str| -> String {
+            let name = n
+                .parse::<u32>()
+                .ok()
+                .and_then(|id| self.bus_row.get(&id))
+                .and_then(|&i| self.names.get(i))
+                .map(|s| s.trim())
+                .unwrap_or("");
+            if name.is_empty() {
+                n.to_string()
+            } else {
+                format!("{name} {n}")
+            }
+        };
+        ids.split('&')
+            .map(|id| {
+                let parts: Vec<&str> = id.split(':').collect();
+                match parts.as_slice() {
+                    ["bus", n] => bus(n),
+                    [_, rest @ .., last] if !rest.is_empty() => {
+                        let mut out: Vec<String> = rest.iter().map(|b| bus(b)).collect();
+                        out.push((*last).to_string());
+                        out.join(" ")
+                    }
+                    _ => id.to_string(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" & ")
+    }
+
     fn element(&self, row: usize) -> String {
         self.power
             .elements
@@ -1803,6 +1858,7 @@ impl<'a> Context<'a> {
             if let (Some(pct), Some(base), true) = (pct, base_pct, watched.is_some()) {
                 let o = Overload {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     pct,
@@ -1825,6 +1881,7 @@ impl<'a> Context<'a> {
             {
                 branches.push(BranchChange {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     mw: flows[r],
@@ -1855,6 +1912,10 @@ impl<'a> Context<'a> {
             element: outage.element.clone(),
             kind: outage.kind,
             category: outage.category.clone(),
+            name: outage
+                .name
+                .clone()
+                .unwrap_or_else(|| self.auto_name(outage)),
             description: outage.description.clone(),
             checked: "linear",
             converged: None,
@@ -2061,6 +2122,7 @@ impl<'a> Context<'a> {
             if let (Some(pct), Some(base), true) = (pct, base_pct, watched.is_some()) {
                 let o = Overload {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     pct,
@@ -2085,6 +2147,7 @@ impl<'a> Context<'a> {
             {
                 branches.push(BranchChange {
                     element: self.element(r),
+                    name: self.name_of(&self.element(r)),
                     from: b.from,
                     to: b.to,
                     mw: if b.online { f[0] } else { 0.0 },
@@ -2239,12 +2302,22 @@ fn num(v: f64) -> String {
     }
 }
 
+/// A bus named PSS/E style: its name and number, or the number alone.
+fn bus_name(name: &str, number: u32) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        number.to_string()
+    } else {
+        format!("{name} {number}")
+    }
+}
+
 fn opt(v: Option<f64>) -> String {
     v.map(num).unwrap_or_default()
 }
 
 /// The header of the violations CSV.
-pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,description,solved,type,element,from_bus,to_bus,bus,name,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note";
+pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,outage,description,solved,type,element,element_id,from_bus,to_bus,bus,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note";
 
 impl ContingencyResults {
     /// Write every violation of the run as CSV, one line each, in rank
@@ -2262,8 +2335,9 @@ impl ContingencyResults {
             outages: 0,
         };
         for (row, found) in self.rows.iter().zip(&self.violations) {
-            let contingency = if row.kind == "base" {
-                "base case"
+            // The name, then the ids of what goes out (none for P0).
+            let outage = if row.kind == "base" {
+                ""
             } else {
                 row.element.as_str()
             };
@@ -2273,10 +2347,11 @@ impl ContingencyResults {
                 _ => "linear",
             };
             let lead = format!(
-                "{},{},{},{},{}",
+                "{},{},{},{},{},{}",
                 row.rank,
                 csv_field(row.category.as_deref().unwrap_or("")),
-                csv_field(contingency),
+                csv_field(&row.name),
+                csv_field(outage),
                 csv_field(row.description.as_deref().unwrap_or("")),
                 solved,
             );
@@ -2292,7 +2367,8 @@ impl ContingencyResults {
                 for o in &found.overloads {
                     writeln!(
                         out,
-                        "{lead},branch,{},{},{},,,{},{},{},{},{},,,,,",
+                        "{lead},branch,{},{},{},{},,{},{},{},{},{},,,,,",
+                        csv_field(&o.name),
                         csv_field(&o.element),
                         o.from,
                         o.to,
@@ -2306,10 +2382,10 @@ impl ContingencyResults {
                 for v in &found.voltage_problems {
                     writeln!(
                         out,
-                        "{lead},voltage,bus:{},,,{},{},,,,,,{},{},{},{},",
+                        "{lead},voltage,{},bus:{},,,{},,,,,,{},{},{},{},",
+                        csv_field(&bus_name(&v.name, v.bus)),
                         v.bus,
                         v.bus,
-                        csv_field(&v.name),
                         num(v.vm),
                         num(v.base_vm),
                         num(v.vmin),

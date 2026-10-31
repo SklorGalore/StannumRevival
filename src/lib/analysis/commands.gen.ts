@@ -44,6 +44,8 @@ export type BranchChange = {
   element: string;
   from: number;
   mw: number;
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
   /**
    * Percent of the run's rating after, and of its base rating before;
    * `None` when unrated.
@@ -307,6 +309,12 @@ export type ContingencyRow = {
   kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
+  /**
+   * The contingency's name: the one its lists file gives it, or else
+   * built PSS/E style from what goes out, bus names and numbers then the
+   * circuit or unit id, such as "ALPHA 101 BETA 102 1"; "BASE CASE" for P0.
+   */
+  name: string;
   /** AC only: why a solve failed, in a sentence. */
   note: string | null;
   /** Branches over the limit that are new or more than a point worse. */
@@ -346,6 +354,7 @@ export type ContingencyRowColumns = {
   kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
+  name: string[];
   note: (string | null)[];
   overloads: number[];
   rank: number[];
@@ -1210,6 +1219,8 @@ export type Overload = {
   limit_pct: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
   /**
    * MVA as a percent of the run's rating after the outage, and of its
    * base rating before it.

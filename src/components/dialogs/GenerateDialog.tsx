@@ -3,6 +3,7 @@ import { X, Wand2 } from "lucide-react";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useDiagramStore } from "../../store/diagramStore";
 import { caseNetwork } from "../../lib/diagram/network";
+import { confirmDialog } from "../../lib/tauri/commands";
 import type { CaseNetwork } from "../../lib/analysis/types";
 import {
   busLabel,
@@ -107,7 +108,7 @@ export function GenerateDialog({ onClose, around }: { onClose: () => void; aroun
     if (!net || !scope || !summary) return;
     if (
       useDiagramStore.getState().isDirty &&
-      !window.confirm("Replace the current drawing? It has unsaved changes.")
+      !(await confirmDialog("Replace the current drawing? It has unsaved changes."))
     )
       return;
     setBusy(true);

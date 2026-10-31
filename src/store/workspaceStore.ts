@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
 import { addRecent } from "../lib/study/recent";
+import { confirmDialog } from "../lib/tauri/commands";
 
 /** Power flow tabs other parts of the app can open. */
 export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "transfers" | "study";
@@ -138,8 +139,8 @@ const LINKED_KEY = "stannum-linked-selection";
  * Questions to ask before the open case is replaced or closed, such as
  * "the study has unsaved changes". Each returns false to stop.
  */
-const beforeCaseChange: (() => boolean)[] = [];
-export function onBeforeCaseChange(check: () => boolean): () => void {
+const beforeCaseChange: (() => Promise<boolean>)[] = [];
+export function onBeforeCaseChange(check: () => Promise<boolean>): () => void {
   beforeCaseChange.push(check);
   return () => {
     const i = beforeCaseChange.indexOf(check);
@@ -148,15 +149,17 @@ export function onBeforeCaseChange(check: () => boolean): () => void {
 }
 
 /** Ask every question in turn; the first "no" stops. */
-export function caseChangeOk(summary: CaseSummary | null): boolean {
-  return unsavedEditsOk(summary) && beforeCaseChange.every((check) => check());
+export async function caseChangeOk(summary: CaseSummary | null): Promise<boolean> {
+  if (!(await unsavedEditsOk(summary))) return false;
+  for (const check of [...beforeCaseChange]) if (!(await check())) return false;
+  return true;
 }
 
 /** Before the case is replaced: ask when it has edits that aren't saved. */
-function unsavedEditsOk(summary: CaseSummary | null): boolean {
+async function unsavedEditsOk(summary: CaseSummary | null): Promise<boolean> {
   const n = summary?.record_edits ?? 0;
-  if (n === 0 || typeof window === "undefined" || typeof window.confirm !== "function") return true;
-  return window.confirm(`${summary!.name} has ${n} edited value${n === 1 ? "" : "s"} that aren't saved. Discard ${n === 1 ? "it" : "them"}?`);
+  if (n === 0) return true;
+  return confirmDialog(`${summary!.name} has ${n} edited value${n === 1 ? "" : "s"} that aren't saved. Discard ${n === 1 ? "it" : "them"}?`);
 }
 
 function loadLinked(): boolean {
@@ -301,7 +304,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openCase: async (path, opts) => {
     if (get().opening) return false;
-    if (!opts?.confirmed && !caseChangeOk(get().caseSummary)) return false;
+    if (!opts?.confirmed && !(await caseChangeOk(get().caseSummary))) return false;
     const chosen = path ?? (await pickFile(CASE_FILTERS));
     if (!chosen) return false;
     const summary = await opened(set, () => api.openCase(chosen));
@@ -311,7 +314,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openSample: async (id) => {
     if (get().opening) return false;
-    if (!caseChangeOk(get().caseSummary)) return false;
+    if (!(await caseChangeOk(get().caseSummary))) return false;
     // Samples aren't added to Recent: the empty screen always lists them.
     return !!(await opened(set, async () => api.openSample(id, await sampleFolder())));
   },
@@ -335,7 +338,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   closeCase: async () => {
-    if (!caseChangeOk(get().caseSummary)) return false;
+    if (!(await caseChangeOk(get().caseSummary))) return false;
     await api.closeCase();
     useLog.getState().newCase();
     set((s) => ({ caseSummary: null, caseVersion: s.caseVersion + 1, openError: null, solveReport: null, shown: null, selection: null, drawRequest: null }));

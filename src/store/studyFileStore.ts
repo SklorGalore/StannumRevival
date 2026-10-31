@@ -8,6 +8,7 @@ import { create } from "zustand";
 import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, RUN_FILE_FILTERS, STN_FILTERS, STNB_FILTERS, toStannumError } from "../lib/analysis/api";
 import type { Step } from "../lib/analysis/commands.gen";
 import { addRecent, fileName } from "../lib/study/recent";
+import { confirmDialog } from "../lib/tauri/commands";
 import { describeChange, parseStudyFile, STUDY_EXTENSION, STUDY_FILTERS, type StudyFile } from "../lib/study/studyFile";
 import { useContingencies } from "./contingencyStore";
 import { useDiagramStore } from "./diagramStore";
@@ -67,19 +68,18 @@ function hasWork(): boolean {
 }
 
 /** Asked before the case is replaced or closed. */
-function unsavedStudyOk(): boolean {
+async function unsavedStudyOk(): Promise<boolean> {
   const { path, dirty } = useStudyFile.getState();
   if (!dirty || (!path && !hasWork())) return true;
-  if (typeof window === "undefined" || typeof window.confirm !== "function") return true;
   const what = path ? `${fileName(path)} has changes that aren't saved.` : "The study edits aren't saved to a run file.";
-  return window.confirm(`${what} Discard them?`);
+  return confirmDialog(`${what} Discard them?`);
 }
 
 /** Where a side file (the case, a DC grid file) is now, asking the user when it can't be found. */
 async function locate(study: string, absolute: string, relative: string | null, what: string, filters: typeof CASE_FILTERS) {
   const found = await api.studyLocateCase(study, absolute, relative);
   if (found) return { path: found, moved: found !== absolute };
-  const ok = window.confirm(`The study's ${what}, ${fileName(absolute)}, isn't at\n${absolute}\nor beside the study. Find it yourself?`);
+  const ok = await confirmDialog(`The study's ${what}, ${fileName(absolute)}, isn't at\n${absolute}\nor beside the study. Find it yourself?`);
   if (!ok) return null;
   const picked = await pickFile(filters);
   return picked ? { path: picked, moved: true } : null;
@@ -195,7 +195,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
     // A run file opens the case from its file, so Records edits have to be in one first.
     const recordEdits = summary.record_edits ?? 0;
     if (recordEdits > 0) {
-      const ok = window.confirm(
+      const ok = await confirmDialog(
         `${summary.name} has ${recordEdits} edited value${recordEdits === 1 ? "" : "s"} from Records that aren't in a file yet. ` +
           "A run file opens its case from the file, so save the edited case first. Save it now?"
       );
@@ -218,7 +218,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
 
   async openFile(given) {
     if (get().busy || useWorkspace.getState().opening) return false;
-    if (!caseChangeOk(useWorkspace.getState().caseSummary)) return false;
+    if (!(await caseChangeOk(useWorkspace.getState().caseSummary))) return false;
     const path = given ?? (await pickFile(OPEN_FILTERS));
     if (!path) return false;
     if (RUN_EXTENSION.test(path)) {
@@ -233,7 +233,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
 
   async open(given, opts) {
     if (get().busy) return false;
-    if (!opts?.confirmed && !caseChangeOk(useWorkspace.getState().caseSummary)) return false;
+    if (!opts?.confirmed && !(await caseChangeOk(useWorkspace.getState().caseSummary))) return false;
     const path = given ?? (await pickFile(STUDY_FILTERS));
     if (!path) return false;
     set({ busy: "opening", error: null, notice: null });
