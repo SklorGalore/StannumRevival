@@ -1691,6 +1691,11 @@
           "default": "a",
           "description": "The rating loadings are measured against after an outage."
         },
+        "report_existing": {
+          "default": false,
+          "description": "Report every branch, interface and bus outside its limits after the\noutage, also those that already were before it and got no worse.",
+          "type": "boolean"
+        },
         "skip_zero_impedance": {
           "default": false,
           "description": "Leave out zero-impedance lines: lines with no resistance and a\nreactance at or below `zero_impedance_pu`, as PSS/E treats them\n(THRSHZ). Applies to N-1 and N-2, also to listed single elements;\na bus outage still opens them.",
@@ -1713,6 +1718,18 @@
             "switch_shunts": true,
             "tolerance_mva": 2.0
           }
+        },
+        "worse_by_pct": {
+          "default": 1.0,
+          "description": "How many percentage points of loading a branch or interface already\nover its limit before the outage must gain to be reported. 1 by\ndefault.",
+          "format": "double",
+          "type": "number"
+        },
+        "worse_by_pu": {
+          "default": 0.001,
+          "description": "How many per unit a bus already outside its voltage limits before\nthe outage must move further out to be reported. 0.001 by default.",
+          "format": "double",
+          "type": "number"
         },
         "zero_impedance_pu": {
           "default": 0.0001,
@@ -4481,6 +4498,11 @@
           "minimum": 0,
           "type": "integer"
         },
+        "limit_pct": {
+          "description": "The loading, in percent, above which this branch counts as over:\nthe run's limit, or its monitor's.",
+          "format": "double",
+          "type": "number"
+        },
         "mw": {
           "description": "Active flow at the from end, MW, after and before.",
           "format": "double",
@@ -4504,7 +4526,8 @@
         "pct",
         "base_pct",
         "mw",
-        "base_mw"
+        "base_mw",
+        "limit_pct"
       ],
       "type": "object"
     },
@@ -6684,6 +6707,28 @@
       ],
       "type": "object"
     },
+    "ViolationsExport": {
+      "description": "What [`ContingencyResults::write_violations_csv`] wrote.",
+      "properties": {
+        "outages": {
+          "description": "Outages with at least one line.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "description": "Lines written, one per violation (and one per outage whose AC solve\nfailed), not counting the header.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "outages"
+      ],
+      "type": "object"
+    },
     "VoltageProblem": {
       "description": "A bus outside its voltage limits after an outage.",
       "properties": {
@@ -7737,6 +7782,36 @@
         "type": "array"
       },
       "takes_case": false
+    },
+    "export_contingency_violations": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "doc": "Write every violation of the last run to a CSV file, one line each:\nbranch overloads, bus voltages and interfaces, and a line for each\noutage whose AC solve failed.",
+      "result": {
+        "$ref": "#/$defs/ViolationsExport"
+      },
+      "takes_case": true
     },
     "export_matpower": {
       "action": true,

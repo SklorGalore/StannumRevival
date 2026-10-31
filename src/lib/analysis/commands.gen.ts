@@ -413,6 +413,11 @@ export type ContingencySettings = {
   /** The rating loadings are measured against after an outage. */
   rating?: Rating;
   /**
+   * Report every branch, interface and bus outside its limits after the
+   * outage, also those that already were before it and got no worse.
+   */
+  report_existing?: boolean;
+  /**
    * Leave out zero-impedance lines: lines with no resistance and a
    * reactance at or below `zero_impedance_pu`, as PSS/E treats them
    * (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
@@ -420,6 +425,17 @@ export type ContingencySettings = {
    */
   skip_zero_impedance?: boolean;
   solve?: SolveSettings;
+  /**
+   * How many percentage points of loading a branch or interface already
+   * over its limit before the outage must gain to be reported. 1 by
+   * default.
+   */
+  worse_by_pct?: number;
+  /**
+   * How many per unit a bus already outside its voltage limits before
+   * the outage must move further out to be reported. 0.001 by default.
+   */
+  worse_by_pu?: number;
   /**
    * The zero-impedance threshold in per unit; 0.0001 by default, as
    * PSS/E's THRSHZ.
@@ -1158,6 +1174,11 @@ export type Overload = {
   base_pct: number;
   element: string;
   from: number;
+  /**
+   * The loading, in percent, above which this branch counts as over:
+   * the run's limit, or its monitor's.
+   */
+  limit_pct: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
   /**
@@ -1889,6 +1910,17 @@ export type TransferSummary = {
   transfer_limit_mw: number | null;
 };
 
+/** What [`ContingencyResults::write_violations_csv`] wrote. */
+export type ViolationsExport = {
+  /** Outages with at least one line. */
+  outages: number;
+  /**
+   * Lines written, one per violation (and one per outage whose AC solve
+   * failed), not counting the header.
+   */
+  rows: number;
+};
+
 /** A bus outside its voltage limits after an outage. */
 export type VoltageProblem = {
   base_vm: number;
@@ -2196,6 +2228,18 @@ export interface CoreCommands {
   element_kinds: {
     args: Record<string, never>;
     result: ElementKind[];
+  };
+  /**
+   * Write every violation of the last run to a CSV file, one line each:
+   * branch overloads, bus voltages and interfaces, and a line for each
+   * outage whose AC solve failed.
+   */
+  export_contingency_violations: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: ViolationsExport;
   };
   /** Write the case, solved or as filed, as a MATPOWER file. */
   export_matpower: {

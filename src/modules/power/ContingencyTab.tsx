@@ -3,11 +3,12 @@
 // diagram. Or run the NERC TPL-001 planning events the core generates from
 // the case (planning.rs). The run itself is stannum-core's (contingency.rs).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Download, FileText, Network, Play, ShieldAlert, Square, X } from "lucide-react";
+import { FileText, Network, Play, ShieldAlert, Square, X } from "lucide-react";
 import { PLANNING_CATEGORIES, useContingencies, type ContingencySource } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
-import { LISTS_FILTERS, api, pickFile, saveTextExport } from "../../lib/analysis/api";
+import { LISTS_FILTERS, api, pickFile, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { OverflowMenu } from "../../ui/OverflowMenu";
 import type { CategoryCount, ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
@@ -530,6 +531,11 @@ export function ContingencyTab({
     ? scope.elements.filter((e) => !e.startsWith("bus:")).length
     : (s.choice.branches ? new Set(report?.branches.filter((b) => b.online && !b.element.startsWith("switch:")).map((b) => b.element)).size : 0) +
       (s.choice.generators ? (report?.generators.filter((g) => g.online).length ?? 0) : 0);
+  async function exportViolations() {
+    const path = await pickSavePath("contingency-violations.csv", [{ name: "CSV", extensions: ["csv"] }]);
+    if (!path) return;
+    await api.exportContingencyViolations(path);
+  }
   async function exportCsv() {
     const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
@@ -817,6 +823,35 @@ export function ContingencyTab({
             aria-label="Overload limit"
           />
         </label>
+        <label
+          className="flex flex-col gap-1 text-[11px] font-medium text-slate-600"
+          title="An overload already there before the outage is reported only when it grows by more than this many points"
+        >
+          Worse by (pts)
+          <input
+            className={`${inputClass} w-16`}
+            type="number"
+            min={0}
+            step="any"
+            value={s.choice.worseByPct}
+            disabled={s.choice.reportExisting}
+            onChange={(e) => s.setChoice({ worseByPct: Math.max(0, Number(e.target.value) || 0) })}
+            aria-label="Worse by points"
+            data-testid="contingency-worse-by"
+          />
+        </label>
+        <label
+          className="flex items-center gap-1.5 self-end pb-1.5 text-xs whitespace-nowrap text-slate-700"
+          title="Also report overloads and voltage problems that were there before the outage and got no worse"
+        >
+          <input
+            type="checkbox"
+            checked={s.choice.reportExisting}
+            onChange={(e) => s.setChoice({ reportExisting: e.target.checked })}
+            data-testid="contingency-report-existing"
+          />
+          Include existing
+        </label>
         <div className="flex items-center gap-2 ml-auto">
           {s.running ? (
             <>
@@ -982,9 +1017,26 @@ export function ContingencyTab({
                   Problems only
                   {problemCount === null ? "" : ` (${count(problemCount)})`}
                 </label>
-                <Button variant="ghost" className="ml-auto whitespace-nowrap" onClick={exportCsv}>
-                  <Download size={13} /> Export CSV
-                </Button>
+                <span className="ml-auto" data-testid="contingency-export">
+                  <OverflowMenu
+                    label="Export CSV"
+                    showLabel
+                    items={[
+                      {
+                        id: "violations",
+                        label: "Every violation",
+                        title: "One line per overload, voltage problem and interface violation of every outage",
+                        onClick: () => void exportViolations(),
+                      },
+                      {
+                        id: "outages",
+                        label: "One row per outage",
+                        title: "The table as shown: each outage's worst problem and its counts",
+                        onClick: () => void exportCsv(),
+                      },
+                    ]}
+                  />
+                </span>
               </div>
               <div className="flex-1 min-h-0 bg-white">
                 <DataTable

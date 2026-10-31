@@ -137,12 +137,16 @@ from the rest of the network.
 The table lists one row per outage, worst first: AC results first, then the
 linear-only ones. An overload counts when a branch goes over the limit, or
 was already over it and gets more than one point worse, so a branch that is
-overloaded before any outage doesn't fill the list. **Worst branch** is the
+overloaded before any outage doesn't fill the list. **Worse by** sets that
+one point, and **Include existing** reports every branch and bus outside its
+limits after the outage, whether or not it was before. **Worst branch** is the
 most loaded such branch (or the most loaded branch when nothing is over the
 limit) and **Before** its loading without the outage. **Splits off** gives
 the buses that lose their path to the rest of the network and the load and
-generation on them. **Problems only** hides the rest, and **Export CSV**
-saves the list.
+generation on them. **Problems only** hides the rest. **Export CSV** saves
+either **Every violation**, one line per overload, voltage problem and
+interface violation of every outage (and one per outage whose AC solve
+failed), or **One row per outage**, the table as shown.
 
 Click a row to open the outage beside the table: every overload and voltage
 problem, what it splits off, and the largest flow changes. Each element name

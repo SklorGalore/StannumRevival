@@ -757,6 +757,28 @@ impl OpenCase {
             .ok_or_else(|| Error::not_ready("Run contingencies first."))
     }
 
+    /// Write every violation of the last contingency run to a CSV file.
+    pub fn export_contingency_violations(
+        &self,
+        path: &Path,
+    ) -> Result<crate::contingency::ViolationsExport, Error> {
+        let results = self
+            .contingencies
+            .as_ref()
+            .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let file = std::fs::File::create(path)
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        let written = results
+            .write_violations_csv(&mut std::io::BufWriter::new(file))
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        log::info!(
+            "Exported {} contingency violations to {}",
+            written.rows,
+            path.display()
+        );
+        Ok(written)
+    }
+
     pub fn contingency_summary(&self) -> Option<ContingencySummary> {
         self.contingencies.as_ref().map(|c| c.summary.clone())
     }
@@ -819,9 +841,7 @@ impl OpenCase {
             rating: ratings.0,
             base_rating: ratings.1,
             solve: solve.clone(),
-            planning: None,
-            lists: None,
-            monitors: None,
+            ..ContingencySettings::default()
         };
         let job = ContingencyJob::new(power, base, settings).map_err(|e| {
             if e.starts_with("Nothing to take out") {
