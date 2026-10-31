@@ -6,6 +6,24 @@ import { defaultMetadata } from "./defaults";
 import { rotateSelected } from "../lib/diagram/rotate";
 
 const HISTORY_LIMIT = 100;
+
+/** Whether flow arrows move: a viewer preference, kept across sessions. */
+const ANIMATE_KEY = "stannum-animate-flows";
+function readAnimateFlows(): boolean {
+  try {
+    return localStorage.getItem(ANIMATE_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+function writeAnimateFlows(on: boolean) {
+  try {
+    if (on) localStorage.setItem(ANIMATE_KEY, "on");
+    else localStorage.removeItem(ANIMATE_KEY);
+  } catch {
+    // No storage (tests, private windows): the choice lasts this session.
+  }
+}
 /** Edits with the same key closer together than this are one undo step. */
 const COALESCE_MS = 1500;
 let lastCheckpoint = { key: "", at: 0 };
@@ -73,6 +91,7 @@ export const useDiagramStore = create<DiagramStore>()(
     snapToGrid: true,
     gridSize: 20,
     showResults: true,
+    animateFlows: readAnimateFlows(),
     fitRequest: 0,
     colorMode: "voltage",
     locked: false,
@@ -374,6 +393,11 @@ export const useDiagramStore = create<DiagramStore>()(
     },
 
     toggleResults: () => set((s) => { s.showResults = !s.showResults; }),
+    toggleAnimateFlows: () =>
+      set((s) => {
+        s.animateFlows = !s.animateFlows;
+        writeAnimateFlows(s.animateFlows);
+      }),
     requestFit: () => set((s) => { s.fitRequest += 1; }),
 
     setFilePath: (path) =>
