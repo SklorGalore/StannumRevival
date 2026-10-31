@@ -1003,6 +1003,10 @@ commands! {
     export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
         |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
 
+    /// The subsystem records of a lists file (`.stnl`), as written.
+    lists_subsystems { path: String } -> Vec<crate::lists::ListedSubsystem> =>
+        |_, a| Ok(crate::lists::subsystems(&a.path)?);
+
     /// Take one element out of the last AC solve and solve again. Loadings
     /// are measured against `rating` after the trip and `base_rating`
     /// before it (both rate A when left out).

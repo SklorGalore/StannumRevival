@@ -14,6 +14,10 @@ import type {
   SolveSettings,
 } from "../lib/analysis/types";
 import type { Rating } from "../lib/analysis/ratings";
+import { monitorsText, outagesText, type SetupSubsystem } from "../lib/analysis/stnl";
+
+/** AC solve options the setup can set apart from the Power flow tab's. */
+export type SolveOverrides = Partial<Pick<SolveSettings, "enforce_q_limits" | "adjust_transformer_taps" | "switch_shunts">>;
 
 /** Rows kept here: the worst outages, to open the first. The table reads pages from the core. */
 export const FIRST_PAGE = 100;
@@ -48,11 +52,22 @@ export interface ContingencyChoice {
   limitPct: number;
   /** Points an overload already there before the outage must gain to be reported. */
   worseByPct: number;
+  /** Per unit a voltage problem already there must worsen by to be reported. */
+  worseByPu: number;
   /** Report every problem after the outage, also those already there before it. */
   reportExisting: boolean;
   /** The rating loadings are measured against after an outage, and before. */
   rating: Rating;
   baseRating: Rating;
+  /** Subsystems built in the setup; saved to and read from .stnl files. */
+  subsystems: SetupSubsystem[];
+  /** N-1/N-2 outages only within this subsystem (by id); the whole case when null. */
+  outageSubsystem: string | null;
+  /** Check only this subsystem's branches (and voltages); every branch and bus when null. */
+  monitorSubsystem: string | null;
+  monitorVoltages: boolean;
+  /** AC solve options set apart from the Power flow tab's; empty to follow it. */
+  solveOverrides: SolveOverrides;
 }
 
 export const DEFAULT_CHOICE: ContingencyChoice = {
@@ -72,9 +87,15 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   acCount: 50,
   limitPct: 100,
   worseByPct: 1,
+  worseByPu: 0.001,
   reportExisting: false,
   rating: "a",
   baseRating: "a",
+  subsystems: [],
+  outageSubsystem: null,
+  monitorSubsystem: null,
+  monitorVoltages: true,
+  solveOverrides: {},
 };
 
 interface ContingencyState {
@@ -157,10 +178,18 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
     try {
       const planning = c.source === "planning";
       const lists = c.source === "lists" ? c.listsPath : null;
+      const known = (id: string | null) => (id && c.subsystems.some((x) => x.id === id) ? id : null);
+      // Outages within a subsystem and subsystem monitors run as lists text.
+      const inSubsystem = c.source === "n1" ? known(c.outageSubsystem) : null;
+      const watched = known(c.monitorSubsystem);
       const summary = await api.runContingencies({
-        elements: planning || lists ? null : elements,
+        elements: planning || lists || inSubsystem ? null : elements,
         lists,
+        lists_text: inSubsystem
+          ? outagesText(c.subsystems, { subsystem: inSubsystem, branches: c.branches, generators: c.generators, buses: c.buses, pairs: c.pairs })
+          : null,
         monitors: c.monitorFromLists ? c.monitorsPath : null,
+        monitors_text: watched && !c.monitorFromLists ? monitorsText(c.subsystems, watched, c.limitPct, c.monitorVoltages) : null,
         branches: c.branches,
         generators: c.generators,
         buses: !planning && c.buses,
@@ -171,10 +200,11 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         ac_count: c.acCount,
         limit_pct: c.limitPct,
         worse_by_pct: c.worseByPct,
+        worse_by_pu: c.worseByPu,
         report_existing: c.reportExisting,
         rating: c.rating,
         base_rating: c.baseRating,
-        solve: { ...solve, model: "ac" },
+        solve: { ...solve, ...c.solveOverrides, model: "ac" },
         planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
       });
       const rows = await api.contingencyRows(0, FIRST_PAGE);

@@ -393,6 +393,11 @@ export type ContingencySettings = {
    * `pairs`; `planning` is unused.
    */
   lists?: string | null;
+  /**
+   * Lists text (`.stnl`) to run in place of a `lists` file, as the
+   * setup builds it from its subsystems. Wins over `lists`.
+   */
+  lists_text?: string | null;
   method?: Method;
   /**
    * Check only what the `monitor` records of this lists file (`.stnl`)
@@ -400,6 +405,11 @@ export type ContingencySettings = {
    * interfaces. Every rated branch and every bus when absent.
    */
   monitors?: string | null;
+  /**
+   * Lists text (`.stnl`) whose monitor records choose what is checked,
+   * in place of a `monitors` file. Wins over `monitors`.
+   */
+  monitors_text?: string | null;
   /**
    * N-2: take the chosen branches and generators out two at a time,
    * every pair once, instead of one at a time. Buses stay one at a time.
@@ -994,6 +1004,25 @@ export type LimitSummary = {
   worst_branch: [number, number, number] | null;
   worst_reactive: [number, number] | null;
   worst_voltage: [number, number] | null;
+};
+
+/**
+ * A subsystem record of a lists file, as written: its id, name and
+ * members, for editing and saving again.
+ */
+export type ListedSubsystem = {
+  areas: number[];
+  buses: number[];
+  id: string;
+  /** Only buses at or below this base voltage, kV. */
+  kv_max: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min: number | null;
+  name: string;
+  owners: number[];
+  /** Other subsystems it includes, by id. */
+  subsystems: string[];
+  zones: number[];
 };
 
 /**
@@ -2286,6 +2315,13 @@ export interface CoreCommands {
   list_commands: {
     args: Record<string, never>;
     result: CommandList;
+  };
+  /** The subsystem records of a lists file (`.stnl`), as written. */
+  lists_subsystems: {
+    args: {
+      path: string;
+    };
+    result: ListedSubsystem[];
   };
   /**
    * Attach a bus coordinates CSV (bus, latitude, longitude, optional

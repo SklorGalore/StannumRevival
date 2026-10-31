@@ -867,3 +867,60 @@ fn worse_by_and_existing_problems_are_settings() {
     }
     assert!(body.iter().any(|l| l.split(',').nth(5) == Some("branch")));
 }
+
+/// Lists text given inline runs as the same text read from a file would,
+/// and the subsystems of a file read back as written.
+#[test]
+fn inline_lists_match_a_lists_file() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let text = "stannum-lists 0.1\n\
+                subsystem two name=\"Area 2\" areas=[2] kv_min=1\n\
+                contingency_set n1 kind=n_1_branches subsystem=two\n\
+                monitor flows subsystem=two limit_pct=90\n\
+                monitor volts kind=voltage subsystem=two vmin_pu=0.97\n";
+    let path = std::env::temp_dir().join(format!("stannum-inline-{}.stnl", std::process::id()));
+    std::fs::write(&path, text).unwrap();
+    let file = path.to_string_lossy().into_owned();
+    let run = |open: &mut stannum_core::workspace::OpenCase, s: ContingencySettings| {
+        let summary = open.run_contingencies(s).unwrap();
+        let rows = open.contingency_rows(0, 1000).unwrap().0;
+        let found: Vec<_> = rows
+            .iter()
+            .map(|r| (r.element.clone(), r.overloads, r.voltage_violations))
+            .collect();
+        (summary.total, summary.monitored, found)
+    };
+    let from_file = run(
+        open,
+        ContingencySettings {
+            lists: Some(file.clone()),
+            monitors: Some(file.clone()),
+            ..settings(Method::Ac)
+        },
+    );
+    let inline = run(
+        open,
+        ContingencySettings {
+            lists_text: Some(text.into()),
+            monitors_text: Some(text.into()),
+            ..settings(Method::Ac)
+        },
+    );
+    assert!(
+        from_file.0 > 0 && from_file.0 < 41,
+        "area 2's branches only"
+    );
+    assert!(from_file.1);
+    assert_eq!(from_file, inline);
+
+    let subsystems = stannum_core::lists::subsystems(&file).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(subsystems.len(), 1);
+    assert_eq!(
+        (subsystems[0].id.as_str(), subsystems[0].name.as_str()),
+        ("two", "Area 2")
+    );
+    assert_eq!(subsystems[0].members.areas, vec![2]);
+    assert_eq!(subsystems[0].members.kv_min, Some(1.0));
+}

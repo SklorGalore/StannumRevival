@@ -156,6 +156,27 @@ pub struct ContingencySettings {
     /// interfaces. Every rated branch and every bus when absent.
     #[serde(default)]
     pub monitors: Option<String>,
+    /// Lists text (`.stnl`) to run in place of a `lists` file, as the
+    /// setup builds it from its subsystems. Wins over `lists`.
+    #[serde(default)]
+    pub lists_text: Option<String>,
+    /// Lists text (`.stnl`) whose monitor records choose what is checked,
+    /// in place of a `monitors` file. Wins over `monitors`.
+    #[serde(default)]
+    pub monitors_text: Option<String>,
+}
+
+/// Lists read from inline `text` when given, else from the file at `path`.
+fn lists_from(
+    text: &Option<String>,
+    path: &Option<String>,
+    power: &PowerCase,
+) -> Option<Result<crate::lists::Lists, String>> {
+    match (text, path) {
+        (Some(t), _) => Some(crate::lists::parse(t, power)),
+        (None, Some(p)) => Some(crate::lists::load(p, power)),
+        (None, None) => None,
+    }
 }
 
 impl Default for ContingencySettings {
@@ -180,6 +201,8 @@ impl Default for ContingencySettings {
             planning: None,
             lists: None,
             monitors: None,
+            lists_text: None,
+            monitors_text: None,
         }
     }
 }
@@ -507,9 +530,8 @@ pub(crate) fn outages(
     power: &PowerCase,
     settings: &ContingencySettings,
 ) -> Result<(Vec<Outage>, usize, Vec<String>), String> {
-    if let Some(path) = &settings.lists {
-        let lists = crate::lists::load(path, power)?;
-        return from_lists(power, settings, lists);
+    if let Some(lists) = lists_from(&settings.lists_text, &settings.lists, power) {
+        return from_lists(power, settings, lists?);
     }
     if let Some(p) = &settings.planning {
         let list: Vec<Outage> = planning::events(power, p)?
@@ -902,14 +924,13 @@ struct WatchedInterface {
 }
 
 impl Watch {
-    /// The monitors of the lists file at `path`, resolved to `power`'s
+    /// The monitors of `lists`, resolved to `power`'s
     /// rows, and notes on what was skipped.
     fn from_lists(
         power: &PowerCase,
-        path: &str,
+        lists: crate::lists::Lists,
         settings: &ContingencySettings,
     ) -> Result<(Self, Vec<String>), String> {
-        let lists = crate::lists::load(path, power)?;
         let mut notes = lists.notes;
         if lists.monitors.is_empty() {
             notes.push(
@@ -1094,9 +1115,9 @@ impl ContingencyJob {
         settings: ContingencySettings,
     ) -> Result<Self, String> {
         let (outages, already_out, mut notes) = outages(power, &settings)?;
-        let watch = match &settings.monitors {
-            Some(path) => {
-                let (watch, more) = Watch::from_lists(power, path, &settings)?;
+        let watch = match lists_from(&settings.monitors_text, &settings.monitors, power) {
+            Some(lists) => {
+                let (watch, more) = Watch::from_lists(power, lists?, &settings)?;
                 notes.extend(more);
                 watch
             }
