@@ -72,9 +72,10 @@ when the case has any. The Branches table lists every transformer's tap and
 phase shift as solved, and the log lists each move with the flow that caused
 it.
 
-Not modelled yet: impedance correction tables (`TAB`), which scale a
-winding's impedance with its angle or ratio. The impedance stays at its
-nominal value.
+A winding with an impedance correction table (`TAB`) has its impedance
+scaled by the table's factor at its angle, worked out again each time the
+shifter moves; the Branches table shows the corrected resistance and
+reactance. See [PSS/E RAW](/StannumRevival/reference/psse-raw/).
 
 On SyntheticUSA the two phase shifters in control already sit inside their
 bands at the saved solution, and stay put. With their bands moved 400–500 MW

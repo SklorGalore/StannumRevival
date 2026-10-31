@@ -258,6 +258,16 @@ pub fn element(
                         "p.u.",
                     ));
                     fields.push(num("Phase shift", br.shift, "°"));
+                    if br.mag_g != 0.0 || br.mag_b != 0.0 {
+                        fields.push(num("Magnetizing G", br.mag_g, "p.u."));
+                        fields.push(num("Magnetizing B", br.mag_b, "p.u."));
+                    }
+                    if let Some(c) = &br.correction {
+                        // The resistance and reactance above are corrected.
+                        fields.push(num("Impedance table", c.table as f64, ""));
+                        fields.push(num("Nominal resistance", c.r, "p.u."));
+                        fields.push(num("Nominal reactance", c.x, "p.u."));
+                    }
                 }
                 detail.data.push(Group {
                     title: if winding > 0 {

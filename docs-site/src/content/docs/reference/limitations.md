@@ -48,9 +48,9 @@ keep.
 
 ## Controls
 
-- Impedance correction tables (`TAB`): a winding's impedance stays at its
-  nominal value as its tap or angle moves.
-- Transformer magnetizing admittance.
+- Transformer magnetizing admittance given as no-load loss and exciting
+  current (`CM` 2) uses `SBASE1-2` but not `NOMV1`: the admittance is taken
+  at the bus base voltage.
 - DC line transformer taps (`COD` 4) on three-winding transformers.
 - FACTS devices in modes 3 to 8 (constant series impedance or voltage,
   IPFC). The series element's voltage and current limits (`VSMX`, `IMX`,
@@ -75,9 +75,8 @@ keep.
   and owner names. Multi-section line groupings are read only for
   contingencies. See [PSS/E RAW](/StannumRevival/reference/psse-raw/).
 - RAW export writes revisions 33 and 35 only. From a RAW 33 or 35 file it
-  keeps every record; the impedance correction and three-winding
-  transformer layouts follow the PSS/E manual but have not been checked
-  against a file that holds them.
+  keeps every record; the three-winding transformer layout follows the
+  PSS/E manual but has not been checked against a file that holds one.
 - RAW written from the power flow model (MATPOWER cases and RAW revisions
   other than 33 and 35) leaves out multi-terminal DC, MATPOWER's DC line
   rows, loads assigned to another area than their bus's, and generator

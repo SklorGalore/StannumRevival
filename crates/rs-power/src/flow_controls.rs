@@ -578,6 +578,7 @@ impl<'a> FlowController<'a> {
                 }
                 Device::Tap(t) => branch.tap = t.tap_per_ratio * next,
             }
+            branch.correct_impedance();
             moved += 1;
         }
         Ok(moved)

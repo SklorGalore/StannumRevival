@@ -42,6 +42,8 @@ including its approximations, with the extensions marked below.
 | Two-winding transformers | All `CW`/`CZ` combinations (1–3); impedance on the winding nominal voltage base (MATPOWER `use_winding_baseV = 1`), including its zero-`NOMV` behaviour. `COD` = 1 and 2 windings kept for [tap control](/StannumRevival/manual/voltage-controls/#tap-changers), `COD` = 3 and 5 for [phase shifters](/StannumRevival/manual/phase-shifters/), `COD` = 4 for [DC line converters](/StannumRevival/manual/hvdc/lcc/#ac-transformer-taps-cod-4). *Extension.* |
 | System switching devices (revisions 34, 35) | A lossless branch of reactance `X` (PSS/E's 0.0001 p.u. when blank or zero), in service when `STAT` is 1, with `RATE1` as its rating. Ids are `switch:I:J:CKT`. Skipped by MATPOWER. Default N-1 runs leave them out; list one to run it. *Extension.* |
 | Three-winding transformers | A star bus with MATPOWER's numbering, three branches, and winding statuses. |
+| Transformer magnetizing admittance | `MAG1`, `MAG2` kept as a shunt at the winding one bus, on the bus side of the tap, in service with the transformer (with winding one of a three-winding transformer). `CM` = 2 (no-load loss in W, exciting current in p.u. on `SBASE1-2`) converted to conductance and an inductive susceptance. Dropped by MATPOWER. *Extension.* |
+| Impedance correction tables | `TAB1`–`TAB3` scale a winding's impedance by the table's factor at its ratio (p.u. of its bus base voltage) or, for phase shifters, its angle, by linear interpolation; beyond the table the end factor holds. Worked out again whenever a tap or angle moves in the solve. Revision 34 and 35 complex factors multiply the impedance. A three-winding table scales its winding's star impedance. A fixed winding's table is read as angles when it starts below 0.5 or ends above 1.5 (PSS/E's rule). Ignored by MATPOWER. *Extension.* |
 | Two-terminal DC | MATPOWER's lossless row with estimated reactive limits, plus every field for the [detailed LCC model](/StannumRevival/manual/hvdc/lcc/). LCC reactive limits stored as absorbed. *Extension.* |
 | VSC DC | Skipped by MATPOWER; Stannum adds a row and the [detailed VSC model](/StannumRevival/manual/hvdc/vsc/). *Extension.* |
 | Multi-terminal DC | Skipped by MATPOWER; Stannum adds rows and the [detailed MTDC model](/StannumRevival/manual/hvdc/mtdc/). *Extension.* |
@@ -49,7 +51,7 @@ including its approximations, with the extensions marked below.
 
 ### Ignored with a warning
 
-Transformer magnetizing admittance, impedance correction tables, DC line
+DC line
 tap control (COD 4) on three-winding transformers, wind control, FACTS devices in modes 3 to 8,
 FACTS series limits and reactance, GNE devices, induction machines and other unsupported equipment
 sections. Zone and owner names and inter-area transfers are not kept.
@@ -112,9 +114,10 @@ Converting between the revisions:
 | Impedance correction tables | Up to 11 real (T, F) points | (T, Re F, 0) points, six to a line, ended by 0, 0, 0 |
 | Substation data | Dropped | None |
 
-Every loss is listed after the export. The impedance correction and
-three-winding transformer layouts follow the PSS/E manual; no example file
-holds one to check them against.
+Every loss is listed after the export. The impedance correction layout
+matches the revision 34 Synthetic East-West case; the three-winding
+transformer layout follows the PSS/E manual, and no example file holds one
+to check it against.
 
 ### From anything else
 

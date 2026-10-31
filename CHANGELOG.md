@@ -10,6 +10,15 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Transformer magnetizing and impedance correction tables.** RAW cases'
+  magnetizing admittance (`MAG1`, `MAG2`, either `CM`) now draws at the
+  winding one bus, and impedance correction tables (`TAB1`–`TAB3`) scale a
+  winding's impedance with its ratio or phase shift angle, worked out again
+  each time a tap or shifter moves in the solve. Both were ignored before,
+  as MATPOWER does; RAW export writes them back. Against the voltages saved
+  in the PSS/E sample case, the largest angle difference drops from 1.19 to
+  0.50 degrees.
+
 - **Monitored elements and interfaces.** Contingency runs can check only
   what a `.stnl` lists file's `monitor` records name: branches at their own
   limit and rating, buses at their own voltage limits, and interfaces,

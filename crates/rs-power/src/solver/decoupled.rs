@@ -124,7 +124,7 @@ fn fast_matrices(pass: &Pass<'_>, kind: Matrices) -> Vec<(usize, usize, f64, f64
         // B″: charging and off-nominal taps, but no phase shift.
         let tap = if br.tap == 0.0 { 1.0 } else { br.tap };
         let ytt = magnitude + C::new(0.0, br.b / 2.0);
-        let yff = ytt / (tap * tap);
+        let yff = ytt / (tap * tap) + C::new(0.0, br.mag_b);
         let yft = -magnitude / tap;
         entries.push((e.f, e.f, bp, -yff.im));
         entries.push((e.t, e.t, bp, -ytt.im));

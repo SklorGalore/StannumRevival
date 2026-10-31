@@ -326,14 +326,20 @@ pub fn apply_model(
             "branch" => {
                 let b = case.branches.get_mut(row).ok_or_else(missing)?;
                 match name {
-                    "BR_R" => b.r = v,
-                    "BR_X" => b.x = v,
+                    "BR_R" => b.set_impedance(v, b.x),
+                    "BR_X" => b.set_impedance(b.r, v),
                     "BR_B" => b.b = v,
                     "RATE_A" => b.rate_a = v,
                     "RATE_B" => b.rate_b = v,
                     "RATE_C" => b.rate_c = v,
-                    "TAP" => b.tap = v,
-                    "SHIFT" => b.shift = v,
+                    "TAP" => {
+                        b.tap = v;
+                        b.correct_impedance();
+                    }
+                    "SHIFT" => {
+                        b.shift = v;
+                        b.correct_impedance();
+                    }
                     "BR_STATUS" => b.online = v > 0.0,
                     "ANGMIN" => b.angmin = v,
                     "ANGMAX" => b.angmax = v,
