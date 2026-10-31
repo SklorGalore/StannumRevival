@@ -49,6 +49,8 @@ export interface StudyFile {
     /** Bus outages and N-2; missing from studies saved before 1.1. */
     buses?: boolean;
     pairs?: boolean;
+    skipZeroImpedance?: boolean;
+    zeroImpedancePu?: number;
     baseRating?: "a" | "b" | "c";
   };
   /** The one-line drawing, when there is one. */

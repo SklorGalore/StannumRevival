@@ -792,6 +792,8 @@ impl OpenCase {
             generators: true,
             buses: false,
             pairs: false,
+            skip_zero_impedance: false,
+            zero_impedance_pu: 0.0001,
             method: crate::contingency::Method::Ac,
             ac_count: 1,
             limit_pct,

@@ -23,6 +23,10 @@ Solve the case with the AC model first. Then choose:
   The count of pairs shows under the choice; a run takes at most 250,000,
   so on a large case narrow the elements with the bus filters first, for
   example to one area at 230 kV and up.
+- **Zero-impedance lines**: tick **Skip** to leave out lines with no
+  resistance and a reactance at or below the threshold (0.0001 p.u. by
+  default, PSS/E's THRSHZ), as PSS/E does. It applies to N-1, N-2 and the
+  planning events; a bus outage still opens them. Transformers never count.
 - **Method**: **Linear screen, then AC for the worst** (the default) screens
   every outage with linear outage factors in a fraction of a second, then
   solves the worst N in AC. **AC solve of every outage** is slower on large

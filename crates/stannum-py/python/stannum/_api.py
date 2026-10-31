@@ -279,6 +279,9 @@ class Case:
         ids joined by ``&`` go out together), ``branches``, ``generators``,
         ``buses`` (each bus with everything connected), ``pairs`` (N-2:
         the chosen branches and generators two at a time),
+        ``skip_zero_impedance`` and ``zero_impedance_pu`` (leave out lines
+        with no resistance and a reactance at or below the threshold,
+        0.0001 p.u. by default as PSS/E's THRSHZ),
         ``method`` ("screen" or "ac"), ``ac_count``, ``limit_pct``,
         ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
         loadings are measured against after an outage and before it; rate A

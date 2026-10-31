@@ -375,7 +375,19 @@ export type ContingencySettings = {
   planning?: PlanningSettings | null;
   /** The rating loadings are measured against after an outage. */
   rating?: Rating;
+  /**
+   * Leave out zero-impedance lines: lines with no resistance and a
+   * reactance at or below `zero_impedance_pu`, as PSS/E treats them
+   * (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
+   * a bus outage still opens them.
+   */
+  skip_zero_impedance?: boolean;
   solve?: SolveSettings;
+  /**
+   * The zero-impedance threshold in per unit; 0.0001 by default, as
+   * PSS/E's THRSHZ.
+   */
+  zero_impedance_pu?: number;
 };
 
 export type ContingencySummary = {

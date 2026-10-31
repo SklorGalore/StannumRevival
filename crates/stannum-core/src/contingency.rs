@@ -68,6 +68,9 @@ fn default_ac_count() -> usize {
 fn default_limit() -> f64 {
     100.0
 }
+fn default_zero_impedance() -> f64 {
+    0.0001
+}
 
 /// What to run.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
@@ -90,6 +93,16 @@ pub struct ContingencySettings {
     /// every pair once, instead of one at a time. Buses stay one at a time.
     #[serde(default)]
     pub pairs: bool,
+    /// Leave out zero-impedance lines: lines with no resistance and a
+    /// reactance at or below `zero_impedance_pu`, as PSS/E treats them
+    /// (THRSHZ). Applies to N-1 and N-2, also to listed single elements;
+    /// a bus outage still opens them.
+    #[serde(default)]
+    pub skip_zero_impedance: bool,
+    /// The zero-impedance threshold in per unit; 0.0001 by default, as
+    /// PSS/E's THRSHZ.
+    #[serde(default = "default_zero_impedance")]
+    pub zero_impedance_pu: f64,
     #[serde(default)]
     pub method: Method,
     /// How many of the worst screened outages get an AC solve.
@@ -122,6 +135,8 @@ impl Default for ContingencySettings {
             generators: true,
             buses: false,
             pairs: false,
+            skip_zero_impedance: false,
+            zero_impedance_pu: default_zero_impedance(),
             method: Method::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
@@ -413,6 +428,7 @@ fn outages(
         let list: Vec<Outage> = planning::events(power, p)?
             .into_iter()
             .map(Outage::from)
+            .filter(|o| !zero_impedance_line(&power.case, settings, o))
             .collect();
         return Ok((list, 0));
     }
@@ -491,11 +507,19 @@ fn outages(
             })
     };
 
+    let zero_impedance = |o: &Outage| zero_impedance_line(case, settings, o);
+
     // The outages asked for, one element (or one "&" group) each.
     let mut list: Vec<Outage> = Vec::new();
     match &wanted {
         Some(w) => {
             for id in w {
+                if !id.contains('&')
+                    && let Some(&i) = index.get(*id)
+                    && zero_impedance(&singles[i])
+                {
+                    continue;
+                }
                 let mut parts = Vec::new();
                 for part in id.split('&') {
                     let i = *index.get(part).ok_or_else(|| {
@@ -511,7 +535,9 @@ fn outages(
                 // Switching devices run only when listed: opening one is a
                 // switching study, not a branch outage.
                 let chosen = match o.kind {
-                    "branch" => settings.branches && !o.element.starts_with("switch:"),
+                    "branch" => {
+                        settings.branches && !o.element.starts_with("switch:") && !zero_impedance(o)
+                    }
                     "generator" => settings.generators,
                     _ => false,
                 };
@@ -547,6 +573,20 @@ fn outages(
     list.retain(in_service);
     let already_out = before - list.len();
     Ok((list, already_out))
+}
+
+/// A zero-impedance line, when the settings leave them out: no resistance
+/// and a reactance at or below the threshold (PSS/E's THRSHZ).
+/// Transformers never count.
+fn zero_impedance_line(case: &Case, settings: &ContingencySettings, o: &Outage) -> bool {
+    settings.skip_zero_impedance
+        && o.kind == "branch"
+        && o.element.starts_with("line:")
+        && !o.branch_rows.is_empty()
+        && o.branch_rows.iter().all(|&r| {
+            let b = &case.branches[r];
+            b.r == 0.0 && b.x.abs() <= settings.zero_impedance_pu
+        })
 }
 
 /// N-2 runs at most this many pairs: each is a row of the results.

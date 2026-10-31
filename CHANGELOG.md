@@ -17,6 +17,9 @@ section into the next version's when a release is cut (see
   the bus filters narrow them), and can take out each bus with every
   branch and DC line connected to it. Any elements can also be listed to go
   out together (`line:1:2:1&line:2:3:1`), and Trip and compare takes a bus.
+- **Skip zero-impedance lines in contingencies.** A toggle leaves out lines
+  with no resistance and a reactance at or below a threshold (0.0001 p.u.
+  by default, PSS/E's THRSHZ) from N-1, N-2 and planning event runs.
 - **Ratings B and C in contingency analysis.** Contingency runs and Trip
   and compare measure loading against rate A, B or C, chosen separately for
   the base case and after each outage (for example rate A before, rate B

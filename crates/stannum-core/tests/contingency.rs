@@ -574,3 +574,57 @@ fn too_many_pairs_are_refused() {
     assert!(err.to_string().contains("320400 pairs"), "{err}");
     assert!(err.to_string().contains("Narrow the outages"), "{err}");
 }
+
+/// Leaving out zero-impedance lines drops every line with no resistance
+/// and a reactance at or below the threshold, in N-1, N-2 and listed runs.
+#[test]
+fn zero_impedance_lines_can_be_left_out() {
+    let text = std::fs::read_to_string(case("case30.m")).unwrap();
+    let c = rs_power::parse_matpower(&text).unwrap();
+    // case30's lossless lines have 0.1 to 0.56 p.u.: a 0.25 threshold
+    // takes some of them.
+    let threshold = 0.25;
+    let zero: Vec<String> = c
+        .branches
+        .iter()
+        .filter(|b| b.online && b.r == 0.0 && b.x.abs() <= threshold)
+        .map(|b| format!("line:{}:{}:1", b.from.min(b.to), b.from.max(b.to)))
+        .collect();
+    assert!(zero.len() >= 3, "{zero:?}");
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let run = |open: &mut stannum_core::OpenCase, s: ContingencySettings| {
+        let summary = open.run_contingencies(s).unwrap();
+        let rows = open.contingency_rows(0, 2000).unwrap();
+        (summary.total, rows)
+    };
+    let skip = |s: ContingencySettings| ContingencySettings {
+        skip_zero_impedance: true,
+        zero_impedance_pu: threshold,
+        ..s
+    };
+    let (all, _) = run(open, settings(Method::Screen));
+    let (fewer, rows) = run(open, skip(settings(Method::Screen)));
+    assert_eq!(fewer, all - zero.len());
+    assert!(rows.iter().all(|r| !zero.contains(&r.element)));
+    // The default threshold (THRSHZ 0.0001) leaves case30 alone.
+    let (same, _) = run(
+        open,
+        ContingencySettings {
+            skip_zero_impedance: true,
+            ..settings(Method::Screen)
+        },
+    );
+    assert_eq!(same, all);
+    // N-2 pairs only the rest; a listed zero-impedance line is left out too.
+    let listed = vec![zero[0].clone(), "line:1:2:1".into(), "line:2:4:1".into()];
+    let (pairs, _) = run(
+        open,
+        skip(ContingencySettings {
+            elements: Some(listed),
+            pairs: true,
+            ..settings(Method::Screen)
+        }),
+    );
+    assert_eq!(pairs, 1);
+}

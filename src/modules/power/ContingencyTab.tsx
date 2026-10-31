@@ -573,6 +573,35 @@ export function ContingencyTab({
             )}
           </fieldset>
         )}
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-[11px] font-medium text-slate-600 mb-1">Zero-impedance lines</legend>
+          <div className="flex items-center gap-2">
+            <label
+              className="flex items-center gap-1.5"
+              title="Leave out lines with no resistance and a reactance at or below the threshold, as PSS/E treats them (THRSHZ). A bus outage still opens them."
+            >
+              <input
+                type="checkbox"
+                checked={s.choice.skipZeroImpedance}
+                onChange={(e) => s.setChoice({ skipZeroImpedance: e.target.checked })}
+                data-testid="skip-zero-impedance"
+              />
+              Skip, |X| ≤
+            </label>
+            <input
+              className={`${inputClass} w-20`}
+              type="number"
+              min={0}
+              step="any"
+              value={s.choice.zeroImpedancePu}
+              disabled={!s.choice.skipZeroImpedance}
+              onChange={(e) => s.setChoice({ zeroImpedancePu: Math.max(0, Number(e.target.value) || 0) })}
+              aria-label="Zero-impedance threshold, p.u."
+              title="THRSHZ, per unit on the system base"
+            />
+            <span className="text-[11px] text-slate-500">p.u.</span>
+          </div>
+        </fieldset>
         <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
           Method
           <select
