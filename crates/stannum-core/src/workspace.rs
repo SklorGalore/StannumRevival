@@ -820,6 +820,7 @@ impl OpenCase {
             base_rating: ratings.1,
             solve: solve.clone(),
             planning: None,
+            lists: None,
         };
         let job = ContingencyJob::new(power, base, settings).map_err(|e| {
             if e.starts_with("Nothing to take out") {

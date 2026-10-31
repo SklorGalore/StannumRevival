@@ -279,6 +279,8 @@ class Case:
         ids joined by ``&`` go out together), ``branches``, ``generators``,
         ``buses`` (each bus with everything connected), ``pairs`` (N-2:
         the chosen branches and generators two at a time),
+        ``lists`` (the path of a ``.stnl`` lists file whose contingencies
+        run instead; skipped equipment is listed under ``notes``),
         ``skip_zero_impedance`` and ``zero_impedance_pu`` (leave out lines
         with no resistance and a reactance at or below the threshold,
         0.0001 p.u. by default as PSS/E's THRSHZ),

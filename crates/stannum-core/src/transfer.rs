@@ -395,7 +395,7 @@ impl TransferJob {
                     skip_zero_impedance: c.skip_zero_impedance,
                     ..Default::default()
                 };
-                let (mut list, _) = contingency::outages(power, &picker)?;
+                let (mut list, _, _) = contingency::outages(power, &picker)?;
                 if c.kv_min > 0.0 {
                     let case = &power.case;
                     let bus_row = bus_rows(case);

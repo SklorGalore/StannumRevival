@@ -88,6 +88,24 @@ outages it didn't reach in AC keep their linear result. Texas 2k (6,080
 outages) screens in about half a second and solves the worst 50 in AC in
 under two seconds.
 
+## Your own contingency list
+
+Set **Outages** to **From a lists file (.stnl)** and choose the file to run
+the contingencies it defines, the way PSS/E runs a `.con` file:
+
+- each `contingency` record is one outage, named in the results by its
+  record name, with its `category` as a chip above the table. `open` events
+  take an element out; `trip_bus` takes out a bus;
+- each `contingency_set` generates outages for the case at hand: single
+  branches, single generators, pairs of branches, or whole buses, in its
+  subsystem and above its `kv_min`. Its name becomes the category.
+
+A list doesn't belong to one case. Elements the case doesn't have, and
+events Stannum doesn't apply yet (`close`, `set_p_mw`, `set_q_mvar`), skip
+their contingency and are listed in a note above the results. The
+[lists file format](/StannumRevival/reference/lists-file/) page has the
+syntax and an example; the study file remembers which file you chose.
+
 ## Reading the results
 
 The figures at the top count outages that cause overloads, voltage problems

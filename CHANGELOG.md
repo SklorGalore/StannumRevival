@@ -18,6 +18,12 @@ section into the next version's when a release is cut (see
   top of the AC solve. It also reports the generation limit of each side.
   Runs from run files (`run_transfer_limits`) for now; the app module,
   Python and MCP follow.
+- **Your own contingency list.** Contingencies can run from a `.stnl`
+  lists file (preview): its named contingencies (`open` and `trip_bus`
+  events) and its `contingency_set` rules for single branches, generators,
+  branch pairs or buses in a subsystem. Equipment the case lacks is noted
+  and skipped. In the app, pick **From a lists file** under Outages; from
+  Python, the CLI and run files, set `lists` to the file's path.
 - **Mvar flow direction on the one-line.** Each branch shows an open violet
   arrow for the way its reactive power flows, beside the filled MW arrow;
   the Mvar number beside it is violet too, and now a magnitude, like MW.

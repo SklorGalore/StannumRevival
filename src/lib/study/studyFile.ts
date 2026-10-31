@@ -50,6 +50,9 @@ export interface StudyFile {
     buses?: boolean;
     pairs?: boolean;
     skipZeroImpedance?: boolean;
+    /** Where the outages come from, and the lists file; studies before 1.1 lack them. */
+    source?: "n1" | "planning" | "lists";
+    listsPath?: string | null;
     zeroImpedancePu?: number;
     baseRating?: "a" | "b" | "c";
   };

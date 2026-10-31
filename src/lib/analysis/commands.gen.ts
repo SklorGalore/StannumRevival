@@ -218,6 +218,11 @@ export type CategorySummary = {
   not_converged: number;
   total: number;
   with_overloads: number;
+  /**
+   * Events with any overload, voltage problem or failed solve, each
+   * counted once.
+   */
+  with_problems: number;
   with_voltage_problems: number;
 };
 
@@ -290,9 +295,9 @@ export type ContingencyRow = {
   iterations: number | null;
   /**
    * "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
-   * elements out together, or "base" for P0.
+   * elements out together, "group" for more, or "base" for P0.
    */
-  kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "base";
+  kind: "branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base";
   lost_generation_mw: number;
   lost_load_mw: number;
   /** AC only: why a solve failed, in a sentence. */
@@ -329,7 +334,7 @@ export type ContingencyRowColumns = {
   description: (string | null)[];
   element: string[];
   iterations: (number | null)[];
-  kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "base")[];
+  kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base")[];
   lost_generation_mw: number[];
   lost_load_mw: number[];
   note: (string | null)[];
@@ -370,6 +375,14 @@ export type ContingencySettings = {
    * overloaded.
    */
   limit_pct?: number;
+  /**
+   * Run the contingencies of this lists file (`.stnl`): its
+   * `contingency` records and `contingency_set` rules. Equipment the
+   * case lacks is reported in the summary's notes and skipped. Takes
+   * the place of `elements`, `branches`, `generators`, `buses` and
+   * `pairs`; `planning` is unused.
+   */
+  lists?: string | null;
   method?: Method;
   /**
    * N-2: take the chosen branches and generators out two at a time,
@@ -415,6 +428,8 @@ export type ContingencySummary = {
   limit_pct: number;
   method: Method | null;
   not_converged: number;
+  /** Lists file runs: what was skipped and why, in sentences. */
+  notes: string[];
   /**
    * The ratings loadings were measured against, after outages and in
    * the base case.

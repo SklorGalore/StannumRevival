@@ -19,7 +19,7 @@ import type { Rating } from "../lib/analysis/ratings";
 export const FIRST_PAGE = 100;
 
 /** Every branch and generator on its own, or the NERC TPL-001 planning events. */
-export type ContingencySource = "n1" | "planning";
+export type ContingencySource = "n1" | "planning" | "lists";
 
 /** The planning event categories the core generates, in its order. */
 export const PLANNING_CATEGORIES = ["P0", "P1.1", "P1.2", "P1.3", "P1.4", "P1.5", "P2.1", "P7.2"];
@@ -35,6 +35,8 @@ export interface ContingencyChoice {
   /** Leave out lines with no resistance and |X| at or below the threshold (PSS/E THRSHZ), p.u. */
   skipZeroImpedance: boolean;
   zeroImpedancePu: number;
+  /** The lists file (.stnl) whose contingencies run, for source "lists". */
+  listsPath: string | null;
   /** Planning events: the categories to run, and the lowest voltage. */
   categories: string[];
   kvMin: number;
@@ -54,6 +56,7 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   pairs: false,
   skipZeroImpedance: false,
   zeroImpedancePu: 0.0001,
+  listsPath: null,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "screen",
@@ -142,8 +145,10 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
     }, 250);
     try {
       const planning = c.source === "planning";
+      const lists = c.source === "lists" ? c.listsPath : null;
       const summary = await api.runContingencies({
-        elements: planning ? null : elements,
+        elements: planning || lists ? null : elements,
+        lists,
         branches: c.branches,
         generators: c.generators,
         buses: !planning && c.buses,
