@@ -9,6 +9,10 @@ describe("shared element ids", () => {
     expect(parseElement("area:1")).toBeNull();
   });
 
+  it("names elements taken out together", () => {
+    expect(elementLabel("line:1:2:1&generator:22:1")).toBe("Line 1–2 circuit 1 and Generator 1 at bus 22");
+  });
+
   it("finds the bus a selection sits at", () => {
     expect(elementBus("bus:7")).toBe(7);
     expect(elementBus("load:7:1")).toBe(7);

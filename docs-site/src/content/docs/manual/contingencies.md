@@ -74,6 +74,19 @@ point](/StannumRevival/manual/ac-power-flow/#starting-point), with the outage ap
 When a solve with generator Q limits doesn't converge, it runs again without
 them, to say whether reactive limits are the cause.
 
+## N-2 and bus outages
+
+N-2 runs every pair of the chosen branches and generators: $n$ elements
+make $n(n-1)/2$ outages, at most 250,000. Each pair is screened like an N-1
+outage with the linear factors of both elements out together, and the worst
+are solved in AC. Listing ids joined by `&` (for example
+`line:1:2:1&generator:22:1`) runs exactly those elements together, from run
+files, Python or Trip and compare.
+
+A bus outage opens every branch and DC line at the bus. The bus is then
+cut off, and its load, generation and shunts count as lost, the same as any
+other outage that splits the network.
+
 ## Planning events
 
 `crates/stannum-core/src/planning.rs` generates NERC TPL-001 Table 1 events

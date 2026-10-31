@@ -47,6 +47,8 @@ export function parseElement(id: string): ParsedElement | null {
 
 /** A readable name, such as "Line 101–102 circuit 2". */
 export function elementLabel(id: string): string {
+  // Elements out together, such as an N-2 pair.
+  if (id.includes("&")) return id.split("&").map(elementLabel).join(" and ");
   const e = parseElement(id);
   if (!e) return id;
   const label = KINDS.get(e.kind)!.label;

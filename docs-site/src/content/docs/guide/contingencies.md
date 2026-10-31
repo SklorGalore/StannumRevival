@@ -14,9 +14,19 @@ overloads and voltage problems they cause.
 
 Solve the case with the AC model first. Then choose:
 
-- **Take out, one at a time**: branches, generators or both. A
-  three-winding transformer goes out as one element. Elements already out of
-  service are skipped.
+- **Take out**: branches, generators, buses, or any mix. A three-winding
+  transformer goes out as one element. A bus goes out with every branch and
+  DC line connected to it, so its loads, generators and shunts are cut off.
+  Elements already out of service are skipped.
+- **One at a time (N-1)** or **Two at a time (N-2)**: N-2 takes every pair
+  of the chosen branches and generators once (buses stay one at a time).
+  The count of pairs shows under the choice; a run takes at most 250,000,
+  so on a large case narrow the elements with the bus filters first, for
+  example to one area at 230 kV and up.
+- **Zero-impedance lines**: tick **Skip** to leave out lines with no
+  resistance and a reactance at or below the threshold (0.0001 p.u. by
+  default, PSS/E's THRSHZ), as PSS/E does. It applies to N-1, N-2 and the
+  planning events; a bus outage still opens them. Transformers never count.
 - **Method**: **Linear screen, then AC for the worst** (the default) screens
   every outage with linear outage factors in a fraction of a second, then
   solves the worst N in AC. **AC solve of every outage** is slower on large

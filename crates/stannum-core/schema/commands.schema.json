@@ -1200,12 +1200,14 @@
           ]
         },
         "kind": {
-          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
+          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, or \"base\" for P0.",
           "enum": [
             "branch",
             "generator",
             "shunt",
             "dc_line",
+            "bus",
+            "pair",
             "base"
           ],
           "type": "string"
@@ -1378,12 +1380,14 @@
         },
         "kind": {
           "items": {
-            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", or \"base\" for P0.",
+            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, or \"base\" for P0.",
             "enum": [
               "branch",
               "generator",
               "shunt",
               "dc_line",
+              "bus",
+              "pair",
               "base"
             ],
             "type": "string"
@@ -1530,9 +1534,14 @@
           "default": true,
           "type": "boolean"
         },
+        "buses": {
+          "default": false,
+          "description": "Take out each bus: every branch and DC line connected to it, which\ncuts off its loads, generators and shunts.",
+          "type": "boolean"
+        },
         "elements": {
           "default": null,
-          "description": "Branch and generator ids to take out, one at a time. When absent,\nevery in-service branch and/or generator, as chosen below.",
+          "description": "Ids to take out, one at a time. A bus id (bus:101) takes out the\nbus, and ids joined by \"&\" (line:1:2:1&line:2:3:1) go out together.\nWhen absent, every in-service branch, generator and/or bus, as\nchosen below.",
           "items": {
             "type": "string"
           },
@@ -1555,6 +1564,11 @@
           "$ref": "#/$defs/Method",
           "default": "screen"
         },
+        "pairs": {
+          "default": false,
+          "description": "N-2: take the chosen branches and generators out two at a time,\nevery pair once, instead of one at a time. Buses stay one at a time.",
+          "type": "boolean"
+        },
         "planning": {
           "anyOf": [
             {
@@ -1571,6 +1585,11 @@
           "$ref": "#/$defs/Rating",
           "default": "a",
           "description": "The rating loadings are measured against after an outage."
+        },
+        "skip_zero_impedance": {
+          "default": false,
+          "description": "Leave out zero-impedance lines: lines with no resistance and a\nreactance at or below `zero_impedance_pu`, as PSS/E treats them\n(THRSHZ). Applies to N-1 and N-2, also to listed single elements;\na bus outage still opens them.",
+          "type": "boolean"
         },
         "solve": {
           "$ref": "#/$defs/SolveSettings",
@@ -1589,6 +1608,12 @@
             "switch_shunts": true,
             "tolerance_mva": 2.0
           }
+        },
+        "zero_impedance_pu": {
+          "default": 0.0001,
+          "description": "The zero-impedance threshold in per unit; 0.0001 by default, as\nPSS/E's THRSHZ.",
+          "format": "double",
+          "type": "number"
         }
       },
       "type": "object"

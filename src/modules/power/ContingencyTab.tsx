@@ -193,6 +193,16 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   );
 }
 
+/** The most pairs the core runs, as in stannum-core's contingency::MAX_PAIRS. */
+const MAX_PAIRS = 250_000;
+
+/** How many pairs N-2 of `n` elements makes, and whether that is too many. */
+function pairNote(n: number): string {
+  const pairs = (n * (n - 1)) / 2;
+  const base = `${count(n)} elements make ${count(pairs)} pairs.`;
+  return pairs > MAX_PAIRS ? `${base} That is more than ${count(MAX_PAIRS)}: narrow them with the bus filters.` : base;
+}
+
 /** One outage in full, beside the table. */
 function OutagePanel({
   detail,
@@ -227,7 +237,8 @@ function OutagePanel({
     setOnDiagram(true);
     toggleLayer("contingency", true);
     // Around the outage, the cause; each overload below has its own link.
-    drawAround(row.element, "power");
+    // A pair is drawn around its first element; the layer marks both.
+    drawAround(row.element.split("&")[0], "power");
   };
   return (
     <aside aria-label="Outage detail" className="w-80 shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0" data-testid="contingency-detail">
@@ -453,7 +464,12 @@ export function ContingencyTab({
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
   const chosenCount = (s.counts ?? []).filter((c) => s.choice.categories.includes(c.category)).reduce((n, c) => n + c.count, 0);
-  const nothingChosen = planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !scope;
+  const nothingChosen = planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
+  // Branches and generators that N-2 pairs up (buses stay one at a time).
+  const pairElements = scope
+    ? scope.elements.filter((e) => !e.startsWith("bus:")).length
+    : (s.choice.branches ? new Set(report?.branches.filter((b) => b.online && !b.element.startsWith("switch:")).map((b) => b.element)).size : 0) +
+      (s.choice.generators ? (report?.generators.filter((g) => g.online).length ?? 0) : 0);
   async function exportCsv() {
     const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
@@ -525,7 +541,7 @@ export function ContingencyTab({
           </>
         ) : (
           <fieldset className="flex flex-col gap-1">
-            <legend className="text-[11px] font-medium text-slate-600 mb-1">Take out, one at a time</legend>
+            <legend className="text-[11px] font-medium text-slate-600 mb-1">Take out</legend>
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={s.choice.branches} onChange={(e) => s.setChoice({ branches: e.target.checked })} />
@@ -535,9 +551,57 @@ export function ContingencyTab({
                 <input type="checkbox" checked={s.choice.generators} onChange={(e) => s.setChoice({ generators: e.target.checked })} />
                 Generators
               </label>
+              <label className="flex items-center gap-1.5" title="Each bus with every branch and DC line connected to it, cutting off its loads, generators and shunts">
+                <input type="checkbox" checked={s.choice.buses} onChange={(e) => s.setChoice({ buses: e.target.checked })} data-testid="outage-buses" />
+                Buses
+              </label>
+              <select
+                className={`${inputClass} py-0.5`}
+                value={s.choice.pairs ? "pairs" : "single"}
+                onChange={(e) => s.setChoice({ pairs: e.target.value === "pairs" })}
+                aria-label="How many at a time"
+                data-testid="outage-depth"
+              >
+                <option value="single">One at a time (N-1)</option>
+                <option value="pairs">Two at a time (N-2)</option>
+              </select>
             </div>
+            {s.choice.pairs && (
+              <span className="text-[11px] text-slate-500" data-testid="pair-count">
+                {pairNote(pairElements)}
+              </span>
+            )}
           </fieldset>
         )}
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-[11px] font-medium text-slate-600 mb-1">Zero-impedance lines</legend>
+          <div className="flex items-center gap-2">
+            <label
+              className="flex items-center gap-1.5"
+              title="Leave out lines with no resistance and a reactance at or below the threshold, as PSS/E treats them (THRSHZ). A bus outage still opens them."
+            >
+              <input
+                type="checkbox"
+                checked={s.choice.skipZeroImpedance}
+                onChange={(e) => s.setChoice({ skipZeroImpedance: e.target.checked })}
+                data-testid="skip-zero-impedance"
+              />
+              Skip, |X| ≤
+            </label>
+            <input
+              className={`${inputClass} w-20`}
+              type="number"
+              min={0}
+              step="any"
+              value={s.choice.zeroImpedancePu}
+              disabled={!s.choice.skipZeroImpedance}
+              onChange={(e) => s.setChoice({ zeroImpedancePu: Math.max(0, Number(e.target.value) || 0) })}
+              aria-label="Zero-impedance threshold, p.u."
+              title="THRSHZ, per unit on the system base"
+            />
+            <span className="text-[11px] text-slate-500">p.u.</span>
+          </div>
+        </fieldset>
         <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
           Method
           <select
