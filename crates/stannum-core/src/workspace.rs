@@ -689,6 +689,25 @@ impl OpenCase {
         Ok(job)
     }
 
+    /// A transfer limit study of the case from its AC solve, to run
+    /// without the workspace.
+    pub fn transfer_job(
+        &self,
+        settings: crate::transfer::TransferSettings,
+    ) -> Result<crate::transfer::TransferJob, Error> {
+        let power = self.power_case()?;
+        let base = &resumable(&self.solved)
+            .ok_or_else(|| {
+                Error::not_ready(
+                    "Solve the case with the AC model first: transfer limits start from that solution.",
+                )
+            })?
+            .0;
+        let job = crate::transfer::TransferJob::new(power, base, settings)?;
+        log::info!("Studying a transfer under {} contingencies", job.len());
+        Ok(job)
+    }
+
     /// How many planning events each category asked for gives on the case
     /// as the study has it, before running them.
     pub fn planning_event_counts(

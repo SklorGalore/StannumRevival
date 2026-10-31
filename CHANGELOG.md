@@ -10,6 +10,14 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Transfer limits (DFAX and FCITC), preview.** A study moves power from a
+  source subsystem to a sink (scaled by generation, generator reserve or
+  load) and finds the first change of total transfer capability: the
+  transfer at which a monitored branch or interface reaches its rating, in
+  the base case or after each contingency, from linear PTDFs and OTDFs on
+  top of the AC solve. It also reports the generation limit of each side.
+  Runs from run files (`run_transfer_limits`) for now; the app module,
+  Python and MCP follow.
 - **Your own contingency list.** Contingencies can run from a `.stnl`
   lists file (preview): its named contingencies (`open` and `trip_bus`
   events) and its `contingency_set` rules for single branches, generators,

@@ -68,6 +68,7 @@ const ACTIONS: &[&str] = &[
     "diff_compare_working",
     "run_contingencies",
     "trip_and_compare",
+    "run_transfer_limits",
 ];
 
 /// Commands a run file can't hold: running a run file from inside one.

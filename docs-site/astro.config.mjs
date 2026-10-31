@@ -72,6 +72,7 @@ export default defineConfig({
             { label: "Area interchange control", slug: "manual/area-interchange" },
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
             { label: "Contingency analysis", slug: "manual/contingencies" },
+            { label: "Transfer limits (DFAX)", slug: "manual/transfer-limits" },
             {
               label: "HVDC",
               items: [

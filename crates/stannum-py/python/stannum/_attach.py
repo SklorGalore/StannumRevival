@@ -20,7 +20,7 @@ from typing import Any
 from . import _native
 
 #: Commands that stop long work. Each is harmless when nothing runs.
-_CANCEL = ("cancel_solve", "cancel_contingencies", "cancel_run_file")
+_CANCEL = ("cancel_solve", "cancel_contingencies", "cancel_transfer_limits", "cancel_run_file")
 
 
 def ticket_dir() -> Path | None:
