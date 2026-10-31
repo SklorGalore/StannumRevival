@@ -55,7 +55,7 @@ Once a case is open, the menu bar along the top of the window shows its name,
 format, bus, generator and branch counts and system MVA base. The toolbar
 under it holds:
 
-- **Open** and **Save study**.
+- **Open** and **Save as run file**.
 - **Solve**, **Sensitivities** and **Contingencies**, which run in
   [Power flow](/StannumRevival/guide/power-flow/) with its current settings.
 - **Side by side** and **Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>).

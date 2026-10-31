@@ -44,6 +44,12 @@ what the passes are.
 
 The log keeps the latest 5,000 lines.
 
+## History
+
+The drawer's **History** tab lists every change and export in run file form,
+to copy or save as a run file. See
+[Run files](/StannumRevival/guide/run-files/#history).
+
 ## When something goes wrong inside Stannum
 
 A bug in Stannum stops only the step that hit it. A red notice under the case

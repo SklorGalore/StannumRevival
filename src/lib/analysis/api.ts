@@ -138,7 +138,7 @@ export async function invokeCore<C extends CoreCommand>(command: C, ...[args]: A
   return result;
 }
 
-/** Told about every core command that worked, with its arguments (Record uses it). */
+/** Told about every core command that worked, with its arguments (the history uses it). */
 export type CoreCallWatcher = (command: CoreCommand, args: Record<string, unknown>) => void;
 const watchers = new Set<CoreCallWatcher>();
 
@@ -346,6 +346,7 @@ export const api = {
   /** Stops the run file in progress before its next line. */
   cancelRunFile: () => invokeCore("cancel_run_file"),
   saveRunFile: (path: string, steps: Step[]) => call("save_run_file", { path, steps }),
+  runFileText: (steps: Step[]): Promise<string> => invokeCore("run_file_text", { steps }),
   studyEdits: (): Promise<StudyEdit[]> => call("study_edits"),
 
   diffCompare: (baseline: string, comparison: string): Promise<DiffSummary> =>

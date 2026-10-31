@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { FileText, FlaskConical, X } from "lucide-react";
+import { FileCode, FileText, FlaskConical, X } from "lucide-react";
 import { folderOf, onRecentChange, recentFiles, removeRecent, type RecentFile } from "../lib/study/recent";
 import { useStudyFile } from "../store/studyFileStore";
 
-/** Recently opened cases and studies, for an empty screen. Renders nothing when there are none. */
+/** Recently opened cases, run files and studies, for an empty screen. Renders nothing when there are none. */
 export function RecentFiles() {
   const [files, setFiles] = useState<RecentFile[]>(recentFiles);
   useEffect(() => onRecentChange(setFiles), []);
@@ -23,6 +23,8 @@ export function RecentFiles() {
             >
               {f.kind === "study" ? (
                 <FlaskConical size={15} className="shrink-0 text-teal-700" aria-label="Study" />
+              ) : f.kind === "run" ? (
+                <FileCode size={15} className="shrink-0 text-teal-700" aria-label="Run file" />
               ) : (
                 <FileText size={15} className="shrink-0 text-slate-500" aria-label="Case" />
               )}

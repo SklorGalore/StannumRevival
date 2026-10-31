@@ -8470,6 +8470,29 @@
       },
       "takes_case": false
     },
+    "run_file_text": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "type": "object"
+      },
+      "doc": "Commands as run file text, for copying from the app's history.\nPaths stay as given and settings at their defaults are left out.",
+      "result": {
+        "type": "string"
+      },
+      "takes_case": false
+    },
     "run_transfer_limits": {
       "action": true,
       "args": {
@@ -8566,7 +8589,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write commands as a run file, such as the ones Record kept. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
+      "doc": "Write commands as a run file, such as ones from the app's history. Paths in\nthe run file's folder are written relative to it, and settings at\ntheir defaults are left out.",
       "result": {
         "type": "null"
       },

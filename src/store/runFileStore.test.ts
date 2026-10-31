@@ -1,30 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeRun, recordStep } from "./runFileStore";
+import { describeRun } from "./runFileStore";
 import type { RunReport } from "../lib/analysis/commands.gen";
-
-describe("recordStep", () => {
-  it("keeps actions, without the case id", () => {
-    let steps = recordStep([], "open_case", { path: "/c/case9.m" });
-    steps = recordStep(steps, "diagram_network", { case: 1 });
-    steps = recordStep(steps, "solve_power_flow", { case: 1, settings: { model: "ac" } });
-    expect(steps).toEqual([
-      { command: "open_case", args: { path: "/c/case9.m" } },
-      { command: "solve_power_flow", args: { settings: { model: "ac" } } },
-    ]);
-  });
-
-  it("skips a setter called again with the same arguments", () => {
-    const edits = [{ kind: "generation", element: "generator:2:1", mw: 120 }];
-    let steps = recordStep([], "set_study_edits", { edits });
-    steps = recordStep(steps, "solve_power_flow", {});
-    steps = recordStep(steps, "set_study_edits", { edits });
-    expect(steps.map((s) => s.command)).toEqual(["set_study_edits", "solve_power_flow"]);
-    steps = recordStep(steps, "set_study_edits", { edits: [] });
-    expect(steps).toHaveLength(3);
-    // Solving twice is two solves.
-    expect(recordStep(steps, "solve_power_flow", {})).toHaveLength(4);
-  });
-});
 
 describe("describeRun", () => {
   const report = (over: Partial<RunReport>): RunReport => ({

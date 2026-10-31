@@ -65,7 +65,7 @@ Add an entry to the `commands!` block in
   lookup. For anything that can take more than a moment, use the job
   pattern in [Long work and the workspace lock](/StannumRevival/develop/commands/#long-work-and-the-workspace-lock).
 - If the command changes the case or writes a file, add its name to
-  `ACTIONS` in `run_file.rs` so **Record** keeps it in run files.
+  `ACTIONS` in `run_file.rs` so the **history** keeps it for run files.
 
 ## 3. Exercise it in the schema test
 

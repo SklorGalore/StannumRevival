@@ -37,7 +37,7 @@ All core calls go through `src/lib/analysis/api.ts`:
   `api.runContingencies` and so on. They go through `call()`, which shows
   the step in the log strip with the label from `LOG_LABELS` and pulls the
   core's log lines once it finishes.
-- `watchCoreCalls` is told about every core command that worked; Record
+- `watchCoreCalls` is told about every core command that worked; the history
   uses it to keep the steps of a run file.
 
 Results that arrive as columns are decoded here before anything else sees
@@ -60,7 +60,7 @@ they need (`useWorkspace((s) => s.caseSummary)`); actions outside React use
 | `contingencyStore` | What the contingency tab shows: settings, summary, the page of ranked rows, the open outage. |
 | `drawingStyleStore`, `layerStore`, `diagramStore` | The Diagram's style and neighbourhood, its topology layers and their marks, and the editor's nodes, edges and undo history. |
 | `logStore` | Log lines from the core (`stannum://log`) and the app's own steps. |
-| `studyFileStore`, `runFileStore` | Saving and opening `.stannum` study files; recording and playing `.stnrun` run files. |
+| `studyFileStore`, `runFileStore`, `historyStore` | Save as run file and opening older `.stannum` study files; playing `.stnrun` run files; the history of actions, saved or copied as run files. |
 | `attachStore` | Answers a Python script's `ui.*` commands and refreshes after a script changes the case. |
 | `themeStore` | Light, dark or system. |
 

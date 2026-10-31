@@ -36,7 +36,7 @@ export_matpower path=case9_study.m solved=true
   work.
 - The `case` argument is left out. Every line works on the case open at that
   point, which is the one the last `open_case` opened.
-- `run_file`, `cancel_run_file` and `save_run_file` can't be used inside a
+- `run_file`, `cancel_run_file`, `save_run_file` and `run_file_text` can't be used inside a
   run file.
 
 ## Values
@@ -107,7 +107,7 @@ format it follows:
 ```
 
 It must come before the first command, among any other comment lines at the
-top. Files that Stannum writes (**Stop recording and save run file**) start
+top. Files that Stannum writes (**Save as run file**, or **Save as run file…** in the history) start
 with it from 0.5; a file without it is version 1, so run files written by
 hand or by 0.4 run as before.
 

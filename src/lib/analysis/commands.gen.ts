@@ -2436,6 +2436,16 @@ export interface CoreCommands {
     result: RunReport;
   };
   /**
+   * Commands as run file text, for copying from the app's history.
+   * Paths stay as given and settings at their defaults are left out.
+   */
+  run_file_text: {
+    args: {
+      steps: Step[];
+    };
+    result: string;
+  };
+  /**
    * Transfer limits (DFAX and FCITC): how much power can move from the
    * source subsystem to the sink before a monitored branch or interface
    * reaches its limit, in the base case and after each contingency.
@@ -2463,7 +2473,7 @@ export interface CoreCommands {
     result: CaseSummary;
   };
   /**
-   * Write commands as a run file, such as the ones Record kept. Paths in
+   * Write commands as a run file, such as ones from the app's history. Paths in
    * the run file's folder are written relative to it, and settings at
    * their defaults are left out.
    */

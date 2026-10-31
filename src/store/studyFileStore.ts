@@ -1,33 +1,31 @@
-// Saving and opening study files (.stannum): the open case's study edits,
-// saved solves, solve and contingency settings, drawing and layout, kept
-// beside a reference to the case file. See lib/study/studyFile.ts.
+// Saving the work as a run file, and opening cases, run files and old study
+// files. Save writes a run file (.stnrun) that opens the case, attaches its
+// side files, sets the study edits and solves with the app's settings.
+// Study files (.stannum) are no longer written; old ones still open, and
+// their saved solves and drawing come back for the session (see
+// lib/study/studyFile.ts).
 import { create } from "zustand";
-import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, STN_FILTERS, STNB_FILTERS, toStannumError } from "../lib/analysis/api";
+import { api, CASE_FILTERS, COORDINATE_FILTERS, DC_GRID_FILTERS, pickFile, pickSavePath, RAW_FILTERS, RUN_FILE_FILTERS, STN_FILTERS, STNB_FILTERS, toStannumError } from "../lib/analysis/api";
+import type { Step } from "../lib/analysis/commands.gen";
 import { addRecent, fileName } from "../lib/study/recent";
-import {
-  compareToFile,
-  describeChange,
-  parseStudyFile,
-  serializeStudyFile,
-  STUDY_EXTENSION,
-  STUDY_FILTERS,
-  STUDY_FORMAT,
-  STUDY_VERSION,
-  type StudyFile,
-} from "../lib/study/studyFile";
+import { describeChange, parseStudyFile, STUDY_EXTENSION, STUDY_FILTERS, type StudyFile } from "../lib/study/studyFile";
 import { useContingencies } from "./contingencyStore";
 import { useDiagramStore } from "./diagramStore";
+import { startingPoint, useRunFile } from "./runFileStore";
 import { useStudy, type StudyEntry } from "./studyStore";
 import { caseChangeOk, onBeforeCaseChange, useWorkspace } from "./workspaceStore";
 
-/** The Open dialog takes a case or a study. */
+/** The Open dialog takes a case, a run file or an old study file. */
 export const OPEN_FILTERS = [
-  { name: "Case or study", extensions: ["raw", "RAW", "m", "stn", "stnb", "stannum"] },
+  { name: "Case or run file", extensions: ["raw", "RAW", "m", "stn", "stnb", "stnrun", "stannum"] },
   ...CASE_FILTERS.slice(1),
-  ...STUDY_FILTERS,
+  ...RUN_FILE_FILTERS,
+  { name: "Stannum study (older versions)", extensions: ["stannum"] },
 ];
 
-/** Something the user should know after opening a study. */
+const RUN_EXTENSION = /\.stnrun$/i;
+
+/** Something the user should know after opening a study or exporting. */
 export interface StudyNotice {
   tone: "warning" | "info";
   title: string;
@@ -35,19 +33,22 @@ export interface StudyNotice {
 }
 
 interface StudyFileState {
-  /** The study file the open case belongs to, if it was saved or opened as one. */
+  /** The run file this work was last saved to, if any. */
   path: string | null;
-  /** Changes since the study was last saved or opened. */
+  /** Edits or solve settings changed since the work was last saved. */
   dirty: boolean;
   busy: "saving" | "opening" | null;
   error: string | null;
   notice: StudyNotice | null;
   dismissNotice: () => void;
-  /** Save to the study's file, or ask where when there is none (or `as` is set). Resolves true once saved. */
+  /**
+   * Save the work as a run file: to the one saved last, or asking where when
+   * there is none (or `as` is set). Resolves true once saved.
+   */
   save: (opts?: { as?: boolean }) => Promise<boolean>;
-  /** Open a study (asking for one when no path is given), with its case. */
+  /** Open an old study file (asking for one when no path is given), with its case. */
   open: (path?: string, opts?: { confirmed?: boolean }) => Promise<boolean>;
-  /** Open a case or a study, asking for either when no path is given. */
+  /** Open a case, run a run file or open an old study, asking for one when no path is given. */
   openFile: (path?: string) => Promise<boolean>;
   /**
    * Write the case, with its Records and study edits, as a PSS/E RAW file of
@@ -60,10 +61,9 @@ interface StudyFileState {
   exportStn: (binary: boolean) => Promise<boolean>;
 }
 
-/** Whether there is anything worth keeping: edits, saved solves or a drawing. */
+/** Whether there is anything a run file would keep: study edits. */
 function hasWork(): boolean {
-  const study = useStudy.getState();
-  return study.entries.length > 0 || study.saved.length > 0;
+  return useStudy.getState().entries.length > 0;
 }
 
 /** Asked before the case is replaced or closed. */
@@ -71,7 +71,7 @@ function unsavedStudyOk(): boolean {
   const { path, dirty } = useStudyFile.getState();
   if (!dirty || (!path && !hasWork())) return true;
   if (typeof window === "undefined" || typeof window.confirm !== "function") return true;
-  const what = path ? `${fileName(path)} has changes that aren't saved.` : "This study's edits and saved solves aren't saved to a study file.";
+  const what = path ? `${fileName(path)} has changes that aren't saved.` : "The study edits aren't saved to a run file.";
   return window.confirm(`${what} Discard them?`);
 }
 
@@ -103,40 +103,13 @@ async function restoreEdits(entries: StudyEntry[]): Promise<string[]> {
   return dropped;
 }
 
-/** Everything the study keeps, as of now. */
-async function collect(studyPath: string): Promise<StudyFile> {
-  const w = useWorkspace.getState();
-  const summary = w.caseSummary!;
-  const study = useStudy.getState();
-  const diagram = useDiagramStore.getState();
-  const [fingerprint, relative] = await Promise.all([
-    api.fileFingerprint(summary.path),
-    api.studyRelativePath(studyPath, summary.path),
-  ]);
-  const grids = summary.dc_grids;
-  // Only an attached file is saved; a case's own substation places come with it.
-  const coordinates = summary.coordinates?.path ? { path: summary.coordinates.path } : null;
-  return {
-    format: STUDY_FORMAT,
-    version: STUDY_VERSION,
-    app: __APP_VERSION__,
-    savedAt: new Date().toISOString(),
-    case: { path: summary.path, relative, name: summary.name, format: summary.format, fingerprint },
-    dcGrids: grids ? { path: grids.path, relative: await api.studyRelativePath(studyPath, grids.path) } : null,
-    coordinates: coordinates
-      ? { path: coordinates.path, relative: await api.studyRelativePath(studyPath, coordinates.path) }
-      : null,
-    solveSettings: study.settings,
-    edits: study.entries,
-    solves: study.saved.map(({ name, entries, report }) => ({ name, entries, report })),
-    compare: compareToFile(study.compare, study.saved.map((s) => s.id)),
-    contingencies: useContingencies.getState().choice,
-    diagram:
-      diagram.nodes.length > 0
-        ? { metadata: diagram.metadata, nodes: diagram.nodes, edges: diagram.edges, viewport: diagram.viewport }
-        : null,
-    view: { module: w.module, split: w.split, splitRatio: w.splitRatio },
-  };
+/** The run file for the work on screen: open the case, attach its side files, set the edits, solve. */
+export function workSteps(): Step[] {
+  const steps = startingPoint();
+  if (steps.length === 0) return steps;
+  // Settings equal to the defaults are left out when the file is written.
+  steps.push({ command: "solve_power_flow", args: { settings: useStudy.getState().settings } });
+  return steps;
 }
 
 // While a study is being put back, its own changes don't count as edits.
@@ -219,27 +192,26 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
     const w = useWorkspace.getState();
     const summary = w.caseSummary;
     if (!summary || get().busy) return false;
-    // A study points at a case file, so Records edits have to be in one first.
+    // A run file opens the case from its file, so Records edits have to be in one first.
     const recordEdits = summary.record_edits ?? 0;
     if (recordEdits > 0) {
       const ok = window.confirm(
         `${summary.name} has ${recordEdits} edited value${recordEdits === 1 ? "" : "s"} from Records that aren't in a file yet. ` +
-          "A study refers to its case file, so save the edited case first. Save it now?"
+          "A run file opens its case from the file, so save the edited case first. Save it now?"
       );
       if (!ok || !(await w.saveCaseAs())) return false;
     }
     const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
-    const path = (!opts?.as && get().path) || (await pickSavePath(`${base}.stannum`, STUDY_FILTERS));
+    const path = (!opts?.as && get().path) || (await pickSavePath(`${base}.stnrun`, RUN_FILE_FILTERS));
     if (!path) return false;
     set({ busy: "saving", error: null });
     try {
-      const file = await collect(path);
-      await api.writeTextFile(path, serializeStudyFile(file));
+      await api.saveRunFile(path, workSteps());
       set({ path, dirty: false, busy: null });
-      addRecent(path, "study");
+      addRecent(path, "run");
       return true;
     } catch (e) {
-      set({ busy: null, error: `Couldn't save the study: ${(e as Error).message}` });
+      set({ busy: null, error: `Couldn't save the run file: ${toStannumError(e).message}` });
       return false;
     }
   },
@@ -249,6 +221,11 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
     if (!caseChangeOk(useWorkspace.getState().caseSummary)) return false;
     const path = given ?? (await pickFile(OPEN_FILTERS));
     if (!path) return false;
+    if (RUN_EXTENSION.test(path)) {
+      const report = await useRunFile.getState().run(path, { confirmed: true });
+      if (report) addRecent(path, "run");
+      return !!report;
+    }
     return STUDY_EXTENSION.test(path)
       ? get().open(path, { confirmed: true })
       : useWorkspace.getState().openCase(path, { confirmed: true });
@@ -273,6 +250,10 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
 
     const lines: string[] = [];
     let warning = false;
+    // Study files are read, never written: point at what replaces them.
+    const retired =
+      "Study files are no longer saved. Save as run file keeps the case, its side files, the edits and the solve settings" +
+      (file.diagram ? "; save the drawing from Diagram's File menu." : ".");
     const where = await locate(path, file.case.path, file.case.relative, "case", CASE_FILTERS);
     if (!where) return fail(`${fileName(path)} wasn't opened: its case file couldn't be found.`);
     if (where.moved) lines.push(`The case was found at ${where.path}.`);
@@ -338,6 +319,7 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
         diagram.loadDiagramFromJSON(file.diagram);
         diagram.setFilePath(null);
       }
+      lines.push(retired);
       // Results aren't kept between sessions (saved solves are): solve again.
       const w = useWorkspace.getState();
       if (w.caseSummary?.power.available) w.requestSolve();
@@ -348,27 +330,26 @@ export const useStudyFile = create<StudyFileState>((set, get) => ({
     } finally {
       restoring = false;
     }
+    // The study's edits aren't in a run file yet, so they count as unsaved.
     set({
-      path,
-      dirty: false,
+      path: null,
+      dirty: hasWork(),
       busy: null,
-      notice: lines.length ? { tone: warning ? "warning" : "info", title: `Opened ${fileName(path)}`, lines } : null,
+      notice: { tone: warning ? "warning" : "info", title: `Opened ${fileName(path)}`, lines },
     });
     addRecent(path, "study");
     return true;
   },
 }));
 
-// Any change to the work marks the study as changed.
+// A change to what the run file keeps marks the work as changed. Saved
+// solves, the drawing and contingency settings aren't in it.
 const touch = () => {
   if (!restoring && useWorkspace.getState().caseSummary && !useStudyFile.getState().dirty) useStudyFile.setState({ dirty: true });
 };
 useStudy.subscribe((s, prev) => {
-  if (s.entries !== prev.entries || s.saved !== prev.saved || s.settings !== prev.settings || s.compare !== prev.compare) touch();
+  if (s.entries !== prev.entries || s.settings !== prev.settings) touch();
 });
-useContingencies.subscribe((s, prev) => s.choice !== prev.choice && touch());
-// The drawing counts once it has edits of its own (results drawn on it don't).
-useDiagramStore.subscribe((s, prev) => s.isDirty && !prev.isDirty && touch());
 
 // A different case (or none) ends the study; edits made in Records keep it.
 let lastVersion = useWorkspace.getState().caseVersion;

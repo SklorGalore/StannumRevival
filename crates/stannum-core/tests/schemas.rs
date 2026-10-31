@@ -344,6 +344,14 @@ fn answers_fit_their_schemas() {
             { "command": "export_matpower", "args": { "path": dir.join("again.m"), "solved": true } },
         ] }),
     );
+    let text = c.ok(
+        "run_file_text",
+        json!({ "steps": [{ "command": "open_case", "args": { "path": raw } }, { "command": "solve_power_flow", "args": {} }] }),
+    );
+    assert!(
+        text.as_str().unwrap().contains("\nsolve_power_flow\n"),
+        "{text}"
+    );
     let report = c.ok("run_file", json!({ "path": run, "results": true }));
     assert_eq!(report["failed"], 0);
     assert_eq!(report["outcomes"].as_array().unwrap().len(), 3);

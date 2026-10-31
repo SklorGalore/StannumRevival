@@ -84,7 +84,7 @@ export function CaseBar() {
       <ToolButton
         icon={<FolderOpen size={14} />}
         label="Open"
-        name="Open case or study…"
+        name="Open case or run file…"
         title="Open a case or a study"
         onClick={() => void openFile()}
         disabled={opening || studyOpening}
