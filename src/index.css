@@ -79,6 +79,18 @@
   transform: translate(0, -50%);
 }
 
+/* Clicks and drags on a drawing never select its text. Without this, WebKit
+   (the macOS and Linux web view) starts a text selection on every box-select
+   drag and paints the wire labels, or the whole canvas, selection blue. */
+.react-flow {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.react-flow :is(input, textarea, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .edge-label {
   pointer-events: none;
 }
