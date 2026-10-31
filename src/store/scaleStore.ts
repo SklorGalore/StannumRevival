@@ -23,6 +23,7 @@ export interface ScaleChoice {
   constantPowerFactor: boolean;
   parts: ScaleLoadParts;
   includeNegative: boolean;
+  includeNonConforming: boolean;
 
   scaleGeneration: boolean;
   genKind: AmountKind;
@@ -48,6 +49,7 @@ export const DEFAULT_SCALE_CHOICE: ScaleChoice = {
   constantPowerFactor: true,
   parts: "all",
   includeNegative: false,
+  includeNonConforming: false,
   scaleGeneration: false,
   genKind: "percent",
   gen: null,
@@ -83,6 +85,7 @@ export function scaleSettings(c: ScaleChoice): { settings: ScaleSettings } | { p
       constant_power_factor: c.constantPowerFactor,
       parts: c.parts,
       include_negative: c.includeNegative,
+      include_non_conforming: c.includeNonConforming,
     };
   }
   if (c.scaleGeneration) {

@@ -179,6 +179,58 @@ fn matpower_loads_scale_on_the_bus_table() {
 }
 
 #[test]
+fn non_conforming_loads_stay_unless_asked() {
+    let s = open("five_bus.raw");
+    // Make bus 4's load non-conforming (SCALE = 0).
+    let t = call(&s, "record_table", json!({ "section": "LOAD" }));
+    let scale = t["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|c| c["name"] == "SCALE")
+        .unwrap();
+    call(
+        &s,
+        "apply_record_edits",
+        json!({ "edits": [{ "section": "LOAD", "row": 1, "column": scale, "value": "0" }] }),
+    );
+    let settings = |include: bool| {
+        json!({ "settings": {
+            "buses": { "areas": [1] },
+            "load": { "mw": { "kind": "percent", "value": 10.0 }, "include_non_conforming": include },
+        } })
+    };
+    let kept = call(&s, "scale_preview", settings(false));
+    // Only bus 2's 90 MW moves, by 10%; bus 4's 40 MW stays.
+    assert!(
+        near(kept["load"]["mw_before"].as_f64().unwrap(), 130.0),
+        "{kept}"
+    );
+    assert!(
+        near(kept["load"]["mw_after"].as_f64().unwrap(), 139.0),
+        "{kept}"
+    );
+    assert_eq!(kept["changed"], 1);
+    assert!(
+        kept["notes"].to_string().contains("non-conforming"),
+        "{kept}"
+    );
+    // A target still counts every load: 150 MW takes bus 2 to 110.
+    let target = call(
+        &s,
+        "scale_preview",
+        json!({ "settings": { "buses": { "areas": [1] }, "load": { "mw": { "kind": "target", "value": 150.0 } } } }),
+    );
+    assert!(
+        near(target["load"]["mw_after"].as_f64().unwrap(), 150.0),
+        "{target}"
+    );
+    call(&s, "scale_load_generation", settings(true));
+    let pl = column(&s, "LOAD", "PL");
+    assert!(near(pl[0], 99.0) && near(pl[1], 44.0), "{pl:?}");
+}
+
+#[test]
 fn filters_narrow_each_other() {
     let s = open("five_bus.raw");
     // Area 1 and 69 kV: buses 4 only (bus 5 is area 2).

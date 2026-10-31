@@ -27,7 +27,9 @@ pub enum ScaleAmount {
     Target(f64),
     /// Add this much to the total (negative lowers it).
     Change(f64),
-    /// Change the total by this percent (10 raises it by a tenth).
+    /// Change by this percent (10 raises it by a tenth). For loads, each
+    /// load that scales changes by this much; loads left alone (negative,
+    /// non-conforming) don't count.
     Percent(f64),
 }
 
@@ -73,6 +75,11 @@ pub struct LoadScaling {
     /// Also scale loads that draw negative MW.
     #[serde(default)]
     pub include_negative: bool,
+    /// Also scale non-conforming loads (RAW SCALE = 0), which PSS/E's SCAL
+    /// leaves alone: loads that don't follow the system's load level, such
+    /// as industrial or station service load.
+    #[serde(default)]
+    pub include_non_conforming: bool,
 }
 
 /// How a generation change is shared between units.
@@ -261,6 +268,8 @@ struct Load {
     /// Every part's total, scaling or not, for the report.
     p_all: f64,
     q_all: f64,
+    /// RAW SCALE flag: false for a non-conforming load.
+    conforming: bool,
 }
 
 fn loads<'a>(
@@ -272,6 +281,8 @@ fn loads<'a>(
         RecordSource::Raw => {
             let table = records.table("LOAD").map_err(|e| e.to_string())?;
             let status = column(table, "STAT")?;
+            // Older revisions may not have SCALE: every load conforms then.
+            let scale = column(table, "SCALE").ok();
             let fields = |names: [&str; 3]| -> Result<Vec<usize>, String> {
                 names.iter().map(|n| column(table, n)).collect()
             };
@@ -303,6 +314,12 @@ fn loads<'a>(
                     element: element.to_string(),
                     bus,
                     row,
+                    conforming: scale.is_none_or(|c| {
+                        !matches!(
+                            r.cells.get(c),
+                            Some(Json::Number(_)) | Some(Json::String(_))
+                        ) || number(r.cells.get(c)) != 0.0
+                    }),
                     p_all: p.iter().map(|x| x.1).sum(),
                     q_all: q.iter().map(|x| x.1).sum(),
                     p: p[..used].to_vec(),
@@ -332,6 +349,7 @@ fn loads<'a>(
                     row,
                     p: vec![(pd, p)],
                     q: vec![(qd, q)],
+                    conforming: true,
                     p_all: p,
                     q_all: q,
                 });
@@ -471,16 +489,23 @@ pub fn plan(
     if let Some(l) = &settings.load {
         let (table, all) = loads(records, &chosen, l.parts)?;
         let negative = all.iter().filter(|x| x.p_all < 0.0).count();
-        let (scaled, kept): (Vec<_>, Vec<_>) = all
-            .into_iter()
-            .partition(|x| l.include_negative || x.p_all >= 0.0);
+        let fixed = all.iter().filter(|x| !x.conforming).count();
+        let (scaled, kept): (Vec<_>, Vec<_>) = all.into_iter().partition(|x| {
+            (l.include_negative || x.p_all >= 0.0) && (l.include_non_conforming || x.conforming)
+        });
+        let left = |n: usize, what: &str| {
+            format!(
+                "{n} {what} load{} left as {} {}.",
+                if n == 1 { "" } else { "s" },
+                if n == 1 { "it" } else { "they" },
+                if n == 1 { "is" } else { "are" },
+            )
+        };
         if negative > 0 && !l.include_negative {
-            report.notes.push(format!(
-                "{negative} negative load{} left as {} {}.",
-                if negative == 1 { "" } else { "s" },
-                if negative == 1 { "it" } else { "they" },
-                if negative == 1 { "is" } else { "are" },
-            ));
+            report.notes.push(left(negative, "negative"));
+        }
+        if fixed > 0 && !l.include_non_conforming {
+            report.notes.push(left(fixed, "non-conforming"));
         }
         // Only the scaling parts move, so the factor is set on their sum
         // and the other parts' sum stays fixed.
@@ -491,8 +516,13 @@ pub fn plan(
         let q_moving = sum(&|x| x.q.iter().map(|c| c.1).sum());
         let p_now = p_fixed + p_moving + kept.iter().map(|x| x.p_all).sum::<f64>();
         let q_now = q_fixed + q_moving + kept.iter().map(|x| x.q_all).sum::<f64>();
-        // Targets are for every load at the chosen buses, negative ones too.
+        // A percent scales each load that scales by that much. Targets and
+        // MW changes are for every load at the chosen buses, the ones left
+        // alone too, so the total comes out as asked.
         let to = |amount: ScaleAmount, now: f64, moving: f64, what: &str| -> Result<f64, String> {
+            if let ScaleAmount::Percent(p) = amount {
+                return Ok(1.0 + p / 100.0);
+            }
             let then = amount.total(now);
             factor(ScaleAmount::Target(moving + then - now), moving, what)
         };

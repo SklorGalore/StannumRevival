@@ -13,7 +13,8 @@ section into the next version's when a release is cut (see
 - **Scaling wizard.** Analysis → Scale load and generation… (also in
   Ctrl+K) scales load and generation at the buses of chosen areas, zones,
   owners and kV range, to a target total or by a change in MW or percent.
-  Load MW and Mvar scale together at constant power factor or separately;
+  Load MW and Mvar scale together at constant power factor or separately,
+  with negative and non-conforming loads left alone unless asked;
   generators share the change by output, Pmax or room to move, within Pmin
   and Pmax or ignoring them. A live preview lists the totals and every
   change first, and the result is written into the case's records, so

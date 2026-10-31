@@ -4128,6 +4128,11 @@
           "description": "Also scale loads that draw negative MW.",
           "type": "boolean"
         },
+        "include_non_conforming": {
+          "default": false,
+          "description": "Also scale non-conforming loads (RAW SCALE = 0), which PSS/E's SCAL\nleaves alone: loads that don't follow the system's load level, such\nas industrial or station service load.",
+          "type": "boolean"
+        },
         "mvar": {
           "anyOf": [
             {
@@ -5858,7 +5863,7 @@
           "type": "object"
         },
         {
-          "description": "Change the total by this percent (10 raises it by a tenth).",
+          "description": "Change by this percent (10 raises it by a tenth). For loads, each\nload that scales changes by this much; loads left alone (negative,\nnon-conforming) don't count.",
           "properties": {
             "kind": {
               "const": "percent",

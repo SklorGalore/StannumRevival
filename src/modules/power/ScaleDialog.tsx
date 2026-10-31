@@ -250,6 +250,7 @@ function AmountInput({
   kind,
   value,
   now,
+  after,
   disabled,
   onKind,
   onValue,
@@ -260,13 +261,13 @@ function AmountInput({
   kind: AmountKind;
   value: number | null;
   now: number | null;
+  /** The total after scaling, from the preview. */
+  after: number | null;
   disabled?: boolean;
   onKind: (k: AmountKind) => void;
   onValue: (v: number | null) => void;
   testId: string;
 }) {
-  const after =
-    value === null || now === null ? null : kind === "target" ? value : kind === "change" ? now + value : now * (1 + value / 100);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[11px] font-medium text-slate-600">{label}</span>
@@ -328,7 +329,7 @@ function LoadStep({ choice: c, set, totals }: { choice: ScaleChoice; set: (p: Pa
           title="Real power"
           note={c.mw === null ? "Leave blank to keep MW as it is and scale only Mvar." : totals ? `${count(totals.count)} load${totals.count === 1 ? "" : "s"} in service at the chosen buses.` : undefined}
         >
-          <AmountInput label="Load MW" unit="MW" kind={c.mwKind} value={c.mw} now={totals?.mw_before ?? null} onKind={(mwKind) => set({ mwKind })} onValue={(mw) => set({ mw })} testId="scale-load-mw" />
+          <AmountInput label="Load MW" unit="MW" kind={c.mwKind} value={c.mw} now={totals?.mw_before ?? null} after={c.mw === null ? null : (totals?.mw_after ?? null)} onKind={(mwKind) => set({ mwKind })} onValue={(mw) => set({ mw })} testId="scale-load-mw" />
         </Group>
         <Group
           title="Reactive power"
@@ -349,10 +350,13 @@ function LoadStep({ choice: c, set, totals }: { choice: ScaleChoice; set: (p: Pa
         </Group>
         {!c.constantPowerFactor && c.scaleMvar && (
           <Group title="">
-            <AmountInput label="Load Mvar" unit="Mvar" kind={c.mvarKind} value={c.mvar} now={totals?.mvar_before ?? null} onKind={(mvarKind) => set({ mvarKind })} onValue={(mvar) => set({ mvar })} testId="scale-load-mvar" />
+            <AmountInput label="Load Mvar" unit="Mvar" kind={c.mvarKind} value={c.mvar} now={totals?.mvar_before ?? null} after={c.mvar === null ? null : (totals?.mvar_after ?? null)} onKind={(mvarKind) => set({ mvarKind })} onValue={(mvar) => set({ mvar })} testId="scale-load-mvar" />
           </Group>
         )}
-        <Group title="Which loads" note="Totals count the nominal load at 1 p.u.: constant power, current and admittance parts together. Out-of-service loads never change.">
+        <Group
+          title="Which loads"
+          note="Totals count the nominal load at 1 p.u.: constant power, current and admittance parts together. A percent change applies to each load that scales; a target or MW change counts the loads left alone too. Out-of-service loads never change."
+        >
           <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-600">
             Parts that scale
             <select className={inputClass} value={c.parts} onChange={(e) => set({ parts: e.target.value as ScaleChoice["parts"] })} data-testid="scale-parts">
@@ -367,6 +371,14 @@ function LoadStep({ choice: c, set, totals }: { choice: ScaleChoice; set: (p: Pa
             testId="scale-negative"
           >
             Also scale negative loads
+          </Check>
+          <Check
+            checked={c.includeNonConforming}
+            onChange={(includeNonConforming) => set({ includeNonConforming })}
+            hint="Non-conforming loads (SCALE = 0 in RAW) don't follow the system load level, such as industrial or station service load. PSS/E leaves them alone when scaling"
+            testId="scale-non-conforming"
+          >
+            Also scale non-conforming loads
           </Check>
         </Group>
       </fieldset>
@@ -391,7 +403,7 @@ function GenerationStep({ choice: c, set, report }: { choice: ScaleChoice; set: 
       </Group>
       <fieldset disabled={!c.scaleGeneration} className="disabled:opacity-50">
         <Group title="Real power" note={totals ? `${count(totals.count)} generator${totals.count === 1 ? "" : "s"} in service at the chosen buses. Offline units never change.` : undefined}>
-          <AmountInput label="Generation MW" unit="MW" kind={c.genKind} value={c.gen} now={totals?.mw_before ?? null} onKind={(genKind) => set({ genKind })} onValue={(gen) => set({ gen })} testId="scale-gen-mw" />
+          <AmountInput label="Generation MW" unit="MW" kind={c.genKind} value={c.gen} now={totals?.mw_before ?? null} after={c.gen === null ? null : (totals?.mw_after ?? null)} onKind={(genKind) => set({ genKind })} onValue={(gen) => set({ gen })} testId="scale-gen-mw" />
         </Group>
         <Group
           title="Limits"

@@ -13,7 +13,7 @@ describe("scaleSettings", () => {
     expect(out).toEqual({
       settings: {
         buses: { areas: [1], zones: [], owners: [], kv_min: null, kv_max: null },
-        load: { mw: { kind: "percent", value: 10 }, mvar: null, constant_power_factor: true, parts: "all", include_negative: false },
+        load: { mw: { kind: "percent", value: 10 }, mvar: null, constant_power_factor: true, parts: "all", include_negative: false, include_non_conforming: false },
       },
     });
   });

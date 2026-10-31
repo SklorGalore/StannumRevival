@@ -37,8 +37,14 @@ range. MATPOWER cases have no owners.
   only the constant power part (PL/QL); the target then counts the parts that
   stay fixed too.
 - **Negative loads** are left alone unless **Also scale negative loads** is
-  on: they're often small generators modelled as load. Out-of-service loads
-  never change.
+  on: they're often small generators modelled as load.
+- **Non-conforming loads** (RAW `SCALE` = 0) are left alone unless **Also
+  scale non-conforming loads** is on, as in PSS/E: they don't follow the
+  system load level, such as industrial or station service load. MATPOWER
+  loads all conform.
+- A **percent** change applies to each load that scales. A **target** or an
+  **MW change** counts the loads left alone too, so the chosen buses' total
+  comes out as asked. Out-of-service loads never change.
 
 ## 3. Generation
 
@@ -87,7 +93,7 @@ case.call("scale_load_generation", settings={...})
 
 Amounts are `{"kind": "target" | "change" | "percent", "value": number}`.
 Load takes `mw`, `mvar`, `constant_power_factor`, `parts` (`"all"` or
-`"constant_power"`) and `include_negative`; generation takes `mw`,
+`"constant_power"`), `include_negative` and `include_non_conforming`; generation takes `mw`,
 `respect_limits` (default true) and `participation` (`"output"`, `"pmax"` or
 `"headroom"`). The [command reference](/StannumRevival/develop/commands/)
 lists every field.

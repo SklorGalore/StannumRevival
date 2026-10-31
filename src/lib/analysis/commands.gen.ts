@@ -1080,6 +1080,12 @@ export type LoadScaling = {
   /** Also scale loads that draw negative MW. */
   include_negative?: boolean;
   /**
+   * Also scale non-conforming loads (RAW SCALE = 0), which PSS/E's SCAL
+   * leaves alone: loads that don't follow the system's load level, such
+   * as industrial or station service load.
+   */
+  include_non_conforming?: boolean;
+  /**
    * Reactive power: left out, Mvar stays as it is, unless
    * `constant_power_factor` moves it with the MW.
    */
