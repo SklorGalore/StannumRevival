@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Your own contingency list.** Contingencies can run from a `.stnl`
+  lists file (preview): its named contingencies (`open` and `trip_bus`
+  events) and its `contingency_set` rules for single branches, generators,
+  branch pairs or buses in a subsystem. Equipment the case lacks is noted
+  and skipped. In the app, pick **From a lists file** under Outages; from
+  Python, the CLI and run files, set `lists` to the file's path.
 - **Mvar flow direction on the one-line.** Each branch shows an open violet
   arrow for the way its reactive power flows, beside the filled MW arrow;
   the Mvar number beside it is violet too, and now a magnitude, like MW.
@@ -17,14 +23,6 @@ section into the next version's when a release is cut (see
   **View** and in Ctrl+K) moves the MW and Mvar arrows along the wires, each
   the way its flow goes and in its own colour, faster with more flow. Off by default; exports and reduced motion
   keep still arrows.
-
-### Changed
-
-- **Solve keeps the current view.** Solving from the toolbar, the menu bar or
-  Ctrl+K no longer switches to Power flow; the diagram and tables update in
-  place. Power flow comes into view only when the solve fails or does not
-  converge.
-
 - **N-2 and bus outages.** Contingency runs can take the chosen branches
   and generators out two at a time (every pair once, up to 250,000 pairs;
   the bus filters narrow them), and can take out each bus with every
@@ -42,6 +40,10 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Solve keeps the current view.** Solving from the toolbar, the menu bar or
+  Ctrl+K no longer switches to Power flow; the diagram and tables update in
+  place. Power flow comes into view only when the solve fails or does not
+  converge.
 - **Final residual rounded to 0.001 MVA.** The Power flow overview shows the
   final residual to three decimals (for example 0.669 MVA) instead of six
   significant digits. Only the display changed; the solver and the per-unit

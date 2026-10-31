@@ -3,11 +3,11 @@
 // diagram. Or run the NERC TPL-001 planning events the core generates from
 // the case (planning.rs). The run itself is stannum-core's (contingency.rs).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Download, Network, Play, ShieldAlert, Square, X } from "lucide-react";
-import { PLANNING_CATEGORIES, useContingencies } from "../../store/contingencyStore";
+import { Download, FileText, Network, Play, ShieldAlert, Square, X } from "lucide-react";
+import { PLANNING_CATEGORIES, useContingencies, type ContingencySource } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
-import { api, saveTextExport } from "../../lib/analysis/api";
+import { LISTS_FILTERS, api, pickFile, saveTextExport } from "../../lib/analysis/api";
 import type { CategoryCount, ContingencyDetail, ContingencyRow, SolveReport, SolveSettings } from "../../lib/analysis/types";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
@@ -191,6 +191,11 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
       {children}
     </section>
   );
+}
+
+/** The last part of a path, for showing a chosen file. */
+function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
 }
 
 /** The most pairs the core runs, as in stannum-core's contingency::MAX_PAIRS. */
@@ -415,6 +420,7 @@ export function ContingencyTab({
     [s.summary, s.choice.limitPct, planned, shownRating, shownBase]
   );
   const planning = s.choice.source === "planning";
+  const fromLists = s.choice.source === "lists";
   // Planning event counts, for the categories to pick from.
   const loadCounts = s.loadCounts;
   useEffect(() => {
@@ -464,7 +470,7 @@ export function ContingencyTab({
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
   const chosenCount = (s.counts ?? []).filter((c) => s.choice.categories.includes(c.category)).reduce((n, c) => n + c.count, 0);
-  const nothingChosen = planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
+  const nothingChosen = fromLists ? !s.choice.listsPath : planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
   // Branches and generators that N-2 pairs up (buses stay one at a time).
   const pairElements = scope
     ? scope.elements.filter((e) => !e.startsWith("bus:")).length
@@ -510,15 +516,35 @@ export function ContingencyTab({
           <select
             className={inputClass}
             value={s.choice.source}
-            onChange={(e) => s.setChoice({ source: e.target.value as "n1" | "planning" })}
+            onChange={(e) => s.setChoice({ source: e.target.value as ContingencySource })}
             aria-label="Outages"
             data-testid="contingency-source"
           >
             <option value="n1">N-1: each element on its own</option>
             <option value="planning">NERC TPL-001 planning events</option>
+            <option value="lists">From a lists file (.stnl)</option>
           </select>
         </label>
-        {planning ? (
+        {fromLists ? (
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-[11px] font-medium text-slate-600">Lists file</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Button
+                type="button"
+                onClick={async () => {
+                  const path = await pickFile(LISTS_FILTERS);
+                  if (path) s.setChoice({ listsPath: path });
+                }}
+                data-testid="choose-lists"
+              >
+                <FileText size={13} /> {s.choice.listsPath ? "Change…" : "Choose…"}
+              </Button>
+              <span className="truncate max-w-64 text-[11px] text-slate-600" title={s.choice.listsPath ?? undefined} data-testid="lists-path">
+                {s.choice.listsPath ? fileName(s.choice.listsPath) : "No file chosen"}
+              </span>
+            </div>
+          </div>
+        ) : planning ? (
           <>
             <PlanningCategories
               counts={s.counts}
@@ -720,7 +746,12 @@ export function ContingencyTab({
       )}
       {!summary ? (
         <EmptyState icon={<ShieldAlert size={22} />} title="What if it trips?">
-          {acReady && planning ? (
+          {acReady && fromLists ? (
+            <>
+              Runs the contingencies a lists file names and the outages its contingency sets generate for this case. Equipment the case doesn't
+              have, and events that aren't applied yet, are skipped and listed with the results.
+            </>
+          ) : acReady && planning ? (
             <>
               Runs the NERC TPL-001 planning events Stannum generates from the case: the base case (P0), each single element (P1), each section of a
               multi-section line (P2.1) and each bipolar DC line (P7.2). Events that need breakers, two stages or tower data are not generated yet.
@@ -766,7 +797,7 @@ export function ContingencyTab({
           {summary.categories.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pb-2" data-testid="category-summary">
               {summary.categories.map((c) => {
-                const problems = c.with_overloads + c.with_voltage_problems + c.not_converged;
+                const problems = c.with_problems;
                 return (
                   <button
                     key={c.category}
@@ -788,6 +819,18 @@ export function ContingencyTab({
                   </button>
                 );
               })}
+            </div>
+          )}
+          {summary.notes.length > 0 && (
+            <div className="px-3 pb-2" data-testid="lists-notes">
+              <Notice>
+                <p className="font-medium">Skipped from the lists file:</p>
+                <ul className="list-disc pl-4">
+                  {summary.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </Notice>
             </div>
           )}
           {summary.cancelled && (

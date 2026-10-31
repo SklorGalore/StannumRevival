@@ -45,7 +45,7 @@ part carry nothing.
 its island: $\Delta F = -\text{PTDF}_{\cdot,i}\, P_g$, from one solve
 $B\,\theta = e_i$.
 
-**Shunt and DC line outages** (planning events only) are injection changes
+**Shunt and DC line outages** (planning events and lists files) are injection changes
 in the same way. A shunt gives back its conductance, $G\,V^2$ MW at the base
 voltage $V$; its reactive power doesn't move MW in the linear model. A DC
 line keeping a share $k$ of its scheduled flow $P$ (0 when it goes out, 0.5
@@ -86,6 +86,18 @@ files, Python or Trip and compare.
 A bus outage opens every branch and DC line at the bus. The bus is then
 cut off, and its load, generation and shunts count as lost, the same as any
 other outage that splits the network.
+
+## Lists files
+
+`crates/stannum-core/src/lists.rs` reads a `.stnl` file against the open
+case. Each `contingency` record becomes one outage of every element its
+`open` and `trip_bus` events name (a group of three or more is screened the
+same way as a pair). Each `contingency_set` generates single branches,
+single generators, branch pairs or buses whose terminals are in its
+subsystem and at or above its `kv_min`; switches and, when skipped,
+zero-impedance lines are left out. Element ids are matched with branch
+buses in either order. Anything the case lacks, and `close` or setpoint
+events, skip their contingency with a note rather than failing the run.
 
 ## Planning events
 
