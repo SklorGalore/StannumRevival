@@ -1326,15 +1326,19 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   const [dcGrids, setDcGrids] = useState<DcGridsSummary | null>(summary?.dc_grids ?? null);
   useEffect(() => setDcGrids(summary?.dc_grids ?? null), [summary]);
 
-  async function run<T>(kind: string, work: () => Promise<T>, done: (v: T) => void) {
+  /** Runs a backend call; false when it failed for the case still open. */
+  async function run<T>(kind: string, work: () => Promise<T>, done: (v: T) => void): Promise<boolean> {
     const version = useWorkspace.getState().caseVersion;
     setBusy(kind);
     setError(null);
     try {
       const value = await work();
       if (version === useWorkspace.getState().caseVersion) done(value);
+      return true;
     } catch (e) {
-      if (version === useWorkspace.getState().caseVersion) setError(toStannumError(e));
+      if (version !== useWorkspace.getState().caseVersion) return true;
+      setError(toStannumError(e));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -1427,7 +1431,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     lastSolveRequest.current = solveRequest;
     if (!power?.available || busy) return;
     setTab("overview");
-    void solve();
+    // The solve runs where the user is; only a failure (an error, or no
+    // convergence) brings Power flow into view, since it explains it here.
+    void solve().then((ok) => {
+      const w = useWorkspace.getState();
+      if (!ok || w.solveReport?.converged === false) w.setModule("power");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solveRequest]);
 

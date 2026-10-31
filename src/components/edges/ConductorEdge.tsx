@@ -6,7 +6,8 @@ import { useInk } from "../../lib/diagram/ink";
 import { useDiagramStore } from "../../store/diagramStore";
 import type { SLDEdge } from "../../store/types";
 import { ROUTE_TOLERANCE, pinEnds, type Pt } from "../../lib/diagram/router";
-import { arrowPath, flowDirection, pathPoints } from "../../lib/diagram/flowArrow";
+import { arrowPath, flowDirection, flowSpeed, pathPoints, polylineLength, reactiveArrowAt } from "../../lib/diagram/flowArrow";
+import { useTheme } from "../../store/themeStore";
 import { SegmentGrips } from "./SegmentGrips";
 import { Leader, useBBox, useLabelDrag } from "../nodes/shared/labels";
 import { useElementMark } from "../../store/layerStore";
@@ -88,6 +89,11 @@ function facingInLine(s: { x: number; y: number }, sp: string, t: { x: number; y
   return off < 1 && ahead > -8;
 }
 
+/** The user asked the system for less motion. */
+function reducedMotion(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function ConductorEdge({
   id,
   source,
@@ -105,7 +111,11 @@ export function ConductorEdge({
 }: EdgeProps & { data?: ConductorData }) {
   const results = useResults();
   const marks = useResultMarks();
-  const maxFlow = useDrawnMaxFlow(marks ? results : null);
+  const maxFlow = useDrawnMaxFlow(results);
+  // Moving arrows are a screen preference: exports and reduced motion get still ones.
+  const animateFlows = useDiagramStore((s) => s.animateFlows);
+  const exporting = useTheme((s) => s.exportLight);
+  const animate = animateFlows && !exporting && !reducedMotion();
   const ink = useInk();
   const locked = useDiagramStore((s) => s.locked);
   const dotAtSource = useJunction(source, sourceHandleId);
@@ -115,6 +125,8 @@ export function ConductorEdge({
   const pts = liveRoute(data?.route, s, t);
 
   let path: string;
+  // Corners of the wire as drawn, for its length.
+  let line: Pt[];
   let seg: { a: Pt; b: Pt };
   let mid: Pt;
   // Where the text goes: the layout's reserved box, else beside the arrow.
@@ -122,6 +134,7 @@ export function ConductorEdge({
   const box = pts ? data?.labelAt : undefined;
   if (pts) {
     path = pts.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+    line = pts;
     if (box) {
       const near = nearestOnRoute(pts, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
       seg = near;
@@ -135,6 +148,7 @@ export function ConductorEdge({
     // Straight across, or no length at all for a symbol sitting on its bus:
     // the step path would loop out past the terminals.
     path = `M${s.x},${s.y} L${t.x},${t.y}`;
+    line = [s, t];
     seg = { a: s, b: t };
     mid = { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
   } else {
@@ -150,6 +164,7 @@ export function ConductorEdge({
     // Put the arrow on a run of the step path itself, not on the straight
     // line between the ends (which is diagonal whenever the ends are offset).
     const steps = pathPoints(path);
+    line = steps.length > 1 ? steps : [s, t];
     seg = steps.length > 1 ? longestSegment(steps) : { a: s, b: t };
     mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
   }
@@ -177,11 +192,30 @@ export function ConductorEdge({
   // Unit step of the flow along the labelled segment's run.
   const dir = flowDirection(seg.a, seg.b, !!flow && flow.p < 0);
   const vertical = dir.x === 0;
-  const arrow = flow && Math.abs(flow.p) > 0.05 ? arrowPath(mid, dir, k) : null;
+  const hasP = !!flow && Math.abs(flow.p) > 0.05;
+  // Reactive power gets its own open arrow beside the MW one (AC results,
+  // full detail), pointing the way the Mvar flow goes.
+  const hasQ = !!flow && !!results?.ac && !asMarks && Math.abs(flow.q) > 0.05;
+  const qAt = hasQ ? reactiveArrowAt(mid, seg.a, seg.b) : null;
+  const pAt = hasQ && qAt && !animate ? qAt.p : mid;
+  const qArrow = hasQ && flow && qAt ? arrowPath(qAt.q, flowDirection(seg.a, seg.b, flow.q < 0), 0.8) : null;
+  const arrow = hasP && !animate ? arrowPath(pAt, dir, k) : null;
+  // Moving arrows: one every 50 px along the whole wire, faster with more flow.
+  const lineLength = polylineLength(line);
+  const train =
+    hasP && animate && flow && lineLength > 12
+      ? {
+          count: Math.max(1, Math.round(lineLength / 50)),
+          dur: lineLength / flowSpeed(row?.loading_pct, flow.p, maxFlow),
+          reverse: flow.p < 0,
+          shape: arrowPath({ x: 0, y: 0 }, { x: 1, y: 0 }, k),
+        }
+      : null;
   const numbers = flow
     ? [
         mw(Math.abs(flow.p)),
-        ...(results?.ac ? [mvar(flow.q)] : []),
+        // Magnitude only: the open arrow shows which way it goes.
+        ...(results?.ac ? [mvar(hasQ ? Math.abs(flow.q) : flow.q)] : []),
         ...(row?.loading_pct != null ? [`${row.loading_pct.toFixed(0)}%`] : []),
       ]
     : data?.label
@@ -245,7 +279,41 @@ export function ConductorEdge({
       {selected && !locked && pts && <SegmentGrips id={id} points={pts} />}
       {dotAtSource && <circle cx={sourceX} cy={sourceY} r={3} fill={stroke} />}
       {dotAtTarget && <circle cx={targetX} cy={targetY} r={3} fill={stroke} />}
-      {arrow && !offline && <path d={arrow} fill={overload ?? ink.result} />}
+      {arrow && !offline && (
+        <path d={arrow} fill={overload ?? ink.result} data-testid="flow-arrow">
+          <title>MW flow direction</title>
+        </path>
+      )}
+      {train && !offline && (
+        <g fill={overload ?? ink.result} data-testid="flow-arrows-moving" pointerEvents="none">
+          {Array.from({ length: train.count }, (_, i) => (
+            <path key={i} d={train.shape}>
+              <animateMotion
+                path={path}
+                dur={`${train.dur.toFixed(2)}s`}
+                begin={`${(-(i * train.dur) / train.count).toFixed(2)}s`}
+                repeatCount="indefinite"
+                rotate={train.reverse ? "auto-reverse" : "auto"}
+                keyPoints={train.reverse ? "1;0" : "0;1"}
+                keyTimes="0;1"
+                calcMode="linear"
+              />
+            </path>
+          ))}
+        </g>
+      )}
+      {qArrow && !offline && (
+        <path
+          d={qArrow}
+          fill="none"
+          stroke={overload ?? ink.result}
+          strokeWidth={1.2}
+          strokeLinejoin="round"
+          data-testid="mvar-arrow"
+        >
+          <title>Mvar flow direction</title>
+        </path>
+      )}
       {moved && lines.length > 0 && (
         <Leader from={{ x: mid.x, y: mid.y, w: 0, h: 0 }} to={textBox} color={ink.muted} />
       )}

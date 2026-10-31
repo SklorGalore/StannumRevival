@@ -3,6 +3,7 @@
 // one-line around it.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  ArrowBigRightDash,
   ArrowDownCircle,
   BellOff,
   Circle,
@@ -46,6 +47,7 @@ import { NEXT_PREFERENCE, useTheme } from "../store/themeStore";
 import { useUpdate } from "../store/updateStore";
 import { caseNetwork } from "../lib/diagram/network";
 import { useLayers } from "../store/layerStore";
+import { useDiagramStore } from "../store/diagramStore";
 import { paletteElements, searchElements, type PaletteElement } from "../lib/search";
 import { centreBus } from "../ui/DrawAround";
 import { useShortcuts } from "./ShortcutsDialog";
@@ -138,6 +140,16 @@ export function paletteCommands(): Command[] {
         keywords: binary ? "export stnb stannum binary arrow columnar large fast file save write convert" : "export stn stannum open text format file save write convert",
         run: () => void studyFile.exportStn(binary),
       });
+  }
+  {
+    const diagram = useDiagramStore.getState();
+    list.push({
+      id: "animate-flows",
+      title: diagram.animateFlows ? "Stop animating flow arrows" : "Animate flow arrows",
+      icon: <ArrowBigRightDash size={14} />,
+      keywords: "diagram one-line moving flow arrows animate animation motion still mw mvar",
+      run: diagram.toggleAnimateFlows,
+    });
   }
   if (summary?.power.available)
     list.push(

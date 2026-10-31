@@ -163,12 +163,22 @@ there moves.
 
 ## Results on the diagram
 
-Generated symbols stay linked to case records. After a solve (in Power flow,
-or **Solve** on the diagram toolbar) the diagram shows:
+Generated symbols stay linked to case records. After a solve (**Solve** in
+the top toolbar, in Power flow, or on the diagram toolbar) the diagram shows:
 
 - bus voltage magnitude and angle,
 - generator and load MW and Mvar,
-- branch flows with direction arrows, and loading.
+- branch flows and loading, with a filled arrow for the way the MW flow goes
+  and an open arrow for the way the Mvar flow goes (AC results).
+
+Solving from the top toolbar, the menu bar or Ctrl+K keeps you where you are:
+the diagram updates in place. Power flow comes into view only when the solve
+fails or does not converge, to show why.
+
+**Canvas > Animated flow arrows** (also under **View** and in Ctrl+K) makes
+the MW arrows move along each wire the way the power goes, faster on more
+heavily loaded branches. It is off by default and remembered between
+sessions. Exports, and systems set to reduce motion, always get still arrows.
 
 Branches at 80% or more of rate A turn amber, overloads red. Wires are
 coloured by voltage level, with a legend. **Results** toggles the numbers. At
