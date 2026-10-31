@@ -936,7 +936,7 @@ function Overview({
             detail={flowControlsDetail(report)}
           />
         )}
-        <Metric label="Final residual" value={`${sig(report.residual_mva)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
+        <Metric label="Final residual" value={`${fixed(report.residual_mva, 3)} MVA`} detail={`${sig(report.residual_pu)} p.u.`} />
         <Metric label="Solve time" value={`${fixed(report.elapsed_ms, 1)} ms`} />
         <Metric label="Generation" value={`${fixed(report.total_generation_mw, 1)} MW`} detail="Online units" />
         <Metric label="Load" value={`${fixed(report.total_load_mw, 1)} MW`} />

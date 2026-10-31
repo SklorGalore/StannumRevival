@@ -25,6 +25,13 @@ section into the next version's when a release is cut (see
   and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
   server.
 
+### Changed
+
+- **Final residual rounded to 0.001 MVA.** The Power flow overview shows the
+  final residual to three decimals (for example 0.669 MVA) instead of six
+  significant digits. Only the display changed; the solver and the per-unit
+  value under it are unchanged.
+
 ## 1.0.0-rc.1 - 2026-10-30
 
 ### Added
