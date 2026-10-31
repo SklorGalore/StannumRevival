@@ -3,6 +3,7 @@ use rs_power::{
     parse_raw_with_options, solve,
 };
 use serde_json::Value;
+use stannum_verify::Check;
 
 fn expected_case(data: &Value) -> Case {
     let mut text = format!("mpc.version = '2';\nmpc.baseMVA = {};\n", data["baseMVA"]);
@@ -28,7 +29,7 @@ fn expected_case(data: &Value) -> Case {
     parse_matpower(&text).unwrap()
 }
 
-fn compare(actual: &Case, expected: &Case) {
+fn compare(actual: &Case, expected: &Case, check: &mut Check) {
     assert_eq!(actual.buses.len(), expected.buses.len());
     assert_eq!(actual.generators.len(), expected.generators.len());
     assert_eq!(actual.branches.len(), expected.branches.len());
@@ -45,10 +46,26 @@ fn compare(actual: &Case, expected: &Case) {
     let e = numbers(expected);
     assert_eq!(a.len(), e.len());
     for (i, (a, e)) in a.iter().zip(&e).enumerate() {
+        check.diff((a - e) / (1.0 + e.abs()));
         assert!(
             (a - e).abs() <= 1e-10 * (1.0 + e.abs()),
             "numeric field {i}: actual {a}, expected {e}"
         );
+    }
+}
+
+/// The row name on the Verification page.
+fn label(stem: &str) -> String {
+    match stem {
+        "dc_modes" => "DC line control modes".into(),
+        "transformers" => "Every transformer CW and CZ code".into(),
+        "t_case9_save2psse" => "MATPOWER t_case9_save2psse".into(),
+        "t_psse_case2" => "MATPOWER t_psse_case2".into(),
+        "t_psse_case3" => "MATPOWER t_psse_case3".into(),
+        _ => match stem.strip_prefix("revision_") {
+            Some(n) => format!("Revision {n} layout"),
+            None => stem.into(),
+        },
     }
 }
 
@@ -72,7 +89,19 @@ fn matpower_81_raw_conversion_references() {
             &RawOptions::default(),
         )
         .unwrap();
-        compare(&imported.case, &expected_case(&data));
+        let row = label(path.file_stem().unwrap().to_str().unwrap());
+        let mut fields = Check::new("raw-import", &row, "Imported fields", "relative", 1e-10);
+        compare(&imported.case, &expected_case(&data), &mut fields);
+        fields.finish();
+        let mut vm = Check::new("raw-import", &row, "Voltage magnitude", "p.u.", 1e-6);
+        let mut va = Check::new("raw-import", &row, "Voltage angle", "deg", 1e-5);
+        let mut power = Check::new(
+            "raw-import",
+            &row,
+            "Generator output and branch flows",
+            "MW, Mvar",
+            1e-4,
+        );
         let names: Vec<String> = data["bus_name"]
             .as_array()
             .unwrap()
@@ -108,8 +137,8 @@ fn matpower_81_raw_conversion_references() {
                 .iter()
                 .zip(data[name]["bus"].as_array().unwrap())
             {
-                assert!((bus.vm - row[7].as_f64().unwrap()).abs() < 1e-6);
-                assert!((bus.va - row[8].as_f64().unwrap()).abs() < 1e-5);
+                assert!(vm.compare(bus.vm, row[7].as_f64().unwrap()) < 1e-6);
+                assert!(va.compare(bus.va, row[8].as_f64().unwrap()) < 1e-5);
             }
             let gen_table = data[name]["gen"].as_array().unwrap();
             let gen_rows = if gen_table.first().is_some_and(Value::is_number) {
@@ -118,8 +147,8 @@ fn matpower_81_raw_conversion_references() {
                 gen_table.iter().collect()
             };
             for (g, row) in result.case.generators.iter().zip(gen_rows) {
-                assert!((g.pg - row[1].as_f64().unwrap()).abs() < 1e-4);
-                assert!((g.qg - row[2].as_f64().unwrap()).abs() < 1e-4);
+                assert!(power.compare(g.pg, row[1].as_f64().unwrap()) < 1e-4);
+                assert!(power.compare(g.qg, row[2].as_f64().unwrap()) < 1e-4);
             }
             for (flows, row) in result
                 .branch_flows
@@ -127,8 +156,13 @@ fn matpower_81_raw_conversion_references() {
                 .zip(data[name]["branch"].as_array().unwrap())
             {
                 for i in 0..4 {
-                    assert!((flows[i] - row[13 + i].as_f64().unwrap()).abs() < 1e-4);
+                    assert!(power.compare(flows[i], row[13 + i].as_f64().unwrap()) < 1e-4);
                 }
+            }
+        }
+        for check in [vm, va, power] {
+            if check.compared() > 0 {
+                check.finish();
             }
         }
         count += 1;

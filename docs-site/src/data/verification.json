@@ -1,0 +1,1497 @@
+{
+  "commit": "8150d80fad2a586157b89ddd5f9998715cb4651e",
+  "date": "2026-10-31T13:09:47-04:00",
+  "checks": 201,
+  "suites": [
+    {
+      "id": "matpower",
+      "quantities": [
+        {
+          "name": "Voltage magnitude",
+          "unit": "p.u."
+        },
+        {
+          "name": "Voltage angle",
+          "unit": "deg"
+        },
+        {
+          "name": "Generator output and branch flows",
+          "unit": "MW, Mvar"
+        }
+      ],
+      "rows": [
+        {
+          "case": "case9 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 7.943762314610581e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.9971426108186285e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.208843039701151e-7,
+              "tolerance": 0.0001,
+              "compared": 210
+            }
+          ]
+        },
+        {
+          "case": "case9 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 42
+            }
+          ]
+        },
+        {
+          "case": "case9 with generators sharing a bus AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 7.943762314610581e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.9971426108186285e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.208843039701151e-7,
+              "tolerance": 0.0001,
+              "compared": 220
+            }
+          ]
+        },
+        {
+          "case": "case9 with generators sharing a bus DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 44
+            }
+          ]
+        },
+        {
+          "case": "case9 with infeasible reactive limits DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 42
+            }
+          ]
+        },
+        {
+          "case": "case9 with infinite reactive ranges AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 7.943762314610581e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.9971426108186285e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.208843039701151e-7,
+              "tolerance": 0.0001,
+              "compared": 220
+            }
+          ]
+        },
+        {
+          "case": "case9 with infinite reactive ranges DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 44
+            }
+          ]
+        },
+        {
+          "case": "case9 with reactive limits AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 1.3879246640868812e-9,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.339874225602672e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 7.707993177064054e-7,
+              "tolerance": 0.0001,
+              "compared": 210
+            }
+          ]
+        },
+        {
+          "case": "case9 with reactive limits DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 42
+            }
+          ]
+        },
+        {
+          "case": "case9 with taps, shifters, shunts, offline and parallel equipment AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 6.331313251450864e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 1.6727202734045932e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.837324070194882e-7,
+              "tolerance": 0.0001,
+              "compared": 260
+            }
+          ]
+        },
+        {
+          "case": "case9 with taps, shifters, shunts, offline and parallel equipment DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 1.7763568394002505e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 2.8421709430404014e-14,
+              "tolerance": 0.0001,
+              "compared": 52
+            }
+          ]
+        },
+        {
+          "case": "case9 with the slack at its limit AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 1.0209896261770266e-9,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.67086279548812e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 9.232754081267558e-7,
+              "tolerance": 0.0001,
+              "compared": 210
+            }
+          ]
+        },
+        {
+          "case": "case9 with the slack at its limit DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 42
+            }
+          ]
+        },
+        {
+          "case": "case9 with zero-width reactive ranges AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 7.943762314610581e-10,
+              "tolerance": 1e-6,
+              "compared": 45
+            },
+            {
+              "max_diff": 4.9971426108186285e-8,
+              "tolerance": 0.00001,
+              "compared": 45
+            },
+            {
+              "max_diff": 6.208843039701151e-7,
+              "tolerance": 0.0001,
+              "compared": 220
+            }
+          ]
+        },
+        {
+          "case": "case9 with zero-width reactive ranges DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 9
+            },
+            {
+              "max_diff": 4.440892098500626e-15,
+              "tolerance": 0.00001,
+              "compared": 9
+            },
+            {
+              "max_diff": 5.684341886080803e-14,
+              "tolerance": 0.0001,
+              "compared": 44
+            }
+          ]
+        },
+        {
+          "case": "case14 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 2.2532353760595922e-10,
+              "tolerance": 1e-6,
+              "compared": 70
+            },
+            {
+              "max_diff": 8.471067225457318e-8,
+              "tolerance": 0.00001,
+              "compared": 70
+            },
+            {
+              "max_diff": 5.584834081862056e-7,
+              "tolerance": 0.0001,
+              "compared": 450
+            }
+          ]
+        },
+        {
+          "case": "case14 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 14
+            },
+            {
+              "max_diff": 1.4210854715202004e-14,
+              "tolerance": 0.00001,
+              "compared": 14
+            },
+            {
+              "max_diff": 8.526512829121202e-14,
+              "tolerance": 0.0001,
+              "compared": 90
+            }
+          ]
+        },
+        {
+          "case": "case30 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 8.341645152398768e-10,
+              "tolerance": 1e-6,
+              "compared": 150
+            },
+            {
+              "max_diff": 2.3012214622752938e-7,
+              "tolerance": 0.00001,
+              "compared": 150
+            },
+            {
+              "max_diff": 5.318353082373051e-7,
+              "tolerance": 0.0001,
+              "compared": 880
+            }
+          ]
+        },
+        {
+          "case": "case30 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 30
+            },
+            {
+              "max_diff": 8.437694987151191e-15,
+              "tolerance": 0.00001,
+              "compared": 30
+            },
+            {
+              "max_diff": 7.815970093361102e-14,
+              "tolerance": 0.0001,
+              "compared": 176
+            }
+          ]
+        },
+        {
+          "case": "case57 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 1.330401899757305e-9,
+              "tolerance": 1e-6,
+              "compared": 285
+            },
+            {
+              "max_diff": 1.073503366200157e-7,
+              "tolerance": 0.00001,
+              "compared": 285
+            },
+            {
+              "max_diff": 5.624103103230027e-7,
+              "tolerance": 0.0001,
+              "compared": 1670
+            }
+          ]
+        },
+        {
+          "case": "case57 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 57
+            },
+            {
+              "max_diff": 6.394884621840903e-14,
+              "tolerance": 0.00001,
+              "compared": 57
+            },
+            {
+              "max_diff": 4.547473508864641e-13,
+              "tolerance": 0.0001,
+              "compared": 334
+            }
+          ]
+        },
+        {
+          "case": "case118 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 2.5837554318286493e-11,
+              "tolerance": 1e-6,
+              "compared": 590
+            },
+            {
+              "max_diff": 8.333890910705577e-9,
+              "tolerance": 0.00001,
+              "compared": 590
+            },
+            {
+              "max_diff": 3.686479885800509e-7,
+              "tolerance": 0.0001,
+              "compared": 4260
+            }
+          ]
+        },
+        {
+          "case": "case118 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 118
+            },
+            {
+              "max_diff": 7.105427357601003e-14,
+              "tolerance": 0.00001,
+              "compared": 118
+            },
+            {
+              "max_diff": 2.2382096176443156e-12,
+              "tolerance": 0.0001,
+              "compared": 852
+            }
+          ]
+        },
+        {
+          "case": "case300 AC (all five methods)",
+          "cells": [
+            {
+              "max_diff": 2.0136474709886443e-9,
+              "tolerance": 1e-6,
+              "compared": 1500
+            },
+            {
+              "max_diff": 8.491980452163261e-8,
+              "tolerance": 0.00001,
+              "compared": 1500
+            },
+            {
+              "max_diff": 1.5186031987468596e-6,
+              "tolerance": 0.0001,
+              "compared": 8910
+            }
+          ]
+        },
+        {
+          "case": "case300 DC",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 300
+            },
+            {
+              "max_diff": 4.050093593832571e-13,
+              "tolerance": 0.00001,
+              "compared": 300
+            },
+            {
+              "max_diff": 5.5990767577895895e-12,
+              "tolerance": 0.0001,
+              "compared": 1782
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "raw-import",
+      "quantities": [
+        {
+          "name": "Imported fields",
+          "unit": "relative"
+        },
+        {
+          "name": "Voltage magnitude",
+          "unit": "p.u."
+        },
+        {
+          "name": "Voltage angle",
+          "unit": "deg"
+        },
+        {
+          "name": "Generator output and branch flows",
+          "unit": "MW, Mvar"
+        }
+      ],
+      "rows": [
+        {
+          "case": "DC line control modes",
+          "cells": [
+            {
+              "max_diff": 2.6331286252688192e-16,
+              "tolerance": 1e-10,
+              "compared": 91
+            },
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "case": "Every transformer CW and CZ code",
+          "cells": [
+            {
+              "max_diff": 1.0936525317203035e-16,
+              "tolerance": 1e-10,
+              "compared": 2518
+            },
+            {
+              "max_diff": 5.3290705182007506e-15,
+              "tolerance": 1e-6,
+              "compared": 96
+            },
+            {
+              "max_diff": 1.754152378907747e-14,
+              "tolerance": 0.00001,
+              "compared": 96
+            },
+            {
+              "max_diff": 1.5081269566508126e-10,
+              "tolerance": 0.0001,
+              "compared": 1156
+            }
+          ]
+        },
+        {
+          "case": "MATPOWER t_case9_save2psse",
+          "cells": [
+            {
+              "max_diff": 9.979532805619383e-17,
+              "tolerance": 1e-10,
+              "compared": 371
+            },
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "case": "MATPOWER t_psse_case2",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 324
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 1e-6,
+              "compared": 20
+            },
+            {
+              "max_diff": 5.400124791776761e-13,
+              "tolerance": 0.00001,
+              "compared": 20
+            },
+            {
+              "max_diff": 5.6843418860808015e-12,
+              "tolerance": 0.0001,
+              "compared": 92
+            }
+          ]
+        },
+        {
+          "case": "MATPOWER t_psse_case3",
+          "cells": [
+            {
+              "max_diff": 4.988803861529408e-16,
+              "tolerance": 1e-10,
+              "compared": 1676
+            },
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "case": "Revision 23 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 1.1102230246251563e-16,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 8.881784197001252e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 1.723066134218243e-13,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 24 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 25 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 26 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 27 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 28 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 29 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 30 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 31 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 32 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        },
+        {
+          "case": "Revision 33 layout",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-10,
+              "compared": 95
+            },
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-6,
+              "compared": 4
+            },
+            {
+              "max_diff": 4.440892098500626e-16,
+              "tolerance": 0.00001,
+              "compared": 4
+            },
+            {
+              "max_diff": 7.105427357601002e-15,
+              "tolerance": 0.0001,
+              "compared": 24
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "saved-solution",
+      "quantities": [
+        {
+          "name": "Mean voltage magnitude",
+          "unit": "p.u."
+        },
+        {
+          "name": "Largest voltage magnitude",
+          "unit": "p.u."
+        },
+        {
+          "name": "Largest voltage angle",
+          "unit": "deg"
+        }
+      ],
+      "rows": [
+        {
+          "case": "Memphis 993-bus (RAW 35, PowerWorld)",
+          "cells": [
+            {
+              "max_diff": 0.00005502624099472611,
+              "tolerance": 0.0002,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.006756561951614559,
+              "tolerance": 0.01,
+              "compared": 993
+            },
+            {
+              "max_diff": 1.501074590009246,
+              "tolerance": 2.0,
+              "compared": 993
+            }
+          ]
+        },
+        {
+          "case": "Texas 2000-bus summer peak (RAW 35, PowerWorld)",
+          "cells": [
+            {
+              "max_diff": 0.0015033313208772834,
+              "tolerance": 0.002,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.03564036378552515,
+              "tolerance": 0.05,
+              "compared": 2751
+            },
+            {
+              "max_diff": 0.7764222715896381,
+              "tolerance": 1.0,
+              "compared": 2751
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vsc-paper",
+      "quantities": [
+        {
+          "name": "Converter P",
+          "unit": "MW"
+        },
+        {
+          "name": "Converter Q",
+          "unit": "Mvar"
+        },
+        {
+          "name": "Converter voltage",
+          "unit": "p.u."
+        },
+        {
+          "name": "Converter angle",
+          "unit": "deg"
+        },
+        {
+          "name": "Losses",
+          "unit": "MW"
+        },
+        {
+          "name": "DC power",
+          "unit": "MW"
+        }
+      ],
+      "rows": [
+        {
+          "case": "Converter 1",
+          "cells": [
+            {
+              "max_diff": 0.0019630033551578663,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0025407079405095345,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.00024828265053877807,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.007503252589801779,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.00028110711839435254,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0022441104735548834,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 2",
+          "cells": [
+            {
+              "max_diff": 0.0005494335999856048,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0012827864800044608,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0002786534241232541,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0007995063859809193,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.002051055402763291,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0015016218027739114,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 3",
+          "cells": [
+            {
+              "max_diff": 0.003469387755160369,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.004081632653068823,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0003595106883089727,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0012047546704465617,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.003360307723134337,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.003170304521717071,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 4",
+          "cells": [
+            {
+              "max_diff": 0.002106595936282929,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.006381105380228291,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0003729371964018569,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0013787097416368963,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.004861551305771705,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.007245044630508346,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 5",
+          "cells": [
+            {
+              "max_diff": 0.0036770675577670886,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.004562687252146702,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.00019217465845389192,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0011411523700992632,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0041678409507872605,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0004907733930252789,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 6",
+          "cells": [
+            {
+              "max_diff": 0.0033333514065816416,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0033541203812887943,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0000974010241774348,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.004683421091087325,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.003923809616844576,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.002742838976587336,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Converter 7",
+          "cells": [
+            {
+              "max_diff": 0.002907302759474817,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.009509298924840426,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.00011563153697125016,
+              "tolerance": 0.0006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.006679104983355444,
+              "tolerance": 0.012,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.0024639106270272215,
+              "tolerance": 0.006,
+              "compared": 1
+            },
+            {
+              "max_diff": 0.005371213386503371,
+              "tolerance": 0.012,
+              "compared": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "matacdc",
+      "quantities": [
+        {
+          "name": "Converter P",
+          "unit": "MW"
+        },
+        {
+          "name": "Converter Q",
+          "unit": "Mvar"
+        },
+        {
+          "name": "Losses",
+          "unit": "MW"
+        },
+        {
+          "name": "Converter voltage",
+          "unit": "p.u."
+        },
+        {
+          "name": "DC voltage",
+          "unit": "p.u."
+        },
+        {
+          "name": "AC voltage",
+          "unit": "p.u."
+        }
+      ],
+      "rows": [
+        {
+          "case": "Two-area case with limits: the grid that reaches none",
+          "cells": [
+            {
+              "max_diff": 2.9176047178225417e-7,
+              "tolerance": 0.01,
+              "compared": 1
+            },
+            null,
+            {
+              "max_diff": 0.000017471053096462796,
+              "tolerance": 0.001,
+              "compared": 1
+            },
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "case": "Two-area case: droop converters take up an outage",
+          "cells": [
+            {
+              "max_diff": 8.564195752569503e-8,
+              "tolerance": 0.00001,
+              "compared": 1
+            },
+            {
+              "max_diff": 1.4451373431256798e-10,
+              "tolerance": 0.00001,
+              "compared": 1
+            },
+            {
+              "max_diff": 3.5271785492341227e-12,
+              "tolerance": 1e-6,
+              "compared": 1
+            },
+            {
+              "max_diff": 5.3600901495087776e-11,
+              "tolerance": 1e-7,
+              "compared": 1
+            },
+            {
+              "max_diff": 1.3322676295501878e-15,
+              "tolerance": 1e-8,
+              "compared": 1
+            },
+            {
+              "max_diff": 1.2934098236883074e-11,
+              "tolerance": 1e-7,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Two-area case: slack, droop and voltage control",
+          "cells": [
+            {
+              "max_diff": 5.6906710454995846e-8,
+              "tolerance": 0.00001,
+              "compared": 1
+            },
+            {
+              "max_diff": 4.818492271851937e-9,
+              "tolerance": 0.00001,
+              "compared": 1
+            },
+            {
+              "max_diff": 1.1018297385589904e-11,
+              "tolerance": 1e-6,
+              "compared": 1
+            },
+            {
+              "max_diff": 3.0893065883219606e-11,
+              "tolerance": 1e-7,
+              "compared": 1
+            },
+            {
+              "max_diff": 1.887379141862766e-15,
+              "tolerance": 1e-8,
+              "compared": 1
+            },
+            {
+              "max_diff": 8.824940778140444e-12,
+              "tolerance": 1e-7,
+              "compared": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contingency",
+      "quantities": [
+        {
+          "name": "Loading of the worst branch",
+          "unit": "% of rating"
+        },
+        {
+          "name": "Branch flows after the outage",
+          "unit": "MW"
+        }
+      ],
+      "rows": [
+        {
+          "case": "case30: AC-checked outages against the same outage solved as a study",
+          "cells": [
+            {
+              "max_diff": 1.2996763132377964e-7,
+              "tolerance": 0.0001,
+              "compared": 19
+            },
+            null
+          ]
+        },
+        {
+          "case": "case30: every meshed branch outage, linear screen",
+          "cells": [
+            null,
+            {
+              "max_diff": 1.6342482922482304e-13,
+              "tolerance": 1e-6,
+              "compared": 1558
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "transfer",
+      "quantities": [
+        {
+          "name": "Distribution factor",
+          "unit": "MW/MW"
+        }
+      ],
+      "rows": [
+        {
+          "case": "case9, bus 2 to bus 3: after each outage (OTDF)",
+          "cells": [
+            {
+              "max_diff": 8.881784197001252e-16,
+              "tolerance": 1e-9,
+              "compared": 8
+            }
+          ]
+        },
+        {
+          "case": "case9, bus 2 to bus 3: base case (PTDF)",
+          "cells": [
+            {
+              "max_diff": 3.3306690738754696e-16,
+              "tolerance": 1e-9,
+              "compared": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "transformer-detail",
+      "quantities": [
+        {
+          "name": "Value",
+          "unit": "p.u."
+        }
+      ],
+      "rows": [
+        {
+          "case": "Angle table with complex factors",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-12,
+              "compared": 2
+            }
+          ]
+        },
+        {
+          "case": "MATPOWER t_psse_case3: table 2 at a ratio of 1.1",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-12,
+              "compared": 1
+            }
+          ]
+        },
+        {
+          "case": "Magnetizing admittance in a solved case, against the branch equations",
+          "cells": [
+            {
+              "max_diff": 8.526512829121202e-14,
+              "tolerance": 1e-6,
+              "compared": 2
+            }
+          ]
+        },
+        {
+          "case": "Magnetizing from no-load loss and exciting current (CM 2)",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-12,
+              "compared": 2
+            }
+          ]
+        },
+        {
+          "case": "Ratio table over two records, read at the winding ratio",
+          "cells": [
+            {
+              "max_diff": 0.0,
+              "tolerance": 1e-12,
+              "compared": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

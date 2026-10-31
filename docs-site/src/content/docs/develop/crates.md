@@ -3,7 +3,7 @@ title: Crates
 description: What each Rust crate in the workspace holds, what it depends on, and where to look inside it.
 ---
 
-The Cargo workspace (`Cargo.toml` at the root) has seven members. The arrows
+The Cargo workspace (`Cargo.toml` at the root) has nine members. The arrows
 are path dependencies:
 
 ```
@@ -11,6 +11,7 @@ are path dependencies:
  stannum-cli ─┼──► stannum-core ──► rs-power
  src-tauri ───┘          │    └───► nodal
                          └ (dev) ─► stannum-synth ──► rs-power
+ rs-power, stannum-core ── (dev) ─► stannum-verify
 ```
 
 None of the crates is published to crates.io (`publish = false`).
@@ -106,6 +107,17 @@ modules follow the paper's pipeline: `substations`, `lines`, `build`, then
 `validate` for the structural statistics. stannum-core uses it as a
 dev-dependency to build test cases. See
 [Synthetic test cases](/StannumRevival/manual/synthetic-cases/).
+
+## stannum-verify
+
+`crates/stannum-verify`: a small dev-dependency the reference tests use to
+record how close they come to their references. A test makes a `Check`
+for each quantity, passes it every difference and calls `finish()`, which
+asserts the largest one is within the limit and, when `STANNUM_VERIFY`
+names a file, appends it there. Its `collect` binary turns those lines
+into `docs-site/src/data/verification.json`, the tables on the
+[Verification](/StannumRevival/reference/verification/) page;
+`scripts/verify.ps1` runs both.
 
 ## stannum-py
 

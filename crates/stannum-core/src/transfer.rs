@@ -1286,6 +1286,81 @@ mod tests {
         assert_eq!(r.summary.contingencies, power.case.branches.len());
     }
 
+    /// Every factor matches moving 100 MW from bus 2 to bus 3 in two DC
+    /// solves, before and after each outage.
+    #[test]
+    fn factors_match_dc_solves_with_the_transfer_moved() {
+        let (power, base) = case9();
+        let mut s = settings(2, 3);
+        s.cutoff = 0.0;
+        let r = TransferJob::new(&power, &base, s).unwrap().run().unwrap();
+        let dc = rs_power::PowerFlowOptions {
+            model: rs_power::Model::Dc,
+            ..Default::default()
+        };
+        let flows = |case: &Case| -> Vec<f64> {
+            let solved = rs_power::solve(case, &dc).unwrap();
+            assert_eq!(solved.status, rs_power::SolveStatus::Converged);
+            solved.branch_flows.iter().map(|f| f[0]).collect()
+        };
+        let moved = |case: &Case| {
+            let mut case = case.clone();
+            for g in &mut case.generators {
+                match g.bus {
+                    2 => g.pg += 100.0,
+                    3 => g.pg -= 100.0,
+                    _ => {}
+                }
+            }
+            case
+        };
+        let index = |id: &str| {
+            power
+                .elements
+                .branches
+                .iter()
+                .position(|e| e.element == id)
+                .unwrap()
+        };
+        let mut ptdf = stannum_verify::Check::new(
+            "transfer",
+            "case9, bus 2 to bus 3: base case (PTDF)",
+            "Distribution factor",
+            "MW/MW",
+            1e-9,
+        );
+        let mut otdf = stannum_verify::Check::new(
+            "transfer",
+            "case9, bus 2 to bus 3: after each outage (OTDF)",
+            "Distribution factor",
+            "MW/MW",
+            1e-9,
+        );
+        for l in &r.limits {
+            let m = index(&l.monitored);
+            let mut case = power.case.clone();
+            if !l.contingency.is_empty() {
+                case.branches[index(&l.contingency)].online = false;
+            }
+            let expected = (flows(&moved(&case))[m] - flows(&case)[m]) / 100.0;
+            let check = if l.contingency.is_empty() {
+                &mut ptdf
+            } else {
+                &mut otdf
+            };
+            let d = check.compare(l.factor, expected);
+            assert!(
+                d < 1e-9,
+                "{} out {}: {} vs {expected}",
+                l.monitored,
+                l.contingency,
+                l.factor
+            );
+        }
+        ptdf.finish();
+        otdf.finish();
+    }
+
     #[test]
     fn contingency_factors_match_lodf_otdf() {
         let (power, base) = case9();

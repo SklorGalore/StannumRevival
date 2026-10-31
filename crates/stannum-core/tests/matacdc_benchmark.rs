@@ -9,6 +9,7 @@
 
 use rs_power::{AcDcResult, DcGridSettings, PowerFlowOptions, load_matpower, solve_dc_grids};
 use serde_json::Value;
+use stannum_verify::Check;
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> PathBuf {
@@ -94,29 +95,52 @@ fn compare(ours: &AcDcResult, theirs: &Value, which: &[usize]) -> Diff {
     d
 }
 
-fn assert_close(d: &Diff) {
+fn assert_close(d: &Diff, row: &str) {
     assert!(d.ps_mw < 1e-5, "Ps differs by {} MW", d.ps_mw);
     assert!(d.qs_mvar < 1e-5, "Qs differs by {} Mvar", d.qs_mvar);
     assert!(d.loss_mw < 1e-6, "loss differs by {} MW", d.loss_mw);
     assert!(d.uc_pu < 1e-7, "Uc differs by {}", d.uc_pu);
     assert!(d.vdc_pu < 1e-8, "Vdc differs by {}", d.vdc_pu);
     assert!(d.vm_pu < 1e-7, "AC |V| differs by {}", d.vm_pu);
+    record(row, d, [1e-5, 1e-5, 1e-6, 1e-7, 1e-8, 1e-7]);
+}
+
+/// Records the differences for the Verification page; NaN skips a quantity.
+fn record(row: &str, d: &Diff, tolerance: [f64; 6]) {
+    let values = [d.ps_mw, d.qs_mvar, d.loss_mw, d.uc_pu, d.vdc_pu, d.vm_pu];
+    let names = [
+        ("Converter P", "MW"),
+        ("Converter Q", "Mvar"),
+        ("Losses", "MW"),
+        ("Converter voltage", "p.u."),
+        ("DC voltage", "p.u."),
+        ("AC voltage", "p.u."),
+    ];
+    for ((value, (name, unit)), tol) in values.into_iter().zip(names).zip(tolerance) {
+        if !tol.is_nan() {
+            let mut check = Check::new("matacdc", row, name, unit, tol);
+            check.diff(value);
+            check.finish();
+        }
+    }
 }
 
 #[test]
 fn matches_matacdc_with_slack_droop_and_voltage_control() {
     let ours = solve("two_area.dcgrid.json", false);
-    assert_close(&compare(&ours, &reference("base"), &[0, 1, 2, 3, 4, 5, 6]));
+    assert_close(
+        &compare(&ours, &reference("base"), &[0, 1, 2, 3, 4, 5, 6]),
+        "Two-area case: slack, droop and voltage control",
+    );
 }
 
 #[test]
 fn matches_matacdc_when_droop_converters_take_up_an_outage() {
     let ours = solve("benchmark/two_area_a2_out.dcgrid.json", false);
-    assert_close(&compare(
-        &ours,
-        &reference("a2_out"),
-        &[0, 1, 2, 3, 4, 5, 6],
-    ));
+    assert_close(
+        &compare(&ours, &reference("a2_out"), &[0, 1, 2, 3, 4, 5, 6]),
+        "Two-area case: droop converters take up an outage",
+    );
 }
 
 /// With limits the two differ by design. Stannum puts a limited converter
@@ -157,4 +181,10 @@ fn differs_from_matacdc_at_limits_only_by_reaching_them_exactly() {
     let d = compare(&ours, &theirs, &[3, 4, 5, 6]);
     assert!(d.ps_mw < 1e-2, "{}", d.ps_mw);
     assert!(d.loss_mw < 1e-3, "{}", d.loss_mw);
+    let nan = f64::NAN;
+    record(
+        "Two-area case with limits: the grid that reaches none",
+        &d,
+        [1e-2, nan, 1e-3, nan, nan, nan],
+    );
 }
