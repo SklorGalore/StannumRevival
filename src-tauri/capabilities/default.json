@@ -13,6 +13,9 @@
     "core:window:allow-start-dragging",
     "dialog:allow-open",
     "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "dialog:allow-confirm",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

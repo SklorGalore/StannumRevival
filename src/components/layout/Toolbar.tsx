@@ -19,6 +19,7 @@ import { api, DEFAULT_SOLVE_SETTINGS } from "../../lib/analysis/api";
 import { GenerateDialog } from "../dialogs/GenerateDialog";
 import { useDiagramStore } from "../../store/diagramStore";
 import { openDiagram, saveDiagram, saveAsDialog } from "../../lib/tauri/fileOps";
+import { confirmDialog } from "../../lib/tauri/commands";
 import { useState } from "react";
 import { ExportDialog } from "../dialogs/ExportDialog";
 import { StyleSwitch } from "../../modules/diagram/network/StyleSwitch";
@@ -144,7 +145,7 @@ export function Toolbar() {
 
   async function handleNew() {
     if (isDirty) {
-      const ok = window.confirm(
+      const ok = await confirmDialog(
         "You have unsaved changes. Create a new diagram anyway?"
       );
       if (!ok) return;

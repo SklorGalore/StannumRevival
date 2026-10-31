@@ -1,5 +1,16 @@
-import { invoke } from "@tauri-apps/api/core";
-import { save, open } from "@tauri-apps/plugin-dialog";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { save, open, confirm } from "@tauri-apps/plugin-dialog";
+
+/**
+ * Ask an OK/Cancel question. Use this instead of window.confirm: in the app,
+ * the dialog plugin swaps window.confirm for an async version whose Promise is
+ * always truthy, so `if (!window.confirm(...))` never stops anything.
+ */
+export async function confirmDialog(message: string): Promise<boolean> {
+  if (isTauri()) return confirm(message, { title: "Stannum", kind: "warning" });
+  if (typeof window === "undefined" || typeof window.confirm !== "function") return true;
+  return window.confirm(message);
+}
 
 export async function showSaveDialog(
   defaultName: string,
