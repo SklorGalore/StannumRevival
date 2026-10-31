@@ -84,3 +84,20 @@ Id: `{name}` · Typed references: `interface:<id>`
 | `name` | string |  | `""` | Display name. |
 | `elements` | list of [element, float] |  | `[]` | Branches as `[element, weight]`, flow measured from the first bus of the element's id. |
 | `limit_mw` | float | MW | none | Limit; none when absent. |
+
+## transfer
+
+A transfer to find the limit of (DFAX and FCITC): power moved from one subsystem to another. Its outages are the file's contingencies and contingency sets, and it watches the file's flow and interface monitors (with this record's ratings and limit); without them, the run's own settings apply.
+
+Id: `{name}` · Typed references: `transfer:<id>`
+
+| Field | Type | Unit | Default | Meaning |
+|---|---|---|---|---|
+| `name` | string |  | `""` | Display name. |
+| `source` | [subsystem](#subsystem) id |  | required | Where the power comes from. |
+| `sink` | [subsystem](#subsystem) id |  | required | Where it goes. |
+| `scaling` | `generation` \| `reserve` \| `load` |  | `generation` | How each side shares out the transfer: online generators by output, by room to their limits, or loads. |
+| `cutoff_pct` | float | % | `5` | Elements whose distribution factor is smaller than this don't limit the transfer. |
+| `base_rating` | int |  | `1` | Rating slot in the base case (1 to 3, A to C). |
+| `rating` | int |  | `1` | Rating slot after an outage (1 to 3, A to C). |
+| `limit_pct` | float | % | `100` | Percent of the rating that counts as the limit. |

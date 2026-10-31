@@ -34,6 +34,9 @@ section into the next version's when a release is cut (see
   Runs from the new Transfers tab in Power flow (source and sink by area,
   zone, owner or bus list), run files (`run_transfer_limits`), Python
   (`Case.transfer_limits`) and the MCP server (`transfer_limits`).
+  Lists files (`.stnl`) gain `transfer` records (source and sink
+  subsystems, scaling, cutoff, ratings); a run with `lists` studies the
+  file's contingencies and watches its flow and interface monitors.
 - **Your own contingency list.** Contingencies can run from a `.stnl`
   lists file (preview): its named contingencies (`open` and `trip_bus`
   events) and its `contingency_set` rules for single branches, generators,

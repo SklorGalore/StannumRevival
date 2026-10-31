@@ -3,9 +3,9 @@
 // limit, in the base case and after each branch outage. The study is
 // stannum-core's (transfer.rs); this sets it up and shows what it found.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Download, Play, Square } from "lucide-react";
+import { ArrowRightLeft, Download, FileText, Play, Square, X } from "lucide-react";
 import { useTransfers, type Side, type SideKind, busList } from "../../store/transferStore";
-import { saveTextExport } from "../../lib/analysis/api";
+import { LISTS_FILTERS, pickFile, saveTextExport } from "../../lib/analysis/api";
 import { caseNetwork } from "../../lib/diagram/network";
 import { useWorkspace } from "../../store/workspaceStore";
 import type { SolveReport } from "../../lib/analysis/types";
@@ -35,6 +35,10 @@ const KINDS: { value: SideKind; label: string }[] = [
 ];
 
 type View = "limits" | "past" | "contingencies" | "factors";
+
+function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
 
 function pct(v: number): string {
   return `${fixed(v * 100, 1)}%`;
@@ -292,11 +296,13 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
   const noBuses = (side: Side) => side.kind === "buses" && busList(side.buses).length === 0;
   const blocked = !acReady
     ? "Solve the case with the AC model first."
-    : sameSide
-      ? "Pick a sink different from the source."
-      : noBuses(c.source) || noBuses(c.sink)
-        ? "List the buses of each side."
-        : null;
+    : c.listsPath
+      ? null
+      : sameSide
+        ? "Pick a sink different from the source."
+        : noBuses(c.source) || noBuses(c.sink)
+          ? "List the buses of each side."
+          : null;
   const progressPct = s.progress && s.progress.total ? (100 * s.progress.done) / s.progress.total : 0;
   const shownRating = sum?.rating ?? c.rating;
   const shownBase = sum?.base_rating ?? c.baseRating;
@@ -456,6 +462,47 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             </select>
           </span>
         </label>
+        <fieldset className="flex flex-col gap-1 min-w-0" data-testid="transfer-lists">
+          <legend
+            className="text-[11px] font-medium text-slate-600 mb-1"
+            title="A lists file's contingencies and monitors replace the outages and monitored elements here, and its transfer record the source and sink"
+          >
+            Lists file (optional)
+          </legend>
+          <div className="flex items-center gap-2 min-w-0">
+            <Button
+              type="button"
+              onClick={async () => {
+                const path = await pickFile(LISTS_FILTERS);
+                if (path) s.setChoice({ listsPath: path });
+              }}
+              data-testid="transfer-choose-lists"
+            >
+              <FileText size={13} /> {c.listsPath ? fileName(c.listsPath) : "Choose…"}
+            </Button>
+            {c.listsPath && (
+              <>
+                <input
+                  className={`${inputClass} w-32`}
+                  value={c.transferName}
+                  placeholder="Its only transfer"
+                  aria-label="Transfer in the lists file"
+                  title="The transfer record to run; blank for the file's only one, or the source and sink here when it has none"
+                  onChange={(e) => s.setChoice({ transferName: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => s.setChoice({ listsPath: null, transferName: "" })}
+                  title="Stop using the lists file"
+                  aria-label="Stop using the lists file"
+                >
+                  <X size={13} />
+                </Button>
+              </>
+            )}
+          </div>
+        </fieldset>
         <label
           className="flex items-center gap-1.5 mb-1.5"
           title="Let elements already past their limit before any transfer set the FCITC (negative), as PSS/E reports it"

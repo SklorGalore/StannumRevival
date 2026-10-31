@@ -1827,6 +1827,13 @@ export type TransferSettings = {
   include_past_limits?: boolean;
   /** Percent of the rating that counts as the limit. */
   limit_pct?: number;
+  /**
+   * A lists file (`.stnl`). Its contingencies and contingency sets,
+   * when it has any, are the outages studied instead of
+   * `contingencies`; its flow and interface monitors, when it has any,
+   * are what is watched instead of `monitor`.
+   */
+  lists?: string | null;
   /** The most rows kept in each of the results' lists. */
   max_rows?: number;
   monitor?: MonitorSettings;
@@ -1834,9 +1841,15 @@ export type TransferSettings = {
   rating?: Rating;
   scaling?: Scaling;
   /** Where it goes. */
-  sink: Subsystem;
+  sink?: Subsystem;
   /** Where the power comes from. */
-  source: Subsystem;
+  source?: Subsystem;
+  /**
+   * The lists file's `transfer` record to run: its source, sink,
+   * scaling, cutoff, ratings and limit replace the ones above. The
+   * file's only transfer when absent.
+   */
+  transfer?: string | null;
 };
 
 export type TransferSummary = {

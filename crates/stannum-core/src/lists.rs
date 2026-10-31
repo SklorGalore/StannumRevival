@@ -2,7 +2,8 @@
 //! the `contingency_set` rules that generate them, read against one case.
 //!
 //! Its `monitor` records (with the `interface` records they name) say what
-//! to check after each outage. Lists name equipment by natural keys and
+//! to check after each outage, and its `transfer` records name transfers to
+//! find the limit of. Lists name equipment by natural keys and
 //! don't belong to a case, so what the case lacks is reported and skipped
 //! rather than refused.
 
@@ -78,12 +79,28 @@ pub struct Interface {
     pub limit_mw: Option<f64>,
 }
 
+/// One `transfer` record, its subsystems resolved to the case's buses.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Transfer {
+    pub name: String,
+    pub source: HashSet<u32>,
+    pub sink: HashSet<u32>,
+    /// `generation`, `reserve` or `load`.
+    pub scaling: String,
+    pub cutoff_pct: f64,
+    /// Rating slots 1-3 (A-C): in the base case, and after an outage.
+    pub base_rating: u8,
+    pub rating: u8,
+    pub limit_pct: f64,
+}
+
 /// A lists file read against a case.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Lists {
     pub named: Vec<Named>,
     pub sets: Vec<Set>,
     pub monitors: Vec<Monitor>,
+    pub transfers: Vec<Transfer>,
     /// What was skipped and why, in sentences.
     pub notes: Vec<String>,
 }
@@ -149,7 +166,66 @@ pub fn parse(text: &str, power: &PowerCase) -> Result<Lists, String> {
             out.monitors.push(m);
         }
     }
+    for r in doc.records("transfer") {
+        if let Some(t) = transfer(&doc, r, &subsystems, &mut out.notes) {
+            out.transfers.push(t);
+        }
+    }
     Ok(out)
+}
+
+/// A `transfer` record, or `None` (with a note) when it can't be applied.
+fn transfer(
+    doc: &Document,
+    r: &Record,
+    subsystems: &Subsystems,
+    notes: &mut Vec<String>,
+) -> Option<Transfer> {
+    let mut skip = |why: String| {
+        notes.push(format!("Transfer \"{}\": {why}; skipped.", r.id));
+        None
+    };
+    let side = |field: &str| -> Result<HashSet<u32>, String> {
+        let name = r.str(field).unwrap_or("");
+        subsystems
+            .buses(name)
+            .ok_or_else(|| format!("subsystem {name} isn't in the file"))
+    };
+    let (source, sink) = match (side("source"), side("sink")) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(e), _) | (_, Err(e)) => return skip(e),
+    };
+    let float = |field: &str, default: f64| {
+        doc.value("transfer", r, field)
+            .and_then(Value::as_f64)
+            .unwrap_or(default)
+    };
+    let slot = |field: &str| match doc
+        .value("transfer", r, field)
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+    {
+        n @ 1..=3 => Ok(n as u8),
+        n => Err(format!("{field} slot {n} isn't read yet (only 1-3, A-C)")),
+    };
+    let (base_rating, rating) = match (slot("base_rating"), slot("rating")) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(e), _) | (_, Err(e)) => return skip(e),
+    };
+    Some(Transfer {
+        name: r.id.clone(),
+        source,
+        sink,
+        scaling: doc
+            .value("transfer", r, "scaling")
+            .and_then(Value::as_str)
+            .unwrap_or("generation")
+            .to_string(),
+        cutoff_pct: float("cutoff_pct", 5.0),
+        base_rating,
+        rating,
+        limit_pct: float("limit_pct", 100.0),
+    })
 }
 
 /// A `monitor` record, or `None` (with a note) when it can't be applied.

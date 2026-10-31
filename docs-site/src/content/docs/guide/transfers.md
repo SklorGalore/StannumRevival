@@ -32,6 +32,12 @@ Solve the case with the AC model first. Then choose:
 - **Cutoff (%)**: an element that carries less than this share of the
   transfer never limits it (5% by default).
 - **Rating**: the rating in the base case and after an outage.
+- **Lists file (optional)**: a [lists file](/StannumRevival/reference/lists-file/#transfers)
+  whose `transfer` record sets the source, sink, scaling, cutoff and
+  ratings (type its name, or leave it blank for the file's only one), and
+  whose contingencies and monitors, when it has them, replace the outages
+  and monitored branches above. A note under the results says which
+  transfer ran and what the file left out. The **×** stops using it.
 - **Count elements already past their limit**: by default an element over
   its limit before any transfer is listed apart under **Already past** and
   doesn't set the answer. Tick this to let it set a negative FCITC, as

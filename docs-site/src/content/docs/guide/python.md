@@ -137,7 +137,10 @@ run.factors                          # base case PTDFs, largest first
 
 Settings are those of the `run_transfer_limits` command: `scaling`,
 `monitor` (with `interfaces`), `contingencies`, `cutoff`, `rating`,
-`base_rating`, `limit_pct`, `include_past_limits` and `max_rows`. The
+`base_rating`, `limit_pct`, `include_past_limits`, `max_rows`, and
+`lists` and `transfer` to run a transfer kept in a lists file, with its
+contingencies and monitors:
+`case.transfer_limits(lists="summer.stnl", transfer="far_west_coast")`. The
 method and every setting are in
 [Transfer limits](/StannumRevival/manual/transfer-limits/).
 
