@@ -341,6 +341,13 @@ fn answers_fit_their_schemas() {
     let stn = c.ok("export_stn", json!({ "path": dir.join("five_bus.stn") }));
     assert!(stn["records"].as_u64().unwrap() > 0);
     c.ok("apply_record_edits", json!({ "edits": [] }));
+    let scale = json!({ "settings": {
+        "buses": { "areas": [1] },
+        "load": { "mw": { "kind": "percent", "value": 0.0 }, "constant_power_factor": true },
+        "generation": { "mw": { "kind": "change", "value": 0.0 } },
+    } });
+    c.ok("scale_preview", scale.clone());
+    c.ok("scale_load_generation", scale);
     c.ok(
         "save_case_as",
         json!({ "path": dir.join("five_bus_copy.raw") }),

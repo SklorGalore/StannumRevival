@@ -52,6 +52,7 @@ pub mod results;
 pub mod results_file;
 pub mod run_file;
 pub mod samples;
+pub mod scaling;
 pub mod schema;
 pub mod stn;
 pub mod study;

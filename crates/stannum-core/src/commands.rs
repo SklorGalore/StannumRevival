@@ -457,6 +457,22 @@ impl Session {
         self.workspace()?.case_mut(case)?.apply_record_edits(edits)
     }
 
+    /// Work out a scaling on the case as filed, with its Records edits.
+    fn scale_plan(
+        &self,
+        case: Option<CaseId>,
+        settings: &crate::scaling::ScaleSettings,
+    ) -> Result<crate::scaling::ScaleReport, Error> {
+        let records = self.records(case)?;
+        if !records.editable {
+            return Err(Error::unsupported(
+                "This case's records can't be edited, so it can't be scaled: Stannum writes RAW revisions 33 and 35, and MATPOWER.",
+            ));
+        }
+        let power = self.workspace()?.case(case)?.power.clone()?;
+        Ok(crate::scaling::plan(&records, &power, settings)?)
+    }
+
     /// Run a run file's steps in order, telling `each` how every step went
     /// as it finishes. Stops at the first failure unless `keep_going`, and
     /// before the next step once `cancel_run_file` is called.
@@ -897,6 +913,20 @@ commands! {
     /// Write cell edits into the case and reopen it in place.
     apply_record_edits { case: Option<CaseId>, edits: Vec<RecordEdit> } -> crate::CaseSummary =>
         |s, a| s.apply_record_edits(a.case, &a.edits);
+
+    /// What `scale_load_generation` would change, without changing anything.
+    scale_preview { case: Option<CaseId>, settings: crate::scaling::ScaleSettings } -> crate::scaling::ScaleReport =>
+        |s, a| s.scale_plan(a.case, &a.settings);
+
+    /// Scale load and generation at a set of buses (areas, zones, owners,
+    /// buses and a kV range) to a target total or by a change in MW or
+    /// percent, and write the new values into the case's records.
+    scale_load_generation { case: Option<CaseId>, settings: crate::scaling::ScaleSettings } -> crate::scaling::Scaled =>
+        |s, a| {
+            let report = s.scale_plan(a.case, &a.settings)?;
+            let summary = s.apply_record_edits(a.case, &report.edits)?;
+            Ok(crate::scaling::Scaled { report, case: summary })
+        };
 
     /// Save the case, with its edits, to a new file.
     save_case_as { case: Option<CaseId>, path: PathBuf } -> crate::CaseSummary =>

@@ -62,6 +62,7 @@ const ACTIONS: &[&str] = &[
     "export_raw",
     "export_stn",
     "apply_record_edits",
+    "scale_load_generation",
     "save_case_as",
     "topology_set_merge",
     "diff_compare",

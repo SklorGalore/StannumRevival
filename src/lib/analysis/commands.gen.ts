@@ -1,6 +1,18 @@
 // Generated from the core's command schemas (stannum_core::commands::schemas).
 // Don't edit: run `pwsh scripts/update-schemas.ps1` after changing a command.
 
+/** How much to scale by. */
+export type Amount = {
+  kind: "target";
+  value: number;
+} | {
+  kind: "change";
+  value: number;
+} | {
+  kind: "percent";
+  value: number;
+};
+
 export type AnalysisWire = {
   absorbed_equipment: number;
   active_buses: number;
@@ -899,6 +911,16 @@ export type Fingerprint = {
   size: number;
 };
 
+export type GenerationScaling = {
+  mw: Amount;
+  participation?: ParticipationInput;
+  /**
+   * Keep every unit between Pmin and Pmax. What the others can't take
+   * is reported as a shortfall.
+   */
+  respect_limits?: boolean;
+};
+
 /** GeneratorRow rows as columns: one array per field, each `count` long. */
 export type GeneratorRowColumns = {
   bus: number[];
@@ -1044,6 +1066,27 @@ export type ListedSubsystem = {
 export type LoadParts = {
   p: [number, number, number];
   q: [number, number, number];
+};
+
+/** Which parts of a load scale. */
+export type LoadPartsInput = "all" | "constant_power";
+
+export type LoadScaling = {
+  /**
+   * Scale each load's Mvar by the same factor as its MW, so its power
+   * factor stays the same. `mvar` is then ignored.
+   */
+  constant_power_factor?: boolean;
+  /** Also scale loads that draw negative MW. */
+  include_negative?: boolean;
+  /**
+   * Reactive power: left out, Mvar stays as it is, unless
+   * `constant_power_factor` moves it with the MW.
+   */
+  mvar?: Amount | null;
+  /** Real power: left out, MW stays as it is. */
+  mw?: Amount | null;
+  parts?: LoadPartsInput;
 };
 
 /** How each outage is checked. */
@@ -1350,6 +1393,9 @@ export type Participation = {
   units: number;
 };
 
+/** How a generation change is shared between units. */
+export type ParticipationInput = "output" | "pmax" | "headroom";
+
 export type Path = {
   buses: number[];
   connection_ids: string[];
@@ -1554,6 +1600,51 @@ export type SampleCase = {
   /** What `open_sample` takes. */
   id: string;
   title: string;
+};
+
+/** What scaling did, or would do. */
+export type ScaleReport = {
+  /** How many generators ended at Pmin or Pmax. */
+  at_limit: number;
+  /** How many buses the filters chose. */
+  buses: number;
+  /** How many loads and generators changed in all. */
+  changed: number;
+  generation: Totals | null;
+  load: Totals | null;
+  /** Anything worth knowing, such as loads left alone. */
+  notes: string[];
+  /** The biggest changes first, at most [`ROWS_KEPT`] of them. */
+  rows: ScaledRow[];
+  /** Generation MW the units couldn't take within their limits. */
+  shortfall_mw: number;
+};
+
+/** What to scale and where. */
+export type ScaleSettings = {
+  /** The buses whose loads and generators scale. Empty lists mean every bus. */
+  buses?: Subsystem;
+  generation?: GenerationScaling | null;
+  load?: LoadScaling | null;
+};
+
+/** What `scale_load_generation` answers: what changed, and the case after. */
+export type Scaled = {
+  case: CaseSummary;
+  report: ScaleReport;
+};
+
+/** One scaled load or generator. */
+export type ScaledRow = {
+  area: number;
+  /** A generator stopped at Pmin or Pmax. */
+  at_limit: boolean;
+  bus: number;
+  element: string;
+  mvar_after: number;
+  mvar_before: number;
+  mw_after: number;
+  mw_before: number;
 };
 
 /** How the source and sink share out the transfer. */
@@ -1804,6 +1895,16 @@ export type TopologyWire = {
   analysis: AnalysisWire;
   case: CaseWire;
   graph: GraphWire;
+};
+
+/** Totals before and after. */
+export type Totals = {
+  /** How many loads or in-service generators are at the chosen buses. */
+  count: number;
+  mvar_after: number;
+  mvar_before: number;
+  mw_after: number;
+  mw_before: number;
 };
 
 /**
@@ -2613,6 +2714,26 @@ export interface CoreCommands {
     };
     result: null;
   };
+  /**
+   * Scale load and generation at a set of buses (areas, zones, owners,
+   * buses and a kV range) to a target total or by a change in MW or
+   * percent, and write the new values into the case's records.
+   */
+  scale_load_generation: {
+    args: {
+      case?: CaseId | null;
+      settings: ScaleSettings;
+    };
+    result: Scaled;
+  };
+  /** What `scale_load_generation` would change, without changing anything. */
+  scale_preview: {
+    args: {
+      case?: CaseId | null;
+      settings: ScaleSettings;
+    };
+    result: ScaleReport;
+  };
   /** One sensitivity column's responses at every bus. */
   sensitivity_responses: {
     args: {
@@ -2750,6 +2871,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "run_contingencies",
   "run_transfer_limits",
   "save_case_as",
+  "scale_load_generation",
   "set_study_edits",
   "solve_power_flow",
   "topology_set_merge",

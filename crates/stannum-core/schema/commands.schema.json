@@ -1,5 +1,64 @@
 {
   "$defs": {
+    "Amount": {
+      "description": "How much to scale by.",
+      "oneOf": [
+        {
+          "description": "The total the scaled loads or generators should come to.",
+          "properties": {
+            "kind": {
+              "const": "target",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Add this much to the total (negative lowers it).",
+          "properties": {
+            "kind": {
+              "const": "change",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Change the total by this percent (10 raises it by a tenth).",
+          "properties": {
+            "kind": {
+              "const": "percent",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "AnalysisWire": {
       "properties": {
         "absorbed_equipment": {
@@ -3369,6 +3428,26 @@
       ],
       "type": "object"
     },
+    "GenerationScaling": {
+      "properties": {
+        "mw": {
+          "$ref": "#/$defs/Amount"
+        },
+        "participation": {
+          "$ref": "#/$defs/ParticipationInput",
+          "default": "output"
+        },
+        "respect_limits": {
+          "default": true,
+          "description": "Keep every unit between Pmin and Pmax. What the others can't take\nis reported as a shortfall.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mw"
+      ],
+      "type": "object"
+    },
     "GeneratorRowColumns": {
       "description": "GeneratorRow rows as columns: one array per field, each `count` long.",
       "properties": {
@@ -4042,6 +4121,64 @@
         "p",
         "q"
       ],
+      "type": "object"
+    },
+    "LoadPartsInput": {
+      "description": "Which parts of a load scale.",
+      "oneOf": [
+        {
+          "const": "all",
+          "description": "Constant power, current and admittance parts alike.",
+          "type": "string"
+        },
+        {
+          "const": "constant_power",
+          "description": "Only the constant power part (PL/QL).",
+          "type": "string"
+        }
+      ]
+    },
+    "LoadScaling": {
+      "properties": {
+        "constant_power_factor": {
+          "default": false,
+          "description": "Scale each load's Mvar by the same factor as its MW, so its power\nfactor stays the same. `mvar` is then ignored.",
+          "type": "boolean"
+        },
+        "include_negative": {
+          "default": false,
+          "description": "Also scale loads that draw negative MW.",
+          "type": "boolean"
+        },
+        "mvar": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Amount"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reactive power: left out, Mvar stays as it is, unless\n`constant_power_factor` moves it with the MW."
+        },
+        "mw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Amount"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Real power: left out, MW stays as it is."
+        },
+        "parts": {
+          "$ref": "#/$defs/LoadPartsInput",
+          "default": "all"
+        }
+      },
       "type": "object"
     },
     "Method": {
@@ -5031,6 +5168,26 @@
       ],
       "type": "object"
     },
+    "ParticipationInput": {
+      "description": "How a generation change is shared between units.",
+      "oneOf": [
+        {
+          "const": "output",
+          "description": "In proportion to each unit's output: every unit scales by the same\nfactor.",
+          "type": "string"
+        },
+        {
+          "const": "pmax",
+          "description": "In proportion to each unit's maximum output.",
+          "type": "string"
+        },
+        {
+          "const": "headroom",
+          "description": "In proportion to each unit's room to move: Pmax - PG going up,\nPG - Pmin going down.",
+          "type": "string"
+        }
+      ]
+    },
     "Path": {
       "properties": {
         "buses": {
@@ -5700,6 +5857,184 @@
         "buses",
         "has_coordinates",
         "file_name"
+      ],
+      "type": "object"
+    },
+    "ScaleReport": {
+      "description": "What scaling did, or would do.",
+      "properties": {
+        "at_limit": {
+          "description": "How many generators ended at Pmin or Pmax.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "buses": {
+          "description": "How many buses the filters chose.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changed": {
+          "description": "How many loads and generators changed in all.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Totals"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "load": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Totals"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes": {
+          "description": "Anything worth knowing, such as loads left alone.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "description": "The biggest changes first, at most [`ROWS_KEPT`] of them.",
+          "items": {
+            "$ref": "#/$defs/ScaledRow"
+          },
+          "type": "array"
+        },
+        "shortfall_mw": {
+          "description": "Generation MW the units couldn't take within their limits.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "buses",
+        "load",
+        "generation",
+        "shortfall_mw",
+        "at_limit",
+        "rows",
+        "changed",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "ScaleSettings": {
+      "description": "What to scale and where.",
+      "properties": {
+        "buses": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "The buses whose loads and generators scale. Empty lists mean every bus."
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GenerationScaling"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "load": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LoadScaling"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "Scaled": {
+      "description": "What `scale_load_generation` answers: what changed, and the case after.",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/CaseSummary"
+        },
+        "report": {
+          "$ref": "#/$defs/ScaleReport"
+        }
+      },
+      "required": [
+        "report",
+        "case"
+      ],
+      "type": "object"
+    },
+    "ScaledRow": {
+      "description": "One scaled load or generator.",
+      "properties": {
+        "area": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "at_limit": {
+          "description": "A generator stopped at Pmin or Pmax.",
+          "type": "boolean"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "type": "string"
+        },
+        "mvar_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mvar_before": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_before": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "element",
+        "bus",
+        "area",
+        "mw_before",
+        "mw_after",
+        "mvar_before",
+        "mvar_after",
+        "at_limit"
       ],
       "type": "object"
     },
@@ -6451,6 +6786,41 @@
         "case",
         "analysis",
         "graph"
+      ],
+      "type": "object"
+    },
+    "Totals": {
+      "description": "Totals before and after.",
+      "properties": {
+        "count": {
+          "description": "How many loads or in-service generators are at the chosen buses.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mvar_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mvar_before": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_before": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "count",
+        "mw_before",
+        "mw_after",
+        "mvar_before",
+        "mvar_after"
       ],
       "type": "object"
     },
@@ -8904,6 +9274,66 @@
         "type": "null"
       },
       "takes_case": false
+    },
+    "scale_load_generation": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/ScaleSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Scale load and generation at a set of buses (areas, zones, owners,\nbuses and a kV range) to a target total or by a change in MW or\npercent, and write the new values into the case's records.",
+      "result": {
+        "$ref": "#/$defs/Scaled"
+      },
+      "takes_case": true
+    },
+    "scale_preview": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/ScaleSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "What `scale_load_generation` would change, without changing anything.",
+      "result": {
+        "$ref": "#/$defs/ScaleReport"
+      },
+      "takes_case": true
     },
     "sensitivity_responses": {
       "action": false,
