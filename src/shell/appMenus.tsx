@@ -9,6 +9,7 @@ import { useTheme, type ThemePreference } from "../store/themeStore";
 import { useLog } from "../store/logStore";
 import { useUpdate } from "../store/updateStore";
 import { useLayers } from "../store/layerStore";
+import { useDiagramStore } from "../store/diagramStore";
 import { useShortcuts } from "./ShortcutsDialog";
 import { MODULES } from "./ModuleRail";
 import { recentFiles } from "../lib/study/recent";
@@ -167,6 +168,8 @@ function viewMenu(): MenuEntry[] {
       item("tables", "Topology tables", () => (showDiagram(), useLayers.getState().setTables(true)))
     );
   }
+  const diagram = useDiagramStore.getState();
+  list.push(sep, item("animate-flows", "Animated flow arrows", diagram.toggleAnimateFlows, { checked: diagram.animateFlows, title: "Flow arrows on the one-line move the way the power goes" }));
   const warnings = summary?.power.info?.warnings.length ?? 0;
   if (warnings) list.push(item("import-warnings", `Import warnings (${warnings.toLocaleString()})`, () => w.showPowerTab("warnings")));
   list.push(

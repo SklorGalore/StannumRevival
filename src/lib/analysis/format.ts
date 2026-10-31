@@ -5,13 +5,16 @@ export function fixed(value: number | null | undefined, digits = 2): string {
   return value.toFixed(digits);
 }
 
-/** Six significant digits; scientific notation for very small or large values. */
-export function sig(value: number): string {
+/**
+ * Significant digits (six by default). Values below 10^minExp or at or above
+ * 10^6 use scientific notation.
+ */
+export function sig(value: number, digits = 6, minExp = -3): string {
   if (value === 0) return "0";
   if (!Number.isFinite(value)) return String(value);
   const exp = Math.floor(Math.log10(Math.abs(value)));
-  if (exp < -3 || exp >= 6) return value.toExponential(5);
-  return value.toFixed(Math.max(0, 5 - exp));
+  if (exp < minExp || exp >= 6) return value.toExponential(digits - 1);
+  return value.toFixed(Math.max(0, digits - 1 - exp));
 }
 
 export function count(n: number): string {

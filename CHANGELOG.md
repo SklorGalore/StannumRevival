@@ -16,6 +16,13 @@ section into the next version's when a release is cut (see
   branch pairs or buses in a subsystem. Equipment the case lacks is noted
   and skipped. In the app, pick **From a lists file** under Outages; from
   Python, the CLI and run files, set `lists` to the file's path.
+- **Mvar flow direction on the one-line.** Each branch shows an open violet
+  arrow for the way its reactive power flows, beside the filled MW arrow;
+  the Mvar number beside it is violet too, and now a magnitude, like MW.
+- **Animated flow arrows.** **Canvas > Animated flow arrows** (also under
+  **View** and in Ctrl+K) moves the MW and Mvar arrows along the wires, each
+  the way its flow goes and in its own colour, faster with more flow. Off by default; exports and reduced motion
+  keep still arrows.
 - **N-2 and bus outages.** Contingency runs can take the chosen branches
   and generators out two at a time (every pair once, up to 250,000 pairs;
   the bus filters narrow them), and can take out each bus with every
@@ -30,6 +37,22 @@ section into the next version's when a release is cut (see
   after). Both stay rate A by default. The choice is saved in the study file
   and is open to run files, Python (`rating=`, `base_rating=`) and the MCP
   server.
+
+### Changed
+
+- **Solve keeps the current view.** Solving from the toolbar, the menu bar or
+  Ctrl+K no longer switches to Power flow; the diagram and tables update in
+  place. Power flow comes into view only when the solve fails or does not
+  converge.
+- **Final residual rounded to 0.001 MVA.** The Power flow overview shows the
+  final residual to three decimals (for example 0.669 MVA) instead of six
+  significant digits. Only the display changed; the solver and the per-unit
+  value under it are unchanged.
+- **Shorter sensitivity values.** Flow sensitivities show three decimals
+  (factors below 0.001 show as 0.000). Voltage and angle sensitivities, which
+  are small by nature, show three significant digits (0.000149 p.u./MW).
+  Hover a value for the full number. The VSC grids "Converters settled to"
+  figure shows three decimals of MVA, like the residual.
 
 ## 1.0.0-rc.1 - 2026-10-30
 

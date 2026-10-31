@@ -34,3 +34,29 @@ export function arrowPath(at: Pt, dir: Pt, k = 1): string {
   const right = { x: at.x + (dy - dx) * 4 * k, y: at.y - (dy + dx) * 4 * k };
   return `M${tip.x},${tip.y} L${left.x},${left.y} L${right.x},${right.y} Z`;
 }
+
+/** Length of a wire through its corners. */
+export function polylineLength(pts: Pt[]): number {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return len;
+}
+
+/**
+ * Where the MW arrow and the Mvar arrow sit when both are drawn: either side
+ * of the middle of the run, so they never overlap whichever way each points.
+ */
+export function reactiveArrowAt(mid: Pt, a: Pt, b: Pt): { p: Pt; q: Pt } {
+  const u = flowDirection(a, b, false);
+  return { p: { x: mid.x - u.x * 8, y: mid.y - u.y * 8 }, q: { x: mid.x + u.x * 8, y: mid.y + u.y * 8 } };
+}
+
+/**
+ * Speed of moving flow arrows in px/s: slow for a lightly used branch, fast
+ * near its rating. Without a rating the flow is measured against the largest
+ * flow in the drawing.
+ */
+export function flowSpeed(loadingPct: number | null | undefined, p: number, maxFlow: number): number {
+  const share = loadingPct != null ? loadingPct / 100 : maxFlow > 0 ? Math.abs(p) / maxFlow : 0.5;
+  return 15 + 45 * Math.min(1, Math.max(0, share));
+}

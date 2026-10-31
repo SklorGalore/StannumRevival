@@ -355,6 +355,8 @@ export interface DiagramStore {
   gridSize: number;
   /** Show the latest power flow results on symbols linked to the case. */
   showResults: boolean;
+  /** Flow arrows move along the wires (off by default; remembered per user). */
+  animateFlows: boolean;
   /** Bumped to ask the canvas to fit the drawing on screen. */
   fitRequest: number;
   /** "mono" draws everything black, for printing. */
@@ -406,6 +408,7 @@ export interface DiagramStore {
     around?: Around
   ) => void;
   toggleResults: () => void;
+  toggleAnimateFlows: () => void;
   requestFit: () => void;
   setFilePath: (path: string | null) => void;
   markDirty: () => void;

@@ -35,3 +35,13 @@ describe("split view", () => {
     expect(useWorkspace.getState()).toMatchObject({ module: "power", split: "diagram" });
   });
 });
+
+describe("solve", () => {
+  beforeEach(() => useWorkspace.setState({ module: "diagram", split: null }));
+
+  it("keeps the current view", () => {
+    const before = useWorkspace.getState().solveRequest;
+    useWorkspace.getState().requestSolve();
+    expect(useWorkspace.getState()).toMatchObject({ module: "diagram", solveRequest: before + 1 });
+  });
+});

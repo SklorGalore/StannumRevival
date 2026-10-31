@@ -327,6 +327,21 @@ assert.equal(await page.locator(".react-flow__node-bus").count(), 5);
 await page.locator("svg text", { hasText: /\d\.\d{3} pu/ }).first().waitFor();
 await page.waitForTimeout(400); // fit-to-screen animation
 await shot("diagram");
+// Mvar flow gets its own open arrow beside the MW one.
+assert((await page.getByTestId("mvar-arrow").count()) > 0, "Mvar arrows on the AC results");
+// Solving from the toolbar keeps the diagram in view and redraws in place.
+await page.getByRole("toolbar", { name: "Case" }).getByRole("button", { name: "Solve power flow" }).click();
+await page.waitForTimeout(1500);
+assert.equal(await page.locator("[data-module=diagram]:not(.module-hidden)").count(), 1, "Solve stays on the diagram");
+// Flow arrows can move along the wires (Canvas menu, menu bar, Ctrl+K).
+assert.equal(await page.getByTestId("flow-arrows-moving").count(), 0, "still arrows by default");
+await diagramMenu("Canvas", "Animated flow arrows");
+await page.getByTestId("flow-arrows-moving").first().waitFor();
+assert.equal(await page.getByTestId("flow-arrow").count(), 0, "no still MW arrows while they move");
+await page.getByTestId("mvar-arrows-moving").first().waitFor();
+assert.equal(await page.getByTestId("mvar-arrow").count(), 0, "no still Mvar arrows while they move");
+await diagramMenu("Canvas", "Animated flow arrows");
+await page.getByTestId("flow-arrow").first().waitFor();
 
 // One selection, seen in every module: pick a bus in Power flow, then follow
 // the chip to Case diff and the diagram.

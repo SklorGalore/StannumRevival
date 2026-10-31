@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getSmoothStepPath, Position } from "@xyflow/react";
-import { arrowPath, flowDirection, pathPoints } from "./flowArrow";
+import { arrowPath, flowDirection, flowSpeed, pathPoints, polylineLength, reactiveArrowAt } from "./flowArrow";
 
 /** Every edge of the triangle's base is square to the direction of travel. */
 function triangle(d: string) {
@@ -52,5 +52,31 @@ describe("pathPoints", () => {
       const [a, b] = [pts[i], pts[i + 1]];
       expect(a.x === b.x || a.y === b.y).toBe(true);
     }
+  });
+});
+
+describe("polylineLength", () => {
+  it("adds up the runs", () => {
+    expect(polylineLength([{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 40 }])).toBe(70);
+    expect(polylineLength([{ x: 0, y: 0 }])).toBe(0);
+  });
+});
+
+describe("reactiveArrowAt", () => {
+  it("puts the MW and Mvar arrows either side of the middle, along the run", () => {
+    expect(reactiveArrowAt({ x: 50, y: 10 }, { x: 0, y: 10 }, { x: 100, y: 10 })).toEqual({ p: { x: 42, y: 10 }, q: { x: 58, y: 10 } });
+    expect(reactiveArrowAt({ x: 5, y: 50 }, { x: 5, y: 100 }, { x: 5, y: 0 })).toEqual({ p: { x: 5, y: 58 }, q: { x: 5, y: 42 } });
+  });
+});
+
+describe("flowSpeed", () => {
+  it("runs faster with more loading, within bounds", () => {
+    expect(flowSpeed(0, 0, 100)).toBe(15);
+    expect(flowSpeed(50, 10, 100)).toBe(37.5);
+    expect(flowSpeed(180, 10, 100)).toBe(60);
+  });
+  it("measures against the largest drawn flow without a rating", () => {
+    expect(flowSpeed(null, -50, 100)).toBe(37.5);
+    expect(flowSpeed(undefined, 5, 0)).toBe(37.5);
   });
 });
