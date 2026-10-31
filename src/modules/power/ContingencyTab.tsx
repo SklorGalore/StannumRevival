@@ -703,6 +703,13 @@ export function ContingencyTab({
     if (!path) return;
     await api.exportContingencyViolations(path);
   }
+  async function exportResults() {
+    const path = await pickSavePath("contingency-results.stnr", [
+      { name: "Stannum results", extensions: ["stnr"] },
+    ]);
+    if (!path) return;
+    await api.exportContingencyResults(path);
+  }
   async function exportCsv() {
     const rows = await allRows(source, null, search.trim());
     const csv = toCsv(
@@ -1000,22 +1007,29 @@ export function ContingencyTab({
                 </label>
                 <span className="ml-auto" data-testid="contingency-export">
                   <OverflowMenu
-                    label="Export CSV"
+                    label="Export"
                     showLabel
                     items={[
                       {
                         id: "violations",
-                        label: "Every violation",
+                        label: "Every violation (CSV)",
                         title:
                           "One line per overload, voltage problem and interface violation of every outage",
                         onClick: () => void exportViolations(),
                       },
                       {
                         id: "outages",
-                        label: "One row per outage",
+                        label: "One row per outage (CSV)",
                         title:
                           "The table as shown: each outage's worst problem and its counts",
                         onClick: () => void exportCsv(),
+                      },
+                      {
+                        id: "results",
+                        label: "Compact results (.stnr)",
+                        title:
+                          "Every outage and violation in a small binary file (Arrow, zstd) that pandas, polars and DuckDB read directly",
+                        onClick: () => void exportResults(),
                       },
                     ]}
                   />

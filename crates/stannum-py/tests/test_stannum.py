@@ -115,7 +115,7 @@ def test_cases_are_independent() -> None:
     assert a.solve().total_losses_mw != pytest.approx(b.solve().total_losses_mw)
 
 
-def test_contingencies_rank_every_outage(case9: sn.Case) -> None:
+def test_contingencies_rank_every_outage(case9: sn.Case, tmp_path: Path) -> None:
     case9.solve()
     run = case9.contingencies(method="ac", limit_pct=90)
     rows = run.rows
@@ -125,6 +125,11 @@ def test_contingencies_rank_every_outage(case9: sn.Case) -> None:
     assert detail.row["element"] == rows["element"][0]
     assert len(case9.contingency_rows(limit=3)) == 3
     assert case9.contingency_rows(offset=1, limit=2)["rank"].tolist() == [2, 3]
+    path = tmp_path / "run.stnr"
+    written = case9.export_contingency_results(path)
+    assert written["outages"] == run.total
+    assert written["bytes"] == path.stat().st_size
+    assert path.read_bytes()[:4] == b"\xff\xff\xff\xff"  # an Arrow IPC stream
 
 
 def test_transfer_limits(case9: sn.Case) -> None:

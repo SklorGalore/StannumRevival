@@ -266,6 +266,9 @@ fn answers_fit_their_schemas() {
     let csv = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
     c.ok("export_contingency_violations", json!({ "path": csv }));
     std::fs::remove_file(&csv).ok();
+    let stnr = std::env::temp_dir().join(format!("stannum-results-{}.stnr", std::process::id()));
+    c.ok("export_contingency_results", json!({ "path": stnr }));
+    std::fs::remove_file(&stnr).ok();
     let stnl = std::env::temp_dir().join(format!("stannum-subsystems-{}.stnl", std::process::id()));
     std::fs::write(
         &stnl,

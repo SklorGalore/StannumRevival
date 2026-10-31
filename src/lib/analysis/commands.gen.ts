@@ -277,9 +277,12 @@ export type ContingencyDetail = {
 /** The worst limit of one contingency. */
 export type ContingencyLimit = {
   contingency: string;
+  /** As in [`TransferLimit::contingency_name`]. */
+  contingency_name: string;
   factor: number;
   fcitc_mw: number;
   monitored: string;
+  monitored_name: string;
 };
 
 /** One outage's outcome, as a row of the ranked results. */
@@ -1502,6 +1505,18 @@ export type ResponseTable = {
   units: string;
 };
 
+/** What [`write_contingency_results`] wrote. */
+export type ResultsExport = {
+  /** File size. */
+  bytes: number;
+  /** Outages in the file. */
+  outages: number;
+  /** Rows written: one per finding, plus one per outage with none. */
+  rows: number;
+  /** Rows that are violations (not `ok`). */
+  violations: number;
+};
+
 /**
  * One filter rule: a field compared with a value. The same rules as the
  * app's filter chips (`src/lib/filters.ts`).
@@ -1817,6 +1832,7 @@ export type TransferFactor = {
   /** Base rating limit, MW; 0 when unrated. */
   limit_mw: number;
   monitored: string;
+  monitored_name: string;
   ptdf: number;
   to: number;
   winding: number;
@@ -1829,6 +1845,11 @@ export type TransferFactor = {
 export type TransferLimit = {
   /** What is out, "" for the base case. */
   contingency: string;
+  /**
+   * The contingency's name: a lists file's name, or PSS/E style;
+   * "BASE CASE" for the base case.
+   */
+  contingency_name: string;
   /** Distribution factor: PTDF in the base case, OTDF after an outage. */
   factor: number;
   /**
@@ -1843,6 +1864,11 @@ export type TransferLimit = {
   limit_mw: number;
   /** The branch id, or `interface:<name>`. */
   monitored: string;
+  /**
+   * The monitored element named PSS/E style (bus names and numbers,
+   * then the circuit), or the interface's name.
+   */
+  monitored_name: string;
   /** Base case PTDF. */
   ptdf: number;
   to: number;
@@ -2268,6 +2294,18 @@ export interface CoreCommands {
   element_kinds: {
     args: Record<string, never>;
     result: ElementKind[];
+  };
+  /**
+   * Write the last contingency run to a compact results file (`.stnr`):
+   * an Arrow IPC stream, zstd compressed, one row per finding and one per
+   * outage with none. Opens in pyarrow, polars, pandas and DuckDB.
+   */
+  export_contingency_results: {
+    args: {
+      case?: CaseId | null;
+      path: string;
+    };
+    result: ResultsExport;
   };
   /**
    * Write every violation of the last run to a CSV file, one line each:

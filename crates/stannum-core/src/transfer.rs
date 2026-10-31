@@ -246,8 +246,14 @@ pub struct TransferLimit {
     pub to: u32,
     /// 1-3 for a leg of a three-winding transformer.
     pub winding: u8,
+    /// The monitored element named PSS/E style (bus names and numbers,
+    /// then the circuit), or the interface's name.
+    pub monitored_name: String,
     /// What is out, "" for the base case.
     pub contingency: String,
+    /// The contingency's name: a lists file's name, or PSS/E style;
+    /// "BASE CASE" for the base case.
+    pub contingency_name: String,
     /// The transfer that brings the element to its limit, MW. Negative
     /// when it is already past it in the direction the transfer pushes.
     pub fcitc_mw: f64,
@@ -264,6 +270,7 @@ pub struct TransferLimit {
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct TransferFactor {
     pub monitored: String,
+    pub monitored_name: String,
     pub from: u32,
     pub to: u32,
     pub winding: u8,
@@ -324,8 +331,11 @@ pub struct TransferSummary {
 #[derive(Clone, Debug, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ContingencyLimit {
     pub contingency: String,
+    /// As in [`TransferLimit::contingency_name`].
+    pub contingency_name: String,
     pub fcitc_mw: f64,
     pub monitored: String,
+    pub monitored_name: String,
     pub factor: f64,
 }
 
@@ -530,6 +540,12 @@ impl TransferJob {
         let ptdf = factors.injection_flows(&injection);
         let flows: Vec<f64> = self.base.branch_flows.iter().map(|f| f[0]).collect();
         let monitored = self.monitored()?;
+        let names = crate::power::bus_names(case);
+        let bus_row = bus_rows(case);
+        let monitored_names: Vec<String> = monitored
+            .iter()
+            .map(|m| contingency::element_name(&m.name, &names, &bus_row))
+            .collect();
         if monitored.is_empty() {
             return Err(
                 "Nothing to monitor: no rated branch or interface fits the settings.".into(),
@@ -600,10 +616,14 @@ impl TransferJob {
                                 self.handle.step();
                                 continue;
                             };
-                            let contingency = if i == 0 {
-                                String::new()
+                            let (contingency, contingency_name) = if i == 0 {
+                                (String::new(), "BASE CASE".to_string())
                             } else {
-                                self.outages[i - 1].element.clone()
+                                let o = &self.outages[i - 1];
+                                let name = o.name.clone().unwrap_or_else(|| {
+                                    contingency::element_name(&o.element, &names, &bus_row)
+                                });
+                                (o.element.clone(), name)
                             };
                             let mut lowest: Option<ContingencyLimit> = None;
                             for (k, m) in monitored.iter().enumerate() {
@@ -626,10 +646,12 @@ impl TransferJob {
                                         i,
                                         TransferLimit {
                                             monitored: m.name.clone(),
+                                            monitored_name: monitored_names[k].clone(),
                                             from: m.from,
                                             to: m.to,
                                             winding: m.winding,
                                             contingency: contingency.clone(),
+                                            contingency_name: contingency_name.clone(),
                                             fcitc_mw: t,
                                             flow_mw: f,
                                             limit_mw: lim,
@@ -643,8 +665,10 @@ impl TransferJob {
                                 {
                                     lowest = Some(ContingencyLimit {
                                         contingency: contingency.clone(),
+                                        contingency_name: contingency_name.clone(),
                                         fcitc_mw: t,
                                         monitored: m.name.clone(),
+                                        monitored_name: monitored_names[k].clone(),
                                         factor: d,
                                     });
                                 }
@@ -696,8 +720,10 @@ impl TransferJob {
             by_contingency.into_iter().map(|(_, c)| c).collect();
         let mut table: Vec<TransferFactor> = monitored
             .iter()
-            .map(|m| TransferFactor {
+            .zip(&monitored_names)
+            .map(|(m, name)| TransferFactor {
                 monitored: m.name.clone(),
+                monitored_name: name.clone(),
                 from: m.from,
                 to: m.to,
                 winding: m.winding,
@@ -1174,6 +1200,33 @@ mod tests {
             a.notes.iter().any(|n| n.contains("1 voltage monitor")),
             "{:?}",
             a.notes
+        );
+    }
+
+    #[test]
+    fn limits_are_named_by_buses() {
+        let (power, base) = case9();
+        let r = TransferJob::new(&power, &base, settings(2, 3))
+            .unwrap()
+            .run()
+            .unwrap();
+        assert!(!r.limits.is_empty());
+        for l in r.limits.iter().chain(&r.past_limits) {
+            assert!(!l.monitored_name.contains(':'), "{}", l.monitored_name);
+            if l.contingency.is_empty() {
+                assert_eq!(l.contingency_name, "BASE CASE");
+            } else {
+                assert!(!l.contingency_name.contains(':'), "{}", l.contingency_name);
+            }
+        }
+        // case9 has no bus names: a branch is its bus numbers then circuit.
+        let f = &r.factors[0];
+        let parts: Vec<&str> = f.monitored.split(':').skip(1).collect();
+        assert_eq!(f.monitored_name, parts.join(" "));
+        assert!(
+            r.contingencies
+                .iter()
+                .all(|c| !c.contingency_name.is_empty())
         );
     }
 

@@ -909,6 +909,82 @@ fn worse_by_and_existing_problems_are_settings() {
     assert!(body.iter().any(|l| l.split(',').nth(6) == Some("branch")));
 }
 
+/// The compact results file holds the same findings as the violations CSV,
+/// plus one `ok` row for each outage with none, and reads back as an Arrow
+/// stream with the run in its metadata.
+#[test]
+fn results_file_matches_the_csv() {
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int32Type;
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    open.run_contingencies(ContingencySettings {
+        report_existing: true,
+        ..settings(Method::Ac)
+    })
+    .unwrap();
+    let total = open.contingency_summary().unwrap().total;
+    let dir = std::env::temp_dir();
+    let csv = dir.join(format!("stannum-match-{}.csv", std::process::id()));
+    let stnr = dir.join(format!("stannum-match-{}.stnr", std::process::id()));
+    let lines = open.export_contingency_violations(&csv).unwrap();
+    let written = open.export_contingency_results(&stnr).unwrap();
+    let text = std::fs::read_to_string(&csv).unwrap();
+    let file = std::fs::File::open(&stnr).unwrap();
+    assert_eq!(written.bytes, file.metadata().unwrap().len());
+    let reader = arrow_ipc::reader::StreamReader::try_new(file, None).unwrap();
+    let meta = reader.schema().metadata().clone();
+    assert_eq!(
+        meta["stannum.format"],
+        stannum_core::results_file::RESULTS_FORMAT
+    );
+    assert_eq!(meta["stannum.kind"], "contingency");
+    assert!(meta["stannum.summary"].contains("\"total\""));
+    assert!(meta["stannum.settings"].contains("\"report_existing\":true"));
+    let batches: Vec<_> = reader.map(|b| b.unwrap()).collect();
+    std::fs::remove_file(&csv).ok();
+    std::fs::remove_file(&stnr).ok();
+
+    let text_of = |b: &arrow_array::RecordBatch, col: &str, i: usize| -> Option<String> {
+        let d = b.column_by_name(col).unwrap().as_dictionary::<Int32Type>();
+        let v = d.values().as_string::<i32>();
+        d.key(i).map(|k| v.value(k).to_string())
+    };
+    let mut found = Vec::new();
+    let mut ranks = std::collections::BTreeSet::new();
+    let mut ok = 0;
+    for b in &batches {
+        let rank = b
+            .column_by_name("rank")
+            .unwrap()
+            .as_primitive::<arrow_array::types::UInt32Type>();
+        for i in 0..b.num_rows() {
+            ranks.insert(rank.value(i));
+            let kind = text_of(b, "type", i).unwrap();
+            if kind == "ok" {
+                ok += 1;
+                continue;
+            }
+            let element = text_of(b, "element", i).unwrap_or_default();
+            found.push(format!("{},{kind},{element}", rank.value(i)));
+        }
+    }
+    assert_eq!(written.outages, total);
+    assert_eq!(ranks.len(), total, "every outage is in the file");
+    assert_eq!(written.violations, lines.rows);
+    assert_eq!(written.rows, lines.rows + ok);
+    // The same findings, in the same order, as the CSV.
+    let from_csv: Vec<String> = text
+        .lines()
+        .skip(1)
+        .map(|l| {
+            let f: Vec<&str> = l.split(',').collect();
+            format!("{},{},{}", f[0], f[6], f[7])
+        })
+        .collect();
+    assert_eq!(found, from_csv);
+}
+
 /// Lists text given inline runs as the same text read from a file would,
 /// and the subsystems of a file read back as written.
 #[test]
