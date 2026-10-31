@@ -40,6 +40,7 @@ pub mod error;
 pub mod file_version;
 pub mod geo;
 pub mod inspect;
+pub mod lists;
 pub mod logbook;
 pub mod paging;
 pub mod planning;

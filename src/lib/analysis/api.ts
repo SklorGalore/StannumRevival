@@ -205,6 +205,7 @@ export const COORDINATE_FILTERS = [{ name: "Bus coordinates (CSV)", extensions: 
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 export const STN_FILTERS = [{ name: "Stannum case (preview)", extensions: ["stn"] }];
 export const STNB_FILTERS = [{ name: "Binary Stannum case (preview)", extensions: ["stnb"] }];
+export const LISTS_FILTERS = [{ name: "Stannum lists (preview)", extensions: ["stnl"] }];
 export const RUN_FILE_FILTERS = [{ name: "Stannum run file", extensions: ["stnrun"] }];
 export const RUN_FILE_EXTENSION = /\.stnrun$/i;
 

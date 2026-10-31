@@ -1025,6 +1025,13 @@
           "minimum": 0,
           "type": "integer"
         },
+        "with_problems": {
+          "default": 0,
+          "description": "Events with any overload, voltage problem or failed solve, each\ncounted once.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
         "with_voltage_problems": {
           "format": "uint",
           "minimum": 0,
@@ -1037,7 +1044,8 @@
         "with_overloads",
         "with_voltage_problems",
         "not_converged",
-        "islanding"
+        "islanding",
+        "with_problems"
       ],
       "type": "object"
     },
@@ -1200,7 +1208,7 @@
           ]
         },
         "kind": {
-          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, or \"base\" for P0.",
+          "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, \"group\" for more, or \"base\" for P0.",
           "enum": [
             "branch",
             "generator",
@@ -1208,6 +1216,7 @@
             "dc_line",
             "bus",
             "pair",
+            "group",
             "base"
           ],
           "type": "string"
@@ -1380,7 +1389,7 @@
         },
         "kind": {
           "items": {
-            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, or \"base\" for P0.",
+            "description": "\"branch\", \"generator\", \"shunt\", \"dc_line\", \"bus\", \"pair\" for two\nelements out together, \"group\" for more, or \"base\" for P0.",
             "enum": [
               "branch",
               "generator",
@@ -1388,6 +1397,7 @@
               "dc_line",
               "bus",
               "pair",
+              "group",
               "base"
             ],
             "type": "string"
@@ -1560,6 +1570,14 @@
           "format": "double",
           "type": "number"
         },
+        "lists": {
+          "default": null,
+          "description": "Run the contingencies of this lists file (`.stnl`): its\n`contingency` records and `contingency_set` rules. Equipment the\ncase lacks is reported in the summary's notes and skipped. Takes\nthe place of `elements`, `branches`, `generators`, `buses` and\n`pairs`; `planning` is unused.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "method": {
           "$ref": "#/$defs/Method",
           "default": "screen"
@@ -1676,6 +1694,14 @@
           "minimum": 0,
           "type": "integer"
         },
+        "notes": {
+          "default": [],
+          "description": "Lists file runs: what was skipped and why, in sentences.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "rating": {
           "$ref": "#/$defs/Rating",
           "description": "The ratings loadings were measured against, after outages and in\nthe base case."
@@ -1728,7 +1754,8 @@
         "elapsed_ms",
         "cancelled",
         "worst",
-        "categories"
+        "categories",
+        "notes"
       ],
       "type": "object"
     },

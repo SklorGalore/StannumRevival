@@ -628,3 +628,82 @@ fn zero_impedance_lines_can_be_left_out() {
     );
     assert_eq!(pairs, 1);
 }
+
+/// A lists file runs its named contingencies and the outages its sets
+/// generate; what the case lacks or can't be applied is noted and skipped.
+#[test]
+fn a_lists_file_runs_its_contingencies() {
+    let lists = "stannum-lists 0.1\n\
+        subsystem one name=\"Area 1\" areas=[1]\n\
+        contingency \"Line 1-2\" category=P1 events=[[open, line:2:1:1]]\n\
+        contingency \"Two lines\" category=P2 events=[[open, line:1:2:1], [open, line:1:3:1]]\n\
+        contingency \"Bus 26\" events=[[trip_bus, bus:26]]\n\
+        contingency Missing events=[[open, line:98:99:1]]\n\
+        contingency Closing events=[[close, line:1:2:1]]\n\
+        contingency_set area_one kind=n_1_branches subsystem=one\n";
+    let path = std::env::temp_dir().join(format!("stannum-lists-{}.stnl", std::process::id()));
+    std::fs::write(&path, lists).unwrap();
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let summary = open
+        .run_contingencies(ContingencySettings {
+            lists: Some(path.to_string_lossy().into_owned()),
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+    std::fs::remove_file(&path).ok();
+    let rows = open.contingency_rows(0, 1000).unwrap();
+    // Area 1's branches: those with an end on an area 1 bus.
+    let text = std::fs::read_to_string(case("case30.m")).unwrap();
+    let c = rs_power::parse_matpower(&text).unwrap();
+    let area1: std::collections::HashSet<u32> = c
+        .buses
+        .iter()
+        .filter(|b| b.area == 1)
+        .map(|b| b.id)
+        .collect();
+    let in_area = c
+        .branches
+        .iter()
+        .filter(|b| area1.contains(&b.from) || area1.contains(&b.to))
+        .count();
+    assert_eq!(summary.total, 3 + in_area, "{:?}", summary.notes);
+    let named = |d: &str| {
+        rows.iter()
+            .find(|r| r.description.as_deref() == Some(d))
+            .cloned()
+    };
+    let one = named("Line 1-2").expect("bus order doesn't matter");
+    assert_eq!(
+        (one.element.as_str(), one.category.as_deref()),
+        ("line:1:2:1", Some("P1"))
+    );
+    assert_eq!(named("Two lines").unwrap().kind, "pair");
+    let bus = named("Bus 26").unwrap();
+    assert_eq!((bus.kind, bus.cut_off_buses), ("bus", 1));
+    assert!(
+        rows.iter()
+            .filter(|r| r.category.as_deref() == Some("area_one"))
+            .count()
+            == in_area
+    );
+    assert_eq!(summary.notes.len(), 2, "{:?}", summary.notes);
+    assert!(
+        summary
+            .notes
+            .iter()
+            .any(|n| n.contains("line:98:99:1 isn't in this case"))
+    );
+    assert!(
+        summary
+            .notes
+            .iter()
+            .any(|n| n.contains("close events aren't applied"))
+    );
+    assert!(summary.categories.iter().any(|c| c.category == "area_one"));
+    // Each event counts once, however many kinds of problem it has.
+    for c in &summary.categories {
+        assert!(c.with_problems <= c.total, "{c:?}");
+        assert!(c.with_problems >= c.with_overloads.max(c.with_voltage_problems));
+    }
+}

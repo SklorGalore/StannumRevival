@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Your own contingency list.** Contingencies can run from a `.stnl`
+  lists file (preview): its named contingencies (`open` and `trip_bus`
+  events) and its `contingency_set` rules for single branches, generators,
+  branch pairs or buses in a subsystem. Equipment the case lacks is noted
+  and skipped. In the app, pick **From a lists file** under Outages; from
+  Python, the CLI and run files, set `lists` to the file's path.
 - **N-2 and bus outages.** Contingency runs can take the chosen branches
   and generators out two at a time (every pair once, up to 250,000 pairs;
   the bus filters narrow them), and can take out each bus with every
