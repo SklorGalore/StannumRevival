@@ -7,8 +7,9 @@ description: "The .stnl text format: subsystems, contingencies, monitored elemen
 The lists format is a **preview** (format version 0.1), like the
 [case format](/StannumRevival/reference/case-file/). The contingency module
 runs a file's `contingency` records (`open` and `trip_bus` events) and its
-`contingency_set` rules; `close`, `set_p_mw` and `set_q_mvar` events,
-monitors and interfaces are read and checked but not applied yet.
+`contingency_set` rules, and checks what its `monitor` records name,
+including interfaces. `close`, `set_p_mw` and `set_q_mvar` events, and
+rating slots above 3, are read and checked but not applied yet.
 :::
 
 A lists file (`.stnl`) holds the study definitions that PSS/E keeps in

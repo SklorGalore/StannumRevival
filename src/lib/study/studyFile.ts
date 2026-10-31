@@ -53,6 +53,9 @@ export interface StudyFile {
     /** Where the outages come from, and the lists file; studies before 1.1 lack them. */
     source?: "n1" | "planning" | "lists";
     listsPath?: string | null;
+    /** Monitors from a lists file; studies before 1.1 lack them. */
+    monitorFromLists?: boolean;
+    monitorsPath?: string | null;
     zeroImpedancePu?: number;
     baseRating?: "a" | "b" | "c";
   };

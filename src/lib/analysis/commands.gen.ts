@@ -265,6 +265,8 @@ export type ContingencyDetail = {
   buses: BusChange[];
   /** Buses split off by the outage. */
   cut_off: number[];
+  /** Every monitored interface's flow. */
+  interfaces: InterfaceFlow[];
   overloads: Overload[];
   row: ContingencyRow;
   voltage_problems: VoltageProblem[];
@@ -292,6 +294,11 @@ export type ContingencyRow = {
   description: string | null;
   /** The element taken out; empty for the base case (P0). */
   element: string;
+  /**
+   * Monitored interfaces over their limit that are new or worse, and
+   * the worst of them.
+   */
+  interface_violations: number;
   iterations: number | null;
   /**
    * "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
@@ -320,6 +327,7 @@ export type ContingencyRow = {
    * before the outage; otherwise the most loaded branch.
    */
   worst: Overload | null;
+  worst_interface: InterfaceFlow | null;
   /** AC only: the worst bus outside its limits that is new or worse. */
   worst_voltage: VoltageProblem | null;
 };
@@ -333,6 +341,7 @@ export type ContingencyRowColumns = {
   cut_off_buses: number[];
   description: (string | null)[];
   element: string[];
+  interface_violations: number[];
   iterations: (number | null)[];
   kind: ("branch" | "generator" | "shunt" | "dc_line" | "bus" | "pair" | "group" | "base")[];
   lost_generation_mw: number[];
@@ -344,6 +353,7 @@ export type ContingencyRowColumns = {
   severity: number[];
   voltage_violations: number[];
   worst: (Overload | null)[];
+  worst_interface: (InterfaceFlow | null)[];
   worst_voltage: (VoltageProblem | null)[];
 };
 
@@ -384,6 +394,12 @@ export type ContingencySettings = {
    */
   lists?: string | null;
   method?: Method;
+  /**
+   * Check only what the `monitor` records of this lists file (`.stnl`)
+   * name: branch flows and bus voltages with their own limits, and
+   * interfaces. Every rated branch and every bus when absent.
+   */
+  monitors?: string | null;
   /**
    * N-2: take the chosen branches and generators out two at a time,
    * every pair once, instead of one at a time. Buses stay one at a time.
@@ -427,6 +443,8 @@ export type ContingencySummary = {
   islanding: number;
   limit_pct: number;
   method: Method | null;
+  /** Whether a lists file's monitors chose what was checked. */
+  monitored: boolean;
   not_converged: number;
   /** Lists file runs: what was skipped and why, in sentences. */
   notes: string[];
@@ -441,6 +459,8 @@ export type ContingencySummary = {
    * already out.
    */
   total: number;
+  /** Outages that take a monitored interface over its limit. */
+  with_interface_problems: number;
   with_overloads: number;
   with_voltage_problems: number;
   worst: ContingencyRow | null;
@@ -908,6 +928,21 @@ export type Interface = {
   /** The interface's limit in MW, the same in both directions. */
   limit_mw: number;
   name: string;
+};
+
+/** An interface's summed flow after an outage, from a lists file monitor. */
+export type InterfaceFlow = {
+  base_mw: number;
+  base_pct: number | null;
+  /** Its limit; none when the interface has no limit. */
+  limit_mw: number | null;
+  /** Percent of the limit that counts as a violation. */
+  limit_pct: number;
+  /** Weighted sum of its branch flows, MW, after and before. */
+  mw: number;
+  name: string;
+  /** |MW| as a percent of the limit, after and before. */
+  pct: number | null;
 };
 
 export type IslandWire = {

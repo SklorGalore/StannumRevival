@@ -99,6 +99,17 @@ zero-impedance lines are left out. Element ids are matched with branch
 buses in either order. Anything the case lacks, and `close` or setpoint
 events, skip their contingency with a note rather than failing the run.
 
+A run's `monitors` file narrows what is checked. Branch rows named by flow
+monitors keep the strictest limit in MVA (`limit_pct` times the monitor's
+rating, or the run's); every other row is still solved but never counts
+as an overload or as the worst branch. Voltage monitors replace the bus's
+limits. An interface's flow after an outage is
+$\sum_k w_k\, s_k\, P_k$, where $P_k$ is branch $k$'s from-end MW (from the
+linear screen or the AC solve, 0 when tripped) and $s_k = -1$ when the id
+is written from the branch's to bus; it is a violation by the same new or
+worse rule as a branch, with the sum's size as a percent of `limit_mw`,
+and ranks the outage on the same scale.
+
 ## Planning events
 
 `crates/stannum-core/src/planning.rs` generates NERC TPL-001 Table 1 events

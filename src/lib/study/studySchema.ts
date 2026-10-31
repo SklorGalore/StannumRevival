@@ -51,6 +51,8 @@ export const studySchema = z.object({
     skipZeroImpedance: z.boolean().optional(),
     source: z.enum(["n1", "planning", "lists"]).optional(),
     listsPath: z.string().nullable().optional(),
+    monitorFromLists: z.boolean().optional(),
+    monitorsPath: z.string().nullable().optional(),
     zeroImpedancePu: z.number().optional(),
     baseRating: z.enum(["a", "b", "c"]).optional(),
   }),

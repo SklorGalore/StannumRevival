@@ -22,7 +22,7 @@ import { StudyActions } from "../../ui/StudyActions";
 
 /** Whether an outage causes anything worth looking at. */
 export function isProblem(r: ContingencyRow): boolean {
-  return r.converged === false || r.overloads > 0 || r.voltage_violations > 0 || r.lost_load_mw > 0.05;
+  return r.converged === false || r.overloads > 0 || r.interface_violations > 0 || r.voltage_violations > 0 || r.lost_load_mw > 0.05;
 }
 
 /** isProblem as rules the core applies: any one of them. */
@@ -30,6 +30,7 @@ const PROBLEM_RULES: PageRule[] = [
   { field: "converged", operator: "eq", value: "false", upper: null },
   { field: "overloads", operator: "gt", value: "0", upper: null },
   { field: "voltage_violations", operator: "gt", value: "0", upper: null },
+  { field: "interface_violations", operator: "gt", value: "0", upper: null },
   { field: "lost_load_mw", operator: "gt", value: "0.05", upper: null },
 ];
 
@@ -54,6 +55,7 @@ function ms(v: number): string {
 export function outcome(r: ContingencyRow): string {
   if (r.converged === false) return "Not converged";
   if (r.overloads > 0 && r.worst) return `${fixed(r.worst.pct, 1)}% on ${elementLabel(r.worst.element)}`;
+  if (r.interface_violations > 0 && r.worst_interface) return `${fixed(r.worst_interface.pct, 1)}% on interface ${r.worst_interface.name}`;
   if (r.voltage_violations > 0 && r.worst_voltage) return `Bus ${r.worst_voltage.bus} at ${fixed(r.worst_voltage.vm, 3)} p.u.`;
   if (r.lost_load_mw > 0.05) return `Drops ${fixed(r.lost_load_mw, 1)} MW of load`;
   return "No new problems";
@@ -141,9 +143,23 @@ function columns(limit: number, planning: boolean, rating: Rating, baseRating: R
     {
       key: "overloads",
       header: "Overloads",
-      title: "Branches over the limit that are new or more than a point worse",
-      value: (r) => r.overloads,
-      render: (r) => (r.overloads ? <span className="font-semibold text-red-700">{r.overloads}</span> : ""),
+      title: "Branches over the limit that are new or more than a point worse, and monitored interfaces over theirs",
+      value: (r) => r.overloads + r.interface_violations,
+      render: (r) =>
+        r.overloads || r.interface_violations ? (
+          <span className="font-semibold text-red-700">
+            {r.overloads || ""}
+            {r.interface_violations > 0 && (
+              <span data-testid="interface-count">
+                {r.overloads ? " + " : ""}
+                {r.interface_violations} interface
+                {r.interface_violations === 1 ? "" : "s"}
+              </span>
+            )}
+          </span>
+        ) : (
+          ""
+        ),
       align: "right",
     },
     {
@@ -214,6 +230,7 @@ function OutagePanel({
   row,
   limit,
   rating,
+  monitored,
   onPick,
   onClose,
 }: {
@@ -221,6 +238,8 @@ function OutagePanel({
   row: ContingencyRow;
   limit: number;
   rating: Rating;
+  /** A lists file's monitors set each branch's limit. */
+  monitored: boolean;
   onPick: (element: string) => void;
   onClose: () => void;
 }) {
@@ -289,7 +308,13 @@ function OutagePanel({
           <p className="px-3 py-2 text-slate-500">Solving the outage…</p>
         ) : (
           <>
-            <Section title={`Overloads above ${fixed(limit, 0)}% of ${ratingLabel(rating)} (${detail.overloads.length})`}>
+            <Section
+              title={
+                monitored
+                  ? `Overloads past their monitor's limit (${detail.overloads.length})`
+                  : `Overloads above ${fixed(limit, 0)}% of ${ratingLabel(rating)} (${detail.overloads.length})`
+              }
+            >
               {detail.overloads.length === 0 ? (
                 <p className="text-slate-500">No branch goes over the limit, or gets worse than it was.</p>
               ) : (
@@ -306,6 +331,25 @@ function OutagePanel({
                 </ul>
               )}
             </Section>
+            {detail.interfaces.length > 0 && (
+              <Section title={`Interfaces (${detail.interfaces.length})`}>
+                <ul className="flex flex-col gap-1" data-testid="detail-interfaces">
+                  {detail.interfaces.map((i) => {
+                    const over = row.worst_interface?.name === i.name || (i.pct !== null && i.pct > i.limit_pct && (i.base_pct ?? 0) <= i.limit_pct);
+                    return (
+                      <li key={i.name} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate">{i.name}</span>
+                        <span className={`tabular-nums ${over ? "font-semibold text-red-700" : "text-slate-700"}`}>
+                          {fixed(i.mw, 1)} MW
+                          {i.pct !== null ? ` · ${fixed(i.pct, 1)}%` : ""}
+                        </span>
+                        <span className="tabular-nums text-slate-500 w-20 text-right">was {fixed(i.base_mw, 1)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Section>
+            )}
             {row.checked === "ac" && (
               <Section title={`Voltage problems (${detail.voltage_problems.length})`}>
                 {detail.voltage_problems.length === 0 ? (
@@ -436,7 +480,16 @@ export function ContingencyTab({
       fetch: (r) =>
         api.contingencyPage({
           ...r,
-          rules: category ? [{ field: "category", operator: "eq" as const, value: category, upper: null }] : [],
+          rules: category
+            ? [
+                {
+                  field: "category",
+                  operator: "eq" as const,
+                  value: category,
+                  upper: null,
+                },
+              ]
+            : [],
           any: problemsOnly ? PROBLEM_RULES : [],
         }),
     }),
@@ -470,7 +523,8 @@ export function ContingencyTab({
   const acReady = !!report && report.model === "ac" && report.converged;
   const run = () => void s.run(settings, scope ? scope.elements : null);
   const chosenCount = (s.counts ?? []).filter((c) => s.choice.categories.includes(c.category)).reduce((n, c) => n + c.count, 0);
-  const nothingChosen = fromLists ? !s.choice.listsPath : planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
+  const noMonitors = s.choice.monitorFromLists && !s.choice.monitorsPath;
+  const nothingChosen = noMonitors || fromLists ? noMonitors || !s.choice.listsPath : planning ? s.choice.categories.length === 0 : !s.choice.branches && !s.choice.generators && !s.choice.buses && !scope;
   // Branches and generators that N-2 pairs up (buses stay one at a time).
   const pairElements = scope
     ? scope.elements.filter((e) => !e.startsWith("bus:")).length
@@ -489,6 +543,9 @@ export function ContingencyTab({
         loading_pct: r.worst?.pct ?? "",
         before_pct: r.worst?.base_pct ?? "",
         overloads: r.overloads,
+        worst_interface: r.worst_interface?.name ?? "",
+        interface_pct: r.worst_interface?.pct ?? "",
+        interface_violations: r.interface_violations,
         worst_bus: r.worst_voltage?.bus ?? "",
         worst_vm: r.worst_voltage?.vm ?? "",
         voltage_violations: r.voltage_violations,
@@ -497,7 +554,10 @@ export function ContingencyTab({
         outcome: outcome(r),
       }))
     );
-    await saveTextExport("contingencies.csv", csv, { name: "CSV", extensions: ["csv"] });
+    await saveTextExport("contingencies.csv", csv, {
+      name: "CSV",
+      extensions: ["csv"],
+    });
   }
 
   const summary = s.summary;
@@ -559,7 +619,11 @@ export function ContingencyTab({
                 min={0}
                 step="any"
                 value={s.choice.kvMin}
-                onChange={(e) => s.setChoice({ kvMin: Math.max(0, Number(e.target.value) || 0) })}
+                onChange={(e) =>
+                  s.setChoice({
+                    kvMin: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
                 aria-label="Lowest voltage"
                 title="Branches, shunts and DC lines with a terminal at or above this voltage. Generators are not filtered by voltage."
               />
@@ -599,6 +663,47 @@ export function ContingencyTab({
             )}
           </fieldset>
         )}
+        <div className="flex flex-col gap-1 min-w-0">
+          <label className="text-[11px] font-medium text-slate-600" htmlFor="contingency-checked">
+            Checked
+          </label>
+          <div className="flex items-center gap-2 min-w-0">
+            <select
+              id="contingency-checked"
+              className={inputClass}
+              value={s.choice.monitorFromLists ? "lists" : "all"}
+              onChange={(e) => {
+                const lists = e.target.value === "lists";
+                s.setChoice({
+                  monitorFromLists: lists,
+                  monitorsPath: s.choice.monitorsPath ?? (lists ? s.choice.listsPath : null),
+                });
+              }}
+              title="What is checked after each outage: every rated branch and every bus, or only what a lists file's monitor records name (with their own limits, and interfaces)"
+              data-testid="contingency-checked"
+            >
+              <option value="all">Every branch and bus</option>
+              <option value="lists">Monitors from a lists file</option>
+            </select>
+            {s.choice.monitorFromLists && (
+              <>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    const path = await pickFile(LISTS_FILTERS);
+                    if (path) s.setChoice({ monitorsPath: path });
+                  }}
+                  data-testid="choose-monitors"
+                >
+                  <FileText size={13} /> {s.choice.monitorsPath ? "Change…" : "Choose…"}
+                </Button>
+                <span className="truncate max-w-48 text-[11px] text-slate-600" title={s.choice.monitorsPath ?? undefined} data-testid="monitors-path">
+                  {s.choice.monitorsPath ? fileName(s.choice.monitorsPath) : "No file chosen"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
         <fieldset className="flex flex-col gap-1">
           <legend className="text-[11px] font-medium text-slate-600 mb-1">Zero-impedance lines</legend>
           <div className="flex items-center gap-2">
@@ -621,7 +726,11 @@ export function ContingencyTab({
               step="any"
               value={s.choice.zeroImpedancePu}
               disabled={!s.choice.skipZeroImpedance}
-              onChange={(e) => s.setChoice({ zeroImpedancePu: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={(e) =>
+                s.setChoice({
+                  zeroImpedancePu: Math.max(0, Number(e.target.value) || 0),
+                })
+              }
               aria-label="Zero-impedance threshold, p.u."
               title="THRSHZ, per unit on the system base"
             />
@@ -649,7 +758,11 @@ export function ContingencyTab({
               min={0}
               step={1}
               value={s.choice.acCount}
-              onChange={(e) => s.setChoice({ acCount: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+              onChange={(e) =>
+                s.setChoice({
+                  acCount: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                })
+              }
               aria-label="Worst checked in AC"
             />
           </label>
@@ -696,7 +809,11 @@ export function ContingencyTab({
             min={1}
             step="any"
             value={s.choice.limitPct}
-            onChange={(e) => s.setChoice({ limitPct: Math.max(1, Number(e.target.value) || 100) })}
+            onChange={(e) =>
+              s.setChoice({
+                limitPct: Math.max(1, Number(e.target.value) || 100),
+              })
+            }
             aria-label="Overload limit"
           />
         </label>
@@ -777,8 +894,16 @@ export function ContingencyTab({
             <Metric
               label="Cause overloads"
               value={count(summary.with_overloads)}
-              tone={summary.with_overloads ? "bad" : "good"}
-              detail={summary.worst?.worst && summary.worst.overloads ? `Worst ${fixed(summary.worst.worst.pct, 0)}%` : `Above ${fixed(summary.limit_pct, 0)}% of ${ratingLabel(summary.rating)}`}
+              tone={summary.with_overloads || summary.with_interface_problems ? "bad" : "good"}
+              detail={
+                summary.with_interface_problems
+                  ? `${count(summary.with_interface_problems)} past an interface limit`
+                  : summary.worst?.worst && summary.worst.overloads
+                    ? `Worst ${fixed(summary.worst.worst.pct, 0)}%`
+                    : summary.monitored
+                      ? "Monitored branches, at their limits"
+                      : `Above ${fixed(summary.limit_pct, 0)}% of ${ratingLabel(summary.rating)}`
+              }
             />
             <Metric
               label="Voltage problems"
@@ -854,7 +979,8 @@ export function ContingencyTab({
                 )}
                 <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-slate-700">
                   <input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)} />
-                  Problems only{problemCount === null ? "" : ` (${count(problemCount)})`}
+                  Problems only
+                  {problemCount === null ? "" : ` (${count(problemCount)})`}
                 </label>
                 <Button variant="ghost" className="ml-auto whitespace-nowrap" onClick={exportCsv}>
                   <Download size={13} /> Export CSV
@@ -871,7 +997,13 @@ export function ContingencyTab({
                     setClicked(r);
                     void s.openRow(r.rank);
                   }}
-                  rowClassName={(r) => (r.converged === false || r.overloads > 0 ? "bg-red-50/60" : r.voltage_violations > 0 ? "bg-amber-50/60" : "")}
+                  rowClassName={(r) =>
+                    r.converged === false || r.overloads > 0 || r.interface_violations > 0
+                      ? "bg-red-50/60"
+                      : r.voltage_violations > 0
+                        ? "bg-amber-50/60"
+                        : ""
+                  }
                 />
               </div>
             </div>
@@ -881,6 +1013,7 @@ export function ContingencyTab({
                 detail={s.detail?.row.rank === openRow.rank ? s.detail : null}
                 limit={summary.limit_pct}
                 rating={summary.rating}
+                monitored={summary.monitored}
                 onPick={onPick}
                 onClose={() => void s.openRow(null)}
               />
