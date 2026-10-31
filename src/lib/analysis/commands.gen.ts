@@ -44,6 +44,8 @@ export type BranchChange = {
   element: string;
   from: number;
   mw: number;
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
   /**
    * Percent of the run's rating after, and of its base rating before;
    * `None` when unrated.
@@ -1217,6 +1219,8 @@ export type Overload = {
   limit_pct: number;
   /** Active flow at the from end, MW, after and before. */
   mw: number;
+  /** The branch named PSS/E style: bus names and numbers, then the circuit. */
+  name: string;
   /**
    * MVA as a percent of the run's rating after the outage, and of its
    * base rating before it.

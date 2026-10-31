@@ -960,6 +960,14 @@ fn outages_are_named_by_bus_names_and_numbers() {
         generator.name
     );
 
+    // What an outage overloads is named the same way.
+    let w = rows.iter().find_map(|r| r.worst.clone()).unwrap();
+    assert!(!w.name.contains(':'), "{}", w.name);
+    assert!(
+        w.name.contains(&format!(" {} ", w.from)) || w.name.starts_with(&format!("{} ", w.from)),
+        "{}",
+        w.name
+    );
     let path = std::env::temp_dir().join(format!("stannum-names-{}.stnl", std::process::id()));
     std::fs::write(
         &path,

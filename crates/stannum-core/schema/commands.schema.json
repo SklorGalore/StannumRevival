@@ -183,6 +183,10 @@
           "format": "double",
           "type": "number"
         },
+        "name": {
+          "description": "The branch named PSS/E style: bus names and numbers, then the circuit.",
+          "type": "string"
+        },
         "pct": {
           "description": "Percent of the run's rating after, and of its base rating before;\n`None` when unrated.",
           "format": "double",
@@ -202,6 +206,7 @@
       },
       "required": [
         "element",
+        "name",
         "from",
         "to",
         "mw",
@@ -4621,6 +4626,10 @@
           "format": "double",
           "type": "number"
         },
+        "name": {
+          "description": "The branch named PSS/E style: bus names and numbers, then the circuit.",
+          "type": "string"
+        },
         "pct": {
           "description": "MVA as a percent of the run's rating after the outage, and of its\nbase rating before it.",
           "format": "double",
@@ -4634,6 +4643,7 @@
       },
       "required": [
         "element",
+        "name",
         "from",
         "to",
         "pct",

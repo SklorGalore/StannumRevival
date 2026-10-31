@@ -92,7 +92,7 @@ describe("layers", () => {
       category: null, description: null, interface_violations: 0, worst_interface: null,
     } as const;
     const change = (element: string, mw: number, base_mw: number, pct: number | null, base_pct: number | null, tripped = false) =>
-      ({ element, from: 1, to: 4, mw, base_mw, pct, base_pct, tripped });
+      ({ element, name: element, from: 1, to: 4, mw, base_mw, pct, base_pct, tripped });
     const detail: ContingencyDetail = {
       row: { ...row },
       overloads: [],

@@ -16,7 +16,11 @@ section into the next version's when a release is cut (see
   its bus, and `BASE CASE` for P0; elements out together are joined by
   `&`. Lists file contingencies keep their own names. The name leads each
   row, the outage panel and both CSV exports (which add the element ids in
-  an `outage` column), and the table search finds it.
+  an `outage` column), and the table search finds it. Violations are
+  named the same way: overloaded branches and flow changes by their end
+  buses and circuit, voltage problems by bus name and number, in the table,
+  the outage panel, the diagram and the violations CSV (whose `element`
+  column holds the name and a new `element_id` column the id).
 
 - **Contingency setup.** The Contingencies tab's settings moved into a
   setup dialog with five steps: Outages, Monitor, Subsystems, Limits &
