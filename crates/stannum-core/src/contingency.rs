@@ -72,14 +72,24 @@ fn default_limit() -> f64 {
 /// What to run.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ContingencySettings {
-    /// Branch and generator ids to take out, one at a time. When absent,
-    /// every in-service branch and/or generator, as chosen below.
+    /// Ids to take out, one at a time. A bus id (bus:101) takes out the
+    /// bus, and ids joined by "&" (line:1:2:1&line:2:3:1) go out together.
+    /// When absent, every in-service branch, generator and/or bus, as
+    /// chosen below.
     #[serde(default)]
     pub elements: Option<Vec<String>>,
     #[serde(default = "yes")]
     pub branches: bool,
     #[serde(default = "yes")]
     pub generators: bool,
+    /// Take out each bus: every branch and DC line connected to it, which
+    /// cuts off its loads, generators and shunts.
+    #[serde(default)]
+    pub buses: bool,
+    /// N-2: take the chosen branches and generators out two at a time,
+    /// every pair once, instead of one at a time. Buses stay one at a time.
+    #[serde(default)]
+    pub pairs: bool,
     #[serde(default)]
     pub method: Method,
     /// How many of the worst screened outages get an AC solve.
@@ -110,6 +120,8 @@ impl Default for ContingencySettings {
             elements: None,
             branches: true,
             generators: true,
+            buses: false,
+            pairs: false,
             method: Method::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
@@ -156,8 +168,9 @@ pub struct ContingencyRow {
     pub rank: usize,
     /// The element taken out; empty for the base case (P0).
     pub element: String,
-    /// "branch", "generator", "shunt", "dc_line", or "base" for P0.
-    #[schemars(extend("enum" = ["branch", "generator", "shunt", "dc_line", "base"]))]
+    /// "branch", "generator", "shunt", "dc_line", "bus", "pair" for two
+    /// elements out together, or "base" for P0.
+    #[schemars(extend("enum" = ["branch", "generator", "shunt", "dc_line", "bus", "pair", "base"]))]
     pub kind: &'static str,
     /// The planning event category, such as "P1.2"; none in an N-1 run.
     pub category: Option<String>,
@@ -403,62 +416,180 @@ fn outages(
             .collect();
         return Ok((list, 0));
     }
-    let mut list: Vec<Outage> = Vec::new();
+    let case = &power.case;
+    // Every single outage the case offers, by id: branches (a three-winding
+    // transformer is one element over its windings), generators and buses.
+    let mut singles: Vec<Outage> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
-    let wanted: Option<std::collections::HashSet<&str>> = settings
-        .elements
-        .as_ref()
-        .map(|e| e.iter().map(String::as_str).collect());
-    let mut take = |element: &str, kind: &'static str, row: usize, is_branch: bool| {
-        let i = *index.entry(element.to_string()).or_insert_with(|| {
-            list.push(Outage {
+    fn add(
+        singles: &mut Vec<Outage>,
+        index: &mut HashMap<String, usize>,
+        element: &str,
+        kind: &'static str,
+    ) -> usize {
+        *index.entry(element.to_string()).or_insert_with(|| {
+            singles.push(Outage {
                 element: element.to_string(),
                 kind,
                 ..Default::default()
             });
-            list.len() - 1
-        });
-        if is_branch {
-            list[i].branch_rows.push(row);
-        } else {
-            list[i].generator_rows.push(row);
-        }
-    };
+            singles.len() - 1
+        })
+    }
     for (row, e) in power.elements.branches.iter().enumerate() {
-        // Switching devices run only when listed: opening one is a
-        // switching study, not a branch outage.
-        let chosen = match &wanted {
-            Some(w) => w.contains(e.element.as_str()),
-            None => settings.branches && !e.element.starts_with("switch:"),
-        };
-        if chosen {
-            take(&e.element, "branch", row, true);
-        }
+        let i = add(&mut singles, &mut index, &e.element, "branch");
+        singles[i].branch_rows.push(row);
     }
     for (row, e) in power.elements.generators.iter().enumerate() {
-        let chosen = match &wanted {
-            Some(w) => w.contains(e.element.as_str()),
-            None => settings.generators,
-        };
-        if chosen {
-            take(&e.element, "generator", row, false);
+        let i = add(&mut singles, &mut index, &e.element, "generator");
+        singles[i].generator_rows.push(row);
+    }
+    let wanted: Option<Vec<&str>> = settings
+        .elements
+        .as_ref()
+        .map(|e| e.iter().map(String::as_str).collect());
+    let wants_buses = settings.buses
+        || wanted
+            .iter()
+            .flatten()
+            .any(|w| w.split('&').any(|p| p.starts_with("bus:")));
+    if wants_buses {
+        let mut at: HashMap<u32, Outage> = HashMap::new();
+        for (r, b) in case.branches.iter().enumerate() {
+            at.entry(b.from).or_default().branch_rows.push(r);
+            if b.to != b.from {
+                at.entry(b.to).or_default().branch_rows.push(r);
+            }
+        }
+        for (r, l) in case.dcline.iter().flatten().enumerate() {
+            let (from, to) = (l[0] as u32, l[1] as u32);
+            at.entry(from).or_default().dc_rows.push((r, 0.0));
+            if to != from {
+                at.entry(to).or_default().dc_rows.push((r, 0.0));
+            }
+        }
+        for bus in &case.buses {
+            let i = add(
+                &mut singles,
+                &mut index,
+                &crate::elements::bus(bus.id),
+                "bus",
+            );
+            let found = at.remove(&bus.id).unwrap_or_default();
+            singles[i].branch_rows = found.branch_rows;
+            singles[i].dc_rows = found.dc_rows;
         }
     }
-    if let Some(w) = &wanted
-        && let Some(missing) = w.iter().find(|e| !index.contains_key(**e))
-    {
-        return Err(format!(
-            "{missing} isn't a branch or generator in this case."
-        ));
-    }
-    let case = &power.case;
-    let before = list.len();
-    list.retain(|o| {
+    let in_service = |o: &Outage| {
         o.branch_rows.iter().any(|&r| case.branches[r].online)
             || o.generator_rows.iter().any(|&r| case.generators[r].online)
-    });
+            || o.dc_rows.iter().any(|&(r, _)| {
+                case.dcline
+                    .as_ref()
+                    .and_then(|t| t.get(r))
+                    .is_some_and(|l| l[2] != 0.0)
+            })
+    };
+
+    // The outages asked for, one element (or one "&" group) each.
+    let mut list: Vec<Outage> = Vec::new();
+    match &wanted {
+        Some(w) => {
+            for id in w {
+                let mut parts = Vec::new();
+                for part in id.split('&') {
+                    let i = *index.get(part).ok_or_else(|| {
+                        format!("{part} isn't a branch, generator or bus in this case.")
+                    })?;
+                    parts.push(&singles[i]);
+                }
+                list.push(combine(&parts));
+            }
+        }
+        None => {
+            for o in &singles {
+                // Switching devices run only when listed: opening one is a
+                // switching study, not a branch outage.
+                let chosen = match o.kind {
+                    "branch" => settings.branches && !o.element.starts_with("switch:"),
+                    "generator" => settings.generators,
+                    _ => false,
+                };
+                if chosen {
+                    list.push(o.clone());
+                }
+            }
+        }
+    }
+    if settings.pairs {
+        let (single_ones, buses): (Vec<Outage>, Vec<Outage>) =
+            list.into_iter().partition(|o| o.kind != "bus");
+        let usable: Vec<Outage> = single_ones.into_iter().filter(&in_service).collect();
+        let n = usable.len();
+        let pairs = n * n.saturating_sub(1) / 2;
+        if pairs > MAX_PAIRS {
+            return Err(format!(
+                "N-2 of {n} elements is {pairs} pairs. Narrow the outages with the bus filters to {MAX_PAIRS} pairs or fewer (about {} elements).",
+                max_pair_elements()
+            ));
+        }
+        list = Vec::with_capacity(pairs + buses.len());
+        for a in 0..n {
+            for b in a + 1..n {
+                list.push(combine(&[&usable[a], &usable[b]]));
+            }
+        }
+        list.extend(buses);
+    } else if settings.buses && wanted.is_none() {
+        list.extend(singles.iter().filter(|o| o.kind == "bus").cloned());
+    }
+    let before = list.len();
+    list.retain(in_service);
     let already_out = before - list.len();
     Ok((list, already_out))
+}
+
+/// N-2 runs at most this many pairs: each is a row of the results.
+pub const MAX_PAIRS: usize = 250_000;
+
+/// The most elements whose pairs fit in [`MAX_PAIRS`].
+fn max_pair_elements() -> usize {
+    let mut n = 1;
+    while (n + 1) * n / 2 <= MAX_PAIRS {
+        n += 1;
+    }
+    n
+}
+
+/// Several outages taken together, as one.
+fn combine(parts: &[&Outage]) -> Outage {
+    if let [one] = parts {
+        return (*one).clone();
+    }
+    let mut out = Outage {
+        element: parts
+            .iter()
+            .map(|p| p.element.as_str())
+            .collect::<Vec<_>>()
+            .join("&"),
+        kind: "pair",
+        ..Default::default()
+    };
+    for p in parts {
+        for &r in &p.branch_rows {
+            if !out.branch_rows.contains(&r) {
+                out.branch_rows.push(r);
+            }
+        }
+        for &r in &p.generator_rows {
+            if !out.generator_rows.contains(&r) {
+                out.generator_rows.push(r);
+            }
+        }
+        out.shunt_rows.extend(&p.shunt_rows);
+        out.dc_rows.extend(&p.dc_rows);
+    }
+    out
 }
 
 impl ContingencyJob {

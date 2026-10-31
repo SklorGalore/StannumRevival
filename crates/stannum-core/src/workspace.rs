@@ -790,6 +790,8 @@ impl OpenCase {
             elements: Some(vec![element.to_string()]),
             branches: true,
             generators: true,
+            buses: false,
+            pairs: false,
             method: crate::contingency::Method::Ac,
             ac_count: 1,
             limit_pct,

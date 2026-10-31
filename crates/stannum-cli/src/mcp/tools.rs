@@ -133,7 +133,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "run_contingencies",
         title: "Run contingencies",
-        description: "Run N-1 contingencies (every branch and generator, or the `elements` given), or with `planning` the NERC TPL-001 planning events (P0, P1.1-P1.5, P2.1, P7.2). By default each outage is screened linearly and the worst `ac_count` get an AC solve; method=ac solves every one. Answers the run's summary and worst outage; query_contingencies pages the ranked results. Long runs report progress and stop when the call is cancelled.",
+        description: "Run N-1 contingencies (every branch and generator, or the `elements` given; bus:N takes out a bus, ids joined by & go out together), bus outages with `buses`, N-2 with `pairs` (every pair of the chosen branches and generators, at most 250,000), or with `planning` the NERC TPL-001 planning events (P0, P1.1-P1.5, P2.1, P7.2). By default each outage is screened linearly and the worst `ac_count` get an AC solve; method=ac solves every one. Answers the run's summary and worst outage; query_contingencies pages the ranked results. Long runs report progress and stop when the call is cancelled.",
         input: contingencies_input,
         read_only: false,
         destructive: false,

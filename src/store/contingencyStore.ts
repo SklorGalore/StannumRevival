@@ -28,6 +28,10 @@ export interface ContingencyChoice {
   source: ContingencySource;
   branches: boolean;
   generators: boolean;
+  /** Take out each bus with everything connected to it. */
+  buses: boolean;
+  /** N-2: the chosen branches and generators two at a time. */
+  pairs: boolean;
   /** Planning events: the categories to run, and the lowest voltage. */
   categories: string[];
   kvMin: number;
@@ -43,6 +47,8 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   source: "n1",
   branches: true,
   generators: true,
+  buses: false,
+  pairs: false,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "screen",
@@ -135,6 +141,8 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         elements: planning ? null : elements,
         branches: c.branches,
         generators: c.generators,
+        buses: !planning && c.buses,
+        pairs: !planning && c.pairs,
         method: c.method,
         ac_count: c.acCount,
         limit_pct: c.limitPct,

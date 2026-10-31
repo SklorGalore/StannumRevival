@@ -450,3 +450,127 @@ fn trip_and_compare_uses_the_chosen_ratings() {
     }
     assert!(rated > 0);
 }
+
+/// A bus outage takes out every branch at the bus: the same outcome as
+/// listing those branches together, and a load bus at the end of a radial
+/// line is cut off with its load.
+#[test]
+fn bus_outages_take_out_everything_at_the_bus() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let summary = open
+        .run_contingencies(ContingencySettings {
+            branches: false,
+            generators: false,
+            buses: true,
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+    assert_eq!(summary.total, 30, "one outage per bus");
+    let rows = open.contingency_rows(0, 1000).unwrap();
+    assert!(
+        rows.iter()
+            .all(|r| r.kind == "bus" && r.element.starts_with("bus:"))
+    );
+    // Bus 26 hangs off bus 25 by one line: taking it out loses its load.
+    let b26 = rows.iter().find(|r| r.element == "bus:26").unwrap();
+    assert_eq!(b26.cut_off_buses, 1);
+    assert!(b26.lost_load_mw > 3.0, "{} MW", b26.lost_load_mw);
+
+    // Bus 10's outage equals its branches listed together.
+    let detail = |open: &mut stannum_core::OpenCase, element: &str| {
+        open.run_contingencies(ContingencySettings {
+            elements: Some(vec![element.to_string()]),
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+        open.contingency_detail(1).unwrap()
+    };
+    let by_bus = detail(open, "bus:10");
+    let lines: Vec<String> = by_bus
+        .branches
+        .iter()
+        .filter(|b| b.tripped)
+        .map(|b| b.element.clone())
+        .collect();
+    assert!(lines.len() >= 4, "{lines:?}");
+    let together = detail(open, &lines.join("&"));
+    assert_eq!(together.row.kind, "pair");
+    assert_eq!(by_bus.row.worst, together.row.worst);
+    assert_eq!(by_bus.row.cut_off_buses, together.row.cut_off_buses);
+}
+
+/// N-2 takes every pair of the chosen elements once, and each pair matches
+/// the same two elements listed with "&".
+#[test]
+fn pairs_take_every_two_elements_once() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let chosen = [
+        "line:1:2:1",
+        "line:2:4:1",
+        "line:6:8:1",
+        "line:27:30:1",
+        "generator:22:1",
+    ];
+    let summary = open
+        .run_contingencies(ContingencySettings {
+            elements: Some(chosen.iter().map(|s| s.to_string()).collect()),
+            pairs: true,
+            ..settings(Method::Ac)
+        })
+        .unwrap();
+    assert_eq!(summary.total, 10, "5 choose 2");
+    let rows = open.contingency_rows(0, 1000).unwrap();
+    assert!(
+        rows.iter()
+            .all(|r| r.kind == "pair" && r.element.matches('&').count() == 1)
+    );
+    let pair = rows
+        .iter()
+        .find(|r| r.element == "line:6:8:1&generator:22:1")
+        .expect("the pair, in list order")
+        .clone();
+    open.run_contingencies(ContingencySettings {
+        elements: Some(vec!["line:6:8:1&generator:22:1".into()]),
+        ..settings(Method::Ac)
+    })
+    .unwrap();
+    let alone = open.contingency_rows(0, 1).unwrap();
+    assert_eq!(alone[0].worst, pair.worst);
+    assert_eq!(alone[0].overloads, pair.overloads);
+}
+
+/// 801 buses in a ring of 801 lines: 320,400 pairs, over the limit.
+#[test]
+fn too_many_pairs_are_refused() {
+    let n = 801;
+    let mut text =
+        String::from("function mpc = ring\nmpc.version = '2';\nmpc.baseMVA = 100;\nmpc.bus = [\n");
+    for b in 1..=n {
+        let kind = if b == 1 { 3 } else { 1 };
+        text += &format!("{b} {kind} 0.1 0 0 0 1 1 0 230 1 1.1 0.9;\n");
+    }
+    text += "];\nmpc.gen = [\n1 80 0 999 -999 1 100 1 999 0 0 0 0 0 0 0 0 0 0 0 0;\n];\nmpc.branch = [\n";
+    for b in 1..=n {
+        let to = b % n + 1;
+        text += &format!("{b} {to} 0.001 0.01 0 100 100 100 0 0 1 -360 360;\n");
+    }
+    text += "];\n";
+    let path = std::env::temp_dir().join(format!("stannum-ring-{}.m", std::process::id()));
+    std::fs::write(&path, text).unwrap();
+    let mut ws = Workspace::default();
+    ws.open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let open = ws.current_mut().unwrap();
+    assert!(open.solve(SolveSettings::default()).unwrap().converged);
+    let err = open
+        .run_contingencies(ContingencySettings {
+            generators: false,
+            pairs: true,
+            ..settings(Method::Screen)
+        })
+        .unwrap_err();
+    assert!(err.to_string().contains("320400 pairs"), "{err}");
+    assert!(err.to_string().contains("Narrow the outages"), "{err}");
+}

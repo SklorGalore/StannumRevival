@@ -275,7 +275,10 @@ class Case:
         outage as a :class:`Table` under ``rows``.
 
         Options (all optional): ``elements`` (ids to take out; every
-        branch and generator by default), ``branches``, ``generators``,
+        branch and generator by default; ``bus:101`` takes out a bus, and
+        ids joined by ``&`` go out together), ``branches``, ``generators``,
+        ``buses`` (each bus with everything connected), ``pairs`` (N-2:
+        the chosen branches and generators two at a time),
         ``method`` ("screen" or "ac"), ``ac_count``, ``limit_pct``,
         ``rating`` and ``base_rating`` (the branch rating, "a", "b" or "c",
         loadings are measured against after an outage and before it; rate A
