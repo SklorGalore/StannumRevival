@@ -5,7 +5,7 @@ import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types
 import { addRecent } from "../lib/study/recent";
 
 /** Power flow tabs other parts of the app can open. */
-export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "study";
+export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "transfers" | "study";
 
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 

@@ -49,6 +49,8 @@ import { StudyPanel } from "./StudyPanel";
 import { WarningsTab } from "./WarningsTab";
 import { ContingencyTab } from "./ContingencyTab";
 import { useContingencies } from "../../store/contingencyStore";
+import { TransferTab } from "./TransferTab";
+import { useTransfers } from "../../store/transferStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
@@ -70,11 +72,12 @@ type Tab =
   | "vsc"
   | "sensitivities"
   | "contingencies"
+  | "transfers"
   | "study"
   | "warnings";
 
 /** Tabs with nothing to solve: the solve settings fold to their narrow rail there. */
-const QUIET_TABS = new Set<Tab>(["contingencies", "study", "vsc", "warnings"]);
+const QUIET_TABS = new Set<Tab>(["contingencies", "transfers", "study", "vsc", "warnings"]);
 
 
 const busColumns: Column<BusRow>[] = [
@@ -1318,6 +1321,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setPicked(null);
     setJump({ n: 0, problems: false });
     useContingencies.getState().clear();
+    useTransfers.getState().clear();
   }, [caseVersion]);
 
   const power = summary?.power;
@@ -1385,6 +1389,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useLayers.getState().showSensitivity(null);
     // The core drops contingency results when the study changes.
     useContingencies.getState().clear();
+    useTransfers.getState().clear();
     // A script that changed the study solves when it wants to.
     if (latest && power?.available && !useStudy.getState().fromScript) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1406,7 +1411,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     setTab("study");
   }, [studyShowRequest]);
 
-  // "Contingencies", "Show import warnings" and "Attach VSC DC grids" from the toolbar, menus and Ctrl+K.
+  // "Contingencies", "Transfer limits", "Show import warnings" and "Attach VSC DC grids" from the toolbar, menus and Ctrl+K.
   const powerTabRequest = useWorkspace((s) => s.powerTabRequest);
   useEffect(() => {
     if (powerTabRequest) setTab(powerTabRequest.tab);
@@ -1441,6 +1446,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
   }, [solveRequest]);
 
   const contingencyTotal = useContingencies((s) => s.summary?.total);
+  const transferCount = useTransfers((s) => s.results?.limits.length);
   const contingencyChoice = useContingencies((s) => s.choice);
   // Bus filters narrow the outages to what touches the matching buses.
   const contingencyScope = useMemo(() => {
@@ -1476,11 +1482,12 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       ...(sensitivity ? [{ id: "sensitivities" as const, label: "Sensitivities", disabled: false }] : []),
       { id: "study" as const, label: "Study", count: studyCount, disabled: false },
       { id: "contingencies" as const, label: "Contingencies", count: contingencyTotal, disabled: !latest },
+      { id: "transfers" as const, label: "Transfers", count: transferCount, disabled: !latest },
       ...(tab === "warnings" && warnings.length
         ? [{ id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: false }]
         : []),
     ],
-    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, tab]
+    [report, latest, sensitivity, warnings.length, studyCount, dcGrids, contingencyTotal, transferCount, tab]
   );
 
   if (!summary) {
@@ -1734,6 +1741,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
                   onPick={pick}
                 />
               )}
+              {tab === "transfers" && <TransferTab report={latest} onPick={pick} />}
               {tab === "study" && <StudyPanel onShow={pick} report={latest} stale={stale} />}
               {tab === "warnings" && (
                 <WarningsTab
