@@ -21,6 +21,11 @@ section into the next version's when a release is cut (see
   buses and circuit, voltage problems by bus name and number, in the table,
   the outage panel, the diagram and the violations CSV (whose `element`
   column holds the name and a new `element_id` column the id).
+- **Transfer limit names.** The Transfers tab names limiting elements and
+  outages the same PSS/E way (`monitored_name`, `contingency_name` on
+  transfer limits, outage limits and PTDFs; a lists file's contingency
+  names are kept). Its CSV gives the names, with the ids in `monitored_id`
+  and `contingency_id`.
 
 - **Contingency setup.** The Contingencies tab's settings moved into a
   setup dialog with five steps: Outages, Monitor, Subsystems, Limits &

@@ -1177,6 +1177,10 @@
         "contingency": {
           "type": "string"
         },
+        "contingency_name": {
+          "description": "As in [`TransferLimit::contingency_name`].",
+          "type": "string"
+        },
         "factor": {
           "format": "double",
           "type": "number"
@@ -1187,12 +1191,17 @@
         },
         "monitored": {
           "type": "string"
+        },
+        "monitored_name": {
+          "type": "string"
         }
       },
       "required": [
         "contingency",
+        "contingency_name",
         "fcitc_mw",
         "monitored",
+        "monitored_name",
         "factor"
       ],
       "type": "object"
@@ -6465,6 +6474,9 @@
         "monitored": {
           "type": "string"
         },
+        "monitored_name": {
+          "type": "string"
+        },
         "ptdf": {
           "format": "double",
           "type": "number"
@@ -6483,6 +6495,7 @@
       },
       "required": [
         "monitored",
+        "monitored_name",
         "from",
         "to",
         "winding",
@@ -6497,6 +6510,10 @@
       "properties": {
         "contingency": {
           "description": "What is out, \"\" for the base case.",
+          "type": "string"
+        },
+        "contingency_name": {
+          "description": "The contingency's name: a lists file's name, or PSS/E style;\n\"BASE CASE\" for the base case.",
           "type": "string"
         },
         "factor": {
@@ -6528,6 +6545,10 @@
           "description": "The branch id, or `interface:<name>`.",
           "type": "string"
         },
+        "monitored_name": {
+          "description": "The monitored element named PSS/E style (bus names and numbers,\nthen the circuit), or the interface's name.",
+          "type": "string"
+        },
         "ptdf": {
           "description": "Base case PTDF.",
           "format": "double",
@@ -6551,7 +6572,9 @@
         "from",
         "to",
         "winding",
+        "monitored_name",
         "contingency",
+        "contingency_name",
         "fcitc_mw",
         "flow_mw",
         "limit_mw",

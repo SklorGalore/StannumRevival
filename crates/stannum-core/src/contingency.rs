@@ -487,7 +487,7 @@ pub(crate) struct Outage {
     category: Option<String>,
     description: Option<String>,
     /// The name a lists file gives it.
-    name: Option<String>,
+    pub(crate) name: Option<String>,
 }
 
 impl Outage {
@@ -1635,38 +1635,9 @@ impl<'a> Context<'a> {
         self.name_of(&outage.element)
     }
 
-    /// Element ids named PSS/E style: each element's bus names and numbers,
-    /// then its circuit or unit id; elements joined by " & ".
+    /// Element ids named PSS/E style (see [`element_name`]).
     fn name_of(&self, ids: &str) -> String {
-        let bus = |n: &str| -> String {
-            let name = n
-                .parse::<u32>()
-                .ok()
-                .and_then(|id| self.bus_row.get(&id))
-                .and_then(|&i| self.names.get(i))
-                .map(|s| s.trim())
-                .unwrap_or("");
-            if name.is_empty() {
-                n.to_string()
-            } else {
-                format!("{name} {n}")
-            }
-        };
-        ids.split('&')
-            .map(|id| {
-                let parts: Vec<&str> = id.split(':').collect();
-                match parts.as_slice() {
-                    ["bus", n] => bus(n),
-                    [_, rest @ .., last] if !rest.is_empty() => {
-                        let mut out: Vec<String> = rest.iter().map(|b| bus(b)).collect();
-                        out.push((*last).to_string());
-                        out.join(" ")
-                    }
-                    _ => id.to_string(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" & ")
+        element_name(ids, &self.names, &self.bus_row)
     }
 
     fn element(&self, row: usize) -> String {
@@ -2303,6 +2274,44 @@ fn num(v: f64) -> String {
 }
 
 /// A bus named PSS/E style: its name and number, or the number alone.
+/// Element ids named PSS/E style: each element's bus names and numbers,
+/// then its circuit or unit id; elements joined by " & ". `names` is by
+/// bus row and `bus_row` maps bus numbers to rows.
+pub(crate) fn element_name(ids: &str, names: &[String], bus_row: &HashMap<u32, usize>) -> String {
+    let bus = |n: &str| -> String {
+        let name = n
+            .parse::<u32>()
+            .ok()
+            .and_then(|id| bus_row.get(&id))
+            .and_then(|&i| names.get(i))
+            .map(|s| s.trim())
+            .unwrap_or("");
+        if name.is_empty() {
+            n.to_string()
+        } else {
+            format!("{name} {n}")
+        }
+    };
+    ids.split('&')
+        .map(|id| {
+            if let Some(name) = id.strip_prefix("interface:") {
+                return name.to_string();
+            }
+            let parts: Vec<&str> = id.split(':').collect();
+            match parts.as_slice() {
+                ["bus", n] => bus(n),
+                [_, rest @ .., last] if !rest.is_empty() => {
+                    let mut out: Vec<String> = rest.iter().map(|b| bus(b)).collect();
+                    out.push((*last).to_string());
+                    out.join(" ")
+                }
+                _ => id.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" & ")
+}
+
 fn bus_name(name: &str, number: u32) -> String {
     let name = name.trim();
     if name.is_empty() {

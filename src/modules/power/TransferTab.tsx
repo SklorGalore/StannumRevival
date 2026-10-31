@@ -3,27 +3,65 @@
 // limit, in the base case and after each branch outage. The study is
 // stannum-core's (transfer.rs); this sets it up and shows what it found.
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Download, FileText, Play, Square, X } from "lucide-react";
-import { useTransfers, type Side, type SideKind, busList } from "../../store/transferStore";
-import { LISTS_FILTERS, pickFile, saveTextExport } from "../../lib/analysis/api";
+import {
+  ArrowRightLeft,
+  Download,
+  FileText,
+  Play,
+  Square,
+  X,
+} from "lucide-react";
+import {
+  useTransfers,
+  type Side,
+  type SideKind,
+  busList,
+} from "../../store/transferStore";
+import {
+  LISTS_FILTERS,
+  pickFile,
+  saveTextExport,
+} from "../../lib/analysis/api";
 import { useCaseGroups, type CaseGroups } from "../../ui/useCaseGroups";
 import type { SolveReport } from "../../lib/analysis/types";
-import type { ContingencyLimit, Scaling, TransferFactor, TransferLimit } from "../../lib/analysis/commands.gen";
+import type {
+  ContingencyLimit,
+  Scaling,
+  TransferFactor,
+  TransferLimit,
+} from "../../lib/analysis/commands.gen";
 import { count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
 import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
-import { Button, EmptyState, ErrorBanner, Metric, Notice, SearchBox, Tabs, inputClass } from "../../ui/primitives";
+import {
+  Button,
+  EmptyState,
+  ErrorBanner,
+  Metric,
+  Notice,
+  SearchBox,
+  Tabs,
+  inputClass,
+} from "../../ui/primitives";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { ElementLink } from "../../ui/DrawAround";
 
 const SCALINGS: { value: Scaling; label: string; hint: string }[] = [
-  { value: "generation", label: "Generation output", hint: "Online generators move in proportion to their MW now" },
+  {
+    value: "generation",
+    label: "Generation output",
+    hint: "Online generators move in proportion to their MW now",
+  },
   {
     value: "reserve",
     label: "Generation reserve",
     hint: "Online generators move in proportion to their room to Pmax (source) or Pmin (sink)",
   },
-  { value: "load", label: "Load", hint: "The source's loads drop and the sink's grow, in proportion to their MW" },
+  {
+    value: "load",
+    label: "Load",
+    hint: "The source's loads drop and the sink's grow, in proportion to their MW",
+  },
 ];
 
 const KINDS: { value: SideKind; label: string }[] = [
@@ -47,13 +85,24 @@ function mw(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${fixed(v, 1)} MW`;
 }
 
-function contingencyLabel(c: string): string {
-  return c ? elementLabel(c) : "Base case";
+/** What is out, by name: a lists file's name or PSS/E style bus names and numbers. */
+function contingencyLabel(r: {
+  contingency: string;
+  contingency_name?: string;
+}): string {
+  if (!r.contingency) return "Base case";
+  return r.contingency_name || elementLabel(r.contingency);
 }
 
-function monitoredLabel(m: string, winding = 0): string {
-  if (m.startsWith("interface:")) return `Interface ${m.slice("interface:".length)}`;
-  return winding ? `${elementLabel(m)} (winding ${winding})` : elementLabel(m);
+/** The monitored element by name (PSS/E style), or the interface. */
+function monitoredLabel(
+  r: { monitored: string; monitored_name?: string; winding?: number },
+  withWinding = true,
+): string {
+  if (r.monitored.startsWith("interface:"))
+    return `Interface ${r.monitored.slice("interface:".length)}`;
+  const name = r.monitored_name || elementLabel(r.monitored);
+  return withWinding && r.winding ? `${name} (winding ${r.winding})` : name;
 }
 
 function SidePicker({
@@ -71,11 +120,16 @@ function SidePicker({
   areaNames: Map<number, string>;
   testId: string;
 }) {
-  const kinds = KINDS.filter((k) => k.value === "buses" || (groups?.[k.value as "area"]?.length ?? 0) > 0);
+  const kinds = KINDS.filter(
+    (k) =>
+      k.value === "buses" || (groups?.[k.value as "area"]?.length ?? 0) > 0,
+  );
   const options = side.kind === "buses" ? [] : (groups?.[side.kind] ?? []);
   return (
     <fieldset className="flex flex-col gap-1" data-testid={testId}>
-      <legend className="text-[11px] font-medium text-slate-600 mb-1">{label}</legend>
+      <legend className="text-[11px] font-medium text-slate-600 mb-1">
+        {label}
+      </legend>
       <div className="flex items-center gap-1">
         <select
           className={inputClass}
@@ -83,7 +137,8 @@ function SidePicker({
           aria-label={`${label}: by`}
           onChange={(e) => {
             const kind = e.target.value as SideKind;
-            const first = kind === "buses" ? 0 : (groups?.[kind]?.[0]?.[0] ?? 0);
+            const first =
+              kind === "buses" ? 0 : (groups?.[kind]?.[0]?.[0] ?? 0);
             onChange({ ...side, kind, value: first });
           }}
         >
@@ -106,7 +161,9 @@ function SidePicker({
             className={`${inputClass} max-w-52`}
             value={side.value}
             aria-label={`${label}: ${side.kind}`}
-            onChange={(e) => onChange({ ...side, value: Number(e.target.value) })}
+            onChange={(e) =>
+              onChange({ ...side, value: Number(e.target.value) })
+            }
           >
             {options.map(([v, n]) => {
               const name = side.kind === "area" ? areaNames.get(v) : undefined;
@@ -124,34 +181,50 @@ function SidePicker({
   );
 }
 
-function limitColumns(rating: Rating, baseRating: Rating, onPick: (e: string) => void): Column<TransferLimit>[] {
+function limitColumns(
+  rating: Rating,
+  baseRating: Rating,
+  onPick: (e: string) => void,
+): Column<TransferLimit>[] {
   return [
     {
       key: "fcitc",
       header: "FCITC (MW)",
       title: "The transfer that brings the element to its limit",
       value: (r) => r.fcitc_mw,
-      render: (r) => <span className={`font-semibold ${r.fcitc_mw < 0 ? "text-red-700" : "text-slate-800"}`}>{fixed(r.fcitc_mw, 1)}</span>,
+      render: (r) => (
+        <span
+          className={`font-semibold ${r.fcitc_mw < 0 ? "text-red-700" : "text-slate-800"}`}
+        >
+          {fixed(r.fcitc_mw, 1)}
+        </span>
+      ),
       align: "right",
     },
     {
       key: "monitored",
       header: "Limiting element",
-      value: (r) => monitoredLabel(r.monitored, r.winding),
+      value: (r) => monitoredLabel(r),
       render: (r) =>
         r.monitored.startsWith("interface:") ? (
-          monitoredLabel(r.monitored)
+          monitoredLabel(r)
         ) : (
-          <ElementLink element={r.monitored} from="power" onOpen={() => onPick(r.monitored)} />
+          <ElementLink
+            element={r.monitored}
+            from="power"
+            onOpen={() => onPick(r.monitored)}
+          >
+            {monitoredLabel(r)}
+          </ElementLink>
         ),
     },
     {
       key: "contingency",
       header: "After outage of",
-      value: (r) => contingencyLabel(r.contingency),
+      value: (r) => contingencyLabel(r),
       render: (r) =>
         r.contingency ? (
-          <span className="text-slate-700">{elementLabel(r.contingency)}</span>
+          <span className="text-slate-700">{contingencyLabel(r)}</span>
         ) : (
           <span className="text-slate-500">Base case</span>
         ),
@@ -175,7 +248,8 @@ function limitColumns(rating: Rating, baseRating: Rating, onPick: (e: string) =>
     {
       key: "factor",
       header: "OTDF",
-      title: "MW on the element per MW of transfer: the PTDF in the base case, the OTDF after an outage",
+      title:
+        "MW on the element per MW of transfer: the PTDF in the base case, the OTDF after an outage",
       value: (r) => r.factor,
       render: (r) => pct(r.factor),
       align: "right",
@@ -196,12 +270,24 @@ const contingencyColumns: Column<ContingencyLimit>[] = [
     key: "fcitc",
     header: "FCITC (MW)",
     value: (r) => r.fcitc_mw,
-    render: (r) => <span className="font-semibold">{fixed(r.fcitc_mw, 1)}</span>,
+    render: (r) => (
+      <span className="font-semibold">{fixed(r.fcitc_mw, 1)}</span>
+    ),
     align: "right",
   },
-  { key: "contingency", header: "Outage", value: (r) => contingencyLabel(r.contingency) },
-  { key: "monitored", header: "Limiting element", value: (r) => monitoredLabel(r.monitored) },
-  { key: "factor", header: "OTDF", value: (r) => r.factor, render: (r) => pct(r.factor), align: "right" },
+  { key: "contingency", header: "Outage", value: (r) => contingencyLabel(r) },
+  {
+    key: "monitored",
+    header: "Limiting element",
+    value: (r) => monitoredLabel(r),
+  },
+  {
+    key: "factor",
+    header: "OTDF",
+    value: (r) => r.factor,
+    render: (r) => pct(r.factor),
+    align: "right",
+  },
 ];
 
 function factorColumns(onPick: (e: string) => void): Column<TransferFactor>[] {
@@ -217,15 +303,27 @@ function factorColumns(onPick: (e: string) => void): Column<TransferFactor>[] {
     {
       key: "monitored",
       header: "Element",
-      value: (r) => monitoredLabel(r.monitored, r.winding),
+      value: (r) => monitoredLabel(r),
       render: (r) =>
         r.monitored.startsWith("interface:") ? (
-          monitoredLabel(r.monitored)
+          monitoredLabel(r)
         ) : (
-          <ElementLink element={r.monitored} from="power" onOpen={() => onPick(r.monitored)} />
+          <ElementLink
+            element={r.monitored}
+            from="power"
+            onOpen={() => onPick(r.monitored)}
+          >
+            {monitoredLabel(r)}
+          </ElementLink>
         ),
     },
-    { key: "flow", header: "Flow (MW)", value: (r) => r.flow_mw, render: (r) => fixed(r.flow_mw, 1), align: "right" },
+    {
+      key: "flow",
+      header: "Flow (MW)",
+      value: (r) => r.flow_mw,
+      render: (r) => fixed(r.flow_mw, 1),
+      align: "right",
+    },
     {
       key: "limit",
       header: "Limit (MW)",
@@ -236,11 +334,20 @@ function factorColumns(onPick: (e: string) => void): Column<TransferFactor>[] {
   ];
 }
 
-export function TransferTab({ report, onPick }: { report: SolveReport | null; onPick: (element: string) => void }) {
+export function TransferTab({
+  report,
+  onPick,
+}: {
+  report: SolveReport | null;
+  onPick: (element: string) => void;
+}) {
   const s = useTransfers();
   const c = s.choice;
   const groups = useCaseGroups();
-  const areaNames = useMemo(() => new Map((report?.areas ?? []).map((a) => [a.number, a.name.trim()])), [report]);
+  const areaNames = useMemo(
+    () => new Map((report?.areas ?? []).map((a) => [a.number, a.name.trim()])),
+    [report],
+  );
   const [view, setView] = useState<View>("limits");
   const [search, setSearch] = useState("");
 
@@ -248,10 +355,18 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
   useEffect(() => {
     if (!groups) return;
     const pick = (kind: "area" | "zone") => groups[kind].map(([v]) => v);
-    const kind = pick("area").length > 1 ? "area" : pick("zone").length > 1 ? "zone" : "area";
+    const kind =
+      pick("area").length > 1
+        ? "area"
+        : pick("zone").length > 1
+          ? "zone"
+          : "area";
     const values = pick(kind);
-    const known = (side: Side) => side.kind === "buses" || (groups[side.kind]?.some(([v]) => v === side.value) ?? false);
-    if (known(c.source) && known(c.sink) && c.source.value !== c.sink.value) return;
+    const known = (side: Side) =>
+      side.kind === "buses" ||
+      (groups[side.kind]?.some(([v]) => v === side.value) ?? false);
+    if (known(c.source) && known(c.sink) && c.source.value !== c.sink.value)
+      return;
     s.setChoice({
       source: { kind, value: values[0] ?? 0, buses: "" },
       sink: { kind, value: values[values.length - 1] ?? 0, buses: "" },
@@ -264,8 +379,11 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
   const acReady = !!report && report.model === "ac" && report.converged;
   const sameSide =
     c.source.kind === c.sink.kind &&
-    (c.source.kind === "buses" ? c.source.buses.trim() === c.sink.buses.trim() : c.source.value === c.sink.value);
-  const noBuses = (side: Side) => side.kind === "buses" && busList(side.buses).length === 0;
+    (c.source.kind === "buses"
+      ? c.source.buses.trim() === c.sink.buses.trim()
+      : c.source.value === c.sink.value);
+  const noBuses = (side: Side) =>
+    side.kind === "buses" && busList(side.buses).length === 0;
   const blocked = !acReady
     ? "Solve the case with the AC model first."
     : c.listsPath
@@ -275,10 +393,16 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
         : noBuses(c.source) || noBuses(c.sink)
           ? "List the buses of each side."
           : null;
-  const progressPct = s.progress && s.progress.total ? (100 * s.progress.done) / s.progress.total : 0;
+  const progressPct =
+    s.progress && s.progress.total
+      ? (100 * s.progress.done) / s.progress.total
+      : 0;
   const shownRating = sum?.rating ?? c.rating;
   const shownBase = sum?.base_rating ?? c.baseRating;
-  const limitCols = useMemo(() => limitColumns(shownRating, shownBase, onPick), [shownRating, shownBase, onPick]);
+  const limitCols = useMemo(
+    () => limitColumns(shownRating, shownBase, onPick),
+    [shownRating, shownBase, onPick],
+  );
   const factorCols = useMemo(() => factorColumns(onPick), [onPick]);
 
   async function exportCsv() {
@@ -286,19 +410,29 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
     const csv = toCsv(
       r.limits.map((l) => ({
         fcitc_mw: l.fcitc_mw,
-        monitored: l.monitored,
+        monitored: l.monitored_name,
+        monitored_id: l.monitored,
         winding: l.winding,
-        contingency: l.contingency || "base case",
+        contingency: l.contingency ? l.contingency_name : "BASE CASE",
+        contingency_id: l.contingency,
         flow_mw: l.flow_mw,
         limit_mw: l.limit_mw,
         otdf: l.factor,
         ptdf: l.ptdf,
       })),
     );
-    await saveTextExport("transfer-limits.csv", csv, { name: "CSV", extensions: ["csv"] });
+    await saveTextExport("transfer-limits.csv", csv, {
+      name: "CSV",
+      extensions: ["csv"],
+    });
   }
 
-  const kv = (value: number, onChange: (v: number) => void, aria: string, title: string) => (
+  const kv = (
+    value: number,
+    onChange: (v: number) => void,
+    aria: string,
+    title: string,
+  ) => (
     <input
       className={`${inputClass} w-16`}
       type="number"
@@ -342,7 +476,9 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
           <select
             className={inputClass}
             value={c.scaling}
-            onChange={(e) => s.setChoice({ scaling: e.target.value as Scaling })}
+            onChange={(e) =>
+              s.setChoice({ scaling: e.target.value as Scaling })
+            }
             title={SCALINGS.find((x) => x.value === c.scaling)?.hint}
             aria-label="Shared out by"
           >
@@ -354,12 +490,19 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
           </select>
         </label>
         <fieldset className="flex flex-col gap-1">
-          <legend className="text-[11px] font-medium text-slate-600 mb-1">Outages</legend>
+          <legend className="text-[11px] font-medium text-slate-600 mb-1">
+            Outages
+          </legend>
           <div className="flex items-center gap-2">
             <select
               className={inputClass}
               value={c.outages ? (c.generators ? "both" : "branches") : "none"}
-              onChange={(e) => s.setChoice({ outages: e.target.value !== "none", generators: e.target.value === "both" })}
+              onChange={(e) =>
+                s.setChoice({
+                  outages: e.target.value !== "none",
+                  generators: e.target.value === "both",
+                })
+              }
               aria-label="Outages"
               data-testid="transfer-outages"
             >
@@ -398,7 +541,11 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             min={0}
             step="any"
             value={c.cutoffPct}
-            onChange={(e) => s.setChoice({ cutoffPct: Math.max(0, Number(e.target.value) || 0) })}
+            onChange={(e) =>
+              s.setChoice({
+                cutoffPct: Math.max(0, Number(e.target.value) || 0),
+              })
+            }
             aria-label="Distribution factor cutoff, percent"
             title="Elements whose distribution factor is smaller than this don't limit the transfer"
           />
@@ -409,7 +556,9 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             <select
               className={inputClass}
               value={c.baseRating}
-              onChange={(e) => s.setChoice({ baseRating: e.target.value as Rating })}
+              onChange={(e) =>
+                s.setChoice({ baseRating: e.target.value as Rating })
+              }
               aria-label="Rating in the base case"
               title="The rating in the base case"
             >
@@ -422,7 +571,9 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             <select
               className={inputClass}
               value={c.rating}
-              onChange={(e) => s.setChoice({ rating: e.target.value as Rating })}
+              onChange={(e) =>
+                s.setChoice({ rating: e.target.value as Rating })
+              }
               aria-label="Rating after an outage"
               title="The rating after an outage"
             >
@@ -434,7 +585,10 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             </select>
           </span>
         </label>
-        <fieldset className="flex flex-col gap-1 min-w-0" data-testid="transfer-lists">
+        <fieldset
+          className="flex flex-col gap-1 min-w-0"
+          data-testid="transfer-lists"
+        >
           <legend
             className="text-[11px] font-medium text-slate-600 mb-1"
             title="A lists file's contingencies and monitors replace the outages and monitored elements here, and its transfer record the source and sink"
@@ -450,7 +604,8 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
               }}
               data-testid="transfer-choose-lists"
             >
-              <FileText size={13} /> {c.listsPath ? fileName(c.listsPath) : "Choose…"}
+              <FileText size={13} />{" "}
+              {c.listsPath ? fileName(c.listsPath) : "Choose…"}
             </Button>
             {c.listsPath && (
               <>
@@ -460,12 +615,16 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
                   placeholder="Its only transfer"
                   aria-label="Transfer in the lists file"
                   title="The transfer record to run; blank for the file's only one, or the source and sink here when it has none"
-                  onChange={(e) => s.setChoice({ transferName: e.target.value })}
+                  onChange={(e) =>
+                    s.setChoice({ transferName: e.target.value })
+                  }
                 />
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => s.setChoice({ listsPath: null, transferName: "" })}
+                  onClick={() =>
+                    s.setChoice({ listsPath: null, transferName: "" })
+                  }
                   title="Stop using the lists file"
                   aria-label="Stop using the lists file"
                 >
@@ -479,24 +638,47 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
           className="flex items-center gap-1.5 mb-1.5"
           title="Let elements already past their limit before any transfer set the FCITC (negative), as PSS/E reports it"
         >
-          <input type="checkbox" checked={c.includePast} onChange={(e) => s.setChoice({ includePast: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={c.includePast}
+            onChange={(e) => s.setChoice({ includePast: e.target.checked })}
+          />
           Count elements already past their limit
         </label>
         <div className="flex items-center gap-2 ml-auto">
           {s.running ? (
-            <Button type="button" onClick={s.cancel} data-testid="transfer-cancel">
+            <Button
+              type="button"
+              onClick={s.cancel}
+              data-testid="transfer-cancel"
+            >
               <Square size={13} /> Cancel
             </Button>
           ) : (
-            <Button type="submit" variant="primary" disabled={!!blocked} title={blocked ?? undefined} data-testid="transfer-run">
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!!blocked}
+              title={blocked ?? undefined}
+              data-testid="transfer-run"
+            >
               <Play size={13} /> Find the transfer limit
             </Button>
           )}
         </div>
       </form>
       {s.running && (
-        <div className="h-1 bg-slate-100" role="progressbar" aria-valuenow={Math.round(progressPct)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full bg-teal-600 transition-all" style={{ width: `${progressPct}%` }} />
+        <div
+          className="h-1 bg-slate-100"
+          role="progressbar"
+          aria-valuenow={Math.round(progressPct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full bg-teal-600 transition-all"
+            style={{ width: `${progressPct}%` }}
+          />
         </div>
       )}
       {s.error && (
@@ -510,20 +692,36 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             blocked
           ) : (
             <>
-              How many MW can move from the source to the sink before a branch reaches its limit, in the base case and after each outage
-              (DFAX and FCITC, from linear factors on the AC solve).
+              How many MW can move from the source to the sink before a branch
+              reaches its limit, in the base case and after each outage (DFAX
+              and FCITC, from linear factors on the AC solve).
             </>
           )}
         </EmptyState>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-3 pt-2" data-testid="transfer-summary">
+          <div
+            className="grid grid-cols-2 lg:grid-cols-4 gap-2 px-3 pt-2"
+            data-testid="transfer-summary"
+          >
             <Metric
               label="Transfer limit"
-              value={sum.transfer_limit_mw === null ? "No limit found" : mw(sum.transfer_limit_mw)}
-              tone={sum.transfer_limit_mw !== null && sum.transfer_limit_mw < 0 ? "bad" : "neutral"}
+              value={
+                sum.transfer_limit_mw === null
+                  ? "No limit found"
+                  : mw(sum.transfer_limit_mw)
+              }
+              tone={
+                sum.transfer_limit_mw !== null && sum.transfer_limit_mw < 0
+                  ? "bad"
+                  : "neutral"
+              }
               detail={
-                sum.limited_by === "generation" ? "Set by generation" : sum.limited_by === "network" ? "Set by the network" : undefined
+                sum.limited_by === "generation"
+                  ? "Set by generation"
+                  : sum.limited_by === "network"
+                    ? "Set by the network"
+                    : undefined
               }
             />
             <Metric
@@ -531,7 +729,7 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
               value={mw(sum.fcitc_mw)}
               detail={
                 sum.limiting
-                  ? `${monitoredLabel(sum.limiting.monitored, sum.limiting.winding)}, ${sum.limiting.contingency ? `after ${elementLabel(sum.limiting.contingency)}` : "base case"}`
+                  ? `${monitoredLabel(sum.limiting)}, ${sum.limiting.contingency ? `after ${contingencyLabel(sum.limiting)}` : "base case"}`
                   : `No element at or above ${fixed(sum.cutoff * 100, 0)}%`
               }
             />
@@ -547,16 +745,33 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             />
           </div>
           {sum.limiting && (
-            <p className="px-3 pt-2 text-xs text-slate-700" data-testid="transfer-limiting">
+            <p
+              className="px-3 pt-2 text-xs text-slate-700"
+              data-testid="transfer-limiting"
+            >
               The first limit:{" "}
               {sum.limiting.monitored.startsWith("interface:") ? (
-                monitoredLabel(sum.limiting.monitored)
+                monitoredLabel(sum.limiting)
               ) : (
-                <ElementLink element={sum.limiting.monitored} from="power" onOpen={() => onPick(sum.limiting!.monitored)} />
+                <ElementLink
+                  element={sum.limiting.monitored}
+                  from="power"
+                  onOpen={() => onPick(sum.limiting!.monitored)}
+                >
+                  {monitoredLabel(sum.limiting)}
+                </ElementLink>
               )}{" "}
-              {sum.limiting.contingency ? <>after the outage of {elementLabel(sum.limiting.contingency)}</> : "in the base case"} carries{" "}
-              {mw(sum.limiting.flow_mw)} against {mw(sum.limiting.limit_mw)} and takes {pct(Math.abs(sum.limiting.factor))} of the transfer
-              {sum.cancelled ? ". Cancelled: these are the outages studied before it stopped." : "."}
+              {sum.limiting.contingency ? (
+                <>after the outage of {contingencyLabel(sum.limiting)}</>
+              ) : (
+                "in the base case"
+              )}{" "}
+              carries {mw(sum.limiting.flow_mw)} against{" "}
+              {mw(sum.limiting.limit_mw)} and takes{" "}
+              {pct(Math.abs(sum.limiting.factor))} of the transfer
+              {sum.cancelled
+                ? ". Cancelled: these are the outages studied before it stopped."
+                : "."}
             </p>
           )}
           {sum.notes.length > 0 && (
@@ -574,15 +789,31 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
                 onChange={setView}
                 tabs={[
                   { id: "limits", label: "Limits", count: r.limits.length },
-                  { id: "past", label: "Already past", count: r.past_limits.length },
-                  { id: "contingencies", label: "By outage", count: r.contingencies.length },
+                  {
+                    id: "past",
+                    label: "Already past",
+                    count: r.past_limits.length,
+                  },
+                  {
+                    id: "contingencies",
+                    label: "By outage",
+                    count: r.contingencies.length,
+                  },
                   { id: "factors", label: "PTDFs", count: r.factors.length },
                 ]}
               />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <SearchBox value={search} onChange={setSearch} placeholder="Search elements…" />
-              <Button type="button" onClick={exportCsv} title="Save the limits as CSV">
+              <SearchBox
+                value={search}
+                onChange={setSearch}
+                placeholder="Search elements…"
+              />
+              <Button
+                type="button"
+                onClick={exportCsv}
+                title="Save the limits as CSV"
+              >
                 <Download size={13} /> CSV
               </Button>
             </div>
@@ -629,8 +860,11 @@ export function TransferTab({ report, onPick }: { report: SolveReport | null; on
             )}
           </div>
           <p className="px-3 pb-2 text-[11px] text-slate-500">
-            Linear transfer on the AC solve: flows in MW against {ratingLabel(shownBase)} in the base case and {ratingLabel(shownRating)}{" "}
-            after an outage, at {fixed(sum.limit_pct, 0)}%. Took {fixed(sum.elapsed_ms, 0)} ms. Lists keep the lowest 500.
+            Linear transfer on the AC solve: flows in MW against{" "}
+            {ratingLabel(shownBase)} in the base case and{" "}
+            {ratingLabel(shownRating)} after an outage, at{" "}
+            {fixed(sum.limit_pct, 0)}%. Took {fixed(sum.elapsed_ms, 0)} ms.
+            Lists keep the lowest 500.
           </p>
         </div>
       )}
