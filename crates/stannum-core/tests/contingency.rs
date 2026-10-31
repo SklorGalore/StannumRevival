@@ -707,3 +707,95 @@ fn a_lists_file_runs_its_contingencies() {
         assert!(c.with_problems >= c.with_overloads.max(c.with_voltage_problems));
     }
 }
+
+/// Monitors from a lists file choose what is checked: only the monitored
+/// branch can overload, only the monitored bus has voltage problems (at the
+/// monitor's limits), and an interface's flow is summed in the direction
+/// its ids are written.
+#[test]
+fn a_lists_file_monitors_what_it_names() {
+    let mut ws = solved("case30.m");
+    let open = ws.current_mut().unwrap();
+    let all = open.run_contingencies(settings(Method::Ac)).unwrap();
+    let watched = all.worst.clone().unwrap().worst.unwrap();
+    assert!(all.with_overloads > 0);
+    let path = std::env::temp_dir().join(format!("stannum-monitors-{}.stnl", std::process::id()));
+    let run = |open: &mut stannum_core::workspace::OpenCase, limit: &str| {
+        // The watched branch is written with its buses swapped.
+        let lists = format!(
+            "stannum-lists 0.1\n\
+             monitor one element=line:{}:{}:1 limit_pct=50\n\
+             monitor v8 kind=voltage element=bus:8 vmin_pu=0.99\n\
+             monitor bad element=line:98:99:1\n\
+             interface gate elements=[[line:2:1:1, 1], [line:1:3:1, 1]]{limit}\n\
+             monitor gate kind=interface interface=gate\n",
+            watched.to, watched.from
+        );
+        std::fs::write(&path, lists).unwrap();
+        let summary = open
+            .run_contingencies(ContingencySettings {
+                monitors: Some(path.to_string_lossy().into_owned()),
+                ..settings(Method::Ac)
+            })
+            .unwrap();
+        let rows = open.contingency_rows(0, 1000).unwrap().0;
+        (summary, rows)
+    };
+    let (summary, rows) = run(open, "");
+    assert!(summary.monitored);
+    assert_eq!(summary.total, all.total);
+    assert_eq!(summary.notes.len(), 1, "{:?}", summary.notes);
+    assert!(summary.notes[0].contains("line:98:99:1 isn't a branch"));
+    for r in rows.iter().filter(|r| r.converged == Some(true)) {
+        if let Some(w) = &r.worst {
+            assert_eq!(w.element, watched.element, "only the monitored branch");
+        }
+        assert!(r.overloads <= 1);
+        if let Some(v) = &r.worst_voltage {
+            assert_eq!((v.bus, v.vmin), (8, 0.99));
+        }
+        assert_eq!(r.interface_violations, 0, "no limit, no violation");
+    }
+    // At 50% of its rating, the watched branch is over in more outages.
+    assert!(rows.iter().filter(|r| r.overloads > 0).count() >= 1);
+    // The interface counts line 1-2 against its from end (written 2-1).
+    let rank = rows
+        .iter()
+        .find(|r| r.element == "line:1:2:1")
+        .unwrap()
+        .rank;
+    let detail = open.contingency_detail(rank).unwrap();
+    let base = |id: &str| {
+        detail
+            .branches
+            .iter()
+            .find(|b| b.element == id)
+            .unwrap()
+            .base_mw
+    };
+    let gate = &detail.interfaces[0];
+    assert_eq!(gate.name, "gate");
+    assert!((gate.base_mw - (base("line:1:3:1") - base("line:1:2:1"))).abs() < 1e-6);
+    // With line 1-2 out, all of it goes through 1-3.
+    assert!(
+        (gate.mw
+            - detail
+                .branches
+                .iter()
+                .find(|b| b.element == "line:1:3:1")
+                .unwrap()
+                .mw)
+            .abs()
+            < 1e-6
+    );
+    // A limit just above the base flow: the outages that push it further
+    // violate it.
+    let limit = gate.base_mw.abs() * 1.05;
+    let (summary, rows) = run(open, &format!(" limit_mw={limit}"));
+    std::fs::remove_file(&path).ok();
+    assert!(summary.with_interface_problems > 0);
+    let r = rows.iter().find(|r| r.interface_violations > 0).unwrap();
+    let w = r.worst_interface.as_ref().unwrap();
+    assert_eq!(w.name, "gate");
+    assert!(w.pct.unwrap() > 100.0 && w.base_pct.unwrap() < 100.0);
+}

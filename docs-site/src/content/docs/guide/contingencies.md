@@ -106,6 +106,28 @@ their contingency and are listed in a note above the results. The
 [lists file format](/StannumRevival/reference/lists-file/) page has the
 syntax and an example; the study file remembers which file you chose.
 
+## Checking only what you monitor
+
+By default every rated branch and every bus is checked after each outage.
+Set **Checked** to **Monitors from a lists file** and choose a file (the
+lists file you run, or another) to check only what its `monitor` records
+name, as a PSS/E `.mon` file does:
+
+- a `flow` monitor watches one branch, or every branch with an end in its
+  subsystem, at its own `limit_pct` and, when it names one, its own rating
+  slot (1 to 3 for rates A to C);
+- a `voltage` monitor watches one bus, or every bus in its subsystem, with
+  its own `vmin_pu` and `vmax_pu` in place of the bus's limits;
+- an `interface` monitor sums an interface's weighted branch flows after
+  each outage, measured from the first bus of each id as written, and
+  flags it when the sum goes past `limit_pct` of the interface's
+  `limit_mw` and is new or worse. The Overloads column counts interfaces
+  beside branches, and an outage's detail lists every monitored interface.
+
+Branches and buses no monitor names aren't checked, so a file with only
+voltage monitors reports no overloads. Monitors naming equipment the case
+doesn't have are skipped and noted with the results.
+
 ## Reading the results
 
 The figures at the top count outages that cause overloads, voltage problems

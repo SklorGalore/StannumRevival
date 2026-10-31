@@ -37,6 +37,9 @@ export interface ContingencyChoice {
   zeroImpedancePu: number;
   /** The lists file (.stnl) whose contingencies run, for source "lists". */
   listsPath: string | null;
+  /** Check only what a lists file's monitor records name, and its file. */
+  monitorFromLists: boolean;
+  monitorsPath: string | null;
   /** Planning events: the categories to run, and the lowest voltage. */
   categories: string[];
   kvMin: number;
@@ -57,6 +60,8 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   skipZeroImpedance: false,
   zeroImpedancePu: 0.0001,
   listsPath: null,
+  monitorFromLists: false,
+  monitorsPath: null,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "screen",
@@ -149,6 +154,7 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
       const summary = await api.runContingencies({
         elements: planning || lists ? null : elements,
         lists,
+        monitors: c.monitorFromLists ? c.monitorsPath : null,
         branches: c.branches,
         generators: c.generators,
         buses: !planning && c.buses,

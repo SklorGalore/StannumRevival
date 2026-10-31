@@ -281,6 +281,9 @@ class Case:
         the chosen branches and generators two at a time),
         ``lists`` (the path of a ``.stnl`` lists file whose contingencies
         run instead; skipped equipment is listed under ``notes``),
+        ``monitors`` (the path of a ``.stnl`` lists file whose monitor
+        records choose what is checked, with their own limits, and whose
+        interfaces are summed per outage),
         ``skip_zero_impedance`` and ``zero_impedance_pu`` (leave out lines
         with no resistance and a reactance at or below the threshold,
         0.0001 p.u. by default as PSS/E's THRSHZ),

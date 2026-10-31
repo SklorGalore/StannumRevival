@@ -1,9 +1,10 @@
 //! Contingencies from a lists file (`.stnl`): its `contingency` records and
 //! the `contingency_set` rules that generate them, read against one case.
 //!
-//! Lists name equipment by natural keys and don't belong to a case, so what
-//! the case lacks is reported and skipped rather than refused. Monitors and
-//! interfaces are read by the format crate but not applied yet.
+//! Its `monitor` records (with the `interface` records they name) say what
+//! to check after each outage. Lists name equipment by natural keys and
+//! don't belong to a case, so what the case lacks is reported and skipped
+//! rather than refused.
 
 use crate::power::PowerCase;
 use stannum_format::{Document, Record, Value};
@@ -37,11 +38,52 @@ pub struct Set {
     pub kv_min: Option<f64>,
 }
 
+/// What a `monitor` record watches.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Watched {
+    /// Branch flows: one element, or every branch with an end in the
+    /// buses (the whole case when `None`).
+    Flow {
+        element: Option<String>,
+        buses: Option<HashSet<u32>>,
+        /// Rating slot 1-3 (A-C) when the record names one.
+        rating: Option<u8>,
+    },
+    /// Bus voltages, with limits that replace the buses' own.
+    Voltage {
+        element: Option<String>,
+        buses: Option<HashSet<u32>>,
+        vmin: Option<f64>,
+        vmax: Option<f64>,
+    },
+    /// An interface's summed flow against its MW limit.
+    Interface(Interface),
+}
+
+/// One `monitor` record.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Monitor {
+    pub name: String,
+    pub watched: Watched,
+    /// Percent of the limit that counts as a violation.
+    pub limit_pct: f64,
+}
+
+/// One `interface` record: branches as written (`[element, weight]`), the
+/// flow of each measured from the first bus of its id.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Interface {
+    pub name: String,
+    pub elements: Vec<(String, f64)>,
+    pub limit_mw: Option<f64>,
+}
+
 /// A lists file read against a case.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Lists {
     pub named: Vec<Named>,
     pub sets: Vec<Set>,
+    pub monitors: Vec<Monitor>,
     /// What was skipped and why, in sentences.
     pub notes: Vec<String>,
 }
@@ -102,7 +144,97 @@ pub fn parse(text: &str, power: &PowerCase) -> Result<Lists, String> {
             kv_min: r.float("kv_min"),
         });
     }
+    for r in doc.records("monitor") {
+        if let Some(m) = monitor(&doc, r, &subsystems, &mut out.notes) {
+            out.monitors.push(m);
+        }
+    }
     Ok(out)
+}
+
+/// A `monitor` record, or `None` (with a note) when it can't be applied.
+fn monitor(
+    doc: &Document,
+    r: &Record,
+    subsystems: &Subsystems,
+    notes: &mut Vec<String>,
+) -> Option<Monitor> {
+    let mut skip = |why: String| {
+        notes.push(format!("Monitor \"{}\": {why}; skipped.", r.id));
+        None
+    };
+    let buses = match r.str("subsystem") {
+        Some(name) => match subsystems.buses(name) {
+            Some(b) => Some(b),
+            None => return skip(format!("subsystem {name} isn't in the file")),
+        },
+        None => None,
+    };
+    let element = r.str("element").map(str::to_string);
+    let kind = doc
+        .value("monitor", r, "kind")
+        .and_then(Value::as_str)
+        .unwrap_or("flow");
+    let watched = match kind {
+        "flow" => {
+            let rating = match r.int("rating") {
+                None => None,
+                Some(n @ 1..=3) => Some(n as u8),
+                Some(n) => return skip(format!("rating slot {n} isn't read yet (only 1-3, A-C)")),
+            };
+            Watched::Flow {
+                element,
+                buses,
+                rating,
+            }
+        }
+        "voltage" => Watched::Voltage {
+            element,
+            buses,
+            vmin: r.float("vmin_pu"),
+            vmax: r.float("vmax_pu"),
+        },
+        "interface" => {
+            let Some(name) = r.str("interface") else {
+                return skip("no interface named".into());
+            };
+            let Some(i) = doc.records("interface").iter().find(|i| i.id == name) else {
+                return skip(format!("interface {name} isn't in the file"));
+            };
+            let elements = doc
+                .value("interface", i, "elements")
+                .and_then(Value::as_list)
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|e| {
+                    let parts = e.as_list()?;
+                    let id = parts.first()?.as_str()?.to_string();
+                    let w = parts.get(1).and_then(Value::as_f64).unwrap_or(1.0);
+                    Some((id, w))
+                })
+                .collect();
+            Watched::Interface(Interface {
+                // Its display name, when it has one.
+                name: i
+                    .str("name")
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or(name)
+                    .to_string(),
+                elements,
+                limit_mw: i.float("limit_mw"),
+            })
+        }
+        other => return skip(format!("kind {other} isn't known")),
+    };
+    let limit_pct = doc
+        .value("monitor", r, "limit_pct")
+        .and_then(Value::as_f64)
+        .unwrap_or(100.0);
+    Some(Monitor {
+        name: r.id.clone(),
+        watched,
+        limit_pct,
+    })
 }
 
 /// A `contingency` record's elements, or `None` (with a note) when it has

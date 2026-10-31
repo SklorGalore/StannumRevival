@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Monitored elements and interfaces.** Contingency runs can check only
+  what a `.stnl` lists file's `monitor` records name: branches at their own
+  limit and rating, buses at their own voltage limits, and interfaces,
+  whose summed flow is reported and flagged against their MW limit after
+  each outage. In the app, set **Checked** to **Monitors from a lists
+  file**; from Python, the CLI and run files, set `monitors` to the path.
 - **Transfer limits (DFAX and FCITC), preview.** A study moves power from a
   source subsystem to a sink (scaled by generation, generator reserve or
   load) and finds the first change of total transfer capability: the

@@ -1131,6 +1131,14 @@
           },
           "type": "array"
         },
+        "interfaces": {
+          "default": [],
+          "description": "Every monitored interface's flow.",
+          "items": {
+            "$ref": "#/$defs/InterfaceFlow"
+          },
+          "type": "array"
+        },
         "overloads": {
           "items": {
             "$ref": "#/$defs/Overload"
@@ -1153,7 +1161,8 @@
         "voltage_problems",
         "branches",
         "buses",
-        "cut_off"
+        "cut_off",
+        "interfaces"
       ],
       "type": "object"
     },
@@ -1224,6 +1233,13 @@
         "element": {
           "description": "The element taken out; empty for the base case (P0).",
           "type": "string"
+        },
+        "interface_violations": {
+          "default": 0,
+          "description": "Monitored interfaces over their limit that are new or worse, and\nthe worst of them.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "iterations": {
           "format": "uint",
@@ -1303,6 +1319,16 @@
           ],
           "description": "The most loaded branch that is over its limit and new or worse than\nbefore the outage; otherwise the most loaded branch."
         },
+        "worst_interface": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InterfaceFlow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "worst_voltage": {
           "anyOf": [
             {
@@ -1330,6 +1356,8 @@
         "note",
         "worst_voltage",
         "voltage_violations",
+        "interface_violations",
+        "worst_interface",
         "cut_off_buses",
         "lost_load_mw",
         "lost_generation_mw",
@@ -1399,6 +1427,16 @@
           "items": {
             "description": "The element taken out; empty for the base case (P0).",
             "type": "string"
+          },
+          "type": "array"
+        },
+        "interface_violations": {
+          "items": {
+            "default": 0,
+            "description": "Monitored interfaces over their limit that are new or worse, and\nthe worst of them.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
           },
           "type": "array"
         },
@@ -1513,6 +1551,19 @@
           },
           "type": "array"
         },
+        "worst_interface": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/InterfaceFlow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": "array"
+        },
         "worst_voltage": {
           "items": {
             "anyOf": [
@@ -1536,6 +1587,7 @@
         "cut_off_buses",
         "description",
         "element",
+        "interface_violations",
         "iterations",
         "kind",
         "lost_generation_mw",
@@ -1547,6 +1599,7 @@
         "severity",
         "voltage_violations",
         "worst",
+        "worst_interface",
         "worst_voltage"
       ],
       "type": "object"
@@ -1607,6 +1660,14 @@
         "method": {
           "$ref": "#/$defs/Method",
           "default": "screen"
+        },
+        "monitors": {
+          "default": null,
+          "description": "Check only what the `monitor` records of this lists file (`.stnl`)\nname: branch flows and bus voltages with their own limits, and\ninterfaces. Every rated branch and every bus when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "pairs": {
           "default": false,
@@ -1715,6 +1776,11 @@
             }
           ]
         },
+        "monitored": {
+          "default": false,
+          "description": "Whether a lists file's monitors chose what was checked.",
+          "type": "boolean"
+        },
         "not_converged": {
           "format": "uint",
           "minimum": 0,
@@ -1738,6 +1804,13 @@
         },
         "total": {
           "description": "Outages run, and in-service checks skipped because the element was\nalready out.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_interface_problems": {
+          "default": 0,
+          "description": "Outages that take a monitored interface over its limit.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -1773,6 +1846,7 @@
         "ac_checked",
         "with_overloads",
         "with_voltage_problems",
+        "with_interface_problems",
         "not_converged",
         "islanding",
         "screen_ms",
@@ -1781,7 +1855,8 @@
         "cancelled",
         "worst",
         "categories",
-        "notes"
+        "notes",
+        "monitored"
       ],
       "type": "object"
     },
@@ -3559,6 +3634,61 @@
         "name",
         "elements",
         "limit_mw"
+      ],
+      "type": "object"
+    },
+    "InterfaceFlow": {
+      "description": "An interface's summed flow after an outage, from a lists file monitor.",
+      "properties": {
+        "base_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "base_pct": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limit_mw": {
+          "description": "Its limit; none when the interface has no limit.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limit_pct": {
+          "description": "Percent of the limit that counts as a violation.",
+          "format": "double",
+          "type": "number"
+        },
+        "mw": {
+          "description": "Weighted sum of its branch flows, MW, after and before.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pct": {
+          "description": "|MW| as a percent of the limit, after and before.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "mw",
+        "base_mw",
+        "limit_mw",
+        "pct",
+        "base_pct",
+        "limit_pct"
       ],
       "type": "object"
     },
