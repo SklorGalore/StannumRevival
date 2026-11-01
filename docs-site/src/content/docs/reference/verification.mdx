@@ -123,6 +123,17 @@ off; Stannum's smallest step is 0.01 MW here.
 
 <VerificationTable suite="pv" />
 
+## QV curves
+
+Each [QV curve](/StannumRevival/manual/qv-curves/) is compared with PYPOWER
+solves of the same case with the same condenser added at the bus, at every
+voltage on the 0.01 p.u. grid from 1.1 p.u. down to 0.3 p.u., and so is the
+reactive power margin. The reference is made by
+`crates/stannum-core/scripts/qv_reference.py`, with generator reactive
+limits off.
+
+<VerificationTable suite="qv" />
+
 ## Transformer impedance tables and magnetizing
 
 Impedance correction tables (`TAB`) and magnetizing admittance (`MAG1`,

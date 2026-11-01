@@ -77,6 +77,7 @@ export default defineConfig({
             { label: "Contingency analysis", slug: "manual/contingencies" },
             { label: "Transfer limits (DFAX)", slug: "manual/transfer-limits" },
             { label: "PV curves (voltage stability)", slug: "manual/pv-curves" },
+            { label: "QV curves (reactive margin)", slug: "manual/qv-curves" },
             {
               label: "HVDC",
               items: [

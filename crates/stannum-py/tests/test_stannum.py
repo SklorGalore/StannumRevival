@@ -181,6 +181,22 @@ def test_pv_curve(case9: sn.Case) -> None:
         case9.pv_curve({})
 
 
+def test_qv_curve(case9: sn.Case) -> None:
+    case9.solve()
+    run = case9.qv_curve([5, 7], step_pu=0.02)
+    assert list(run.curves["bus"]) == [5, 7]
+    assert run.summary.weakest_bus in (5, 7)
+    assert np.all(run.curves["margin_mvar"] > 0)
+    five = run.points["bus"] == 5
+    assert np.all(np.diff(run.points["v_pu"][five]) > 0)
+    # At its own voltage the condenser gives (almost) nothing.
+    base = run.curves["base_vm_pu"][0]
+    at = np.argmin(np.abs(run.points["v_pu"][five] - base))
+    assert abs(run.points["q_mvar"][five][at]) < 1
+    with pytest.raises(sn.StannumError):
+        case9.qv_curve([])
+
+
 def test_records_and_record_edits(case9: sn.Case) -> None:
     book = case9.records()
     assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]

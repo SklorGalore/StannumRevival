@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 /// Newton iterations per pass for each step, at least.
-const MIN_ITERATIONS: usize = 30;
+pub(crate) const MIN_ITERATIONS: usize = 30;
 
 fn load_scaling() -> Scaling {
     Scaling::Load
@@ -298,7 +298,7 @@ impl Side {
 
 /// One step's solve: the result when it converged, else why not (`None`
 /// when cancelled).
-fn solve_step(
+pub(crate) fn solve_step(
     case: &Case,
     options: &rs_power::PowerFlowOptions,
 ) -> Result<PowerFlowResult, Option<String>> {

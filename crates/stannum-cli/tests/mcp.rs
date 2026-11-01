@@ -208,6 +208,12 @@ fn a_client_opens_solves_and_reads_a_case() {
     assert!(pv["summary"]["nose_mw"].as_f64().unwrap() > 0.0, "{pv}");
     assert_eq!(pv["curves"]["columns"][0], "bus", "{pv}");
     assert!(pv["curves"]["rows"].as_array().unwrap().len() <= 2, "{pv}");
+    let qv = c
+        .tool("qv_curve", json!({ "buses": [5], "step_pu": 0.05 }))
+        .unwrap();
+    assert!(qv["summary"]["weakest_margin_mvar"].is_number(), "{qv}");
+    assert_eq!(qv["buses"]["columns"][0], "bus", "{qv}");
+    assert!(!qv["points"]["rows"].as_array().unwrap().is_empty(), "{qv}");
     let worst = c
         .tool("contingency_detail", json!({ "rank": 1, "limit": 3 }))
         .unwrap();

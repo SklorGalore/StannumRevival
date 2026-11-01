@@ -147,6 +147,8 @@ fn answers_fit_their_schemas() {
     c.ok("cancel_transfer_limits", json!({}));
     c.ok("pv_progress", json!({}));
     c.ok("cancel_pv_curve", json!({}));
+    c.ok("qv_progress", json!({}));
+    c.ok("cancel_qv_curve", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
     c.ok("diagnostics", json!({}));
 
@@ -309,6 +311,11 @@ fn answers_fit_their_schemas() {
         json!({ "settings": { "sink": { "areas": [1] }, "step_mw": 20.0, "max_curves": 3 } }),
     );
     assert!(pv["summary"]["nose_mw"].is_number(), "{pv}");
+    let qv = c.ok(
+        "run_qv_curve",
+        json!({ "settings": { "buses": [5], "step_pu": 0.05 } }),
+    );
+    assert!(qv["curves"][0]["margin_mvar"].is_number(), "{qv}");
     c.ok(
         "set_study_edits",
         json!({ "edits": [{ "kind": "generation", "element": generator, "mw": 10.0 }] }),

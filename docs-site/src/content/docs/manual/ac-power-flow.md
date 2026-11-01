@@ -185,5 +185,6 @@ reported as errors rather than results.
 Optimal power flow, alternative AC formulations, radial methods and
 three-phase models are outside the solver. [PV
 curves](/StannumRevival/manual/pv-curves/) run the solver step by step up to
-the nose. See [What isn't
+the nose, and [QV curves](/StannumRevival/manual/qv-curves/) step a bus's
+voltage down past the bottom. See [What isn't
 modelled](/StannumRevival/reference/limitations/).

@@ -1609,6 +1609,97 @@ export type QuantityInfo = {
   title: string;
 };
 
+/** One bus's curve: the condenser's reactive output at each voltage. */
+export type QvCurve = {
+  base_kv: number;
+  /**
+   * The bus voltage in the last AC solve, p.u., where the condenser
+   * gives nothing.
+   */
+  base_vm_pu: number;
+  /**
+   * False when the curve was still falling at its lowest point, so the
+   * true bottom is lower and the margin at least `margin_mvar`.
+   */
+  bottom_found: boolean;
+  bus: number;
+  failed_solves: number;
+  /** What stopped the sweep down. */
+  limited_by: "collapse" | "v_low" | "max_points" | "cancelled" | "failed";
+  /**
+   * Reactive power margin, Mvar: how far the bottom lies below zero.
+   * Negative when the bottom is above zero, so the bus can't hold its
+   * voltage unaided.
+   */
+  margin_mvar: number;
+  name: string;
+  /** Online generators elsewhere held at a reactive limit at each point. */
+  q_limited: number[];
+  /**
+   * The bottom of the curve: the least reactive output, Mvar, and the
+   * voltage there, p.u.
+   */
+  q_min_mvar: number;
+  /**
+   * The condenser's reactive output at each point, Mvar: positive when
+   * it injects (the bus needs support to sit at that voltage), negative
+   * when it absorbs.
+   */
+  q_mvar: number[];
+  /** Solves for this bus, and how many didn't converge. */
+  solves: number;
+  v_at_q_min_pu: number;
+  /** Voltage set at each point, p.u., lowest first. */
+  v_pu: number[];
+};
+
+export type QvResults = {
+  /** One curve per bus, in the order asked for. */
+  curves: QvCurve[];
+  summary: QvSummary;
+};
+
+/** A QV curve study. */
+export type QvSettings = {
+  /** Buses to draw a curve for, each swept on its own. */
+  buses: number[];
+  /** The most solves for one bus, failed ones included. */
+  max_points?: number;
+  /**
+   * The smallest step tried before the sweep down stops, p.u. An 8th of
+   * the step when absent.
+   */
+  min_step_pu?: number | null;
+  /** The voltage step, p.u. The steps land on multiples of it. */
+  step_pu?: number;
+  /** The highest voltage set, p.u. */
+  v_high_pu?: number;
+  /**
+   * The lowest voltage tried, p.u. The sweep usually stops before it,
+   * when the voltage is too low to solve.
+   */
+  v_low_pu?: number;
+};
+
+export type QvSummary = {
+  /** Buses with a curve. */
+  buses: number;
+  cancelled: boolean;
+  elapsed_ms: number;
+  failed_solves: number;
+  min_step_pu: number;
+  /** Things worth knowing about the setup, in words. */
+  notes: string[];
+  solves: number;
+  step_pu: number;
+  v_high_pu: number;
+  v_low_pu: number;
+  /** The bus with the smallest reactive power margin, and that margin. */
+  weakest_bus: number | null;
+  weakest_bus_name: string;
+  weakest_margin_mvar: number | null;
+};
+
 /** Which of a branch's three ratings a loading is measured against. */
 export type Rating = "a" | "b" | "c";
 
@@ -2467,6 +2558,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: null;
   };
+  /** Stop the QV curve study in progress. */
+  cancel_qv_curve: {
+    args: Record<string, never>;
+    result: null;
+  };
   /**
    * Stop the run file in progress before its next line, and the solve or
    * contingency run it is waiting on.
@@ -2769,6 +2865,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: Progress;
   };
+  /** How far the QV curve study in progress has got: buses done. */
+  qv_progress: {
+    args: Record<string, never>;
+    result: Progress;
+  };
   /**
    * How each column of one record type filters: by number, by text, or
    * by picking one of its few values.
@@ -2926,6 +3027,20 @@ export interface CoreCommands {
       settings: PvSettings;
     };
     result: PvResults;
+  };
+  /**
+   * QV curves: a fictitious condenser holds each bus at one voltage
+   * after another, from the last AC solve's voltage up and down, with
+   * full AC solves; its reactive output at each voltage is the curve and
+   * the depth of the curve's bottom is the bus's reactive power margin.
+   * `cancel_qv_curve` stops it and `qv_progress` counts the buses done.
+   */
+  run_qv_curve: {
+    args: {
+      case?: CaseId | null;
+      settings: QvSettings;
+    };
+    result: QvResults;
   };
   /**
    * Transfer limits (DFAX and FCITC): how much power can move from the
@@ -3173,6 +3288,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "open_sample",
   "run_contingencies",
   "run_pv_curve",
+  "run_qv_curve",
   "run_transfer_limits",
   "save_case_as",
   "scale_load_generation",

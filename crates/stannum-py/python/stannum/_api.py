@@ -455,6 +455,48 @@ class Case:
         result["summary"] = Answer(result["summary"])
         return result
 
+    # QV curves
+
+    def qv_curve(
+        self,
+        buses: Iterable[int],
+        settings: Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> Answer:
+        """QV curves: a fictitious condenser holds each of ``buses`` at one
+        voltage after another, with full AC solves from the last AC solve,
+        and its reactive output at each voltage is the curve. The depth of
+        the curve's bottom below zero is the bus's reactive power margin.
+        Solve with the AC model first; each solve keeps that solve's
+        settings and controls.
+
+        Options (all optional): ``v_high_pu`` (1.1), ``v_low_pu`` (0.3),
+        ``step_pu`` (0.01), ``min_step_pu`` and ``max_points`` (per bus).
+
+        Returns the ``summary`` (``weakest_bus``, ``weakest_margin_mvar``,
+        ``notes``, ...), ``curves`` (one row per bus: ``margin_mvar``,
+        ``v_at_q_min_pu``, ``bottom_found``, ...) and ``points``: ``bus``,
+        ``v_pu``, ``q_mvar`` and ``q_limited`` for every point of every
+        curve, lowest voltage first, ready to plot.
+        """
+        merged = _settings(settings, options) or {}
+        merged["buses"] = [int(b) for b in buses]
+        result = self.call("run_qv_curve", settings=merged)
+        curves = result.get("curves") or []
+        points: dict[str, list[Any]] = {"bus": [], "v_pu": [], "q_mvar": [], "q_limited": []}
+        for c in curves:
+            n = len(c["v_pu"])
+            points["bus"] += [c["bus"]] * n
+            points["v_pu"] += c["v_pu"]
+            points["q_mvar"] += c["q_mvar"]
+            points["q_limited"] += c["q_limited"]
+        result["points"] = Table(points, count=len(points["bus"]))
+        arrays = ("v_pu", "q_mvar", "q_limited")
+        rows = [{k: v for k, v in c.items() if k not in arrays} for c in curves]
+        result["curves"] = Table.from_rows(rows) if rows else Table({})
+        result["summary"] = Answer(result["summary"])
+        return result
+
     # Records and elements
 
     def records(self, section: str | None = None) -> Any:

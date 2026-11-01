@@ -126,6 +126,7 @@ pub struct Session {
     transfers: Mutex<Option<RunHandle>>,
     /// The PV curve study in progress, if one is running.
     pv: Mutex<Option<RunHandle>>,
+    qv: Mutex<Option<RunHandle>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
     /// Sorted, filtered orders of the tables being paged through, newest
@@ -404,6 +405,20 @@ impl Session {
         Ok(results?)
     }
 
+    /// A QV curve study, run without the workspace lock.
+    fn qv_curve(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::qv::QvSettings,
+    ) -> Result<crate::qv::QvResults, Error> {
+        let job = self.workspace()?.case(case)?.qv_job(settings)?;
+        *relock(&self.qv) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.qv) = None);
+        let results = job.run();
+        drop(clear);
+        Ok(results?)
+    }
+
     /// Sensitivities, calculated without the workspace lock.
     fn sensitivities(
         &self,
@@ -602,6 +617,7 @@ impl Session {
             self.cancel_contingencies();
             self.cancel_transfers();
             self.cancel_pv();
+            self.cancel_qv();
         }
     }
 
@@ -621,6 +637,19 @@ impl Session {
         if let Some(handle) = relock(&self.pv).clone() {
             handle.cancel();
         }
+    }
+
+    fn cancel_qv(&self) {
+        if let Some(handle) = relock(&self.qv).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn qv_progress(&self) -> Progress {
+        relock(&self.qv)
+            .as_ref()
+            .map(RunHandle::progress)
+            .unwrap_or_default()
     }
 
     fn pv_progress(&self) -> Progress {
@@ -1156,6 +1185,23 @@ commands! {
     /// How far the PV curve study in progress has got: solves so far.
     pv_progress {} -> Progress => |s, _| Ok(s.pv_progress());
 
+    /// QV curves: a fictitious condenser holds each bus at one voltage
+    /// after another, from the last AC solve's voltage up and down, with
+    /// full AC solves; its reactive output at each voltage is the curve and
+    /// the depth of the curve's bottom is the bus's reactive power margin.
+    /// `cancel_qv_curve` stops it and `qv_progress` counts the buses done.
+    run_qv_curve { case: Option<CaseId>, settings: crate::qv::QvSettings } -> crate::qv::QvResults =>
+        |s, a| s.qv_curve(a.case, a.settings);
+
+    /// Stop the QV curve study in progress.
+    cancel_qv_curve {} -> () => |s, _| {
+        s.cancel_qv();
+        Ok(())
+    };
+
+    /// How far the QV curve study in progress has got: buses done.
+    qv_progress {} -> Progress => |s, _| Ok(s.qv_progress());
+
     /// The last contingency run's summary, or null.
     contingency_summary { case: Option<CaseId> } -> Option<ContingencySummary> =>
         |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
@@ -1433,6 +1479,8 @@ mod tests {
             }
             if c.name == "run_transfer_limits" || c.name == "run_pv_curve" {
                 args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
+            } else if c.name == "run_qv_curve" {
+                args.insert("settings".into(), json!({ "buses": [1] }));
             } else if c.name != "run_contingencies" && args.contains_key("settings") {
                 args.insert("settings".into(), json!(SolveSettings::default()));
             }

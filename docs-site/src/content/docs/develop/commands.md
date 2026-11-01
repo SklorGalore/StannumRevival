@@ -136,10 +136,11 @@ of a case's records and Records edits all follow the same pattern:
 
 `Session::solve` and `Session::run_contingencies` are the examples to copy.
 Cancellation goes through handles the `Session` keeps outside the lock
-(`solving`, `contingencies`, `transfers`, `pv`, `running_file`), so
+(`solving`, `contingencies`, `transfers`, `pv`, `qv`, `running_file`), so
 `cancel_solve`, `cancel_contingencies`, `cancel_transfer_limits`,
-`cancel_pv_curve`, `cancel_run_file`, `contingency_progress`,
-`transfer_progress` and `pv_progress` answer
+`cancel_pv_curve`, `cancel_qv_curve`, `cancel_run_file`,
+`contingency_progress`, `transfer_progress`, `pv_progress` and
+`qv_progress` answer
 while the work runs. `tests/lock_free_work.rs` checks this.
 
 ## Versioning
