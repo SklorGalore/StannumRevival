@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Compare with the file's voltages.** After an AC solve, the Power flow
+  overview sets the voltages saved in the case file (the solution of
+  PSS/E, PowerWorld or whatever tool saved it) beside Stannum's: mean and
+  largest differences, how many buses agree within 0.001 and 0.01 p.u.,
+  and the 20 largest differences, each a link to its bus. Also the
+  `compare_file_voltages` command for Python, run files and MCP.
 - **PV curves (voltage stability), preview.** A study grows the load in a
   sink subsystem, or a transfer from a source to the sink, step by step
   with full AC solves (every control and Q limit kept), halving the step
@@ -188,6 +194,22 @@ The first stable release. Coming from 0.5.0, it also holds everything in
 
 ### Changed
 
+- **Default mismatch tolerance is now 0.1 MVA**, the usual PSS/E and
+  PowerWorld setting, instead of 2 MVA. Results on small ratings now match
+  a tight solve; raise it in Solve settings for quick screening of very
+  large cases.
+- **Contingency summaries say what was checked.** When only some outages
+  are solved in AC, the Voltage problems card says how many were checked
+  and how many had the linear screen only, and the log line says the same.
+- **Transfer limits say when the first limit is already near its rating.**
+  The sentence under the results gives its loading before any transfer when
+  it is 95% or more, and the new **Already past from** setting
+  (`past_limit_pct`, 100 by default) lists elements at or above that
+  loading apart, as it does for elements already past their limit.
+- **Docs.** A CEII caution on the AI assistants page, a new [How it is
+  built and tested](https://sklorgalore.github.io/StannumRevival/reference/how-it-is-built/)
+  page, and the README and Python install example brought up to date.
+
 - **Study files are retired; save work as a run file, and keep a history.**
   **Save study** is now **Save as run file**: a `.stnrun` that opens the
   case, attaches its DC grid and bus coordinates files, sets the study edits
@@ -214,6 +236,20 @@ The first stable release. Coming from 0.5.0, it also holds everything in
   figure shows three decimals of MVA, like the residual.
 
 ### Fixed
+
+- **Continuous switched shunts no longer stick at a limit.** A continuous
+  (MODSW 2) shunt that reached an end of its range during a solve stayed
+  fixed there even when the voltage fell back past its setpoint, and a
+  second continuous shunt at the same bus never moved. They now return to
+  voltage control, and shunts at one bus share it (holding the higher
+  setpoint). The Texas 2000-bus case now matches its saved PowerWorld
+  solution within 0.0005 p.u. at every bus (it was 0.036 p.u. at bus 3051).
+- **A line with the same buses and circuit as a transformer** is taken out
+  of service with an import warning, as PSS/E and PowerWorld keep one
+  branch per circuit. The Memphis 993-bus case now matches its saved
+  solution within 0.0001 p.u.
+- The saved-solution checks on the Verification page now hold every bus to
+  0.001 p.u. and 0.05 degrees.
 
 - **Confirm prompts in the app.** Questions such as "Discard unsaved
   changes?" and "Restart to update?" failed with "dialog.message not

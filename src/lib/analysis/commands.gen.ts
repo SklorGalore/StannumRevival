@@ -947,6 +947,54 @@ export type FieldType = "number" | "text" | "category";
 /** A number, or text for values that aren't numbers (a bus type, a missing limit). */
 export type FieldValue = number | string;
 
+/** How the latest solve compares with the voltages saved in the file. */
+export type FileVoltageComparison = {
+  /** Buses in both the file and the solve, in service. */
+  compared: number;
+  /** Largest |solved - file| angle, degrees, after lining up the reference bus. */
+  max_dva: number;
+  max_dva_bus: number | null;
+  /** Largest |solved - file| voltage magnitude, p.u. */
+  max_dvm: number;
+  /** The bus with the largest magnitude difference. */
+  max_dvm_bus: number | null;
+  /** Mean |solved - file| voltage magnitude, p.u. */
+  mean_dvm: number;
+  /**
+   * The bus whose angle both sides were lined up on (the file's first
+   * reference bus); none when the file has none in the solve.
+   */
+  reference_bus: number | null;
+  /** The largest differences first, at most `limit` rows. */
+  rows: FileVoltageRow[];
+  /** True when the solve includes study edits, so it is not the file's case. */
+  with_study_edits: boolean;
+  /** Buses within 0.001 p.u. of the file's magnitude. */
+  within_0_001: number;
+  /** Buses within 0.01 p.u. of the file's magnitude. */
+  within_0_01: number;
+};
+
+/** One bus: the file's voltage, the solved one and the difference. */
+export type FileVoltageRow = {
+  area: number;
+  base_kv: number;
+  bus: number;
+  /** Solved minus file, degrees, after lining up the reference bus. */
+  dva: number;
+  /** Solved minus file, p.u. */
+  dvm: number;
+  /** Voltage angle in the file, degrees. */
+  file_va: number;
+  /** Voltage magnitude in the file, p.u. */
+  file_vm: number;
+  name: string;
+  /** Solved voltage angle, degrees. */
+  solved_va: number;
+  /** Solved voltage magnitude, p.u. */
+  solved_vm: number;
+};
+
 /**
  * What a study records about its case, to tell later whether the file
  * changed.
@@ -2287,7 +2335,7 @@ export type SolveReport = {
 
 /**
  * How to solve. Fields left out take their defaults: AC with the automatic
- * method from the last solution, to 2 MVA, with reactive limits held and
+ * method from the last solution, to 0.1 MVA, with reactive limits held and
  * every control on.
  */
 export type SolveSettings = {
@@ -2552,6 +2600,13 @@ export type TransferSettings = {
   /** The most rows kept in each of the results' lists. */
   max_rows?: number;
   monitor?: MonitorSettings;
+  /**
+   * Loading, in percent of the limit, at or above which an element the
+   * transfer pushes further counts as already past its limit. 100 by
+   * default; lower it (say to 95) to keep elements that sit at their
+   * limit before any transfer from setting a near-zero FCITC.
+   */
+  past_limit_pct?: number;
   /** Rating after an outage, and in the base case (`base_rating`). */
   rating?: Rating;
   scaling?: Scaling;
@@ -2888,6 +2943,19 @@ export interface CoreCommands {
   command_schemas: {
     args: Record<string, never>;
     result: unknown;
+  };
+  /**
+   * Compare the latest solve with the voltages saved in the case file
+   * (the solution of the tool that last saved it, such as PSS/E or
+   * PowerWorld): summary statistics and the `limit` largest differences
+   * (200 by default).
+   */
+  compare_file_voltages: {
+    args: {
+      case?: CaseId | null;
+      limit?: number | null;
+    };
+    result: FileVoltageComparison;
   };
   /** One outage's flow and voltage changes, by rank. */
   contingency_detail: {

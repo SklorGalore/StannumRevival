@@ -81,6 +81,10 @@ const LOG_LABELS: Record<
   open_sample: { label: "Opening sample case", done: "Opened sample case" },
   close_case: { label: "Closing case", done: "Closed case" },
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
+  compare_file_voltages: {
+    label: "Comparing with the file's voltages",
+    done: "Compared with the file's voltages",
+  },
   calculate_sensitivities: {
     label: "Calculating sensitivities",
     done: "Calculated sensitivities",
@@ -291,7 +295,7 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   method: "auto",
   start: "last",
   // The same MW and Mvar on every case, whatever its base.
-  tolerance_mva: 2,
+  tolerance_mva: 0.1,
   max_iterations: 10,
   decoupled_iterations: 30,
   enforce_q_limits: true,

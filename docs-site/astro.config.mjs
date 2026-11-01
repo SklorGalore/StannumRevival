@@ -131,6 +131,7 @@ export default defineConfig({
           items: [
             { label: "Versions and compatibility", slug: "reference/versioning" },
             { label: "Verification", slug: "reference/verification" },
+            { label: "How it is built and tested", slug: "reference/how-it-is-built" },
             { label: "What isn't modelled", slug: "reference/limitations" },
             { label: "Glossary", slug: "reference/glossary" },
           ],

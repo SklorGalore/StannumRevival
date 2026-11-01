@@ -11,9 +11,19 @@ find the violations, run N-1 or the NERC TPL-001 planning events, look at
 topology, compare RAW files and export. You ask in plain words ("which
 outage overloads the most lines?") and the assistant calls the tools.
 
-The server runs on your computer and reads and writes files there. Nothing
-about the case leaves your computer except what the assistant reads from the
-tools' answers.
+The server runs on your computer and reads and writes files there. The
+tools' answers, though, go to the assistant, and for a cloud assistant that
+means to its provider: bus names, numbers, flows, voltages and anything else
+a tool returns.
+
+:::caution[Protected case data]
+Real transmission cases are often Critical Energy/Electric Infrastructure
+Information (CEII) or otherwise confidential. Before you point a cloud
+assistant at one, check your company's rules for that data and for the
+assistant's provider. The synthetic and sample cases that come with Stannum
+are public and fine to use. A local model that speaks MCP keeps everything
+on your computer.
+:::
 
 ## Two ways to run it
 

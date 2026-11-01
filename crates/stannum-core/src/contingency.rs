@@ -1478,6 +1478,13 @@ fn log_summary(s: &ContingencySummary) {
         "Contingencies: {} outages, {} solved in AC; {} with overloads, {} with voltage problems",
         s.total, s.ac_checked, s.with_overloads, s.with_voltage_problems
     );
+    if s.ac_checked < s.total {
+        line += &format!(
+            " (voltage checked only in the {} AC solves; {} outages had the linear screen only)",
+            s.ac_checked,
+            s.total - s.ac_checked
+        );
+    }
     if s.not_converged > 0 {
         line += &format!(", {} not converged", s.not_converged);
     }

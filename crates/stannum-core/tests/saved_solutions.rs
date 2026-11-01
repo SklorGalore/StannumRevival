@@ -2,8 +2,10 @@
 //! with its default settings, the voltages land on the saved ones.
 //!
 //! The RAW files hold the other tool's solution in each bus record. The
-//! tolerances are what these cases reach today; the Verification page
-//! shows the measured differences beside them.
+//! limits are set by what a planner needs when checking one tool against
+//! another (0.001 p.u. at any bus, 0.05 degrees), not by what the cases
+//! happen to reach; the Verification page shows the measured differences
+//! beside them.
 
 use stannum_core::Workspace;
 use stannum_core::power::SolveSettings;
@@ -99,7 +101,7 @@ fn texas_2000_bus_matches_its_saved_powerworld_solution() {
     compare(
         "Texas2k_series25_case1_summerpeak.RAW",
         "Texas 2000-bus summer peak (RAW 35, PowerWorld)",
-        [0.002, 0.05, 1.0],
+        [0.0001, 0.001, 0.05],
     );
 }
 
@@ -108,6 +110,30 @@ fn memphis_matches_its_saved_solution() {
     compare(
         "MemphisCase2026_Mar7.RAW",
         "Memphis 993-bus (RAW 35, PowerWorld)",
-        [0.0002, 0.01, 2.0],
+        [0.0001, 0.001, 0.05],
     );
+}
+
+#[test]
+fn compare_file_voltages_matches_the_saved_solution_check() {
+    // The app's "Compare with the file" gives the same numbers as the
+    // check above, and sorts the largest difference first.
+    let name = "Texas2k_series25_case1_summerpeak.RAW";
+    let mut ws = Workspace::default();
+    ws.open(&path(name)).unwrap();
+    let case = ws.current_mut().unwrap();
+    case.solve(SolveSettings::default()).unwrap();
+    let c = case.compare_file_voltages(10).unwrap();
+    assert!(c.compared > 2000, "{}", c.compared);
+    assert_eq!(c.rows.len(), 10);
+    assert_eq!(c.rows[0].dvm.abs(), c.max_dvm);
+    assert_eq!(Some(c.rows[0].bus), c.max_dvm_bus);
+    assert!(
+        c.mean_dvm < 0.0001 && c.max_dvm < 0.001,
+        "{} {}",
+        c.mean_dvm,
+        c.max_dvm
+    );
+    assert_eq!(c.within_0_001, c.compared);
+    assert!(!c.with_study_edits);
 }

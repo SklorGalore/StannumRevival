@@ -17,7 +17,7 @@ a narrow strip with **Solve** in it. The settings are:
 | --- | --- | --- |
 | **Model** | **AC** power flow, or **DC** linear flow | AC |
 | **AC method** | **Auto**, **Full Newton**, **Fixed-slope decoupled (FDNS)**, **Fast decoupled (XB)** or **Fast decoupled (BX)**. Every method stops at the same mismatch tolerance; see [AC solution methods](/StannumRevival/manual/ac-methods/) | Auto |
-| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2, on any case's base |
+| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 0.1, on any case's base (the usual PSS/E and PowerWorld setting). Raise it, for example to 2, for quick screening of very large cases |
 | **Newton iterations per pass** | Newton steps allowed in each pass (Auto and Full Newton) | 10 |
 | **Decoupled iterations per pass** | Decoupled iterations allowed in each pass (every method but Full Newton) | 30 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |
@@ -51,6 +51,17 @@ it:
 - **Operating limits**: voltage limits, generator reactive limits and branch
   loading against rate A. Each check is a link that opens the matching rows,
   worst first.
+- **Against the voltages in the file** (AC solves): a case saved solved by
+  PSS/E, PowerWorld or another tool holds that tool's voltage at every bus.
+  **Compare with the file** sets them beside this solve: how many buses,
+  the mean and largest magnitude difference, the largest angle difference
+  (lined up at the reference bus), how many buses agree within 0.001 and
+  0.01 p.u., and the 20 largest differences, each a link to its bus. It is
+  the quickest way to check Stannum against your tool of record on your
+  own case. Differences can come from models and settings as well as the
+  solver; [What isn't modelled](/StannumRevival/reference/limitations/)
+  lists the gaps. From Python, run files or the MCP server, call
+  `compare_file_voltages` (`limit` sets how many rows; 200 by default).
 - **Voltage profile** and **Most loaded branches** charts.
 
 ![Checks leading to the voltage violations, worst first](../../../assets/screens/findings-violations.png)

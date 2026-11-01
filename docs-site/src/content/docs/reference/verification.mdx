@@ -61,9 +61,29 @@ line control modes and three of MATPOWER's own RAW test files.
 These cases were saved solved by PowerWorld Simulator, so each bus record
 holds the voltage that tool found. Stannum opens the file and solves it as
 the app does, with its default settings (reactive limits, remote regulation,
-switched shunts and taps all on, 2 MVA tolerance), and the voltages are
-compared bus by bus. On the Texas case the largest magnitude difference is
-at bus 3051; most buses are within a few thousandths of a per unit.
+switched shunts and taps all on, 0.1 MVA tolerance), and the voltages are
+compared bus by bus. The limits are what a planner would accept between two
+tools on the same case, 0.001 p.u. at any bus and 0.05 degrees, set before
+the measurement rather than fitted to it.
+
+Both cases now agree with PowerWorld within 0.0005 p.u. at every bus. Two
+fixes got them there:
+
+- **Continuous switched shunts that reached a limit stayed there.** A
+  continuous (MODSW 2) shunt that touched an end of its range early in the
+  solve was fixed at that end for good, even when the voltage later fell
+  back past its setpoint, and a second continuous shunt at the same bus
+  didn't move at all. On Texas this left the Del Rio 115 kV shunts out and
+  bus 3051 0.036 p.u. low. They now return to voltage control as
+  generators do, and shunts at one bus share the control.
+- **A line duplicating a transformer.** The Memphis file has a line and a
+  transformer between buses 54 and 55, both circuit 2. PSS/E and PowerWorld
+  keep one branch per circuit; Stannum counted both. The line is now taken
+  out of service with an import warning.
+
+You can make the same check on your own case: after an AC solve, **Compare
+with the file** on the Power flow overview sets the voltages the file was
+saved with beside Stannum's.
 
 <VerificationTable suite="saved-solution" />
 
@@ -98,9 +118,9 @@ agrees, which is the third row.
 The linear screen's flows after each outage are compared with a DC power
 flow solved without that branch. The AC-checked outages are compared with
 the same outage made as a study edit and solved on its own. Both sides
-solve to $10^{-6}$ MVA here: at the default 2 MVA tolerance, a line rated
-16 MVA can read a few percent apart between two solves that both
-converged.
+solve to $10^{-6}$ MVA here, so the comparison shows the method, not the
+solve tolerance. At a loose 2 MVA tolerance a line rated 16 MVA could read a
+few percent apart between two solves that both converged.
 
 <VerificationTable suite="contingency" />
 

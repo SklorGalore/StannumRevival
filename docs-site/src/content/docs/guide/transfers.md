@@ -42,6 +42,12 @@ Solve the case with the AC model first. Then choose:
   its limit before any transfer is listed apart under **Already past** and
   doesn't set the answer. Tick this to let it set a negative FCITC, as
   PSS/E reports it.
+- **Already past from**: the loading, in percent of the limit, at which an
+  element counts as already past it (100 by default). An element at 99.9%
+  after an outage sets an FCITC of a few MW, which is right but rarely
+  useful; lower this to 95 to list such elements apart. When the first
+  limit is at 95% or more before any transfer, the sentence under the
+  results says so.
 
 Then press **Find the transfer limit**. A Texas 2k study with every branch
 outage takes well under a second. **Cancel** stops a long run and keeps the

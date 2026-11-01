@@ -89,7 +89,7 @@ fn linear_trips_match_dc_solves() {
 fn ac_rows_match_a_study_outage() {
     // case30 has branch ratings (case300 has none). Its ratings are small
     // (16 MVA on some lines), so both sides solve far tighter than the
-    // default 2 MVA to compare them closely.
+    // default 0.1 MVA to compare them closely.
     let tight = SolveSettings {
         tolerance_mva: 1e-6,
         ..Default::default()

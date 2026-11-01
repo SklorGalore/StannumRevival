@@ -77,7 +77,9 @@ transfer pushes it, has a negative $T$. By default such elements are listed
 apart (`past_limits`) and don't set the FCITC, which is then the transfer
 that first takes an element within its limit past it. With
 `include_past_limits` they count, and the FCITC can be negative, as PSS/E
-reports it.
+reports it. `past_limit_pct` (100 by default) moves the line: an element at
+or above that percent of its limit, pushed further by the transfer, counts
+as already past it.
 
 The **generation limit** is the smaller of the source's and the sink's room
 to move; the **transfer limit** is the smaller of the FCITC and the
@@ -124,6 +126,7 @@ run_transfer_limits settings={"source": {"areas": [1]}, "sink": {"areas": [7]}, 
 | `rating`, `base_rating` | `a` | after an outage, and in the base case |
 | `limit_pct` | 100 | percent of the rating that is the limit |
 | `include_past_limits` | false | let elements already past their limit set the FCITC |
+| `past_limit_pct` | 100 | loading, percent of the limit, at or above which an element counts as already past it |
 | `max_rows` | 200 | rows kept in each list |
 | `lists` | none | a lists file (`.stnl`), below |
 | `transfer` | the file's only one | the lists file's `transfer` record to run |

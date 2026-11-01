@@ -34,6 +34,8 @@ export interface TransferChoice {
   rating: Rating;
   baseRating: Rating;
   includePast: boolean;
+  /** Loading (% of the limit) at or above which an element counts as already past it. */
+  pastPct: number;
   /**
    * A lists file (.stnl): its contingencies and monitors, when it has
    * them, replace the outages and monitored elements above, and its
@@ -57,6 +59,7 @@ export const DEFAULT_TRANSFER: TransferChoice = {
   rating: "a",
   baseRating: "a",
   includePast: false,
+  pastPct: 100,
   listsPath: null,
   transferName: "",
 };
@@ -94,6 +97,7 @@ export function transferSettings(c: TransferChoice): TransferSettings {
     rating: c.rating,
     base_rating: c.baseRating,
     include_past_limits: c.includePast,
+    past_limit_pct: c.pastPct,
     max_rows: 500,
     lists: c.listsPath,
     transfer: c.listsPath && c.transferName.trim() ? c.transferName.trim() : null,

@@ -173,6 +173,8 @@ fn answers_fit_their_schemas() {
         json!({ "case": case, "settings": solve }),
     );
     assert_eq!(report["converged"], true);
+    let against_file = c.ok("compare_file_voltages", json!({ "case": case, "limit": 3 }));
+    assert_eq!(against_file["rows"].as_array().unwrap().len(), 3);
     c.ok("result_report", json!({ "name": "base" }));
     let page = c.ok(
         "result_buses",
