@@ -34,6 +34,7 @@ export default defineConfig({
             { label: "Download", slug: "start/download" },
             { label: "Build from source", slug: "start/install" },
             { label: "Open a case", slug: "start/open-a-case" },
+            { label: "Coming from PSS/E", slug: "start/coming-from-psse" },
           ],
         },
         {
@@ -57,6 +58,7 @@ export default defineConfig({
             { label: "Case diff", slug: "guide/case-diff" },
             { label: "Run files", slug: "guide/run-files" },
             { label: "Python", slug: "guide/python" },
+            { label: "Coming from psspy", slug: "guide/coming-from-psspy" },
             { label: "AI assistants (MCP)", slug: "guide/ai-assistants" },
             { label: "Keyboard shortcuts", slug: "guide/shortcuts" },
           ],
