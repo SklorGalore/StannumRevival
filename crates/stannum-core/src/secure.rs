@@ -1605,7 +1605,11 @@ mod tests {
         // Line 2-8 sits at 99.97% of its rating after line 1-4 trips, so
         // any transfer would overload it at once; give it room, so the
         // studies below have steps to take.
-        for b in case.branches.iter_mut().filter(|b| (b.from, b.to) == (2, 8) || (b.from, b.to) == (8, 2)) {
+        for b in case
+            .branches
+            .iter_mut()
+            .filter(|b| (b.from, b.to) == (2, 8) || (b.from, b.to) == (8, 2))
+        {
             b.rate_a *= 1.2;
         }
         let power = crate::power::from_case(case);
