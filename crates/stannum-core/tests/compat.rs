@@ -158,3 +158,30 @@ fn studies_from_earlier_releases_find_their_case() {
         }
     }
 }
+
+/// Stannum cases the format preview (0.1) wrote open as the same case as
+/// their RAW file, and save as format 1.0.
+#[test]
+fn preview_stannum_cases_open_and_save_as_one_oh() {
+    let raw = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_devices.raw");
+    let s = Session::new();
+    let from_raw: Value =
+        serde_json::from_str(&s.invoke("open_case", json!({ "path": raw })).unwrap()).unwrap();
+    let mut files = samples("stn");
+    files.extend(samples("stnb"));
+    assert!(files.len() >= 2, "{files:?}");
+    let dir = scratch("stn");
+    for (release, file) in files {
+        let opened: Value =
+            serde_json::from_str(&s.invoke("open_case", json!({ "path": file })).unwrap())
+                .unwrap_or_else(|e| panic!("{release} {file:?}: {e}"));
+        assert_eq!(
+            opened["power"]["info"]["counts"], from_raw["power"]["info"]["counts"],
+            "{release} {file:?}"
+        );
+        let out = dir.join("saved.stn");
+        s.invoke("save_case_as", json!({ "path": out })).unwrap();
+        let text = std::fs::read_to_string(&out).unwrap();
+        assert!(text.starts_with("stannum-case 1.0\n"), "{release} {file:?}");
+    }
+}

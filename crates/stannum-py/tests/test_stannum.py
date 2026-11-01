@@ -152,7 +152,7 @@ def test_transfer_limits_from_a_lists_file(case9: sn.Case, tmp_path) -> None:
     case9.solve()
     lists = tmp_path / "transfers.stnl"
     lists.write_text(
-        "stannum-lists 0.1\n"
+        "stannum-lists 1.0\n"
         "subsystem two buses=[2]\n"
         "subsystem three buses=[3]\n"
         "contingency_set n1 kind=n_1_branches\n"

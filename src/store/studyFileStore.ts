@@ -58,7 +58,7 @@ interface StudyFileState {
   exportRaw: (revision: 33 | 35) => Promise<boolean>;
   /** Write the case, or with `solved` the latest solve, as a MATPOWER file. */
   exportMatpower: (solved: boolean) => Promise<boolean>;
-  /** Write the case as a Stannum case file (.stn, or .stnb when `binary`; format preview). */
+  /** Write the case as a Stannum case file (.stnb, or the .stn text form unless `binary`). */
   exportStn: (binary: boolean) => Promise<boolean>;
 }
 

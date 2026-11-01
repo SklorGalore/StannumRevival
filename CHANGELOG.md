@@ -105,6 +105,14 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **The open Stannum case is the default save format.** **Save case as…**
+  offers a binary Stannum case (`.stnb`) first for RAW and Stannum cases (a
+  `.stn` case keeps its text form), and the Export menu lists the Stannum
+  case first. The case (`.stn`, `.stnb`) and lists (`.stnl`) formats are
+  now version 1.0 and no longer a preview: files from the 0.1 preview still
+  open and save as 1.0, a newer minor version (1.1 and on) opens and keeps
+  what this release doesn't know, and only a newer major version is
+  refused. MATPOWER cases still save as `.m`; export them as a Stannum case.
 - **The violations CSV opens with metadata rows.** Scripts that read it
   skip the first `header_rows` rows (the number is in the first row).
 

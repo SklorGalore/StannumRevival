@@ -3141,7 +3141,7 @@ export interface CoreCommands {
   };
   /**
    * Write the case, with its Records and study edits, as a Stannum case
-   * file (format preview): binary when `path` ends in `.stnb`, else text
+   * file: binary when `path` ends in `.stnb`, else text
    * (`.stn`). The answer lists anything converted or kept as RAW lines.
    */
   export_stn: {

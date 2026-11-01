@@ -198,12 +198,8 @@ fn invalid_binaries() -> Vec<(&'static str, Vec<u8>)> {
         ),
         ("unknown-table", doc(vec![("busbar", bus("1", 1))])),
         (
-            "newer-minor",
-            with_manifest(&|m| m["version"] = "0.2".into()),
-        ),
-        (
             "newer-major",
-            with_manifest(&|m| m["version"] = "1.0".into()),
+            with_manifest(&|m| m["version"] = "2.0".into()),
         ),
         (
             "lists-format",
@@ -245,5 +241,5 @@ fn invalid_binary_files_are_refused() {
         ));
         check_or_update(&expect, &format!("{err}\n"));
     }
-    assert!(count >= 10);
+    assert!(count >= 9);
 }

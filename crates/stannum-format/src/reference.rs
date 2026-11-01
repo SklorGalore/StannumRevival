@@ -69,11 +69,22 @@ pub fn reference_markdown(schema: &Schema, title: &str, page: &str) -> String {
         "<!-- Written by the stannum-format tests from crates/stannum-format/schema/{}.toml; don't edit it here. -->\n\n",
         schema.format
     ));
-    out.push_str(&format!(
-        ":::caution[Preview]\nFormat version {} is a preview: it may change in any Stannum release until it reaches 1.0. See [{page}](/StannumRevival/reference/{}/).\n:::\n\n",
-        schema.version,
-        if schema.format == "stannum-case" { "case-file" } else { "lists-file" }
-    ));
+    let slug = if schema.format == "stannum-case" {
+        "case-file"
+    } else {
+        "lists-file"
+    };
+    if schema.version.major == 0 {
+        out.push_str(&format!(
+            ":::caution[Preview]\nFormat version {} is a preview: it may change in any Stannum release until it reaches 1.0. See [{page}](/StannumRevival/reference/{slug}/).\n:::\n\n",
+            schema.version,
+        ));
+    } else {
+        out.push_str(&format!(
+            "Format version {}. A newer minor version only adds optional tables and fields; see [{page}](/StannumRevival/reference/{slug}/).\n\n",
+            schema.version,
+        ));
+    }
     out.push_str(&format!("{}\n\n", schema.doc));
     out.push_str(
         "A field left out has its default; one with no default is absent, which means none. ",

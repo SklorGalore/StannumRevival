@@ -1,4 +1,4 @@
-stannum-case 0.1
+stannum-case 1.0
 
 # case
 case main name=case9.m description="Written by Stannum from the MATPOWER power flow model"

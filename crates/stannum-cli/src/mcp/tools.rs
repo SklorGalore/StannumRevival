@@ -298,7 +298,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "export_case",
         title: "Export case",
-        description: "Write the open case, with its record edits and study edits, to a file. The format follows the extension: .raw (PSS/E RAW, revision 35 or 33), .m (MATPOWER, optionally with the solved voltages), .stn or .stnb (Stannum text or binary, format preview). Overwrites the file.",
+        description: "Write the open case, with its record edits and study edits, to a file. The format follows the extension: .raw (PSS/E RAW, revision 35 or 33), .m (MATPOWER, optionally with the solved voltages), .stnb or .stn (Stannum binary or text). Overwrites the file.",
         input: export_input,
         read_only: false,
         destructive: true,

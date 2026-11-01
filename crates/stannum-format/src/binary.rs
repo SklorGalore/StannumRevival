@@ -316,7 +316,7 @@ pub fn write_binary(doc: &Document, options: &BinaryOptions) -> Result<Vec<u8>, 
     }
     let manifest = Manifest {
         format: schema.format.clone(),
-        version: schema.version.to_string(),
+        version: doc.written_version().to_string(),
         schema_sha256: schema_sha256(schema),
         app: options.app.clone(),
         preamble: doc.preamble.clone(),
@@ -609,8 +609,9 @@ pub fn read_binary(bytes: &[u8], schema: &'static Schema) -> Result<Document, Bi
             schema.format
         )));
     }
-    // Unknown names are mistakes unless the file is newer (or extensions).
-    let strict = version.major == ours.major && version.minor <= ours.minor;
+    // Unknown names are mistakes unless the file is a newer minor version
+    // (or extensions).
+    let strict = version <= ours;
     let mut doc = Document::new(schema);
     doc.version = version;
     doc.preamble = manifest.preamble.clone();

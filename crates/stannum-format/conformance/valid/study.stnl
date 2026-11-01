@@ -1,4 +1,4 @@
-stannum-lists 0.1
+stannum-lists 1.0
 # Subsystems, contingencies and monitors that work on any case with these buses.
 subsystem north name="North 138" areas=[1] kv_min=100
 subsystem south areas=[2, 3]

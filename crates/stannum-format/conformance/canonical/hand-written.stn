@@ -1,4 +1,4 @@
-stannum-case 0.1
+stannum-case 1.0
 # Written by hand: tables out of order, fields in any order, defaults
 # written out, extra spaces and comments. The canonical form sorts all of
 # it and leaves the defaults off.

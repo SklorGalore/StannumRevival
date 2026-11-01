@@ -8,10 +8,10 @@
 //! power flow, so other tools can use it as it is.
 //!
 //! ```
-//! let text = "stannum-case 0.1\nbus 101 number=101 kv=230\n";
+//! let text = "stannum-case 1.0\nbus 101 number=101 kv=230\n";
 //! let doc = stannum_format::read_case(text).unwrap();
 //! assert_eq!(doc.table("bus").unwrap().records[0].float("kv"), Some(230.0));
-//! assert_eq!(stannum_format::write(&doc).unwrap(), "stannum-case 0.1\n\n# bus\nbus 101 number=101 kv=230\n");
+//! assert_eq!(stannum_format::write(&doc).unwrap(), "stannum-case 1.0\n\n# bus\nbus 101 number=101 kv=230\n");
 //! ```
 
 mod binary;

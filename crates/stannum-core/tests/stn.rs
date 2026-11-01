@@ -149,7 +149,7 @@ fn other_cases_convert_through_the_model() {
         let (doc, report) = stn::from_model(&name, &power, "From the model.".into());
         assert_eq!(report.notes[0], "From the model.");
         let text = stn::write(&doc).unwrap();
-        assert!(text.starts_with("stannum-case 0.1\n"));
+        assert!(text.starts_with("stannum-case 1.0\n"));
         if buses > 0 {
             assert_eq!(doc.records("bus").len(), buses, "{name}");
         }
@@ -279,7 +279,7 @@ fn stn_files_open_edit_and_save() {
     let summary = ws.current_mut().unwrap().save_as(&saved).unwrap();
     assert_eq!(summary.format, CaseFormat::Stn);
     let text = std::fs::read_to_string(&saved).unwrap();
-    assert!(text.starts_with("stannum-case 0.1\n"));
+    assert!(text.starts_with("stannum-case 1.0\n"));
     assert!(text.contains("name=Renamed"), "{text}");
     // Saved as .raw it becomes RAW.
     let as_raw = dir.join("five_bus_devices-edited.raw");
@@ -322,7 +322,7 @@ fn stn_files_open_edit_and_save() {
 
     // A .stn file the reader refuses doesn't open.
     let bad = dir.join("bad.stn");
-    std::fs::write(&bad, "stannum-case 0.1\nbus 1 number=one\n").unwrap();
+    std::fs::write(&bad, "stannum-case 1.0\nbus 1 number=one\n").unwrap();
     let err = Workspace::default().open(&bad).unwrap_err();
     assert!(err.message.contains("number"), "{}", err.message);
 
@@ -395,7 +395,7 @@ fn stn_ids_comments_and_extensions_survive_editing() {
     let (doc, _) = stn::from_raw("five_bus_devices.raw", &std::fs::read(&raw).unwrap()).unwrap();
     let text = stn::write(&doc)
         .unwrap()
-        .replace("stannum-case 0.1\n", "stannum-case 0.1\n# Spur study.\n")
+        .replace("stannum-case 1.0\n", "stannum-case 1.0\n# Spur study.\n")
         .replace(
             "bus 5 number=5 ",
             "# Renumbered from 15.\nbus spur number=5 x.note=\"keep me\" ",
@@ -425,7 +425,7 @@ fn stn_ids_comments_and_extensions_survive_editing() {
     ws.current_mut().unwrap().save_as(&saved).unwrap();
     let out = std::fs::read_to_string(&saved).unwrap();
     assert!(
-        out.starts_with("stannum-case 0.1\n# Spur study.\n"),
+        out.starts_with("stannum-case 1.0\n# Spur study.\n"),
         "{out}"
     );
     assert!(
@@ -452,8 +452,8 @@ fn stnb_files_open_and_save() {
     let text = stn::write(&doc)
         .unwrap()
         .replace(
-            "stannum-case 0.1\n",
-            "stannum-case 0.1\n# Kept in the manifest.\n",
+            "stannum-case 1.0\n",
+            "stannum-case 1.0\n# Kept in the manifest.\n",
         )
         .replace("bus 5 number=5 ", "# Spur bus.\nbus spur number=5 ")
         .replace(" bus=5 ", " bus=spur ")
