@@ -7,7 +7,7 @@ import { addRecent } from "../lib/study/recent";
 import { confirmDialog } from "../lib/tauri/commands";
 
 /** Power flow tabs other parts of the app can open. */
-export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "transfers" | "pv" | "qv" | "secure" | "study";
+export type PowerTabRequest = "warnings" | "vsc" | "contingencies" | "transfers" | "pv" | "qv" | "secure" | "n11" | "study";
 
 export type ModuleId = "diagram" | "power" | "records" | "diff";
 

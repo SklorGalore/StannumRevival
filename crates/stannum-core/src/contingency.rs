@@ -1216,6 +1216,12 @@ impl ContingencyJob {
         self.handle.clone()
     }
 
+    /// Run under `handle`, so cancelling it stops this run too.
+    pub(crate) fn with_handle(mut self, handle: RunHandle) -> Self {
+        self.handle = handle;
+        self
+    }
+
     pub fn len(&self) -> usize {
         self.outages.len()
     }
@@ -1458,6 +1464,50 @@ impl StepChecker {
                 },
             ))
         }))
+    }
+}
+
+/// One outage solved in AC from the base, with the case it leaves: what
+/// a study that takes one element out and studies on from there (N-1-1)
+/// needs.
+pub(crate) struct AfterOutage {
+    pub(crate) row: ContingencyRow,
+    pub(crate) violations: Violations,
+    /// The case with the outage applied, and its converged solution.
+    pub(crate) solved: Option<(PowerCase, PowerFlowResult)>,
+}
+
+impl StepChecker {
+    /// Solve each of the checker's outages in AC from `base`, one after
+    /// another, handing each to `f`. Stops when the run is cancelled or
+    /// `f` answers false.
+    pub(crate) fn each_after(
+        &self,
+        power: &PowerCase,
+        base: &PowerFlowResult,
+        handle: &RunHandle,
+        mut f: impl FnMut(usize, AfterOutage) -> Result<bool, String>,
+    ) -> Result<(), String> {
+        let context = Context::new(power, base, &self.settings, &self.watch)?;
+        for (i, outage) in self.outages.iter().enumerate() {
+            let Some((outcome, solution)) = context.ac_solved(outage, &self.settings.solve, handle)
+            else {
+                break;
+            };
+            let solved = solution.map(|result| (context.after(outage, &result), result));
+            let keep_going = f(
+                i,
+                AfterOutage {
+                    violations: outcome.violations(),
+                    row: outcome.row,
+                    solved,
+                },
+            )?;
+            if !keep_going {
+                break;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2212,6 +2262,23 @@ impl<'a> Context<'a> {
             }
         }
         case
+    }
+
+    /// The power case after `outage`, from its converged AC solve: the
+    /// solved case, with the voltage control of any shunt it took out gone.
+    fn after(&self, outage: &Outage, result: &PowerFlowResult) -> PowerCase {
+        let mut power = self.power.clone();
+        let mut gone: Vec<usize> = outage
+            .shunt_rows
+            .iter()
+            .filter_map(|&r| self.controlled_shunt(r))
+            .collect();
+        gone.sort_unstable();
+        for k in gone.into_iter().rev() {
+            power.voltage_controls.switched_shunts.remove(k);
+        }
+        power.case = result.case.clone();
+        power
     }
 
     /// The voltage control entry of shunt row `r`, if it is in one.

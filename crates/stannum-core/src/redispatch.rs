@@ -222,6 +222,18 @@ pub fn plan(
     solve: &SolveSettings,
     settings: &RedispatchSettings,
 ) -> Result<RedispatchReport, String> {
+    plan_solved(records, power, base, solve, settings).map(|(report, _)| report)
+}
+
+/// [`plan`], with the last converged AC solve of the moved case too (with
+/// the AC check; `base` itself without it, or when nothing moved).
+pub(crate) fn plan_solved(
+    records: Option<&Records>,
+    power: &PowerCase,
+    base: &PowerFlowResult,
+    solve: &SolveSettings,
+    settings: &RedispatchSettings,
+) -> Result<(RedispatchReport, PowerFlowResult), String> {
     let start = Instant::now();
     if !(settings.limit_pct.is_finite() && settings.limit_pct > 0.0) {
         return Err("The limit must be more than 0%.".into());
@@ -616,13 +628,16 @@ pub fn plan(
         _ => Vec::new(),
     };
     summary.elapsed_ms = start.elapsed().as_secs_f64() * 1e3;
-    Ok(RedispatchReport {
-        summary,
-        units: moved_units,
-        branches,
-        notes,
-        edits,
-    })
+    Ok((
+        RedispatchReport {
+            summary,
+            units: moved_units,
+            branches,
+            notes,
+            edits,
+        },
+        state,
+    ))
 }
 
 /// One linear program, adding the branches it would push over until none

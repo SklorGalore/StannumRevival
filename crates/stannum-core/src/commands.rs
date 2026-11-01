@@ -127,6 +127,7 @@ pub struct Session {
     /// The PV curve study in progress, if one is running.
     pv: Mutex<Option<RunHandle>>,
     qv: Mutex<Option<RunHandle>>,
+    n11: Mutex<Option<crate::n11::N11Handle>>,
     /// The secure transfer study in progress, and the last one's results
     /// file.
     secure: Mutex<Option<crate::secure::SecureHandle>>,
@@ -418,6 +419,20 @@ impl Session {
         let job = self.workspace()?.case(case)?.qv_job(settings)?;
         *relock(&self.qv) = Some(job.handle());
         let clear = OnDrop(|| *relock(&self.qv) = None);
+        let results = job.run();
+        drop(clear);
+        Ok(results?)
+    }
+
+    /// An N-1-1 run, without the workspace lock.
+    fn n11(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::n11::N11Settings,
+    ) -> Result<crate::n11::N11Results, Error> {
+        let job = self.workspace()?.case(case)?.n11_job(settings)?;
+        *relock(&self.n11) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.n11) = None);
         let results = job.run();
         drop(clear);
         Ok(results?)
@@ -716,6 +731,19 @@ impl Session {
         if let Some(handle) = relock(&self.qv).clone() {
             handle.cancel();
         }
+    }
+
+    fn cancel_n11(&self) {
+        if let Some(handle) = relock(&self.n11).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn n11_progress(&self) -> crate::n11::N11Progress {
+        relock(&self.n11)
+            .as_ref()
+            .map(crate::n11::N11Handle::progress)
+            .unwrap_or_default()
     }
 
     fn qv_progress(&self) -> Progress {
@@ -1299,6 +1327,23 @@ commands! {
     /// How far the QV curve study in progress has got: buses done.
     qv_progress {} -> Progress => |s, _| Ok(s.qv_progress());
 
+    /// N-1-1: each first outage solved in AC, then (by default) a
+    /// redispatch that brings branches back within their limit, then every
+    /// second outage as a contingency run from the adjusted case, so its
+    /// problems are judged against it. Ranks the pairs worst first.
+    /// `cancel_n11` stops it and `n11_progress` follows it.
+    run_n11 { case: Option<CaseId>, settings: Option<crate::n11::N11Settings> } -> crate::n11::N11Results =>
+        |s, a| s.n11(a.case, a.settings.unwrap_or_default());
+
+    /// Stop the N-1-1 run in progress.
+    cancel_n11 {} -> () => |s, _| {
+        s.cancel_n11();
+        Ok(())
+    };
+
+    /// How far the N-1-1 run in progress has got.
+    n11_progress {} -> crate::n11::N11Progress => |s, _| Ok(s.n11_progress());
+
     /// Secure transfer limits: grows a transfer from source to sink by the
     /// major step, solving every contingency in AC at each step, until a
     /// new thermal or voltage problem (as chosen) or a failed solve; then
@@ -1622,7 +1667,10 @@ mod tests {
                 args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
             } else if c.name == "run_qv_curve" {
                 args.insert("settings".into(), json!({ "buses": [1] }));
-            } else if c.name != "run_contingencies" && args.contains_key("settings") {
+            } else if c.name != "run_contingencies"
+                && c.name != "run_n11"
+                && args.contains_key("settings")
+            {
                 args.insert("settings".into(), json!(SolveSettings::default()));
             }
             args.insert("case".into(), json!(id + 1));

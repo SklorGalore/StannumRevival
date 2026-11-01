@@ -10,6 +10,13 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **N-1-1 with system adjustment.** **Analysis → N-1-1** takes each first
+  outage out and solves it in AC, redispatches generators back within the
+  limit (or makes no adjustment), then runs every second outage as a
+  contingency run from the adjusted case, as for NERC TPL-001 P6 events.
+  Lists the first outages by how many second outages find a problem and
+  ranks the worst pairs, with a CSV export. The `run_n11` command does the
+  same from run files and Python.
 - **Redispatch to relieve overloads.** **Analysis → Redispatch to relieve
   overloads…** moves online generators as little as possible so monitored
   branches end within a rating and limit: a DC optimal power flow on PTDFs

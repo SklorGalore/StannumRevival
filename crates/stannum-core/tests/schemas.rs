@@ -149,6 +149,8 @@ fn answers_fit_their_schemas() {
     c.ok("cancel_pv_curve", json!({}));
     c.ok("qv_progress", json!({}));
     c.ok("cancel_qv_curve", json!({}));
+    c.ok("n11_progress", json!({}));
+    c.ok("cancel_n11", json!({}));
     c.ok("secure_transfer_progress", json!({}));
     c.ok("cancel_secure_transfer", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
@@ -330,6 +332,11 @@ fn answers_fit_their_schemas() {
         json!({ "settings": { "buses": [5], "step_pu": 0.05 } }),
     );
     assert!(qv["curves"][0]["margin_mvar"].is_number(), "{qv}");
+    let n11 = c.ok(
+        "run_n11",
+        json!({ "settings": { "first": ["line:1:2:1"], "keep_pairs": 3 } }),
+    );
+    assert!(n11["summary"]["pairs"].is_number(), "{n11}");
     let secure = c.ok(
         "run_secure_transfer",
         json!({ "settings": {

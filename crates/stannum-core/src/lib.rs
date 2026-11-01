@@ -44,6 +44,7 @@ pub mod geo;
 pub mod inspect;
 pub mod lists;
 pub mod logbook;
+pub mod n11;
 pub mod paging;
 pub mod planning;
 pub mod power;

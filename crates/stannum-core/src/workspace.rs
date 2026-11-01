@@ -763,6 +763,23 @@ impl OpenCase {
         Ok(job)
     }
 
+    /// An N-1-1 run of the case from its AC solve, with that solve's
+    /// settings, to run without the workspace.
+    pub fn n11_job(&self, settings: crate::n11::N11Settings) -> Result<crate::n11::N11Job, Error> {
+        let power = self.power_case()?;
+        let solved = resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: N-1-1 starts from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("N-1-1 leaves out the attached VSC DC grids");
+        }
+        let job = crate::n11::N11Job::new(power, &solved.0, &solved.1, settings)?;
+        log::info!("Running N-1-1 from {} first outages", job.len());
+        Ok(job)
+    }
+
     /// A QV curve study of the case from its AC solve, with that solve's
     /// settings, to run without the workspace.
     pub fn qv_job(&self, settings: crate::qv::QvSettings) -> Result<crate::qv::QvJob, Error> {

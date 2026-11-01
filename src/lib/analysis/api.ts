@@ -53,6 +53,9 @@ import type {
   ListedSubsystem,
   PvResults,
   PvSettings,
+  N11Progress,
+  N11Results,
+  N11Settings,
   QvResults,
   QvSettings,
   ChannelCurves,
@@ -466,6 +469,10 @@ export const api = {
     call("run_qv_curve", { settings }),
   cancelQvCurve: () => invokeCore("cancel_qv_curve"),
   qvProgress: (): Promise<ContingencyProgress> => invokeCore("qv_progress"),
+  /** N-1-1: each first outage, the adjustment, then every second outage. */
+  runN11: (settings: N11Settings): Promise<N11Results> => call("run_n11", { settings }),
+  cancelN11: () => invokeCore("cancel_n11"),
+  n11Progress: (): Promise<N11Progress> => invokeCore("n11_progress"),
   /** A secure transfer study: every contingency at every transfer step. */
   runSecureTransfer: (settings: SecureTransferSettings): Promise<SecureResults> =>
     call("run_secure_transfer", { settings }),

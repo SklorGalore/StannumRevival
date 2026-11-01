@@ -185,6 +185,7 @@ export function paletteCommands(): Command[] {
   if (w.solveReport)
     list.push({ id: "pv", title: "Show PV curve", icon: <TrendingDown size={14} />, keywords: "pv curve voltage stability collapse nose continuation power flow cpf loadability margin", run: () => w.showPowerTab("pv") });
     list.push({ id: "qv", title: "Show QV curve", icon: <Activity size={14} />, keywords: "qv curve reactive power margin voltage collapse condenser var stability", run: () => w.showPowerTab("qv") });
+    list.push({ id: "n11", title: "Show N-1-1", icon: <Layers size={14} />, keywords: "n-1-1 n11 p6 double contingency system adjustment redispatch outage tpl", run: () => w.showPowerTab("n11") });
     list.push({ id: "secure", title: "Show secure transfer limit", icon: <ShieldCheck size={14} />, keywords: "secure transfer limit contingency every step pv curve vsat voltage thermal channels", run: () => w.showPowerTab("secure") });
   for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
   if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });

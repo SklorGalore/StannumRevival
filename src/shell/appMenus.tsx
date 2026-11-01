@@ -212,6 +212,10 @@ function analysisMenu(): MenuEntry[] {
       disabled: !w.solveReport,
       title: w.solveReport ? undefined : "Solve the case first",
     }),
+    item("n11", "N-1-1 (outage, adjust, outage)", () => w.showPowerTab("n11"), {
+      disabled: !w.solveReport,
+      title: w.solveReport ? "One element out, a redispatch, then every contingency on top" : "Solve the case first",
+    }),
     sep,
     item("scale", "Scale load and generation…", openScaling, {
       disabled: !power,
