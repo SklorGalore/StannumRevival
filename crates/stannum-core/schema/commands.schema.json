@@ -5329,7 +5329,7 @@
           "type": "string"
         },
         "sensitivity_pu_per_100mw": {
-          "description": "Voltage drop per 100 MW of transfer over the last step: the largest\nis the weakest bus at the nose.",
+          "description": "Voltage drop per 100 MW of transfer over the last tenth of the curve\n(from the last point at or below 90% of the largest transfer): the largest\nis the weakest bus at the nose.",
           "format": "double",
           "type": "number"
         },
@@ -5662,7 +5662,7 @@
           ]
         },
         "weakest_bus": {
-          "description": "The bus whose voltage falls fastest at the last step.",
+          "description": "The bus whose voltage falls fastest near the end of the curve (the\nlargest `sensitivity_pu_per_100mw`).",
           "format": "uint32",
           "minimum": 0,
           "type": [

@@ -1457,7 +1457,8 @@ export type PvCurve = {
   drop_pu: number;
   name: string;
   /**
-   * Voltage drop per 100 MW of transfer over the last step: the largest
+   * Voltage drop per 100 MW of transfer over the last tenth of the curve
+   * (from the last point at or below 90% of the largest transfer): the largest
    * is the weakest bus at the nose.
    */
   sensitivity_pu_per_100mw: number;
@@ -1595,7 +1596,10 @@ export type PvSummary = {
    * voltage limit, MW; `None` when none does before the curve stops.
    */
   voltage_limit_mw: number | null;
-  /** The bus whose voltage falls fastest at the last step. */
+  /**
+   * The bus whose voltage falls fastest near the end of the curve (the
+   * largest `sensitivity_pu_per_100mw`).
+   */
   weakest_bus: number | null;
   weakest_bus_name: string;
 };
