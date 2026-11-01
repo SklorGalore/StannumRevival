@@ -3515,6 +3515,160 @@
       ],
       "description": "A number, or text for values that aren't numbers (a bus type, a missing limit)."
     },
+    "FileVoltageComparison": {
+      "description": "How the latest solve compares with the voltages saved in the file.",
+      "properties": {
+        "compared": {
+          "description": "Buses in both the file and the solve, in service.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_dva": {
+          "description": "Largest |solved - file| angle, degrees, after lining up the reference bus.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_dva_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_dvm": {
+          "description": "Largest |solved - file| voltage magnitude, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_dvm_bus": {
+          "description": "The bus with the largest magnitude difference.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mean_dvm": {
+          "description": "Mean |solved - file| voltage magnitude, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "reference_bus": {
+          "description": "The bus whose angle both sides were lined up on (the file's first\nreference bus); none when the file has none in the solve.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rows": {
+          "description": "The largest differences first, at most `limit` rows.",
+          "items": {
+            "$ref": "#/$defs/FileVoltageRow"
+          },
+          "type": "array"
+        },
+        "with_study_edits": {
+          "description": "True when the solve includes study edits, so it is not the file's case.",
+          "type": "boolean"
+        },
+        "within_0_001": {
+          "description": "Buses within 0.001 p.u. of the file's magnitude.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "within_0_01": {
+          "description": "Buses within 0.01 p.u. of the file's magnitude.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "compared",
+        "mean_dvm",
+        "max_dvm",
+        "max_dvm_bus",
+        "max_dva",
+        "max_dva_bus",
+        "within_0_001",
+        "within_0_01",
+        "reference_bus",
+        "with_study_edits",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "FileVoltageRow": {
+      "description": "One bus: the file's voltage, the solved one and the difference.",
+      "properties": {
+        "area": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dva": {
+          "description": "Solved minus file, degrees, after lining up the reference bus.",
+          "format": "double",
+          "type": "number"
+        },
+        "dvm": {
+          "description": "Solved minus file, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "file_va": {
+          "description": "Voltage angle in the file, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "file_vm": {
+          "description": "Voltage magnitude in the file, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "solved_va": {
+          "description": "Solved voltage angle, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "solved_vm": {
+          "description": "Solved voltage magnitude, p.u.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bus",
+        "name",
+        "base_kv",
+        "area",
+        "file_vm",
+        "solved_vm",
+        "dvm",
+        "file_va",
+        "solved_va",
+        "dva"
+      ],
+      "type": "object"
+    },
     "Fingerprint": {
       "description": "What a study records about its case, to tell later whether the file\nchanged.",
       "properties": {
@@ -9594,6 +9748,38 @@
       "doc": "Every command's arguments and result, and the error, as JSON Schema\n(2020-12), for clients that check calls or generate types.",
       "result": true,
       "takes_case": false
+    },
+    "compare_file_voltages": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "doc": "Compare the latest solve with the voltages saved in the case file\n(the solution of the tool that last saved it, such as PSS/E or\nPowerWorld): summary statistics and the `limit` largest differences\n(200 by default).",
+      "result": {
+        "$ref": "#/$defs/FileVoltageComparison"
+      },
+      "takes_case": true
     },
     "contingency_detail": {
       "action": false,

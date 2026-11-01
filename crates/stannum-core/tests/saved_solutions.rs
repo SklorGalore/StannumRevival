@@ -111,3 +111,27 @@ fn memphis_matches_its_saved_solution() {
         [0.0002, 0.01, 2.0],
     );
 }
+
+#[test]
+fn compare_file_voltages_matches_the_saved_solution_check() {
+    // The app's "Compare with the file" gives the same numbers as the
+    // check above, and sorts the largest difference first.
+    let name = "Texas2k_series25_case1_summerpeak.RAW";
+    let mut ws = Workspace::default();
+    ws.open(&path(name)).unwrap();
+    let case = ws.current_mut().unwrap();
+    case.solve(SolveSettings::default()).unwrap();
+    let c = case.compare_file_voltages(10).unwrap();
+    assert!(c.compared > 2000, "{}", c.compared);
+    assert_eq!(c.rows.len(), 10);
+    assert_eq!(c.rows[0].dvm.abs(), c.max_dvm);
+    assert_eq!(Some(c.rows[0].bus), c.max_dvm_bus);
+    assert!(
+        c.mean_dvm < 0.002 && c.max_dvm < 0.05,
+        "{} {}",
+        c.mean_dvm,
+        c.max_dvm
+    );
+    assert!(c.within_0_01 <= c.compared && c.within_0_001 <= c.within_0_01);
+    assert!(!c.with_study_edits);
+}

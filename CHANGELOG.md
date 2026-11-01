@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Compare with the file's voltages.** After an AC solve, the Power flow
+  overview sets the voltages saved in the case file (the solution of
+  PSS/E, PowerWorld or whatever tool saved it) beside Stannum's: mean and
+  largest differences, how many buses agree within 0.001 and 0.01 p.u.,
+  and the 20 largest differences, each a link to its bus. Also the
+  `compare_file_voltages` command for Python, run files and MCP.
 - **PV curves (voltage stability), preview.** A study grows the load in a
   sink subsystem, or a transfer from a source to the sink, step by step
   with full AC solves (every control and Q limit kept), halving the step

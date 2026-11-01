@@ -1007,6 +1007,13 @@ commands! {
     solve_power_flow { case: Option<CaseId>, settings: Option<SolveSettings> } -> crate::power::SolveReport =>
         |s, a| s.solve(a.case, a.settings.unwrap_or_default());
 
+    /// Compare the latest solve with the voltages saved in the case file
+    /// (the solution of the tool that last saved it, such as PSS/E or
+    /// PowerWorld): summary statistics and the `limit` largest differences
+    /// (200 by default).
+    compare_file_voltages { case: Option<CaseId>, limit: Option<usize> } -> crate::file_voltages::FileVoltageComparison =>
+        |s, a| s.workspace()?.case(a.case)?.compare_file_voltages(a.limit.unwrap_or(200));
+
     /// Stop the solve in progress; the case keeps its previous results.
     cancel_solve {} -> () => |s, _| {
         s.cancel_solve();

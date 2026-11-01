@@ -47,6 +47,7 @@ import { useStudy } from "../../store/studyStore";
 import { StudyActions } from "../../ui/StudyActions";
 import { StudyPanel } from "./StudyPanel";
 import { WarningsTab } from "./WarningsTab";
+import { FileVoltages } from "./FileVoltages";
 import { ContingencyTab } from "./ContingencyTab";
 import { useContingencies } from "../../store/contingencyStore";
 import { TransferTab } from "./TransferTab";
@@ -1010,6 +1011,9 @@ function Overview({
           </tbody>
         </table>
       </Panel>
+      {report.model === "ac" && (
+        <FileVoltages report={report} onBus={(element) => onJump({ tab: "buses", problems: false, element })} />
+      )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Panel
           title="Voltage profile"
