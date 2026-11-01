@@ -52,6 +52,7 @@ pub mod qv;
 pub mod raw_export;
 pub mod record_edit;
 pub mod records;
+pub mod redispatch;
 pub mod results;
 pub mod results_file;
 pub mod run_file;

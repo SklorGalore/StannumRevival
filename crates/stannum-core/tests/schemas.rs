@@ -320,6 +320,11 @@ fn answers_fit_their_schemas() {
         json!({ "settings": { "sink": { "areas": [1] }, "step_mw": 20.0, "max_curves": 3 } }),
     );
     assert!(pv["summary"]["nose_mw"].is_number(), "{pv}");
+    // A limit below line 1-2's loading, so something moves.
+    let redispatch = json!({ "settings": { "limit_pct": 55.0, "branches": ["line:1:2:1"] } });
+    let preview = c.ok("redispatch_preview", redispatch.clone());
+    assert!(preview["summary"]["status"].is_string(), "{preview}");
+    c.ok("redispatch", redispatch);
     let qv = c.ok(
         "run_qv_curve",
         json!({ "settings": { "buses": [5], "step_pu": 0.05 } }),

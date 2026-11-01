@@ -559,6 +559,23 @@ impl Session {
         Ok(crate::scaling::plan(&records, &power, settings)?)
     }
 
+    fn redispatch_plan(
+        &self,
+        case: Option<CaseId>,
+        settings: &crate::redispatch::RedispatchSettings,
+    ) -> Result<crate::redispatch::RedispatchReport, Error> {
+        let records = self.records(case)?;
+        let (power, solved) = self.workspace()?.case(case)?.redispatch_inputs()?;
+        let editable = records.editable.then_some(&*records);
+        let report = crate::redispatch::plan(editable, &power, &solved.0, &solved.1, settings)?;
+        if !records.editable && !report.units.is_empty() {
+            return Err(Error::unsupported(
+                "This case's records can't be edited, so its generators can't be moved: Stannum writes RAW revisions 33 and 35, and MATPOWER.",
+            ));
+        }
+        Ok(report)
+    }
+
     /// Run a run file's steps in order, telling `each` how every step went
     /// as it finishes. Stops at the first failure unless `keep_going`, and
     /// before the next step once `cancel_run_file` is called.
@@ -1147,6 +1164,23 @@ commands! {
             let report = s.scale_plan(a.case, &a.settings)?;
             let summary = s.apply_record_edits(a.case, &report.edits)?;
             Ok(crate::scaling::Scaled { report, case: summary })
+        };
+
+    /// What `redispatch` would change, without changing anything: the
+    /// generator moves that relieve branch overloads in the last AC solve,
+    /// and each branch's loading before and after (checked in AC).
+    redispatch_preview { case: Option<CaseId>, settings: crate::redispatch::RedispatchSettings } -> crate::redispatch::RedispatchReport =>
+        |s, a| s.redispatch_plan(a.case, &a.settings);
+
+    /// Move generators as little as possible (DC optimal power flow with
+    /// enforced branch limits, checked in AC) so that monitored branches
+    /// end within their limit, and write the new outputs into the case's
+    /// records. Starts from the last AC solve.
+    redispatch { case: Option<CaseId>, settings: crate::redispatch::RedispatchSettings } -> crate::redispatch::Redispatched =>
+        |s, a| {
+            let report = s.redispatch_plan(a.case, &a.settings)?;
+            let summary = s.apply_record_edits(a.case, &report.edits)?;
+            Ok(crate::redispatch::Redispatched { report, case: summary })
         };
 
     /// Save the case, with its edits, to a new file.

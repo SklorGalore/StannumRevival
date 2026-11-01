@@ -55,6 +55,28 @@ export type BranchChange = {
   tripped: boolean;
 };
 
+/** One branch's loading before and after. */
+export type BranchLoading = {
+  element: string;
+  from: number;
+  /**
+   * The loading this branch must end at or below, percent: the limit,
+   * or its loading before when it was already over and not chosen.
+   */
+  limit_pct: number;
+  mw_after: number;
+  /** Active flow at the from end, MW. */
+  mw_before: number;
+  name: string;
+  pct_after: number;
+  pct_before: number;
+  /** The rating, MVA. */
+  rating_mva: number;
+  /** One of the branches to relieve. */
+  target: boolean;
+  to: number;
+};
+
 /** BranchRow rows as columns: one array per field, each `count` long. */
 export type BranchRowColumns = {
   circuit: string[];
@@ -1244,6 +1266,18 @@ export type MonitorSettings = {
   subsystem?: Subsystem | null;
 };
 
+/** One generator the redispatch moves. */
+export type MovedUnit = {
+  area: number;
+  bus: number;
+  element: string;
+  mw_after: number;
+  mw_before: number;
+  name: string;
+  pmax: number;
+  pmin: number;
+};
+
 /**
  * One converter of a multi-terminal DC system under the detailed model, as
  * shown on the row that links it to the voltage-controlling converter.
@@ -1903,6 +1937,83 @@ export type RecordTable = {
   rows: RecordRowColumns;
   /** Records in the file that couldn't be read into this table. */
   skipped: number;
+};
+
+/** What redispatch would do, or did. */
+export type RedispatchReport = {
+  /**
+   * Branches to relieve, then any other branch over its limit before or
+   * after, or held at its limit by the program; most loaded after first.
+   */
+  branches: BranchLoading[];
+  notes: string[];
+  summary: RedispatchSummary;
+  /** Largest moves first. */
+  units: MovedUnit[];
+};
+
+/** What to relieve and what may move. */
+export type RedispatchSettings = {
+  /**
+   * Check each pass with an AC solve, moving units again while a branch
+   * is still over in AC. Without it the answer is the DC estimate.
+   */
+  ac_check?: boolean;
+  /**
+   * Relieve only these branches (element ids such as `line:1:2:1`). Other
+   * monitored branches may not go over their limit, nor further over it
+   * if they already are.
+   */
+  branches?: string[] | null;
+  /** Generators at these buses may move (every bus when empty). */
+  generators?: Subsystem;
+  /**
+   * Loading, in percent of the rating, that no monitored branch may end
+   * above.
+   */
+  limit_pct?: number;
+  /** The most AC passes. */
+  max_passes?: number;
+  /**
+   * Branches with an end at these buses are monitored (every bus when
+   * empty).
+   */
+  monitor?: Subsystem;
+  /** The rating limits are taken from. */
+  rating?: Rating;
+};
+
+/** How the redispatch went. */
+export type RedispatchSummary = {
+  /** The loadings after come from an AC solve (else the DC estimate). */
+  ac_checked: boolean;
+  elapsed_ms: number;
+  monitored: number;
+  movable: number;
+  /** Megawatts raised in all (as much is lowered). */
+  moved_mw: number;
+  over_after: number;
+  /** Monitored branches over their limit, before and after. */
+  over_before: number;
+  /** AC passes run (zero without the AC check). */
+  passes: number;
+  /** Linear programs solved. */
+  programs: number;
+  /**
+   * `relieved` (every monitored branch within its limit), `partly` (some
+   * still over: no room left to move), `nothing_to_do`, or `failed`
+   * (the AC solve didn't converge; the moves are the last good pass's).
+   */
+  status: string;
+  units_moved: number;
+  worst_after: BranchLoading | null;
+  worst_before: BranchLoading | null;
+};
+
+/** What `redispatch` answers: what changed, and the case after. */
+export type Redispatched = {
+  case: CaseSummary;
+  report: RedispatchReport;
 };
 
 export type Response = {
@@ -3283,6 +3394,31 @@ export interface CoreCommands {
     result: unknown[];
   };
   /**
+   * Move generators as little as possible (DC optimal power flow with
+   * enforced branch limits, checked in AC) so that monitored branches
+   * end within their limit, and write the new outputs into the case's
+   * records. Starts from the last AC solve.
+   */
+  redispatch: {
+    args: {
+      case?: CaseId | null;
+      settings: RedispatchSettings;
+    };
+    result: Redispatched;
+  };
+  /**
+   * What `redispatch` would change, without changing anything: the
+   * generator moves that relieve branch overloads in the last AC solve,
+   * and each branch's loading before and after (checked in AC).
+   */
+  redispatch_preview: {
+    args: {
+      case?: CaseId | null;
+      settings: RedispatchSettings;
+    };
+    result: RedispatchReport;
+  };
+  /**
    * A page of a result's branches. `busRules` keep the branches with an
    * end at a bus passing every rule.
    */
@@ -3689,6 +3825,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "load_dc_grids",
   "open_case",
   "open_sample",
+  "redispatch",
   "run_contingencies",
   "run_pv_curve",
   "run_qv_curve",

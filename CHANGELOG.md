@@ -10,6 +10,14 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Redispatch to relieve overloads.** **Analysis → Redispatch to relieve
+  overloads…** moves online generators as little as possible so monitored
+  branches end within a rating and limit: a DC optimal power flow on PTDFs
+  (simplex, so few units move), checked with AC solves that move units again
+  while a branch is still over. Relieve every overload or only chosen
+  branches, limit which areas' generators move, preview the moves and
+  loadings, then write the new outputs into the case. The `redispatch` and
+  `redispatch_preview` commands do the same from run files and Python.
 - **Share lost generation among the units left.** A contingency setting,
   **Lost generation made up by** (`pickup`), shares a tripped unit's output,
   and what a split-off part was exchanging, among every online unit by Pmax

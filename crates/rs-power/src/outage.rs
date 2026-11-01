@@ -194,6 +194,29 @@ impl DcFactors {
         self.flows_from_angles(&theta)
     }
 
+    /// How much each branch in `rows` changes flow (from end, positive into
+    /// the branch) per unit injected at each case bus row and taken out at
+    /// that island's reference bus: one row of the PTDF matrix per branch,
+    /// from one solve each (the susceptance matrix is symmetric). Branches
+    /// out of service, and buses in other islands, give zeros.
+    pub fn branch_sensitivities(&self, rows: &[usize]) -> Vec<Vec<f64>> {
+        let columns: Vec<Vec<(usize, f64)>> = rows
+            .iter()
+            .map(|&row| match self.branches.get(row).copied().flatten() {
+                Some((f, t, b)) => vec![(f, b), (t, -b)],
+                None => Vec::new(),
+            })
+            .collect();
+        self.angles(&columns)
+            .into_iter()
+            .map(|x| {
+                (0..self.internal.len())
+                    .map(|row| self.internal[row].map_or(0.0, |bus| x[bus]))
+                    .collect()
+            })
+            .collect()
+    }
+
     /// Flows after tripping branch `rows` together, given every branch's
     /// flow before (from end, positive into the branch). Rows already out of
     /// service are ignored.
@@ -385,6 +408,25 @@ mod tests {
                         "outage {outage} cut off {buses:?}"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn branch_sensitivities_are_ptdf_rows() {
+        let case = case9();
+        let ptdf = make_ptdf(&case, None).unwrap();
+        let factors = DcFactors::new(&case).unwrap();
+        let rows: Vec<usize> = (0..case.branches.len()).collect();
+        let sens = factors.branch_sensitivities(&rows);
+        for (row, s) in sens.iter().enumerate() {
+            for bus in 0..case.buses.len() {
+                assert!(
+                    (s[bus] - ptdf[row][bus]).abs() < 1e-9,
+                    "branch {row}, bus {bus}: {} vs {}",
+                    s[bus],
+                    ptdf[row][bus]
+                );
             }
         }
     }
