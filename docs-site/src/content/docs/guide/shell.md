@@ -34,9 +34,14 @@ Every menu entry is also a [Ctrl+K command](/StannumRevival/guide/command-palett
 
 The **toolbar** under it holds the everyday actions: **Open**, **Save
 study**, **Solve**, **Sensitivities**, **Contingencies**, **Side by side** and
-**Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>). On the right it shows the
-study badge, which result is shown, and the selection chip. In a narrow window
-the buttons drop their labels. See [Open a
+**Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>). In a narrow window the
+buttons drop their labels.
+
+While a case is open, the **context bar** under the toolbar says what every
+module is looking at: **Showing** names the result the diagram, tables and
+inspector show (the latest solve, or an outage picked from its menu), and
+**Selected** holds the selection chip and **Link selection**. The study badge
+sits at its right end. Both stay as they are when you switch module. See [Open a
 case](/StannumRevival/start/open-a-case/#the-menu-bar-and-toolbar).
 
 ## Selection
@@ -44,7 +49,7 @@ case](/StannumRevival/start/open-a-case/#the-menu-bar-and-toolbar).
 Every bus, branch, transformer, generator and DC line has one identity shared
 by all modules. Selecting it anywhere (a table row, a diagram symbol, a
 network node, a diff record) puts it in the **selection chip** in the
-toolbar. The chip's buttons show the element in another module, and **Draw
+context bar. The chip's buttons show the element in another module, and **Draw
 around** generates a one-line around its bus. <kbd>Esc</kbd> clears the
 selection.
 

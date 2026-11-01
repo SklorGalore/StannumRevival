@@ -43,14 +43,16 @@ export function SelectionChip() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selection, module, select]);
 
-  // Fold the "Show in" links into a menu when the case bar runs out of room,
-  // and unfold them when the case name could give the room back.
+  // Fold the "Show in" links into a menu when the bar runs out of room,
+  // and unfold them when there is room again.
   const wrapRef = useRef<HTMLDivElement>(null);
   const fullRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [barWidth, setBarWidth] = useState(0);
+  // The bar the chip sits in: marked with data-chip-bar, or its parent.
+  const barOf = (el: HTMLElement | null) => el?.closest<HTMLElement>("[data-chip-bar]") ?? el?.parentElement ?? null;
   useEffect(() => {
-    const bar = wrapRef.current?.parentElement;
+    const bar = barOf(wrapRef.current);
     if (!bar) return;
     const ro = new ResizeObserver(() => setBarWidth(bar.clientWidth));
     ro.observe(bar);
@@ -58,13 +60,15 @@ export function SelectionChip() {
   }, [selection === null]);
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
-    const bar = wrap?.parentElement;
+    const bar = barOf(wrap);
     const full = fullRef.current?.offsetWidth;
     if (!wrap || !bar || full === undefined) return;
     if (!compact && bar.scrollWidth > bar.clientWidth + 1) setCompact(true);
     else if (compact) {
+      // Free room in the bar, or what the case name could give up.
+      const free = bar.querySelector<HTMLElement>("[data-bar-spare]");
       const summary = bar.querySelector<HTMLElement>("[data-case-summary]");
-      const spare = summary ? summary.clientWidth - SUMMARY_MIN : 0;
+      const spare = free ? free.clientWidth : summary ? summary.clientWidth - SUMMARY_MIN : 0;
       if (spare >= full - wrap.offsetWidth + 8) setCompact(false);
     }
   }, [barWidth, compact, selection, module]);

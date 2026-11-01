@@ -59,6 +59,11 @@ under it holds:
 - **Solve**, **Sensitivities** and **Contingencies**, which run in
   [Power flow](/StannumRevival/guide/power-flow/) with its current settings.
 - **Side by side** and **Find in case** (<kbd>Ctrl</kbd>+<kbd>K</kbd>).
+
+Under the toolbar, the **context bar** shows:
+
+- **Showing**: the result every module shows, "Not solved yet" until you
+  solve.
 - The **study badge** (for example "2 edits") when a
   [study](/StannumRevival/guide/studies/) is changing the case.
 - **Link selection**, which makes a selection in one module select the same
