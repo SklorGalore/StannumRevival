@@ -211,6 +211,16 @@ const TOOLS: &[Tool] = &[
         app: false,
         run: qv_curve,
     },
+    Tool {
+        name: "secure_transfer",
+        title: "Secure transfer limit (contingencies at every step)",
+        description: "How far a transfer from a `source` subsystem to a `sink` can go with every contingency still secure: grows the transfer by `major_step_mw`, solving the base case and every contingency in full AC at each step, until a contingency (or the base case) shows a new thermal or voltage problem (`stop_on_thermal`, `stop_on_voltage`, both on) or stops solving; then walks back and pins it down with `minor_step_mw`. `stop_at_violation: false` carries on to the nose and logs every problem. Contingencies and monitors as for a contingency run (`contingencies: {elements, lists, monitors, rating, ...}`); problems already there with no transfer don't count. Solve with the AC model first. Slow on big cases: every contingency is solved at every step. Answers the summary (secure limit MW, what set it, the limiting contingency and element, the results file), the steps, the first `max_rows` problems in transfer order and the most limiting contingencies (default 20 each).",
+        input: secure_input,
+        read_only: false,
+        destructive: false,
+        app: false,
+        run: secure_transfer,
+    },
     // Topology
     Tool {
         name: "topology_summary",
@@ -614,6 +624,15 @@ fn pv_input() -> Value {
 
 fn qv_input() -> Value {
     core_schema("QvSettings", false)
+}
+
+fn secure_input() -> Value {
+    let mut schema = core_schema("SecureTransferSettings", false);
+    schema["properties"]["max_rows"] = json!({
+        "type": "integer", "minimum": 1, "maximum": MAX_ROWS,
+        "description": "Most problems and contingencies to list (default 20).",
+    });
+    schema
 }
 
 fn planning_input() -> Value {
@@ -1421,6 +1440,107 @@ fn pv_curve(c: &Call, args: &Value) -> Answer {
         "summary": summary,
         "points": point_rows.to_json(),
         "curves": curve_rows.to_json(),
+    }))
+}
+
+fn secure_transfer(c: &Call, args: &Value) -> Answer {
+    let mut settings = args.clone();
+    let max_rows = settings
+        .as_object_mut()
+        .and_then(|o| o.remove("max_rows"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20) as usize;
+    let stop = AtomicBool::new(false);
+    let r = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = (usize::MAX, usize::MAX);
+            while !stop.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(p) = c.backend.side("secure_transfer_progress") else {
+                    continue;
+                };
+                let steps = p["steps"].as_u64().unwrap_or(0) as usize;
+                let done = p["done"].as_u64().unwrap_or(0) as usize;
+                if (steps, done) == last {
+                    continue;
+                }
+                let total = p["total"].as_u64().unwrap_or(0);
+                let mw = p["transfer_mw"].as_f64().unwrap_or(0.0);
+                (c.progress)(
+                    steps as f64,
+                    None,
+                    &format!(
+                        "steps solved: {steps}; at {mw:.1} MW, contingencies {done} of {total}"
+                    ),
+                );
+                last = (steps, done);
+            }
+        });
+        let _follow = Follow { stop: &stop };
+        c.backend
+            .call("run_secure_transfer", json!({ "settings": settings }))
+    })?;
+    let take = |key: &str, lead: &[&str], drop: &[&str]| {
+        let list: Vec<Value> = r[key]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .take(max_rows)
+            .map(|v| {
+                let mut v = v.clone();
+                if let Some(o) = v.as_object_mut() {
+                    for d in drop {
+                        o.remove(*d);
+                    }
+                }
+                v
+            })
+            .collect();
+        let mut rows = Rows::from_records(&list);
+        rows.lead(lead);
+        rows.to_json()
+    };
+    let points = r["points"].as_array().cloned().unwrap_or_default();
+    // About 40 steps, evenly through the run, always with the last.
+    let keep = points.len().div_ceil(40).max(1);
+    let thinned: Vec<Value> = points
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % keep == 0 || *i + 1 == points.len())
+        .map(|(_, p)| p.clone())
+        .collect();
+    let mut point_rows = Rows::from_records(&thinned);
+    point_rows.lead(&["transfer_mw", "minor", "new_problems", "not_converged"]);
+    let mut summary = r["summary"].clone();
+    if let Some(o) = summary.as_object_mut() {
+        o.remove("elapsed_ms");
+        o.remove("source");
+        o.remove("sink");
+    }
+    if c.cancelled.load(Ordering::SeqCst) || summary["cancelled"].as_bool() == Some(true) {
+        summary["note"] = json!("Cancelled: the answer covers the steps solved so far.");
+    }
+    let limiting: Vec<Value> = r["contingencies"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .filter(|c| !c["limit_mw"].is_null())
+        .cloned()
+        .collect();
+    let mut limiting_rows =
+        Rows::from_records(&limiting.into_iter().take(max_rows).collect::<Vec<_>>());
+    limiting_rows.lead(&["name", "limit_mw", "limited_by", "limiting_element"]);
+    Ok(json!({
+        "summary": summary,
+        "points": point_rows.to_json(),
+        "violations": take("violations", &["transfer_mw", "kind", "contingency", "element", "value", "limit"], &["contingency_index", "element_id"]),
+        "limiting_contingencies": limiting_rows.to_json(),
+        "channels": r["channels"].as_array().map_or(0, Vec::len),
     }))
 }
 

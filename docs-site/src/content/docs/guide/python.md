@@ -200,6 +200,40 @@ The other settings, `v_high_pu`, `v_low_pu`, `step_pu`, `min_step_pu` and
 `max_points`, and the method are in
 [QV curves](/StannumRevival/manual/qv-curves/).
 
+## Secure transfer limits
+
+```python
+case.solve()
+run = case.secure_transfer(
+    {"areas": [7]},                  # the sink
+    {"areas": [1]},                  # the source
+    major_step_mw=100, minor_step_mw=10,
+    contingencies={"lists": "texas.stnl", "monitors": "texas.stnl"},
+    channels=[{"quantity": "mw", "element": "line:3067:3141:1"}],
+)
+run.summary.limit_mw                 # the secure transfer limit
+run.summary.limiting_contingency     # and what set it
+run.violations                       # each problem the first time it was seen
+run.contingencies                    # each contingency's own limit, the most limiting first
+run.channels                         # what was recorded at every step
+```
+
+The values of every channel, for the base case and every contingency at
+every step, are in a results file (`run.summary.results_file`). One
+channel's curves come back as a table, `transfer_mw` then one column per
+curve:
+
+```python
+v = case.secure_transfer_channel(0, contingencies=[561, 1795])
+for name in v.columns[1:]:
+    plt.plot(v["transfer_mw"], v[name], label=name)
+```
+
+or read the whole file with pyarrow (`pa.ipc.open_stream(path).read_all()`).
+`stop_on_thermal`, `stop_on_voltage`, `stop_at_violation`,
+`voltage_buses`, `output` and the method are in
+[Secure transfer limits](/StannumRevival/manual/secure-transfer/).
+
 ## Records, elements and topology
 
 ```python

@@ -214,7 +214,7 @@ pub struct PvJob {
 }
 
 /// How one side of the transfer moves the case per MW.
-struct Side {
+pub(crate) struct Side {
     /// Per-MW change of each online generator's output, by row.
     generators: Vec<(usize, f64)>,
     /// Per-MW change of the scale factor on each bus's load, by row.
@@ -222,7 +222,7 @@ struct Side {
 }
 
 impl Side {
-    fn new(
+    pub(crate) fn new(
         case: &Case,
         solved: &Case,
         buses: &HashSet<u32>,
@@ -266,7 +266,7 @@ impl Side {
     }
 
     /// The most MW (or Mvar) one bus moves by per MW of transfer.
-    fn largest_share(&self, case: &Case) -> f64 {
+    pub(crate) fn largest_share(&self, case: &Case) -> f64 {
         let mut at: HashMap<u32, f64> = HashMap::new();
         for &(r, per) in &self.generators {
             *at.entry(case.generators[r].bus).or_default() += per.abs();
@@ -279,7 +279,7 @@ impl Side {
     }
 
     /// Move `case` (as solved at the base) by `mw` of transfer.
-    fn apply(&self, case: &mut Case, base: &Case, mw: f64) {
+    pub(crate) fn apply(&self, case: &mut Case, base: &Case, mw: f64) {
         for &(r, per) in &self.generators {
             case.generators[r].pg = base.generators[r].pg + per * mw;
         }

@@ -26,6 +26,7 @@ _CANCEL = (
     "cancel_transfer_limits",
     "cancel_pv_curve",
     "cancel_qv_curve",
+    "cancel_secure_transfer",
     "cancel_run_file",
 )
 

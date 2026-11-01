@@ -499,6 +499,77 @@ class Case:
         result["summary"] = Answer(result["summary"])
         return result
 
+    # Secure transfer limits
+
+    def secure_transfer(
+        self,
+        sink: Mapping[str, Any],
+        source: Mapping[str, Any] | None = None,
+        settings: Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> Answer:
+        """Secure transfer limits: grow a transfer from ``source`` to
+        ``sink`` by the major step, solving every contingency in AC at each
+        step, until a new thermal or voltage problem (as chosen) or a
+        failed solve; then pin it down with the minor step. Solve with the
+        AC model first.
+
+        ``sink`` and ``source`` are subsystems, as for
+        :meth:`transfer_limits`. With no ``source``, all generation picks
+        up.
+
+        Options (all optional): ``major_step_mw``, ``minor_step_mw``,
+        ``max_transfer_mw``, ``stop_on_thermal`` and ``stop_on_voltage``
+        (both on), ``stop_at_violation`` (on; off carries on to the nose and
+        logs every problem), ``contingencies`` (contingency run settings:
+        ``elements``, ``lists``, ``monitors``, ``rating``, ...),
+        ``voltage_buses`` (a subsystem whose voltages are recorded; the
+        sink's buses by default), ``channels`` (more quantities to record,
+        such as ``{"quantity": "mw", "element": "line:1:4:1"}``),
+        ``output`` (the results file) and ``max_points``.
+
+        Returns the ``summary`` (``limit_mw``, ``limited_by``,
+        ``limiting_contingency``, ``results_file``, ``notes``, ...),
+        ``points`` (one row per step), ``violations`` (each problem the
+        first time it was seen), ``contingencies`` (each one's own limit,
+        the most limiting first) and ``channels`` (what was recorded; read
+        a channel's curves with :meth:`secure_transfer_channel`, or the
+        whole file with ``pyarrow.ipc.open_stream``).
+        """
+        merged = _settings(settings, options) or {}
+        merged["sink"] = dict(sink)
+        if source is not None:
+            merged["source"] = dict(source)
+        result = self.call("run_secure_transfer", settings=merged)
+        for key in ("points", "violations", "contingencies", "channels"):
+            rows = result.get(key) or []
+            result[key] = Table.from_rows(rows) if rows else Table({})
+        result["summary"] = Answer(result["summary"])
+        return result
+
+    def secure_transfer_channel(
+        self,
+        channel: int,
+        contingencies: Iterable[int] | None = None,
+        path: str | None = None,
+    ) -> Table:
+        """One channel of a secure transfer study (its position in the
+        results' ``channels``), read from the results file (the last run's
+        unless ``path`` is given): ``transfer_mw``, then one column per
+        curve, the base case first, then each of ``contingencies`` (by
+        index; every one when left out). A value is None where the case
+        didn't solve (NaN)."""
+        args: dict[str, Any] = {"channel": int(channel)}
+        if contingencies is not None:
+            args["contingencies"] = [int(i) for i in contingencies]
+        if path is not None:
+            args["path"] = str(path)
+        result = self.call("secure_transfer_channel", **args)
+        columns: dict[str, Any] = {"transfer_mw": result["transfer_mw"]}
+        for c in result["curves"]:
+            columns[c["name"]] = [float("nan") if v is None else v for v in c["values"]]
+        return Table(columns, count=len(result["transfer_mw"]))
+
     # Records and elements
 
     def records(self, section: str | None = None) -> Any:

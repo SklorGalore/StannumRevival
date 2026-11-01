@@ -243,6 +243,51 @@ export type CategorySummary = {
   with_voltage_problems: number;
 };
 
+/** One channel: a quantity of one element. */
+export type Channel = {
+  /**
+   * `bus:101` for vm and va, a branch id (`line:1:4:1`) for mw, mvar
+   * and pct, a generator id (`generator:3:1`) for pg and qg, or an
+   * interface's name from the monitors.
+   */
+  element: string;
+  quantity: Quantity;
+};
+
+export type ChannelCurve = {
+  index: number;
+  name: string;
+  /**
+   * The value at each step; `None` where it didn't solve (or wasn't
+   * solved: a contingency left out after it failed).
+   */
+  values: (number | null)[];
+};
+
+/** One channel's curves, read back from a results file. */
+export type ChannelCurves = {
+  channel: ChannelInfo;
+  /** The base case first, then the contingencies asked for. */
+  curves: ChannelCurve[];
+  /** The transfer at each step, MW. */
+  transfer_mw: number[];
+};
+
+/** One channel as recorded. */
+export type ChannelInfo = {
+  /** Its column in the results file. */
+  column: string;
+  element: string;
+  high: number | null;
+  /** For a bus voltage: its low and high limits, p.u. */
+  low: number | null;
+  /** The element named PSS/E style. */
+  name: string;
+  quantity: Quantity;
+  /** "pu", "deg", "MW", "Mvar" or "%". */
+  unit: string;
+};
+
 export type ColumnKind = "integer" | "number" | "text";
 
 /** One command, as `list_commands` describes it. */
@@ -1444,8 +1489,11 @@ export type Problem = {
 /** Progress of the run in hand, for a progress bar. */
 export type Progress = {
   done: number;
-  /** "idle", "screening" or "ac". */
-  phase: "idle" | "screening" | "ac";
+  /**
+   * "idle", "screening", "ac" or "contingencies" (a secure transfer
+   * step solving its contingencies).
+   */
+  phase: "idle" | "screening" | "ac" | "contingencies";
   total: number;
 };
 
@@ -1603,6 +1651,12 @@ export type PvSummary = {
   weakest_bus: number | null;
   weakest_bus_name: string;
 };
+
+/**
+ * A quantity recorded at every step, for the base case and each
+ * contingency.
+ */
+export type Quantity = "vm" | "va" | "mw" | "mvar" | "pct" | "pg" | "qg" | "interface";
 
 export type QuantityInfo = {
   key: string;
@@ -1938,6 +1992,212 @@ export type SectionInfo = {
 export type SectionSummary = {
   counts: StatusCounts;
   name: string;
+};
+
+/** What each contingency allows. */
+export type SecureContingency = {
+  /** What goes out; empty for the base case. */
+  element: string;
+  /** Already failing to solve with no transfer: left out of the study. */
+  failed_at_start: boolean;
+  /** 0 for the base case, then the contingencies in order. */
+  index: number;
+  /**
+   * The last clean transfer before its first problem that stops the
+   * run, MW; `None` when it had none.
+   */
+  limit_mw: number | null;
+  /** That problem's kind (as [`SecureViolation::kind`]) and element. */
+  limited_by: string | null;
+  limiting_element: string | null;
+  name: string;
+};
+
+/** One transfer step solved, the base case and every contingency. */
+export type SecurePoint = {
+  /** The lowest recorded bus voltage in the base case, p.u. */
+  base_min_vm_pu: number | null;
+  /** Taken with the minor step, pinning down a problem. */
+  minor: boolean;
+  /** Problems that count towards stopping, first seen at this step. */
+  new_problems: number;
+  not_converged: number;
+  /** Contingencies solved here, and how many didn't converge. */
+  solved: number;
+  transfer_mw: number;
+  /**
+   * Contingencies (the base case counted as one) with a branch,
+   * voltage or interface problem here, new or worse since the start.
+   */
+  with_thermal: number;
+  with_voltage: number;
+};
+
+/** Progress of a secure transfer study. */
+export type SecureProgress = {
+  /** Contingencies solved at this step, of how many. */
+  done: number;
+  /** "idle", or "contingencies" while a step's contingencies solve. */
+  phase: string;
+  /** Steps solved so far, and the transfer of the step in hand, MW. */
+  steps: number;
+  total: number;
+  transfer_mw: number;
+};
+
+export type SecureResults = {
+  channels: ChannelInfo[];
+  /** The base case and each contingency, the most limiting first. */
+  contingencies: SecureContingency[];
+  /** Every step solved, in order. */
+  points: SecurePoint[];
+  summary: SecureSummary;
+  /** Every problem, the first time it was seen, in transfer order. */
+  violations: SecureViolation[];
+};
+
+export type SecureSummary = {
+  already_out: number;
+  /** Base case solves, and contingency solves. */
+  base_solves: number;
+  cancelled: boolean;
+  channels: number;
+  /**
+   * Contingencies studied (the base case not counted), elements already
+   * out of service, and contingencies failing with no transfer.
+   */
+  contingencies: number;
+  contingency_solves: number;
+  elapsed_ms: number;
+  /**
+   * Problems already there with no transfer, left out unless they got
+   * worse.
+   */
+  existing_problems: number;
+  failed_at_start: number;
+  /** The largest transfer studied, MW, and why the run stopped there. */
+  last_transfer_mw: number;
+  /**
+   * The secure transfer limit: the last clean transfer before the first
+   * problem that stops the run, MW; or, when none was found, the
+   * largest transfer studied.
+   */
+  limit_mw: number;
+  /** What set the limit. */
+  limited_by: "thermal" | "voltage" | "not_converged" | "base_collapse" | "generation" | "max_transfer" | "max_points" | "cancelled";
+  /** The contingency and element behind the limit, when one set it. */
+  limiting_contingency: string | null;
+  limiting_element: string | null;
+  major_step_mw: number;
+  minor_step_mw: number;
+  /** The base case's nose, MW, when the run reached it. */
+  nose_mw: number | null;
+  notes: string[];
+  /** The limit lies between `limit_mw` and `limit_mw` plus this, MW. */
+  resolution_mw: number;
+  results_bytes: number;
+  /** The results file, its size and rows. */
+  results_file: string;
+  results_rows: number;
+  sink: Participation;
+  sink_scaling: Scaling;
+  source: Participation;
+  source_scaling: Scaling;
+  stopped_by: "violation" | "base_collapse" | "generation" | "max_transfer" | "max_points" | "cancelled";
+};
+
+/** A secure transfer limit study. */
+export type SecureTransferSettings = {
+  /** More quantities recorded at every step. */
+  channels?: Channel[];
+  /**
+   * The contingencies, monitors and limits, as for a contingency run.
+   * Every contingency is solved in AC at every step; `method` and
+   * `ac_count` are unused, and problems already there before the
+   * transfer starts don't count unless they get worse by the
+   * `worse_by` margins.
+   */
+  contingencies?: ContingencySettings;
+  /**
+   * The step the transfer grows by while nothing new is found, MW. 5%
+   * of what the sink starts with when absent.
+   */
+  major_step_mw?: number | null;
+  /** The most transfer steps solved. */
+  max_points?: number;
+  /** Stop at this transfer, MW. */
+  max_transfer_mw?: number | null;
+  /**
+   * The step that pins down where a problem starts, MW. A tenth of the
+   * major step when absent.
+   */
+  minor_step_mw?: number | null;
+  /**
+   * Where the results file goes. A new file in the temporary folder
+   * when absent.
+   */
+  output?: string | null;
+  /**
+   * Stop when the source or sink runs out of room, as transfer limits
+   * count it. On by default.
+   */
+  respect_generation_limits?: boolean;
+  /** Where the power goes. */
+  sink?: Subsystem;
+  /** How the sink shares out its part: its loads grow by default. */
+  sink_scaling?: Scaling;
+  /** Where the power comes from. Every bus when left empty. */
+  source?: Subsystem;
+  /** How the source shares out its part: generation by default. */
+  source_scaling?: Scaling;
+  /**
+   * Stop at the first problem. Off: carry on to the nose of the base
+   * case or the largest transfer, logging each problem met.
+   */
+  stop_at_violation?: boolean;
+  /**
+   * New branch overloads and interfaces over their limit count as
+   * problems that stop the run (and set the limit).
+   */
+  stop_on_thermal?: boolean;
+  /**
+   * New bus voltages outside their limits count as problems that stop
+   * the run (and set the limit).
+   */
+  stop_on_voltage?: boolean;
+  /**
+   * Buses whose voltage is recorded at every step. The voltage
+   * monitors' buses when the monitors name some, else the sink's
+   * buses.
+   */
+  voltage_buses?: Subsystem | null;
+};
+
+/** A problem, the first time it was seen. */
+export type SecureViolation = {
+  clean_mw: number;
+  /** The contingency's name; "BASE CASE" for the case with nothing out. */
+  contingency: string;
+  /** Its index: 0 for the base case, then the contingencies in order. */
+  contingency_index: number;
+  /** The element over its limit, and its id; empty for not_converged. */
+  element: string;
+  element_id: string;
+  /**
+   * "branch", "voltage", "interface", or "not_converged" for a
+   * contingency (or the base case) whose solve failed.
+   */
+  kind: "branch" | "voltage" | "interface" | "not_converged";
+  limit: number | null;
+  /** Counts towards stopping the run, as the settings choose. */
+  stops: boolean;
+  /**
+   * The first transfer at which it was seen, MW, and the last clean
+   * one before it.
+   */
+  transfer_mw: number;
+  /** Loading (percent) or voltage (p.u.) when first seen, and its limit. */
+  value: number | null;
 };
 
 export type SensitivitySummary = {
@@ -2578,6 +2838,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: null;
   };
+  /** Stop the secure transfer study in progress. */
+  cancel_secure_transfer: {
+    args: Record<string, never>;
+    result: null;
+  };
   /** Stop the solve in progress; the case keeps its previous results. */
   cancel_solve: {
     args: Record<string, never>;
@@ -3050,6 +3315,22 @@ export interface CoreCommands {
     result: QvResults;
   };
   /**
+   * Secure transfer limits: grows a transfer from source to sink by the
+   * major step, solving every contingency in AC at each step, until a
+   * new thermal or voltage problem (as chosen) or a failed solve; then
+   * pins it down with the minor step. Records the chosen channels for
+   * the base case and every contingency at each step in a results file
+   * (`.stnr`). `cancel_secure_transfer` stops it and
+   * `secure_transfer_progress` follows it.
+   */
+  run_secure_transfer: {
+    args: {
+      case?: CaseId | null;
+      settings: SecureTransferSettings;
+    };
+    result: SecureResults;
+  };
+  /**
    * Transfer limits (DFAX and FCITC): how much power can move from the
    * source subsystem to the sink before a monitored branch or interface
    * reaches its limit, in the base case and after each contingency.
@@ -3107,6 +3388,25 @@ export interface CoreCommands {
       settings: ScaleSettings;
     };
     result: ScaleReport;
+  };
+  /**
+   * One channel of a secure transfer study, read from its results file
+   * (the last run's when `path` is absent): the transfer at each step,
+   * and the channel's value there for the base case and each
+   * contingency asked for by index (every one when absent).
+   */
+  secure_transfer_channel: {
+    args: {
+      channel: number;
+      contingencies?: number[] | null;
+      path?: string | null;
+    };
+    result: ChannelCurves;
+  };
+  /** How far the secure transfer study in progress has got. */
+  secure_transfer_progress: {
+    args: Record<string, never>;
+    result: SecureProgress;
   };
   /** One sensitivity column's responses at every bus. */
   sensitivity_responses: {
@@ -3296,6 +3596,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "run_contingencies",
   "run_pv_curve",
   "run_qv_curve",
+  "run_secure_transfer",
   "run_transfer_limits",
   "save_case_as",
   "scale_load_generation",
