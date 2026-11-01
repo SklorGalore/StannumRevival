@@ -172,7 +172,19 @@ fn memphis_revision_35_real_world_case() {
     // without a warning.
     // 26 generators are wind machines (WMOD 1); the other 162 used to be
     // reported too, from F4 read in WMOD's place.
-    assert_eq!(imported.warnings.len(), 212);
+    // One more: line 54-55 circuit 2 duplicates a transformer and is
+    // taken out of service.
+    assert_eq!(imported.warnings.len(), 213);
+    assert_eq!(
+        imported
+            .warnings
+            .iter()
+            .filter(|w| w
+                .message
+                .contains("same buses and circuit as a transformer"))
+            .count(),
+        1
+    );
     assert_eq!(
         imported
             .warnings

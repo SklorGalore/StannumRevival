@@ -392,12 +392,29 @@ pub(crate) fn setup<'a>(
         match watch {
             Some(watch) => setup.discrete.push((k, shunt, watch)),
             None => {
-                let bus = &mut case.buses[i];
-                if generated[i] || bus.kind == BusType::Isolated {
+                if case.buses[i].kind == BusType::Isolated {
                     continue;
                 }
                 let levels = shunt.levels();
                 let (lo, hi) = (levels[0], levels[levels.len() - 1]);
+                // A second continuous shunt at a bus joins the first one's
+                // helper, which then covers both ranges and holds the higher
+                // of their setpoints (as PowerWorld solves the Texas 2000-bus
+                // case, whose Del Rio 115 kV bus has shunts set to 1.02 and
+                // 1.03 p.u.).
+                if let Some(&(_, _, g)) = setup.continuous.iter().find(|c| c.1.bus == shunt.bus) {
+                    let helper = &mut case.generators[g];
+                    helper.vg = helper.vg.max(0.5 * (shunt.vmax + shunt.vmin));
+                    let vg2 = helper.vg * helper.vg;
+                    helper.qmax += (hi - shunt.initial) * vg2;
+                    helper.qmin += (lo - shunt.initial) * vg2;
+                    setup.continuous.push((k, shunt, g));
+                    continue;
+                }
+                let bus = &mut case.buses[i];
+                if generated[i] {
+                    continue;
+                }
                 let vg = 0.5 * (shunt.vmax + shunt.vmin);
                 if bus.kind == BusType::Pq {
                     bus.kind = BusType::Pv;
@@ -561,11 +578,16 @@ struct TapState<'a> {
 pub(crate) struct Controller<'a> {
     shunts: Vec<ShuntState<'a>>,
     taps: Vec<TapState<'a>>,
-    /// Continuous shunts as (listed index, helper generator).
-    helpers: Vec<(usize, usize)>,
+    /// Continuous shunts as (listed index, helper generator, room below and
+    /// above the starting value in MVAr at 1 p.u.). Several shunts at one
+    /// bus share a helper.
+    helpers: Vec<(usize, usize, f64, f64)>,
     /// Continuous shunts fixed at an end of their range, as (listed index,
-    /// susceptance moved into the bus's `bs`).
-    fixed: Vec<(usize, f64)>,
+    /// susceptance moved into the bus's `bs`, helper generator).
+    fixed: Vec<(usize, f64, usize)>,
+    /// The reactive range of each helper set aside while its shunts are
+    /// fixed, as (helper, qmin, qmax).
+    parked: Vec<(usize, f64, f64)>,
     counts: [usize; 2],
 }
 
@@ -689,8 +711,17 @@ impl<'a> Controller<'a> {
         Self {
             shunts,
             taps,
-            helpers: setup.continuous.iter().map(|&(k, _, g)| (k, g)).collect(),
+            helpers: setup
+                .continuous
+                .iter()
+                .map(|&(k, shunt, g)| {
+                    let levels = shunt.levels();
+                    let (lo, hi) = (levels[0], levels[levels.len() - 1]);
+                    (k, g, shunt.initial - lo, hi - shunt.initial)
+                })
+                .collect(),
             fixed: Vec::new(),
+            parked: Vec::new(),
             counts: setup.counts,
         }
     }
@@ -746,6 +777,7 @@ impl<'a> Controller<'a> {
                             .filter(|f| f.0 == listed)
                             .map(|f| f.1)
                             .sum();
+
                         let vm = v[bus].norm();
                         initial + fixed + case.generators[helper].qg / (vm * vm)
                     }
@@ -957,15 +989,44 @@ impl<'a> Controller<'a> {
     /// bus's `bs` and the helper stops injecting. Returns false when `g` is
     /// not a helper.
     pub fn fix_continuous(&mut self, case: &mut Case, bus: usize, g: usize, q: f64) -> bool {
-        let Some(&(k, _)) = self.helpers.iter().find(|h| h.1 == g) else {
+        let sharing: Vec<(usize, f64, f64)> = (self.helpers.iter())
+            .filter(|h| h.1 == g)
+            .map(|h| (h.0, h.2, h.3))
+            .collect();
+        if sharing.is_empty() {
             return false;
-        };
+        }
         let helper = &mut case.generators[g];
         let b = q / (helper.vg * helper.vg);
+        self.parked.push((g, helper.qmin, helper.qmax));
         (helper.qg, helper.qmax, helper.qmin) = (0.0, 0.0, 0.0);
         case.buses[bus].bs += b;
-        self.fixed.push((k, b));
+        for (k, part) in split(&sharing, b) {
+            self.fixed.push((k, part, g));
+        }
         true
+    }
+
+    /// Undo [`Self::fix_continuous`]: the shunts at bus `bus` behind helper
+    /// `g` hold the voltage again, from where they were fixed. Returns
+    /// whether there was anything to undo.
+    pub fn release_continuous(&mut self, case: &mut Case, bus: usize, g: usize) -> bool {
+        let Some(p) = self.parked.iter().position(|p| p.0 == g) else {
+            return false;
+        };
+        let (_, qmin, qmax) = self.parked.remove(p);
+        let b: f64 = self.fixed.iter().filter(|f| f.2 == g).map(|f| f.1).sum();
+        self.fixed.retain(|f| f.2 != g);
+        case.buses[bus].bs -= b;
+        let helper = &mut case.generators[g];
+        (helper.qmin, helper.qmax) = (qmin, qmax);
+        helper.qg = b * helper.vg * helper.vg;
+        true
+    }
+
+    /// Whether `g` is a continuous-shunt helper now fixed at an end of its range.
+    pub fn is_fixed(&self, g: usize) -> bool {
+        self.parked.iter().any(|p| p.0 == g)
     }
 
     /// Go back to `earlier`, the state before the last pass, after the solve
@@ -1011,7 +1072,7 @@ impl<'a> Controller<'a> {
         for t in &self.taps {
             taps[t.index] = t.ratio;
         }
-        for &(k, b) in &self.fixed {
+        for &(k, b, _) in &self.fixed {
             shunts[k] += b;
         }
         (shunts, taps)
@@ -1022,7 +1083,11 @@ impl<'a> Controller<'a> {
 /// final susceptance, in `shunts` and in its bus's `bs`, once the helpers
 /// have been removed from `case`.
 pub(crate) fn finish(setup: &Setup<'_>, case: &mut Case, shunts: &mut [f64]) {
-    for &(k, shunt, g) in &setup.continuous {
+    let mut done = std::collections::HashSet::new();
+    for &(_, shunt, g) in &setup.continuous {
+        if !done.insert(g) {
+            continue;
+        }
         let q = case.generators[g].qg;
         let Some(bus) = case.buses.iter_mut().find(|b| b.id == shunt.bus) else {
             continue;
@@ -1033,8 +1098,40 @@ pub(crate) fn finish(setup: &Setup<'_>, case: &mut Case, shunts: &mut [f64]) {
         if bus.kind == BusType::Pv {
             bus.kind = BusType::Pq;
         }
-        if let Some(value) = shunts.get_mut(k) {
-            *value += b;
+        let sharing: Vec<(usize, f64, f64)> = (setup.continuous.iter())
+            .filter(|c| c.2 == g)
+            .map(|&(k, s, _)| {
+                let levels = s.levels();
+                (
+                    k,
+                    s.initial - levels[0],
+                    levels[levels.len() - 1] - s.initial,
+                )
+            })
+            .collect();
+        for (k, part) in split(&sharing, b) {
+            if let Some(value) = shunts.get_mut(k) {
+                *value += part;
+            }
         }
     }
+}
+
+/// Share `b` (MVAr at 1 p.u., from the starting values) between the
+/// continuous shunts `sharing` = (listed index, room below, room above) in
+/// proportion to their room in that direction.
+fn split(sharing: &[(usize, f64, f64)], b: f64) -> Vec<(usize, f64)> {
+    let room = |s: &(usize, f64, f64)| if b >= 0.0 { s.2 } else { s.1 }.max(0.0);
+    let total: f64 = sharing.iter().map(room).sum();
+    sharing
+        .iter()
+        .map(|s| {
+            let part = if total > 0.0 {
+                b * room(s) / total
+            } else {
+                b / sharing.len() as f64
+            };
+            (s.0, part)
+        })
+        .collect()
 }
