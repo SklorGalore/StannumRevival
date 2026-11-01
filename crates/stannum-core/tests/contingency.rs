@@ -907,6 +907,21 @@ fn worse_by_and_existing_problems_are_settings() {
         assert_eq!(line.split(',').count(), columns, "{line}");
     }
     assert!(body.iter().any(|l| l.split(',').nth(6) == Some("branch")));
+    // Branch lines carry the circuit and both ends' kV, bus lines their kV.
+    let branch = body
+        .iter()
+        .find(|l| l.split(',').nth(6) == Some("branch"))
+        .unwrap();
+    let field = |l: &str, name: &str| {
+        let i = header.split(',').position(|c| c == name).unwrap();
+        l.split(',').nth(i).unwrap().to_string()
+    };
+    assert_eq!(
+        field(branch, "circuit"),
+        field(branch, "element_id").rsplit(':').next().unwrap()
+    );
+    assert!(field(branch, "from_kv").parse::<f64>().unwrap() > 0.0);
+    assert!(field(branch, "to_kv").parse::<f64>().unwrap() > 0.0);
 }
 
 /// The compact results file holds the same findings as the violations CSV,

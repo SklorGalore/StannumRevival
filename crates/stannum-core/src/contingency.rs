@@ -2552,7 +2552,7 @@ fn opt(v: Option<f64>) -> String {
 }
 
 /// The header of the violations CSV.
-pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,outage,description,solved,type,element,element_id,from_bus,to_bus,bus,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note";
+pub const VIOLATIONS_CSV_HEADER: &str = "rank,category,contingency,outage,description,solved,type,element,element_id,from_bus,to_bus,bus,value_pct,before_pct,limit_pct,mw,before_mw,vm_pu,before_vm_pu,vmin_pu,vmax_pu,note,circuit,from_kv,to_kv,bus_kv";
 
 impl ContingencyResults {
     /// Write every violation of the run as CSV, one line each, in rank
@@ -2565,6 +2565,21 @@ impl ContingencyResults {
         out: &mut impl std::io::Write,
     ) -> std::io::Result<ViolationsExport> {
         writeln!(out, "{VIOLATIONS_CSV_HEADER}")?;
+        let kv: HashMap<u32, f64> = self
+            .power
+            .case
+            .buses
+            .iter()
+            .map(|b| (b.id, b.base_kv))
+            .collect();
+        let kv_of = |bus: u32| kv.get(&bus).map(|&v| num(v)).unwrap_or_default();
+        // The circuit is the last part of a branch id (line:1:2:1).
+        let circuit = |element: &str| {
+            element
+                .rsplit_once(':')
+                .map(|(_, c)| c.to_string())
+                .unwrap_or_default()
+        };
         let mut written = ViolationsExport {
             rows: 0,
             outages: 0,
@@ -2594,7 +2609,7 @@ impl ContingencyResults {
             if row.converged == Some(false) {
                 writeln!(
                     out,
-                    "{lead},not_converged,,,,,,,,,,,,,,,{}",
+                    "{lead},not_converged,,,,,,,,,,,,,,,{},,,,",
                     csv_field(row.note.as_deref().unwrap_or(""))
                 )?;
                 written.rows += 1;
@@ -2602,7 +2617,7 @@ impl ContingencyResults {
                 for o in &found.overloads {
                     writeln!(
                         out,
-                        "{lead},branch,{},{},{},{},,{},{},{},{},{},,,,,",
+                        "{lead},branch,{},{},{},{},,{},{},{},{},{},,,,,,{},{},{},",
                         csv_field(&o.name),
                         csv_field(&o.element),
                         o.from,
@@ -2612,12 +2627,15 @@ impl ContingencyResults {
                         num(o.limit_pct),
                         num(o.mw),
                         num(o.base_mw),
+                        csv_field(&circuit(&o.element)),
+                        kv_of(o.from),
+                        kv_of(o.to),
                     )?;
                 }
                 for v in &found.voltage_problems {
                     writeln!(
                         out,
-                        "{lead},voltage,{},bus:{},,,{},,,,,,{},{},{},{},",
+                        "{lead},voltage,{},bus:{},,,{},,,,,,{},{},{},{},,,,,{}",
                         csv_field(&bus_name(&v.name, v.bus)),
                         v.bus,
                         v.bus,
@@ -2625,12 +2643,13 @@ impl ContingencyResults {
                         num(v.base_vm),
                         num(v.vmin),
                         num(v.vmax),
+                        kv_of(v.bus),
                     )?;
                 }
                 for i in &found.interfaces {
                     writeln!(
                         out,
-                        "{lead},interface,{},,,,,{},{},{},{},{},,,,,",
+                        "{lead},interface,{},,,,,{},{},{},{},{},,,,,,,,,",
                         csv_field(&i.name),
                         opt(i.pct),
                         opt(i.base_pct),
