@@ -107,7 +107,11 @@ run.with_overloads
 run.rows                             # every outage, worst first, as a table
 case.contingency(1)                  # the worst outage's flow and voltage changes
 case.trip("line:4:5:1")              # Trip and compare
+case.call("export_contingency_violations", path="violations.csv")
 ```
+
+The violations CSV opens with metadata rows; its first row, `header_rows,N`,
+says how many to skip: `pandas.read_csv(path, skiprows=N)`.
 
 Settings are those of the Contingencies module: `elements`, `branches`,
 `generators`, `method`, `ac_count`, `limit_pct` and `solve`. To run NERC

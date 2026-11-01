@@ -274,6 +274,11 @@ fn answers_fit_their_schemas() {
     let csv = std::env::temp_dir().join(format!("stannum-violations-{}.csv", std::process::id()));
     c.ok("export_contingency_violations", json!({ "path": csv }));
     std::fs::remove_file(&csv).ok();
+    let header = c.ok(
+        "export_header",
+        json!({ "title": "Transfer limits", "settings": { "source": { "areas": [1] }, "cutoff": 0.05 } }),
+    );
+    assert!(header["text"].as_str().unwrap().contains("source.areas,1"));
     let stnr = std::env::temp_dir().join(format!("stannum-results-{}.stnr", std::process::id()));
     c.ok("export_contingency_results", json!({ "path": stnr }));
     std::fs::remove_file(&stnr).ok();

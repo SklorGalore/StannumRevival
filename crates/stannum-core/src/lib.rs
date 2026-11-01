@@ -37,6 +37,7 @@ pub mod diagram;
 pub mod diff;
 pub mod elements;
 pub mod error;
+pub mod export_header;
 pub mod file_version;
 pub mod file_voltages;
 pub mod geo;

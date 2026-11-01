@@ -898,6 +898,14 @@ export type Error = {
 /** What went wrong, in a form a client can match on. */
 export type ErrorKind = "unknown_command" | "invalid_arguments" | "no_case" | "case_not_open" | "not_ready" | "not_found" | "unsupported" | "case_changed" | "cancelled" | "file" | "failed" | "internal";
 
+/** The metadata rows as CSV text, ready to go in front of a table. */
+export type ExportHeader = {
+  /** How many rows come before the table's column names (`header_rows`). */
+  rows: number;
+  /** The rows, the blank row after them included, each ending in CRLF. */
+  text: string;
+};
+
 /** One FACTS device after a solve. */
 export type FactsRow = {
   /** The shunt element ended at an end of its range. */
@@ -3084,7 +3092,8 @@ export interface CoreCommands {
   /**
    * Write every violation of the last run to a CSV file, one line each:
    * branch overloads, bus voltages and interfaces, and a line for each
-   * outage whose AC solve failed.
+   * outage whose AC solve failed. The file opens with metadata rows (see
+   * `export_header`) before the table.
    */
   export_contingency_violations: {
     args: {
@@ -3092,6 +3101,21 @@ export interface CoreCommands {
       path: string;
     };
     result: ViolationsExport;
+  };
+  /**
+   * The metadata rows that open a CSV export, as text to put in front of
+   * the table: `header_rows` (how many rows come before the column
+   * names), `title`, the case file and its SHA-256, study edits, the
+   * program, the export time and `settings` (a JSON object, one field
+   * per row), then a blank row.
+   */
+  export_header: {
+    args: {
+      case?: CaseId | null;
+      settings?: unknown;
+      title: string;
+    };
+    result: ExportHeader;
   };
   /** Write the case, solved or as filed, as a MATPOWER file. */
   export_matpower: {

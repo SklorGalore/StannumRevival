@@ -4,9 +4,9 @@
 // stepped AC solves up to the nose. This sets it up and draws the curves.
 import { useEffect, useMemo, useState } from "react";
 import { Download, Play, Square, TrendingDown } from "lucide-react";
-import { usePv, pvRows, validPositive } from "../../store/pvStore";
+import { usePv, pvRows, pvSettings, validPositive } from "../../store/pvStore";
 import { busList, type Side, type SideKind } from "../../store/transferStore";
-import { saveTextExport } from "../../lib/analysis/api";
+import { saveCsvExport } from "../../lib/analysis/api";
 import { useCaseGroups, type CaseGroups } from "../../ui/useCaseGroups";
 import type { SolveReport } from "../../lib/analysis/types";
 import type { PvCurve, PvPoint, Scaling } from "../../lib/analysis/commands.gen";
@@ -220,7 +220,12 @@ export function PvTab({ report, onPick }: { report: SolveReport | null; onPick: 
 
   async function exportCsv() {
     if (!r) return;
-    await saveTextExport("pv-curve.csv", toCsv(pvRows(r)), { name: "CSV", extensions: ["csv"] });
+    await saveCsvExport(
+      "pv-curve.csv",
+      "PV curve",
+      { ...pvSettings(c), nose_mw: r.summary.nose_mw == null ? null : Number(r.summary.nose_mw.toFixed(1)) },
+      toCsv(pvRows(r)),
+    );
   }
 
   const numberInput = (value: string, onChange: (v: string) => void, aria: string, title: string, placeholder: string) => (

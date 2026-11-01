@@ -825,10 +825,15 @@ impl OpenCase {
             .contingencies
             .as_ref()
             .ok_or_else(|| Error::not_ready("Run contingencies first."))?;
+        let settings = serde_json::to_value(results.settings()).ok();
+        let header = self.export_header("Contingency violations", settings.as_ref());
         let file = std::fs::File::create(path)
             .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        let mut out = std::io::BufWriter::new(file);
+        std::io::Write::write_all(&mut out, header.text.as_bytes())
+            .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
         let written = results
-            .write_violations_csv(&mut std::io::BufWriter::new(file))
+            .write_violations_csv(&mut out)
             .map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
         log::info!(
             "Exported {} contingency violations to {}",

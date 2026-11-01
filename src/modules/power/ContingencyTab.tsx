@@ -15,7 +15,7 @@ import { ContingencySetup, setupSummary } from "./ContingencySetup";
 import { useContingencies } from "../../store/contingencyStore";
 import { useWorkspace } from "../../store/workspaceStore";
 import { useLayers } from "../../store/layerStore";
-import { api, pickSavePath, saveTextExport } from "../../lib/analysis/api";
+import { api, pickSavePath, saveCsvExport } from "../../lib/analysis/api";
 import { OverflowMenu } from "../../ui/OverflowMenu";
 import type {
   ContingencyDetail,
@@ -743,10 +743,10 @@ export function ContingencyTab({
         outcome: outcome(r),
       })),
     );
-    await saveTextExport("contingencies.csv", csv, {
-      name: "CSV",
-      extensions: ["csv"],
-    });
+    await saveCsvExport("contingencies.csv", "Contingency analysis", {
+      run: setupSummary(s.choice, !!scope),
+      ...(search.trim() ? { search: search.trim() } : {}),
+    }, csv);
   }
 
   const summary = s.summary;

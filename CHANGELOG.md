@@ -16,6 +16,13 @@ section into the next version's when a release is cut (see
   or by headroom, in the linear screen and the AC solves. The reference bus
   alone is still the default. Transfer limits still move it to the
   reference bus.
+- **Metadata rows in CSV exports.** Contingency, violation, transfer limit,
+  PV and QV exports open with `name,value` rows before the table: the case
+  file and its SHA-256, study edits, the program and version, the export
+  time and the run's settings. The first row, `header_rows,N`, says how
+  many rows to skip. The new `export_header` command gives the same rows
+  to scripts. Transfer limit exports also give each monitored branch's
+  from bus, to bus and circuit.
 - **Contingency exports name the circuit and kV.** The violations export
   gains `circuit`, `from_kv`, `to_kv` and `bus_kv` columns at the end, and
   the one-row-per-outage export the worst branch's from bus, to bus and
@@ -97,6 +104,9 @@ section into the next version's when a release is cut (see
   and `contingency_id`.
 
 ### Changed
+
+- **The violations CSV opens with metadata rows.** Scripts that read it
+  skip the first `header_rows` rows (the number is in the first row).
 
 - **Contingencies solve every outage in AC on small runs.** The new default
   method, Auto, solves every outage in AC when a run has at most 2,000 of

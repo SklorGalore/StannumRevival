@@ -27,6 +27,18 @@ fn settings(method: Method) -> ContingencySettings {
     }
 }
 
+/// The table of a CSV export, after its metadata rows: the first row says
+/// how many rows come before the column names.
+fn table(text: &str) -> String {
+    let first = text.lines().next().unwrap();
+    let skip: usize = first
+        .strip_prefix("header_rows,")
+        .expect("a metadata row first")
+        .parse()
+        .unwrap();
+    text.lines().skip(skip).collect::<Vec<_>>().join("\n")
+}
+
 fn solved(name: &str) -> Workspace {
     let mut ws = Workspace::default();
     ws.open(&case(name)).unwrap();
@@ -882,6 +894,9 @@ fn worse_by_and_existing_problems_are_settings() {
     let written = open.export_contingency_violations(&path).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     std::fs::remove_file(&path).ok();
+    assert!(text.contains("\r\ntitle,Contingency violations\r\ncase,case30.m\r\n"));
+    assert!(text.contains("\r\nmethod,"), "settings follow");
+    let text = table(&text);
     let mut lines = text.lines();
     let header = lines.next().unwrap();
     assert_eq!(header, stannum_core::contingency::VIOLATIONS_CSV_HEADER);
@@ -944,7 +959,7 @@ fn results_file_matches_the_csv() {
     let stnr = dir.join(format!("stannum-match-{}.stnr", std::process::id()));
     let lines = open.export_contingency_violations(&csv).unwrap();
     let written = open.export_contingency_results(&stnr).unwrap();
-    let text = std::fs::read_to_string(&csv).unwrap();
+    let text = table(&std::fs::read_to_string(&csv).unwrap());
     let file = std::fs::File::open(&stnr).unwrap();
     assert_eq!(written.bytes, file.metadata().unwrap().len());
     let reader = arrow_ipc::reader::StreamReader::try_new(file, None).unwrap();

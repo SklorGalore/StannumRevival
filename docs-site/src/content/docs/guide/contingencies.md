@@ -201,6 +201,32 @@ on Texas 2k, 73,000 violations take 13 MB as CSV and 450 KB as `.stnr`.
 pandas, polars and DuckDB read it directly; see the
 [results file format](/StannumRevival/reference/results-file/).
 
+### Metadata rows in CSV exports
+
+Every CSV export (contingencies, violations, transfer limits, PV and QV
+curves) opens with a few `name,value` rows before the table, so a file
+passed on still says where it came from: the title, the case file and its
+SHA-256, any study edits, the program and version, the export time (UTC)
+and the run's settings. A blank row follows, then the table. The first row,
+`header_rows,N`, says how many rows come before the column names:
+
+```text
+header_rows,9
+title,Contingency violations
+case,Texas2k_series25_case1_summerpeak.RAW
+file,C:\cases\Texas2k_series25_case1_summerpeak.RAW
+sha256,5b2ea8b3b144844c09da911fdcc57279693d7416a082fba775...
+program,Stannum 1.0.0
+exported,2026-11-01T17:20:03Z
+method,screen
+
+rank,category,contingency,outage,...
+```
+
+Delete those rows in a spreadsheet, or skip them when reading:
+`pandas.read_csv(path, skiprows=9)`. Branch rows carry `from_bus`,
+`to_bus`, `circuit`, `from_kv` and `to_kv`, so names can be taken apart.
+
 Click a row to open the outage beside the table: every overload and voltage
 problem, what it splits off, and the largest flow changes. Each element name
 selects it, and its wand icon draws a one-line around it. **Take out** adds

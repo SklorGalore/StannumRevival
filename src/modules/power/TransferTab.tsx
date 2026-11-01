@@ -16,11 +16,12 @@ import {
   type Side,
   type SideKind,
   busList,
+  transferSettings,
 } from "../../store/transferStore";
 import {
   LISTS_FILTERS,
   pickFile,
-  saveTextExport,
+  saveCsvExport,
 } from "../../lib/analysis/api";
 import { useCaseGroups, type CaseGroups } from "../../ui/useCaseGroups";
 import type { SolveReport } from "../../lib/analysis/types";
@@ -30,7 +31,7 @@ import type {
   TransferFactor,
   TransferLimit,
 } from "../../lib/analysis/commands.gen";
-import { count, fixed, toCsv } from "../../lib/analysis/format";
+import { branchParts, count, fixed, toCsv } from "../../lib/analysis/format";
 import { elementLabel } from "../../lib/elements";
 import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
 import {
@@ -412,6 +413,9 @@ export function TransferTab({
         fcitc_mw: l.fcitc_mw,
         monitored: l.monitored_name,
         monitored_id: l.monitored,
+        monitored_from_bus: branchParts(l.monitored).from_bus,
+        monitored_to_bus: branchParts(l.monitored).to_bus,
+        monitored_circuit: branchParts(l.monitored).circuit,
         winding: l.winding,
         contingency: l.contingency ? l.contingency_name : "BASE CASE",
         contingency_id: l.contingency,
@@ -421,10 +425,15 @@ export function TransferTab({
         ptdf: l.ptdf,
       })),
     );
-    await saveTextExport("transfer-limits.csv", csv, {
-      name: "CSV",
-      extensions: ["csv"],
-    });
+    await saveCsvExport(
+      "transfer-limits.csv",
+      "Transfer limits",
+      {
+        ...transferSettings(c),
+        fcitc_mw: r.summary.fcitc_mw == null ? null : Number(r.summary.fcitc_mw.toFixed(1)),
+      },
+      csv,
+    );
   }
 
   const kv = (
