@@ -39,11 +39,13 @@ five steps:
   resistance and a reactance at or below the threshold (0.0001 p.u. by
   default, PSS/E's THRSHZ), as PSS/E does. It applies to N-1, N-2 and the
   planning events; a bus outage still opens them. Transformers never count.
-- **Method**: **Linear screen, then AC for the worst** (the default) screens
-  every outage with linear outage factors in a fraction of a second, then
-  solves the worst N in AC. **AC solve of every outage** is slower on large
-  cases but needs no screen.
-- **Worst checked in AC**: N, 50 by default.
+- **Method**: **Auto** (the default) solves every outage in AC when there
+  are at most 2,000 of them, as PSS/E's ACCC does, and otherwise screens
+  them linearly first. **Linear screen, then AC for the worst** screens every
+  outage with linear outage factors in a fraction of a second, then solves
+  the worst N in AC. **AC solve of every outage** is slower on large cases
+  but needs no screen. Only outages solved in AC are checked for voltage.
+- **Worst checked in AC**: N, 50 by default, when the run screens.
 - **Base case rating** and **Contingency rating**: which of each branch's
   ratings (rate A normal, B short-term, C emergency) the loading is measured
   against before and after an outage. Both are rate A by default; many
