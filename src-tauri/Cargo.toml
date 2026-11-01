@@ -1,6 +1,6 @@
 [package]
 name = "stannum"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 description = "Stannum: single-line diagrams, power flow, topology and RAW case comparison"
 edition = "2021"
 license.workspace = true

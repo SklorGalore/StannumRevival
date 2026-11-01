@@ -1,6 +1,6 @@
 [package]
 name = "stannum-cli"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 edition = "2024"
 description = "Run Stannum run files without the app, and serve Stannum to AI assistants over MCP"
 publish = false
