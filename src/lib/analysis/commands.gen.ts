@@ -2287,7 +2287,7 @@ export type SolveReport = {
 
 /**
  * How to solve. Fields left out take their defaults: AC with the automatic
- * method from the last solution, to 2 MVA, with reactive limits held and
+ * method from the last solution, to 0.1 MVA, with reactive limits held and
  * every control on.
  */
 export type SolveSettings = {
@@ -2552,6 +2552,13 @@ export type TransferSettings = {
   /** The most rows kept in each of the results' lists. */
   max_rows?: number;
   monitor?: MonitorSettings;
+  /**
+   * Loading, in percent of the limit, at or above which an element the
+   * transfer pushes further counts as already past its limit. 100 by
+   * default; lower it (say to 95) to keep elements that sit at their
+   * limit before any transfer from setting a near-zero FCITC.
+   */
+  past_limit_pct?: number;
   /** Rating after an outage, and in the base case (`base_rating`). */
   rating?: Rating;
   scaling?: Scaling;

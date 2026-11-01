@@ -26,8 +26,11 @@ wheel per platform works on Python 3.10 and newer. NumPy comes with it;
 pandas is optional.
 
 ```sh
-pip install stannum-0.3.0-cp310-abi3-win_amd64.whl
+pip install stannum-<version>-cp310-abi3-win_amd64.whl
 ```
+
+pip can also install straight from the release page's link to the file, for
+example on a machine that keeps its packages in a requirements file.
 
 The package isn't on PyPI yet. To build a wheel from a checkout (Rust and
 Python needed):
@@ -60,7 +63,7 @@ arguments, and returns the solve report:
 report = case.solve(
     model="ac",             # or "dc"
     start="flat",           # "last" (default), "flat" or "case"
-    tolerance_mva=0.1,      # 2 MVA by default
+    tolerance_mva=0.5,      # 0.1 MVA by default
     enforce_q_limits=True,
 )
 report.converged            # also report["converged"]

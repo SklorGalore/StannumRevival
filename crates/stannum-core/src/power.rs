@@ -313,7 +313,7 @@ fn decoupled_iterations() -> usize {
 }
 
 /// How to solve. Fields left out take their defaults: AC with the automatic
-/// method from the last solution, to 2 MVA, with reactive limits held and
+/// method from the last solution, to 0.1 MVA, with reactive limits held and
 /// every control on.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default)]
@@ -361,10 +361,10 @@ pub struct SolveSettings {
     pub area_interchange: InterchangeChoice,
 }
 
-/// Default mismatch tolerance: 2 MVA on any system base. Looser than the
-/// solver library's own default, which suits reference checks rather than
-/// day-to-day studies.
-pub const DEFAULT_TOLERANCE_MVA: f64 = 2.0;
+/// Default mismatch tolerance: 0.1 MVA on any system base, the usual PSS/E
+/// and PowerWorld setting. Looser than the solver library's own default,
+/// which suits reference checks rather than day-to-day studies.
+pub const DEFAULT_TOLERANCE_MVA: f64 = 0.1;
 
 impl Default for SolveSettings {
     fn default() -> Self {

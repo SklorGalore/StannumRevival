@@ -645,6 +645,28 @@ export function TransferTab({
           />
           Count elements already past their limit
         </label>
+        <label
+          className="flex items-center gap-1.5 mb-1.5"
+          title="Elements loaded at or above this percent of their limit before any transfer, and pushed further by it, are listed apart instead of setting a near-zero FCITC"
+        >
+          Already past from
+          <input
+            className={`${inputClass} w-16`}
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={c.pastPct}
+            aria-label="Already past from, percent of the limit"
+            data-testid="transfer-past-pct"
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v > 0 && v <= 100)
+                s.setChoice({ pastPct: v });
+            }}
+          />
+          %
+        </label>
         <div className="flex items-center gap-2 ml-auto">
           {s.running ? (
             <Button
@@ -769,6 +791,10 @@ export function TransferTab({
               carries {mw(sum.limiting.flow_mw)} against{" "}
               {mw(sum.limiting.limit_mw)} and takes{" "}
               {pct(Math.abs(sum.limiting.factor))} of the transfer
+              {sum.limiting.limit_mw > 0 &&
+              Math.abs(sum.limiting.flow_mw) >= 0.95 * sum.limiting.limit_mw
+                ? `. It is already at ${fixed((100 * Math.abs(sum.limiting.flow_mw)) / sum.limiting.limit_mw, 1)}% of its limit before any transfer, so only a small transfer fits; lower "Already past from" to set such elements aside`
+                : ""}
               {sum.cancelled
                 ? ". Cancelled: these are the outages studied before it stopped."
                 : "."}

@@ -70,7 +70,7 @@ its default. A setting given both on its own and in `settings` is an error.
 | `model` | `"ac"` (or `"dc"`) |
 | `method` | `"auto"` (or `"newton"`, `"fixed_slope"`, `"fast_decoupled_xb"`, `"fast_decoupled_bx"`); see [AC solution methods](/StannumRevival/manual/ac-methods/) |
 | `start` | `"last"`: from the last solution (or `"flat"`, `"case"`) |
-| `tolerance_mva` | `2` |
+| `tolerance_mva` | `0.1` |
 | `max_iterations` | `10` Newton iterations per pass |
 | `decoupled_iterations` | `30` decoupled iterations per pass |
 | `enforce_q_limits` | `true` |

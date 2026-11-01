@@ -875,8 +875,8 @@ mod tests {
     #[test]
     fn default_settings_are_left_out() {
         let mut steps = parse(
-            "solve_power_flow settings={\"model\": \"ac\", \"start\": \"last\", \"tolerance_mva\": 2, \"max_iterations\": 10}\n\
-             solve_power_flow settings={\"model\": \"dc\", \"tolerance_mva\": 2}\n\
+            "solve_power_flow settings={\"model\": \"ac\", \"start\": \"last\", \"tolerance_mva\": 0.1, \"max_iterations\": 10}\n\
+             solve_power_flow settings={\"model\": \"dc\", \"tolerance_mva\": 0.1}\n\
              run_contingencies settings={\"method\": \"ac\", \"limit_pct\": 100, \"solve\": {\"start\": \"last\", \"enforce_q_limits\": false}}\n",
         )
         .unwrap();
