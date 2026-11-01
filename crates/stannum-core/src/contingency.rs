@@ -472,6 +472,11 @@ impl RunHandle {
     pub(crate) fn cancelled(&self) -> bool {
         self.0.cancel.load(Ordering::SeqCst)
     }
+
+    /// The flag that stops a solve, shared with the run.
+    pub(crate) fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.0.cancel.clone()
+    }
 }
 
 #[derive(Clone, Debug, Default)]

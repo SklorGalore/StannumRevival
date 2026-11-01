@@ -191,6 +191,16 @@ const TOOLS: &[Tool] = &[
         app: false,
         run: transfer_limits,
     },
+    Tool {
+        name: "pv_curve",
+        title: "PV curve (voltage stability)",
+        description: "How far load in a `sink` subsystem (areas, zones, owners, buses, kV) can grow, or a transfer from a `source` to the sink can go, before the network runs out of voltage support: steps the transfer with full AC solves from the last AC solve (every control and Q limit kept), halving the step when one fails, until the nose. Source left out = all generation picks up. Solve with the AC model first. Answers the summary (nose MW, what stopped it, the transfer where a monitored bus first drops below its low limit, the weakest bus, notes), points along the curve (thinned to about 25) and the curves of the buses whose voltage fell furthest (`max_curves`, default 5 here; `buses` always included).",
+        input: pv_input,
+        read_only: false,
+        destructive: false,
+        app: false,
+        run: pv_curve,
+    },
     // Topology
     Tool {
         name: "topology_summary",
@@ -582,6 +592,13 @@ fn transfer_input() -> Value {
     let mut schema = core_schema("TransferSettings", false);
     schema["properties"]["max_rows"]["description"] =
         json!("Most rows in each list (default 20 here).");
+    schema
+}
+
+fn pv_input() -> Value {
+    let mut schema = core_schema("PvSettings", false);
+    schema["properties"]["max_curves"]["description"] =
+        json!("How many of the buses whose voltage falls furthest get a curve (default 5 here).");
     schema
 }
 
@@ -1309,6 +1326,87 @@ fn transfer_limits(c: &Call, args: &Value) -> Answer {
         "past_limits": rows("past_limits", &limit_cols),
         "contingencies": rows("contingencies", &["contingency", "fcitc_mw", "monitored", "factor"]),
         "factors": rows("factors", &["monitored", "ptdf", "flow_mw", "limit_mw"]),
+    }))
+}
+
+fn pv_curve(c: &Call, args: &Value) -> Answer {
+    let mut settings = args.clone();
+    if settings.get("max_curves").is_none() {
+        settings["max_curves"] = json!(5);
+    }
+    let stop = AtomicBool::new(false);
+    let r = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = usize::MAX;
+            while !stop.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(p) = c.backend.side("pv_progress") else {
+                    continue;
+                };
+                let done = p["done"].as_u64().unwrap_or(0) as usize;
+                if p["phase"] == "idle" || done == last {
+                    continue;
+                }
+                (c.progress)(done as f64, None, &format!("steps solved: {done}"));
+                last = done;
+            }
+        });
+        let _follow = Follow { stop: &stop };
+        c.backend
+            .call("run_pv_curve", json!({ "settings": settings }))
+    })?;
+    let points = r["points"].as_array().cloned().unwrap_or_default();
+    // About 25 points, evenly through the curve, always with the last.
+    let keep = points.len().div_ceil(25).max(1);
+    let mut thinned: Vec<Value> = points
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % keep == 0 || *i + 1 == points.len())
+        .map(|(_, p)| p.clone())
+        .collect();
+    for p in &mut thinned {
+        if let Some(o) = p.as_object_mut() {
+            o.remove("iterations");
+        }
+    }
+    let mut point_rows = Rows::from_records(&thinned);
+    point_rows.lead(&["transfer_mw", "min_vm_pu", "min_vm_bus"]);
+    let curves: Vec<Value> = r["curves"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .map(|c| {
+            let vm = c["vm_pu"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+            json!({
+                "bus": c["bus"],
+                "name": c["name"],
+                "base_kv": c["base_kv"],
+                "vm_start_pu": vm.first(),
+                "vm_nose_pu": vm.last(),
+                "drop_pu": c["drop_pu"],
+                "sensitivity_pu_per_100mw": c["sensitivity_pu_per_100mw"],
+                "vmin_pu": c["vmin_pu"],
+                "vmin_transfer_mw": c["vmin_transfer_mw"],
+            })
+        })
+        .collect();
+    let mut curve_rows = Rows::from_records(&curves);
+    curve_rows.lead(&["bus", "name", "vm_start_pu", "vm_nose_pu"]);
+    let mut summary = r["summary"].clone();
+    if let Some(o) = summary.as_object_mut() {
+        o.remove("elapsed_ms");
+    }
+    if c.cancelled.load(Ordering::SeqCst) || summary["cancelled"].as_bool() == Some(true) {
+        summary["note"] = json!("Cancelled: the curve stops at the last step solved.");
+    }
+    Ok(json!({
+        "summary": summary,
+        "points": point_rows.to_json(),
+        "curves": curve_rows.to_json(),
     }))
 }
 

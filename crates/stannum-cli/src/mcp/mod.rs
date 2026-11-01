@@ -199,6 +199,7 @@ fn handle(
                     "cancel_solve",
                     "cancel_contingencies",
                     "cancel_transfer_limits",
+                    "cancel_pv_curve",
                     "cancel_run_file",
                 ] {
                     let _ = backend.side(command);

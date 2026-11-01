@@ -124,6 +124,8 @@ pub struct Session {
     contingencies: Mutex<Option<RunHandle>>,
     /// The transfer limit study in progress, if one is running.
     transfers: Mutex<Option<RunHandle>>,
+    /// The PV curve study in progress, if one is running.
+    pv: Mutex<Option<RunHandle>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
     /// Sorted, filtered orders of the tables being paged through, newest
@@ -388,6 +390,20 @@ impl Session {
         Ok(results?)
     }
 
+    /// A PV curve study, run without the workspace lock.
+    fn pv_curve(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::pv::PvSettings,
+    ) -> Result<crate::pv::PvResults, Error> {
+        let job = self.workspace()?.case(case)?.pv_job(settings)?;
+        *relock(&self.pv) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.pv) = None);
+        let results = job.run();
+        drop(clear);
+        Ok(results?)
+    }
+
     /// Sensitivities, calculated without the workspace lock.
     fn sensitivities(
         &self,
@@ -585,6 +601,7 @@ impl Session {
             self.cancel_solve();
             self.cancel_contingencies();
             self.cancel_transfers();
+            self.cancel_pv();
         }
     }
 
@@ -598,6 +615,19 @@ impl Session {
         if let Some(handle) = relock(&self.transfers).clone() {
             handle.cancel();
         }
+    }
+
+    fn cancel_pv(&self) {
+        if let Some(handle) = relock(&self.pv).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn pv_progress(&self) -> Progress {
+        relock(&self.pv)
+            .as_ref()
+            .map(RunHandle::progress)
+            .unwrap_or_default()
     }
 
     fn transfer_progress(&self) -> Progress {
@@ -1109,6 +1139,23 @@ commands! {
     /// How far the transfer limit study in progress has got.
     transfer_progress {} -> Progress => |s, _| Ok(s.transfer_progress());
 
+    /// PV curve (continuation power flow): grows a transfer, or the sink's
+    /// load, step by step with full AC solves from the last AC solve until
+    /// the network can't carry more (the nose), and records the monitored
+    /// bus voltages on the way. `cancel_pv_curve` stops it and
+    /// `pv_progress` counts its solves.
+    run_pv_curve { case: Option<CaseId>, settings: crate::pv::PvSettings } -> crate::pv::PvResults =>
+        |s, a| s.pv_curve(a.case, a.settings);
+
+    /// Stop the PV curve study in progress.
+    cancel_pv_curve {} -> () => |s, _| {
+        s.cancel_pv();
+        Ok(())
+    };
+
+    /// How far the PV curve study in progress has got: solves so far.
+    pv_progress {} -> Progress => |s, _| Ok(s.pv_progress());
+
     /// The last contingency run's summary, or null.
     contingency_summary { case: Option<CaseId> } -> Option<ContingencySummary> =>
         |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
@@ -1384,7 +1431,7 @@ mod tests {
             for (name, _) in *names {
                 args.insert(camel(name), value(name));
             }
-            if c.name == "run_transfer_limits" {
+            if c.name == "run_transfer_limits" || c.name == "run_pv_curve" {
                 args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
             } else if c.name != "run_contingencies" && args.contains_key("settings") {
                 args.insert("settings".into(), json!(SolveSettings::default()));

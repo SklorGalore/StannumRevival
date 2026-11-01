@@ -1449,6 +1449,157 @@ export type Progress = {
   total: number;
 };
 
+/** The voltage of one bus at each point of the curve. */
+export type PvCurve = {
+  base_kv: number;
+  bus: number;
+  /** How far its voltage fell from the base case to the last point, p.u. */
+  drop_pu: number;
+  name: string;
+  /**
+   * Voltage drop per 100 MW of transfer over the last step: the largest
+   * is the weakest bus at the nose.
+   */
+  sensitivity_pu_per_100mw: number;
+  /** Voltage at each point of `points`, p.u. */
+  vm_pu: number[];
+  /** The bus's low voltage limit used, p.u. */
+  vmin_pu: number;
+  /**
+   * The transfer at which it falls below its low limit, MW, linear
+   * between points; `None` when it stays above it (or starts below).
+   */
+  vmin_transfer_mw: number | null;
+};
+
+/** One converged step of the curve. */
+export type PvPoint = {
+  iterations: number;
+  /** Total generation less total load, MW. */
+  losses_mw: number;
+  min_vm_bus: number;
+  /** The lowest monitored voltage and its bus. */
+  min_vm_pu: number;
+  /**
+   * Online generators held at a reactive power limit (on voltage
+   * control buses), and their reactive reserve left (room to Qmax), Mvar.
+   */
+  q_limited: number;
+  q_reserve_mvar: number;
+  /** The sink's total load at this step, MW, at the solved voltages. */
+  sink_load_mw: number;
+  /** Transfer added since the base case, MW. */
+  transfer_mw: number;
+};
+
+export type PvResults = {
+  /**
+   * Curves of the buses asked for, then of the buses whose voltage fell
+   * furthest, furthest first.
+   */
+  curves: PvCurve[];
+  /** Every converged step, the base case first. */
+  points: PvPoint[];
+  summary: PvSummary;
+};
+
+/** A PV curve study. */
+export type PvSettings = {
+  /**
+   * Buses that always get a curve, as well as the ones whose voltage
+   * falls furthest.
+   */
+  buses?: number[];
+  /** How many of the buses whose voltage falls furthest get a curve. */
+  max_curves?: number;
+  /** The most steps solved, failed ones included. */
+  max_points?: number;
+  /** Stop at this transfer, MW, even when the network could carry more. */
+  max_transfer_mw?: number | null;
+  /**
+   * The smallest step tried before the last converged step counts as the
+   * nose, MW. A 32nd of the first step when absent.
+   */
+  min_step_mw?: number | null;
+  /** Buses whose voltages are watched: every energized bus when absent. */
+  monitor?: Subsystem | null;
+  /**
+   * Stop when the source or sink runs out of room (generators at Pmax
+   * or Pmin, loads at zero), as transfer limits count it. On by default.
+   */
+  respect_generation_limits?: boolean;
+  /** Where the power goes. */
+  sink?: Subsystem;
+  /**
+   * How the sink shares out its part: its loads grow, at constant power
+   * factor, by default.
+   */
+  sink_scaling?: Scaling;
+  /**
+   * Where the extra power comes from. Every bus when left empty, so a
+   * load increase in the sink is picked up by all generation.
+   */
+  source?: Subsystem;
+  /** How the source shares out its part: generation by default. */
+  source_scaling?: Scaling;
+  /**
+   * The transfer added at each step, MW. 5% of what the sink starts with
+   * (its load, or generation) when absent.
+   */
+  step_mw?: number | null;
+  /**
+   * Low voltage limit for every monitored bus, p.u. Each bus's own
+   * normal low limit from the case when absent (0.9 p.u. when it has
+   * none).
+   */
+  vmin_pu?: number | null;
+};
+
+export type PvSummary = {
+  below_at_start: number;
+  cancelled: boolean;
+  elapsed_ms: number;
+  failed_solves: number;
+  /** What stopped the curve. */
+  limited_by: "collapse" | "generation" | "max_transfer" | "max_points" | "cancelled";
+  /**
+   * Monitored buses, and how many of them start below their low limit
+   * (left out of `voltage_limit_mw`).
+   */
+  monitored: number;
+  /**
+   * The largest transfer that converged, MW: the nose when the curve
+   * stopped because the network couldn't carry more.
+   */
+  nose_mw: number;
+  /** Things worth knowing about the setup, in words. */
+  notes: string[];
+  /**
+   * The nose lies between `nose_mw` and `nose_mw` plus this, MW (the
+   * last step that failed); 0 when the curve didn't stop at a nose.
+   */
+  resolution_mw: number;
+  sink: Participation;
+  sink_scaling: Scaling;
+  /** Steps solved, and how many of them didn't converge. */
+  solves: number;
+  /** What the source and sink could move, as for transfer limits. */
+  source: Participation;
+  source_scaling: Scaling;
+  /** The first step, MW. */
+  step_mw: number;
+  /** The bus that sets `voltage_limit_mw`. */
+  voltage_limit_bus: number | null;
+  /**
+   * The transfer at which a monitored bus first falls below its low
+   * voltage limit, MW; `None` when none does before the curve stops.
+   */
+  voltage_limit_mw: number | null;
+  /** The bus whose voltage falls fastest at the last step. */
+  weakest_bus: number | null;
+  weakest_bus_name: string;
+};
+
 export type QuantityInfo = {
   key: string;
   title: string;
@@ -2307,6 +2458,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: null;
   };
+  /** Stop the PV curve study in progress. */
+  cancel_pv_curve: {
+    args: Record<string, never>;
+    result: null;
+  };
   /**
    * Stop the run file in progress before its next line, and the solve or
    * contingency run it is waiting on.
@@ -2604,6 +2760,11 @@ export interface CoreCommands {
     };
     result: CategoryCount[];
   };
+  /** How far the PV curve study in progress has got: solves so far. */
+  pv_progress: {
+    args: Record<string, never>;
+    result: Progress;
+  };
   /**
    * How each column of one record type filters: by number, by text, or
    * by picking one of its few values.
@@ -2747,6 +2908,20 @@ export interface CoreCommands {
       steps: Step[];
     };
     result: string;
+  };
+  /**
+   * PV curve (continuation power flow): grows a transfer, or the sink's
+   * load, step by step with full AC solves from the last AC solve until
+   * the network can't carry more (the nose), and records the monitored
+   * bus voltages on the way. `cancel_pv_curve` stops it and
+   * `pv_progress` counts its solves.
+   */
+  run_pv_curve: {
+    args: {
+      case?: CaseId | null;
+      settings: PvSettings;
+    };
+    result: PvResults;
   };
   /**
    * Transfer limits (DFAX and FCITC): how much power can move from the
@@ -2993,6 +3168,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "open_case",
   "open_sample",
   "run_contingencies",
+  "run_pv_curve",
   "run_transfer_limits",
   "save_case_as",
   "scale_load_generation",

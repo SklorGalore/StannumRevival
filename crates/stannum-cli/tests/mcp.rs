@@ -199,6 +199,15 @@ fn a_client_opens_solves_and_reads_a_case() {
     assert!(transfer["summary"]["fcitc_mw"].is_number(), "{transfer}");
     assert!(transfer["limits"]["rows"].as_array().unwrap().len() <= 3);
     assert_eq!(transfer["limits"]["columns"][0], "monitored", "{transfer}");
+    let pv = c
+        .tool(
+            "pv_curve",
+            json!({ "sink": { "buses": [5] }, "max_curves": 2 }),
+        )
+        .unwrap();
+    assert!(pv["summary"]["nose_mw"].as_f64().unwrap() > 0.0, "{pv}");
+    assert_eq!(pv["curves"]["columns"][0], "bus", "{pv}");
+    assert!(pv["curves"]["rows"].as_array().unwrap().len() <= 2, "{pv}");
     let worst = c
         .tool("contingency_detail", json!({ "rank": 1, "limit": 3 }))
         .unwrap();

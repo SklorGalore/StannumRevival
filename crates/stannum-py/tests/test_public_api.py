@@ -71,6 +71,7 @@ CLASSES: dict[str, dict[str, str]] = {
         "load_dc_grids": "(self, path)",
         "name": "property",
         "path": "property",
+        "pv_curve": "(self, sink, source=None, settings=None, **options)",
         "records": "(self, section=None)",
         "responses": "(self, column, quantity, engineering=True)",
         "result": "(self, name)",

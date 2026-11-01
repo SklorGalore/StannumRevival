@@ -112,6 +112,17 @@ case (PTDF) and with each outage taken (OTDF).
 
 <VerificationTable suite="transfer" />
 
+## PV curves
+
+The nose of each [PV curve](/StannumRevival/manual/pv-curves/) is compared
+with an independent pseudo-arclength continuation power flow, which goes
+round the nose instead of stepping up to it, and the sink bus voltages along
+the curve with PYPOWER solves at the same transfers. Both are made by
+`crates/stannum-core/scripts/pv_reference.py`, with generator reactive limits
+off; Stannum's smallest step is 0.01 MW here.
+
+<VerificationTable suite="pv" />
+
 ## Transformer impedance tables and magnetizing
 
 Impedance correction tables (`TAB`) and magnetizing admittance (`MAG1`,

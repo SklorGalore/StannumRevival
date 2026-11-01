@@ -43,7 +43,7 @@ pub struct Subsystem {
 }
 
 impl Subsystem {
-    fn is_everything(&self) -> bool {
+    pub(crate) fn is_everything(&self) -> bool {
         self.areas.is_empty()
             && self.zones.is_empty()
             && self.owners.is_empty()
@@ -51,7 +51,7 @@ impl Subsystem {
     }
 
     /// Whether case bus row `row` is a member.
-    fn contains(&self, power: &PowerCase, row: usize) -> bool {
+    pub(crate) fn contains(&self, power: &PowerCase, row: usize) -> bool {
         let bus = &power.case.buses[row];
         let listed = self.is_everything()
             || self.areas.contains(&bus.area)
@@ -68,7 +68,7 @@ impl Subsystem {
             && (kv <= 0.0 || self.kv_max.is_none_or(|max| kv <= max))
     }
 
-    fn bus_ids(&self, power: &PowerCase) -> HashSet<u32> {
+    pub(crate) fn bus_ids(&self, power: &PowerCase) -> HashSet<u32> {
         (0..power.case.buses.len())
             .filter(|&r| self.contains(power, r))
             .map(|r| power.case.buses[r].id)
@@ -1069,7 +1069,7 @@ fn bus_rows(case: &Case) -> HashMap<u32, usize> {
 
 /// Each bus's weight in a side of the transfer, and what the side can move.
 /// `source` raises output (or drops load); the sink does the opposite.
-fn participation(
+pub(crate) fn participation(
     solved: &Case,
     buses: &HashSet<u32>,
     scaling: Scaling,

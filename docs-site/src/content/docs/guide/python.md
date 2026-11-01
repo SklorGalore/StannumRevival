@@ -144,6 +144,35 @@ contingencies and monitors:
 method and every setting are in
 [Transfer limits](/StannumRevival/manual/transfer-limits/).
 
+## PV curves
+
+```python
+case.solve()
+run = case.pv_curve(
+    {"areas": [7]},                  # sink: its load grows
+    respect_generation_limits=False, # go on to the nose
+)
+run.summary.nose_mw                  # MW of extra load at the nose
+run.summary.voltage_limit_mw         # MW before a bus drops below its low limit
+run.points                           # one row per step solved
+run.voltages                         # transfer_mw plus one column per bus
+```
+
+`run.voltages` plots straight away, for instance with Matplotlib:
+
+```python
+import matplotlib.pyplot as plt
+
+for bus in run.voltages.columns[1:]:
+    plt.plot(run.voltages["transfer_mw"], run.voltages[bus], label=bus)
+```
+
+A second subsystem is the source (`case.pv_curve(sink, source)`); without
+one, all generation picks up. The other settings, `sink_scaling`,
+`source_scaling`, `step_mw`, `min_step_mw`, `max_transfer_mw`, `monitor`,
+`vmin_pu`, `buses`, `max_curves` and `max_points`, and the method are in
+[PV curves](/StannumRevival/manual/pv-curves/).
+
 ## Records, elements and topology
 
 ```python
