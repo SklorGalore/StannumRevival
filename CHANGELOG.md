@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Share lost generation among the units left.** A contingency setting,
+  **Lost generation made up by** (`pickup`), shares a tripped unit's output,
+  and what a split-off part was exchanging, among every online unit by Pmax
+  or by headroom, in the linear screen and the AC solves. The reference bus
+  alone is still the default. Transfer limits still move it to the
+  reference bus.
 - **Compare with the file's voltages.** After an AC solve, the Power flow
   overview sets the voltages saved in the case file (the solution of
   PSS/E, PowerWorld or whatever tool saved it) beside Stannum's: mean and

@@ -45,6 +45,15 @@ part carry nothing.
 its island: $\Delta F = -\text{PTDF}_{\cdot,i}\, P_g$, from one solve
 $B\,\theta = e_i$.
 
+**Sharing lost generation.** With **Lost generation made up by** set to
+Pmax or headroom (`pickup` `"pmax"` or `"headroom"`), what an outage loses
+is shared among every online unit left, in proportion to its weight $w_k$
+(Pmax, or Pmax less its output): $\Delta F = P_g\,(\sum_k w_k\,
+\text{PTDF}_{\cdot,k} - \text{PTDF}_{\cdot,i})$, still one solve for the
+whole injection vector. A split-off part's boundary flow is shared the same
+way, by the units outside it. Units already at their limits take nothing
+under headroom; the linear screen doesn't hold Pmax otherwise.
+
 **Shunt and DC line outages** (planning events and lists files) are injection changes
 in the same way. A shunt gives back its conductance, $G\,V^2$ MW at the base
 voltage $V$; its reactive power doesn't move MW in the linear model. A DC
@@ -70,6 +79,11 @@ point](/StannumRevival/manual/ac-power-flow/#starting-point), with the outage ap
 - a tripped DC line out of service, or for one pole its scheduled power (or
   the detailed model's power or current order) halved;
 - split-off buses made isolated, with their generators out;
+- with lost generation shared by Pmax or headroom, each remaining unit's
+  output raised by its share of what the outage loses (tripped units, and
+  generation net of load in split-off parts), up to its Pmax (or down to
+  its Pmin when more load than generation is cut off); the reference bus
+  takes the rest and the change in losses;
 - a new reference bus, the bus of the largest remaining generator, when the
   old one was split off or lost its last generator.
 

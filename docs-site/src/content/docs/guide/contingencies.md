@@ -46,6 +46,11 @@ five steps:
   the worst N in AC. **AC solve of every outage** is slower on large cases
   but needs no screen. Only outages solved in AC are checked for voltage.
 - **Worst checked in AC**: N, 50 by default, when the run screens.
+- **Lost generation made up by**: **The reference bus** (the default) takes
+  up a tripped unit's output, or what a split-off part was exchanging.
+  **Every unit, by Pmax** or **by headroom** shares it among every online
+  unit left, as transfer and planning tools with participation factors do,
+  so lines near the reference bus aren't loaded by a far-away unit trip.
 - **Base case rating** and **Contingency rating**: which of each branch's
   ratings (rate A normal, B short-term, C emergency) the loading is measured
   against before and after an outage. Both are rate A by default; many
