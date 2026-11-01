@@ -60,7 +60,9 @@ The tables below:
 - **Steps**: each step's transfer, sink load, losses, lowest voltage,
   generators at a reactive limit, reactive reserve left and iterations.
 
-**CSV** saves every step with each bus's voltage. A new case or a study
+**CSV** saves every step with each bus's voltage, under
+[metadata rows](/StannumRevival/guide/contingencies/#metadata-rows-in-csv-exports)
+with the case and the settings. A new case or a study
 change clears the results.
 
 With reactive limits on, a real case often stops where the generators near

@@ -121,6 +121,7 @@ mod snap {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     stannum_core::logbook::install();
+    stannum_core::export_header::set_program("Stannum", env!("CARGO_PKG_VERSION"));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

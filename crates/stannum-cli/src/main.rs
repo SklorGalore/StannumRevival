@@ -104,6 +104,7 @@ fn file(args: &Args) -> Result<PathBuf, String> {
 }
 
 fn main() -> ExitCode {
+    stannum_core::export_header::set_program("stannum-cli", env!("CARGO_PKG_VERSION"));
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {

@@ -200,6 +200,7 @@ impl AttachHost {
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Keep the core's log so `stannum.log()` can read it.
     stannum_core::logbook::install();
+    stannum_core::export_header::set_program("stannum (Python)", env!("CARGO_PKG_VERSION"));
     m.add_class::<Session>()?;
     m.add_class::<AttachHost>()?;
     m.add_function(wrap_pyfunction!(command_list, m)?)?;

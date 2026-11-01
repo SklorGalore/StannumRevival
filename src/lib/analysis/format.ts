@@ -21,6 +21,21 @@ export function count(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/**
+ * A branch id's ends and circuit (`line:4:5:1` gives 4, 5, "1"); blanks for
+ * anything else, so export columns line up.
+ */
+export function branchParts(id: string | null | undefined): {
+  from_bus: number | "";
+  to_bus: number | "";
+  circuit: string;
+} {
+  const parts = (id ?? "").split(":");
+  if (parts.length < 4 || parts[0] === "bus" || parts[0] === "generator" || id?.includes("&"))
+    return { from_bus: "", to_bus: "", circuit: "" };
+  return { from_bus: Number(parts[1]), to_bus: Number(parts[2]), circuit: parts[parts.length - 1] };
+}
+
 /** CSV with spreadsheet-formula neutralization (as in nodal). */
 export function toCsv(rows: Record<string, unknown>[]): string {
   if (!rows.length) return "";

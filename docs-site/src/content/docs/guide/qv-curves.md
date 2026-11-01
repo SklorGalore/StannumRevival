@@ -49,7 +49,9 @@ The **Margins by bus** table lists each bus's solved voltage, margin,
 voltage at the bottom, the lowest voltage that solved and what stopped the
 sweep. A margin with ≥ means the curve was still falling at the lowest
 voltage, so the true margin is larger; lower the **Low** voltage to find
-it. **CSV** saves every point of every curve.
+it. **CSV** saves every point of every curve, under
+[metadata rows](/StannumRevival/guide/contingencies/#metadata-rows-in-csv-exports)
+with the case and the settings.
 
 The results clear when the case or the study changes.
 

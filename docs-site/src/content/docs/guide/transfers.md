@@ -74,7 +74,9 @@ The tables below them:
 - **PTDFs**: every monitored element's base case share of the transfer, at
   or above the cutoff.
 
-**CSV** saves the limits. Each list keeps its lowest 500 rows; run files,
+**CSV** saves the limits, under
+[metadata rows](/StannumRevival/guide/contingencies/#metadata-rows-in-csv-exports)
+with the case and every setting of the run. Each list keeps its lowest 500 rows; run files,
 [Python](/StannumRevival/guide/python/#transfer-limits) and the
 [MCP server](/StannumRevival/guide/ai-assistants/) return as many as you
 ask for.

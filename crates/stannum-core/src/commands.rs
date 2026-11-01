@@ -1310,9 +1310,22 @@ commands! {
 
     /// Write every violation of the last run to a CSV file, one line each:
     /// branch overloads, bus voltages and interfaces, and a line for each
-    /// outage whose AC solve failed.
+    /// outage whose AC solve failed. The file opens with metadata rows (see
+    /// `export_header`) before the table.
     export_contingency_violations { case: Option<CaseId>, path: PathBuf } -> crate::contingency::ViolationsExport =>
         |s, a| s.workspace()?.case(a.case)?.export_contingency_violations(&a.path);
+
+    /// The metadata rows that open a CSV export, as text to put in front of
+    /// the table: `header_rows` (how many rows come before the column
+    /// names), `title`, the case file and its SHA-256, study edits, the
+    /// program, the export time and `settings` (a JSON object, one field
+    /// per row), then a blank row.
+    export_header {
+        case: Option<CaseId>,
+        title: String,
+        settings: Option<serde_json::Value>,
+    } -> crate::export_header::ExportHeader =>
+        |s, a| Ok(s.workspace()?.case(a.case)?.export_header(&a.title, a.settings.as_ref()));
 
     /// Write the last contingency run to a compact results file (`.stnr`):
     /// an Arrow IPC stream, zstd compressed, one row per finding and one per
@@ -1553,7 +1566,9 @@ mod tests {
         // arguments only need to parse.
         let value = |name: &str| match name {
             "settings" => json!({ "solve": SolveSettings::default() }),
-            "path" | "quantity" | "element" | "section" | "name" | "field" => json!("unused"),
+            "path" | "quantity" | "element" | "section" | "name" | "field" | "title" => {
+                json!("unused")
+            }
             "edits" | "bus_rules" => json!([]),
             "query" => json!({}),
             "engineering" | "solved" | "enabled" => json!(false),

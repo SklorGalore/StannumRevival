@@ -4,10 +4,10 @@
 // full AC solves. This sets it up and draws the curves.
 import { useMemo } from "react";
 import { Activity, Download, Play, Square } from "lucide-react";
-import { MAX_QV_BUSES, lowestVoltageBuses, qvRows, useQv } from "../../store/qvStore";
+import { MAX_QV_BUSES, lowestVoltageBuses, qvRows, qvSettings, useQv } from "../../store/qvStore";
 import { validPositive } from "../../store/pvStore";
 import { busList } from "../../store/transferStore";
-import { saveTextExport } from "../../lib/analysis/api";
+import { saveCsvExport } from "../../lib/analysis/api";
 import { useCaseGroups } from "../../ui/useCaseGroups";
 import type { SolveReport } from "../../lib/analysis/types";
 import type { QvCurve } from "../../lib/analysis/commands.gen";
@@ -109,7 +109,7 @@ export function QvTab({ report, onPick }: { report: SolveReport | null; onPick: 
 
   async function exportCsv() {
     if (!r) return;
-    await saveTextExport("qv-curves.csv", toCsv(qvRows(r)), { name: "CSV", extensions: ["csv"] });
+    await saveCsvExport("qv-curves.csv", "QV curves", { ...qvSettings(c) }, toCsv(qvRows(r)));
   }
 
   const numberInput = (value: string, onChange: (v: string) => void, aria: string, title: string, placeholder: string) => (

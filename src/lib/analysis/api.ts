@@ -81,6 +81,7 @@ const LOG_LABELS: Record<
   open_sample: { label: "Opening sample case", done: "Opened sample case" },
   close_case: { label: "Closing case", done: "Closed case" },
   solve_power_flow: { label: "Solving power flow", done: "Solved power flow" },
+  export_header: { label: "Writing export metadata", quiet: true },
   compare_file_voltages: {
     label: "Comparing with the file's voltages",
     done: "Compared with the file's voltages",
@@ -360,6 +361,24 @@ export async function saveTextExport(
   const path = await pickSavePath(defaultName, [filter]);
   if (!path) return false;
   await shell<void>("save_diagram", { path, content });
+  return true;
+}
+
+/**
+ * Save a CSV export through the save dialog, with the core's metadata rows
+ * (case, SHA-256, program, time, `settings`) in front of the table. The
+ * first row, `header_rows,N`, says how many rows to skip to reach it.
+ */
+export async function saveCsvExport(
+  defaultName: string,
+  title: string,
+  settings: Record<string, unknown> | null,
+  csv: string,
+): Promise<boolean> {
+  const path = await pickSavePath(defaultName, [{ name: "CSV", extensions: ["csv"] }]);
+  if (!path) return false;
+  const header = await call("export_header", { title, settings });
+  await shell<void>("save_diagram", { path, content: header.text + csv });
   return true;
 }
 
