@@ -10,6 +10,7 @@ import type {
   ContingencyMethod,
   ContingencyProgress,
   ContingencyRow,
+  ContingencySettings,
   ContingencySummary,
   SolveSettings,
 } from "../lib/analysis/types";
@@ -143,6 +144,44 @@ function followShown(s: ContingencyState) {
   } else if (ws.shown) ws.showLatest();
 }
 
+/**
+ * The core's contingency settings for a setup: what a contingency run, and
+ * a secure transfer study, take out, check and judge by.
+ */
+export function contingencySettings(c: ContingencyChoice, solve: SolveSettings, elements: string[] | null): ContingencySettings {
+  const planning = c.source === "planning";
+  const lists = c.source === "lists" ? c.listsPath : null;
+  const known = (id: string | null) => (id && c.subsystems.some((x) => x.id === id) ? id : null);
+  // Outages within a subsystem and subsystem monitors run as lists text.
+  const inSubsystem = c.source === "n1" ? known(c.outageSubsystem) : null;
+  const watched = known(c.monitorSubsystem);
+  return {
+    elements: planning || lists || inSubsystem ? null : elements,
+    lists,
+    lists_text: inSubsystem
+      ? outagesText(c.subsystems, { subsystem: inSubsystem, branches: c.branches, generators: c.generators, buses: c.buses, pairs: c.pairs })
+      : null,
+    monitors: c.monitorFromLists ? c.monitorsPath : null,
+    monitors_text: watched && !c.monitorFromLists ? monitorsText(c.subsystems, watched, c.limitPct, c.monitorVoltages) : null,
+    branches: c.branches,
+    generators: c.generators,
+    buses: !planning && c.buses,
+    pairs: !planning && c.pairs,
+    skip_zero_impedance: c.skipZeroImpedance,
+    zero_impedance_pu: c.zeroImpedancePu,
+    method: c.method,
+    ac_count: c.acCount,
+    limit_pct: c.limitPct,
+    worse_by_pct: c.worseByPct,
+    worse_by_pu: c.worseByPu,
+    report_existing: c.reportExisting,
+    rating: c.rating,
+    base_rating: c.baseRating,
+    solve: { ...solve, ...c.solveOverrides, model: "ac" },
+    planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
+  };
+}
+
 export const useContingencies = create<ContingencyState>((set, get) => ({
   choice: DEFAULT_CHOICE,
   setChoice: (c) => set((s) => ({ choice: { ...s.choice, ...c } })),
@@ -176,37 +215,7 @@ export const useContingencies = create<ContingencyState>((set, get) => ({
         .catch(() => undefined);
     }, 250);
     try {
-      const planning = c.source === "planning";
-      const lists = c.source === "lists" ? c.listsPath : null;
-      const known = (id: string | null) => (id && c.subsystems.some((x) => x.id === id) ? id : null);
-      // Outages within a subsystem and subsystem monitors run as lists text.
-      const inSubsystem = c.source === "n1" ? known(c.outageSubsystem) : null;
-      const watched = known(c.monitorSubsystem);
-      const summary = await api.runContingencies({
-        elements: planning || lists || inSubsystem ? null : elements,
-        lists,
-        lists_text: inSubsystem
-          ? outagesText(c.subsystems, { subsystem: inSubsystem, branches: c.branches, generators: c.generators, buses: c.buses, pairs: c.pairs })
-          : null,
-        monitors: c.monitorFromLists ? c.monitorsPath : null,
-        monitors_text: watched && !c.monitorFromLists ? monitorsText(c.subsystems, watched, c.limitPct, c.monitorVoltages) : null,
-        branches: c.branches,
-        generators: c.generators,
-        buses: !planning && c.buses,
-        pairs: !planning && c.pairs,
-        skip_zero_impedance: c.skipZeroImpedance,
-        zero_impedance_pu: c.zeroImpedancePu,
-        method: c.method,
-        ac_count: c.acCount,
-        limit_pct: c.limitPct,
-        worse_by_pct: c.worseByPct,
-        worse_by_pu: c.worseByPu,
-        report_existing: c.reportExisting,
-        rating: c.rating,
-        base_rating: c.baseRating,
-        solve: { ...solve, ...c.solveOverrides, model: "ac" },
-        planning: planning ? { categories: c.categories, kv_min: c.kvMin, areas: [] } : null,
-      });
+      const summary = await api.runContingencies(contingencySettings(c, solve, elements));
       const rows = await api.contingencyRows(0, FIRST_PAGE);
       set({ summary, rows });
       return true;

@@ -205,6 +205,10 @@ function analysisMenu(): MenuEntry[] {
       disabled: !w.solveReport,
       title: w.solveReport ? undefined : "Solve the case first",
     }),
+    item("secure", "Secure transfer limit", () => w.showPowerTab("secure"), {
+      disabled: !w.solveReport,
+      title: w.solveReport ? undefined : "Solve the case first",
+    }),
     sep,
     item("scale", "Scale load and generation…", openScaling, {
       disabled: !power,

@@ -49,7 +49,11 @@ section into the next version's when a release is cut (see
   contingency run (lists files too). Every step's values of the chosen
   channels (bus voltages, branch flows and loadings, generator outputs,
   interface flows) for the base case and every contingency stream to a
-  `.stnr` results file (Arrow IPC), read back a channel at a time. Runs
+  `.stnr` results file (Arrow IPC), read back a channel at a time. The
+  **Secure transfer** tab in Power flow (Analysis menu and Ctrl+K) sets it
+  up with the contingency setup, and draws any recorded channel for the
+  base case and the contingencies picked, with the secure limit marked
+  ([guide](https://sklorgalore.github.io/StannumRevival/guide/secure-transfer/)). Runs
   from run files (`run_secure_transfer`), Python (`Case.secure_transfer`,
   `Case.secure_transfer_channel`) and the MCP server (`secure_transfer`)
   ([manual](https://sklorgalore.github.io/StannumRevival/manual/secure-transfer/)).

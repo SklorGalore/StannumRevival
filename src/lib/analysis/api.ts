@@ -55,6 +55,10 @@ import type {
   PvSettings,
   QvResults,
   QvSettings,
+  ChannelCurves,
+  SecureProgress,
+  SecureResults,
+  SecureTransferSettings,
   Rating,
   RunReport,
   SampleCase,
@@ -434,6 +438,14 @@ export const api = {
     call("run_qv_curve", { settings }),
   cancelQvCurve: () => invokeCore("cancel_qv_curve"),
   qvProgress: (): Promise<ContingencyProgress> => invokeCore("qv_progress"),
+  /** A secure transfer study: every contingency at every transfer step. */
+  runSecureTransfer: (settings: SecureTransferSettings): Promise<SecureResults> =>
+    call("run_secure_transfer", { settings }),
+  cancelSecureTransfer: () => invokeCore("cancel_secure_transfer"),
+  secureTransferProgress: (): Promise<SecureProgress> => invokeCore("secure_transfer_progress"),
+  /** One channel's curves from the last secure transfer study's results file. */
+  secureTransferChannel: (channel: number, contingencies: number[] | null): Promise<ChannelCurves> =>
+    invokeCore("secure_transfer_channel", { channel, contingencies }),
   contingencyProgress: (): Promise<ContingencyProgress> =>
     invokeCore("contingency_progress"),
   contingencyRows: async (
