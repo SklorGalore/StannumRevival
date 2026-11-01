@@ -24,7 +24,9 @@ study's edits, and solves every voltage with the full AC power flow and the
 same settings: every control (taps, switched shunts, phase shifters, DC
 lines) and generator reactive limits act as in a normal solve.
 
-It runs from [run files](/StannumRevival/guide/run-files/) and the command
+It runs from the **QV curve** tab in
+[Power flow](/StannumRevival/guide/qv-curves/),
+[run files](/StannumRevival/guide/run-files/) and the command
 registry (`run_qv_curve`), [Python](/StannumRevival/guide/python/#qv-curves)
 (`Case.qv_curve`) and the
 [MCP server](/StannumRevival/guide/ai-assistants/) (`qv_curve`).
@@ -118,7 +120,6 @@ the [Verification](/StannumRevival/reference/verification/#qv-curves) page.
 
 ## Limits of the method
 
-- The base case only for now: QV curves after contingencies and an app tab
-  come next.
+- The base case only for now: QV curves after contingencies come next.
 - FACTS devices that hold the bus keep holding it, against the condenser.
 - Attached VSC DC grid files are left out, as in contingency analysis.

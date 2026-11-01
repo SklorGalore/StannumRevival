@@ -201,6 +201,10 @@ function analysisMenu(): MenuEntry[] {
       disabled: !w.solveReport,
       title: w.solveReport ? undefined : "Solve the case first",
     }),
+    item("qv", "QV curve (reactive margin)", () => w.showPowerTab("qv"), {
+      disabled: !w.solveReport,
+      title: w.solveReport ? undefined : "Solve the case first",
+    }),
     sep,
     item("scale", "Scale load and generation…", openScaling, {
       disabled: !power,

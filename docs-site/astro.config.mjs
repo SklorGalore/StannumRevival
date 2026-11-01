@@ -49,6 +49,7 @@ export default defineConfig({
             { label: "Contingencies", slug: "guide/contingencies" },
             { label: "Transfer limits", slug: "guide/transfers" },
             { label: "PV curves", slug: "guide/pv-curves" },
+            { label: "QV curves", slug: "guide/qv-curves" },
             { label: "Scaling load and generation", slug: "guide/scaling" },
             { label: "Records", slug: "guide/records" },
             { label: "Topology", slug: "guide/topology" },
