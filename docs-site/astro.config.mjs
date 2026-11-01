@@ -48,6 +48,7 @@ export default defineConfig({
             { label: "Power flow", slug: "guide/power-flow" },
             { label: "Contingencies", slug: "guide/contingencies" },
             { label: "Transfer limits", slug: "guide/transfers" },
+            { label: "Scaling load and generation", slug: "guide/scaling" },
             { label: "Records", slug: "guide/records" },
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },

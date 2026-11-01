@@ -15,6 +15,7 @@ import { useStudyFile } from "../store/studyFileStore";
 import { STUDY_EXTENSION } from "../lib/study/studyFile";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { ScaleDialog } from "../modules/power/ScaleDialog";
 import { LogDock } from "./LogDock";
 import { CrashBoundary, CrashNoticeBar } from "./CrashNotice";
 import { useWorkspace, type ModuleId } from "../store/workspaceStore";
@@ -219,6 +220,7 @@ export function Shell() {
         <UpdateBar />
         <CommandPalette />
         <ShortcutsDialog />
+        <ScaleDialog />
         <main ref={body} id="main" tabIndex={-1} aria-label={MODULES.find((m) => m.id === module)?.label} className="flex-1 min-h-0 relative focus:outline-none">
           {pane("diagram", <DiagramModule active={shown("diagram")} />)}
           {pane("power", <PowerFlowModule active={shown("power")} />)}

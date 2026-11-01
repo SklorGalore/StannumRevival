@@ -113,6 +113,21 @@ export type BusCoordinates = {
   summary: CoordinatesSummary;
 };
 
+/**
+ * Which buses scale. Each list left empty lets every bus through; a bus
+ * must pass every list that isn't, and the kV range.
+ */
+export type BusFilter = {
+  areas?: number[];
+  /** Only buses at or below this base voltage, kV. */
+  kv_max?: number | null;
+  /** Only buses at or above this base voltage, kV. */
+  kv_min?: number | null;
+  /** Owners of the buses (RAW only; MATPOWER buses have none). */
+  owners?: number[];
+  zones?: number[];
+};
+
 export type BusRef = {
   base_kv: number;
   name: string;
@@ -899,6 +914,16 @@ export type Fingerprint = {
   size: number;
 };
 
+export type GenerationScaling = {
+  mw: ScaleAmount;
+  participation?: ScaleParticipation;
+  /**
+   * Keep every unit between Pmin and Pmax. What the others can't take
+   * is reported as a shortfall.
+   */
+  respect_limits?: boolean;
+};
+
 /** GeneratorRow rows as columns: one array per field, each `count` long. */
 export type GeneratorRowColumns = {
   bus: number[];
@@ -1044,6 +1069,30 @@ export type ListedSubsystem = {
 export type LoadParts = {
   p: [number, number, number];
   q: [number, number, number];
+};
+
+export type LoadScaling = {
+  /**
+   * Scale each load's Mvar by the same factor as its MW, so its power
+   * factor stays the same. `mvar` is then ignored.
+   */
+  constant_power_factor?: boolean;
+  /** Also scale loads that draw negative MW. */
+  include_negative?: boolean;
+  /**
+   * Also scale non-conforming loads (RAW SCALE = 0), which PSS/E's SCAL
+   * leaves alone: loads that don't follow the system's load level, such
+   * as industrial or station service load.
+   */
+  include_non_conforming?: boolean;
+  /**
+   * Reactive power: left out, Mvar stays as it is, unless
+   * `constant_power_factor` moves it with the MW.
+   */
+  mvar?: ScaleAmount | null;
+  /** Real power: left out, MW stays as it is. */
+  mw?: ScaleAmount | null;
+  parts?: ScaleLoadParts;
 };
 
 /** How each outage is checked. */
@@ -1554,6 +1603,79 @@ export type SampleCase = {
   /** What `open_sample` takes. */
   id: string;
   title: string;
+};
+
+/** How much to scale by. */
+export type ScaleAmount = {
+  kind: "target";
+  value: number;
+} | {
+  kind: "change";
+  value: number;
+} | {
+  kind: "percent";
+  value: number;
+};
+
+/** Which parts of a load scale. */
+export type ScaleLoadParts = "all" | "constant_power";
+
+/** How a generation change is shared between units. */
+export type ScaleParticipation = "output" | "pmax" | "headroom";
+
+/** What scaling did, or would do. */
+export type ScaleReport = {
+  /** How many generators ended at Pmin or Pmax. */
+  at_limit: number;
+  /** How many buses the filters chose. */
+  buses: number;
+  /** How many loads and generators changed in all. */
+  changed: number;
+  generation: ScaleTotals | null;
+  load: ScaleTotals | null;
+  /** Anything worth knowing, such as loads left alone. */
+  notes: string[];
+  /** The biggest changes first, at most [`ROWS_KEPT`] of them. */
+  rows: ScaledRow[];
+  /** Generation MW the units couldn't take within their limits. */
+  shortfall_mw: number;
+};
+
+/** What to scale and where. */
+export type ScaleSettings = {
+  /** The buses whose loads and generators scale. */
+  buses?: BusFilter;
+  generation?: GenerationScaling | null;
+  load?: LoadScaling | null;
+};
+
+/** Totals before and after. */
+export type ScaleTotals = {
+  /** How many loads or in-service generators are at the chosen buses. */
+  count: number;
+  mvar_after: number;
+  mvar_before: number;
+  mw_after: number;
+  mw_before: number;
+};
+
+/** What `scale_load_generation` answers: what changed, and the case after. */
+export type Scaled = {
+  case: CaseSummary;
+  report: ScaleReport;
+};
+
+/** One scaled load or generator. */
+export type ScaledRow = {
+  area: number;
+  /** A generator stopped at Pmin or Pmax. */
+  at_limit: boolean;
+  bus: number;
+  element: string;
+  mvar_after: number;
+  mvar_before: number;
+  mw_after: number;
+  mw_before: number;
 };
 
 /** How the source and sink share out the transfer. */
@@ -2613,6 +2735,26 @@ export interface CoreCommands {
     };
     result: null;
   };
+  /**
+   * Scale load and generation at a set of buses (areas, zones, owners,
+   * buses and a kV range) to a target total or by a change in MW or
+   * percent, and write the new values into the case's records.
+   */
+  scale_load_generation: {
+    args: {
+      case?: CaseId | null;
+      settings: ScaleSettings;
+    };
+    result: Scaled;
+  };
+  /** What `scale_load_generation` would change, without changing anything. */
+  scale_preview: {
+    args: {
+      case?: CaseId | null;
+      settings: ScaleSettings;
+    };
+    result: ScaleReport;
+  };
   /** One sensitivity column's responses at every bus. */
   sensitivity_responses: {
     args: {
@@ -2750,6 +2892,7 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "run_contingencies",
   "run_transfer_limits",
   "save_case_as",
+  "scale_load_generation",
   "set_study_edits",
   "solve_power_flow",
   "topology_set_merge",
