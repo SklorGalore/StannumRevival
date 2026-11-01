@@ -197,6 +197,32 @@ def test_qv_curve(case9: sn.Case) -> None:
         case9.qv_curve([])
 
 
+def test_secure_transfer(case9: sn.Case, tmp_path) -> None:
+    case9.solve()
+    out = tmp_path / "run.stnr"
+    run = case9.secure_transfer(
+        {"buses": [5]},
+        major_step_mw=20,
+        minor_step_mw=2,
+        respect_generation_limits=False,
+        channels=[{"quantity": "qg", "element": "generator:2:1"}],
+        output=str(out),
+    )
+    assert run.summary.stopped_by == "violation"
+    assert run.summary.limit_mw >= 0
+    assert run.summary.resolution_mw == pytest.approx(2.0)
+    assert list(run.channels["element"]) == ["bus:5", "generator:2:1"]
+    assert out.exists()
+    v = case9.secure_transfer_channel(0)
+    assert v.columns[0] == "transfer_mw"
+    assert v.columns[1] == "BASE CASE"
+    assert len(v["transfer_mw"]) == len(run.points["transfer_mw"])
+    only = case9.secure_transfer_channel(1, contingencies=[], path=str(out))
+    assert only.columns == ["transfer_mw", "BASE CASE"]
+    with pytest.raises(sn.StannumError):
+        case9.secure_transfer({"buses": [5]}, major_step_mw=0)
+
+
 def test_records_and_record_edits(case9: sn.Case) -> None:
     book = case9.records()
     assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]

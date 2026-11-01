@@ -409,8 +409,9 @@ pub struct ContingencyDetail {
 /// Progress of the run in hand, for a progress bar.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Progress {
-    /// "idle", "screening" or "ac".
-    #[schemars(extend("enum" = ["idle", "screening", "ac"]))]
+    /// "idle", "screening", "ac" or "contingencies" (PV and QV curves
+    /// studying their outages).
+    #[schemars(extend("enum" = ["idle", "screening", "ac", "contingencies"]))]
     pub phase: &'static str,
     pub done: usize,
     pub total: usize,
@@ -451,6 +452,7 @@ impl RunHandle {
             phase: match self.0.phase.load(Ordering::SeqCst) {
                 1 => "screening",
                 2 => "ac",
+                3 => "contingencies",
                 _ => "idle",
             },
             done: self.0.done.load(Ordering::SeqCst),
@@ -499,6 +501,14 @@ impl Outage {
     /// P0: judged against the limits, not against the base case.
     fn is_base(&self) -> bool {
         self.kind == "base"
+    }
+
+    /// P0: nothing out, checked against the base rating.
+    pub(crate) fn base() -> Self {
+        Self {
+            kind: "base",
+            ..Default::default()
+        }
     }
 }
 
@@ -1316,6 +1326,100 @@ impl ContingencyJob {
     }
 }
 
+/// What one outage found at a step of another study (secure transfer
+/// limits), with its solution when the AC solve converged.
+pub(crate) struct StepCheck<'a> {
+    pub(crate) row: &'a ContingencyRow,
+    pub(crate) violations: Violations,
+    /// Every watched interface's flow.
+    pub(crate) interfaces: &'a [InterfaceFlow],
+    pub(crate) solution: Option<&'a PowerFlowResult>,
+}
+
+/// Contingency checks for a study that moves the case and checks every
+/// outage again at each step: the outages and monitors chosen once, from
+/// the case before it moves.
+pub(crate) struct StepChecker {
+    settings: ContingencySettings,
+    watch: Watch,
+    pub(crate) outages: Vec<Outage>,
+    pub(crate) already_out: usize,
+    pub(crate) notes: Vec<String>,
+}
+
+impl StepChecker {
+    pub(crate) fn new(power: &PowerCase, settings: ContingencySettings) -> Result<Self, String> {
+        let (outages, already_out, mut notes) = outages(power, &settings)?;
+        let watch = match lists_from(&settings.monitors_text, &settings.monitors, power) {
+            Some(lists) => {
+                let (watch, more) = Watch::from_lists(power, lists?, &settings)?;
+                notes.extend(more);
+                watch
+            }
+            None => Watch::default(),
+        };
+        cap_notes(&mut notes);
+        Ok(Self {
+            settings,
+            watch,
+            outages,
+            already_out,
+            notes,
+        })
+    }
+
+    pub(crate) fn settings(&self) -> &ContingencySettings {
+        &self.settings
+    }
+
+    /// Bus rows a voltage monitor names; `None` when every bus is watched.
+    pub(crate) fn watched_buses(&self) -> Option<Vec<usize>> {
+        self.watch.buses.as_ref().map(|rows| {
+            rows.iter()
+                .enumerate()
+                .filter(|(_, w)| w.is_some())
+                .map(|(r, _)| r)
+                .collect()
+        })
+    }
+
+    /// Names of the watched interfaces, in order.
+    pub(crate) fn interface_names(&self) -> Vec<String> {
+        self.watch
+            .interfaces
+            .iter()
+            .map(|i| i.name.clone())
+            .collect()
+    }
+
+    /// Solve each of `outages` in AC from `base`, the converged solve of
+    /// `power` (the moved case), on every core, mapping each with `f`.
+    /// `None` for an outage the cancel stopped.
+    pub(crate) fn check<T: Send>(
+        &self,
+        power: &PowerCase,
+        base: &PowerFlowResult,
+        outages: &[&Outage],
+        handle: &RunHandle,
+        f: impl Fn(usize, StepCheck<'_>) -> T + Sync,
+    ) -> Result<Vec<Option<T>>, String> {
+        let context = Context::new(power, base, &self.settings, &self.watch)?;
+        Ok(parallel(handle, outages.len(), |i| {
+            let (o, solution) = context.ac_solved(outages[i], &self.settings.solve, handle)?;
+            let violations = o.violations();
+            Some(f(
+                i,
+                StepCheck {
+                    row: &o.row,
+                    violations,
+                    interfaces: &o.interfaces,
+                    solution: solution.as_ref(),
+                },
+            ))
+        }))
+    }
+}
+
 /// Each category's outages and problems, in the order planning lists them.
 fn category_summaries(ranked: &[(usize, ContingencyRow)]) -> Vec<CategorySummary> {
     let mut out: Vec<CategorySummary> = planning::CATEGORIES
@@ -1392,7 +1496,7 @@ fn log_summary(s: &ContingencySummary) {
 
 /// Run `f` for 0..n on every core, in any order, returning results in
 /// order. A result is `None` when the run was cancelled before it.
-fn parallel<T: Send>(
+pub(crate) fn parallel<T: Send>(
     handle: &RunHandle,
     n: usize,
     f: impl Fn(usize) -> Option<T> + Sync,

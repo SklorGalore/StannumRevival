@@ -146,7 +146,9 @@ the noses agree within the step resolution (0.01 MW in the test).
 
 - The base case only for now: PV curves after contingencies and drawing
   the results on the one-line and the map come next. For a bus's reactive
-  power margin, see [QV curves](/StannumRevival/manual/qv-curves/).
+  power margin, see [QV curves](/StannumRevival/manual/qv-curves/). For
+  how far a transfer can go with every contingency solved at each step,
+  see [Secure transfer limits](/StannumRevival/manual/secure-transfer/).
 - The curve stops at the nose and doesn't trace the lower half.
 - Area interchange control, when the solve has it on, moves area slack
   generation against a transfer between areas.

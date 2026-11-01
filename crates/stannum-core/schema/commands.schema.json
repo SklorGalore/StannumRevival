@@ -1106,6 +1106,129 @@
       ],
       "type": "object"
     },
+    "Channel": {
+      "description": "One channel: a quantity of one element.",
+      "properties": {
+        "element": {
+          "description": "`bus:101` for vm and va, a branch id (`line:1:4:1`) for mw, mvar\nand pct, a generator id (`generator:3:1`) for pg and qg, or an\ninterface's name from the monitors.",
+          "type": "string"
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        }
+      },
+      "required": [
+        "quantity",
+        "element"
+      ],
+      "type": "object"
+    },
+    "ChannelCurve": {
+      "properties": {
+        "index": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "values": {
+          "description": "The value at each step; `None` where it didn't solve (or wasn't\nsolved: a contingency left out after it failed).",
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "index",
+        "name",
+        "values"
+      ],
+      "type": "object"
+    },
+    "ChannelCurves": {
+      "description": "One channel's curves, read back from a results file.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/ChannelInfo"
+        },
+        "curves": {
+          "description": "The base case first, then the contingencies asked for.",
+          "items": {
+            "$ref": "#/$defs/ChannelCurve"
+          },
+          "type": "array"
+        },
+        "transfer_mw": {
+          "description": "The transfer at each step, MW.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "channel",
+        "transfer_mw",
+        "curves"
+      ],
+      "type": "object"
+    },
+    "ChannelInfo": {
+      "description": "One channel as recorded.",
+      "properties": {
+        "column": {
+          "description": "Its column in the results file.",
+          "type": "string"
+        },
+        "element": {
+          "type": "string"
+        },
+        "high": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "low": {
+          "description": "For a bus voltage: its low and high limits, p.u.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The element named PSS/E style.",
+          "type": "string"
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "unit": {
+          "description": "\"pu\", \"deg\", \"MW\", \"Mvar\" or \"%\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "quantity",
+        "element",
+        "name",
+        "unit",
+        "low",
+        "high",
+        "column"
+      ],
+      "type": "object"
+    },
     "ColumnKind": {
       "enum": [
         "integer",
@@ -5287,11 +5410,12 @@
           "type": "integer"
         },
         "phase": {
-          "description": "\"idle\", \"screening\" or \"ac\".",
+          "description": "\"idle\", \"screening\", \"ac\" or \"contingencies\" (PV and QV curves\nstudying their outages).",
           "enum": [
             "idle",
             "screening",
-            "ac"
+            "ac",
+            "contingencies"
           ],
           "type": "string"
         },
@@ -5696,6 +5820,51 @@
         "notes"
       ],
       "type": "object"
+    },
+    "Quantity": {
+      "description": "A quantity recorded at every step, for the base case and each\ncontingency.",
+      "oneOf": [
+        {
+          "const": "vm",
+          "description": "Bus voltage magnitude, p.u.",
+          "type": "string"
+        },
+        {
+          "const": "va",
+          "description": "Bus voltage angle, degrees.",
+          "type": "string"
+        },
+        {
+          "const": "mw",
+          "description": "Branch active flow at the from end, MW.",
+          "type": "string"
+        },
+        {
+          "const": "mvar",
+          "description": "Branch reactive flow at the from end, Mvar.",
+          "type": "string"
+        },
+        {
+          "const": "pct",
+          "description": "Branch loading, percent of the contingency rating.",
+          "type": "string"
+        },
+        {
+          "const": "pg",
+          "description": "Generator active output, MW.",
+          "type": "string"
+        },
+        {
+          "const": "qg",
+          "description": "Generator reactive output, Mvar.",
+          "type": "string"
+        },
+        {
+          "const": "interface",
+          "description": "A monitored interface's flow, MW (`element` is its name).",
+          "type": "string"
+        }
+      ]
     },
     "QuantityInfo": {
       "properties": {
@@ -6838,6 +7007,615 @@
       "required": [
         "name",
         "counts"
+      ],
+      "type": "object"
+    },
+    "SecureContingency": {
+      "description": "What each contingency allows.",
+      "properties": {
+        "element": {
+          "description": "What goes out; empty for the base case.",
+          "type": "string"
+        },
+        "failed_at_start": {
+          "description": "Already failing to solve with no transfer: left out of the study.",
+          "type": "boolean"
+        },
+        "index": {
+          "description": "0 for the base case, then the contingencies in order.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_mw": {
+          "description": "The last clean transfer before its first problem that stops the\nrun, MW; `None` when it had none.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "limited_by": {
+          "description": "That problem's kind (as [`SecureViolation::kind`]) and element.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limiting_element": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "name",
+        "element",
+        "limit_mw",
+        "limited_by",
+        "limiting_element",
+        "failed_at_start"
+      ],
+      "type": "object"
+    },
+    "SecurePoint": {
+      "description": "One transfer step solved, the base case and every contingency.",
+      "properties": {
+        "base_min_vm_pu": {
+          "description": "The lowest recorded bus voltage in the base case, p.u.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "minor": {
+          "description": "Taken with the minor step, pinning down a problem.",
+          "type": "boolean"
+        },
+        "new_problems": {
+          "description": "Problems that count towards stopping, first seen at this step.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "not_converged": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "solved": {
+          "description": "Contingencies solved here, and how many didn't converge.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transfer_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "with_thermal": {
+          "description": "Contingencies (the base case counted as one) with a branch,\nvoltage or interface problem here, new or worse since the start.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_voltage": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "transfer_mw",
+        "minor",
+        "base_min_vm_pu",
+        "solved",
+        "not_converged",
+        "with_thermal",
+        "with_voltage",
+        "new_problems"
+      ],
+      "type": "object"
+    },
+    "SecureProgress": {
+      "description": "Progress of a secure transfer study.",
+      "properties": {
+        "done": {
+          "description": "Contingencies solved at this step, of how many.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase": {
+          "description": "\"idle\", or \"contingencies\" while a step's contingencies solve.",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Steps solved so far, and the transfer of the step in hand, MW.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transfer_mw": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "phase",
+        "done",
+        "total",
+        "steps",
+        "transfer_mw"
+      ],
+      "type": "object"
+    },
+    "SecureResults": {
+      "properties": {
+        "channels": {
+          "items": {
+            "$ref": "#/$defs/ChannelInfo"
+          },
+          "type": "array"
+        },
+        "contingencies": {
+          "description": "The base case and each contingency, the most limiting first.",
+          "items": {
+            "$ref": "#/$defs/SecureContingency"
+          },
+          "type": "array"
+        },
+        "points": {
+          "description": "Every step solved, in order.",
+          "items": {
+            "$ref": "#/$defs/SecurePoint"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/SecureSummary"
+        },
+        "violations": {
+          "description": "Every problem, the first time it was seen, in transfer order.",
+          "items": {
+            "$ref": "#/$defs/SecureViolation"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary",
+        "points",
+        "violations",
+        "contingencies",
+        "channels"
+      ],
+      "type": "object"
+    },
+    "SecureSummary": {
+      "properties": {
+        "already_out": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "base_solves": {
+          "description": "Base case solves, and contingency solves.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "channels": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "contingencies": {
+          "description": "Contingencies studied (the base case not counted), elements already\nout of service, and contingencies failing with no transfer.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "contingency_solves": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "existing_problems": {
+          "description": "Problems already there with no transfer, left out unless they got\nworse.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed_at_start": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "last_transfer_mw": {
+          "description": "The largest transfer studied, MW, and why the run stopped there.",
+          "format": "double",
+          "type": "number"
+        },
+        "limit_mw": {
+          "description": "The secure transfer limit: the last clean transfer before the first\nproblem that stops the run, MW; or, when none was found, the\nlargest transfer studied.",
+          "format": "double",
+          "type": "number"
+        },
+        "limited_by": {
+          "description": "What set the limit.",
+          "enum": [
+            "thermal",
+            "voltage",
+            "not_converged",
+            "base_collapse",
+            "generation",
+            "max_transfer",
+            "max_points",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "limiting_contingency": {
+          "description": "The contingency and element behind the limit, when one set it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limiting_element": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "major_step_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "minor_step_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "nose_mw": {
+          "description": "The base case's nose, MW, when the run reached it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resolution_mw": {
+          "description": "The limit lies between `limit_mw` and `limit_mw` plus this, MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "results_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "results_file": {
+          "description": "The results file, its size and rows.",
+          "type": "string"
+        },
+        "results_rows": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sink": {
+          "$ref": "#/$defs/Participation"
+        },
+        "sink_scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "source": {
+          "$ref": "#/$defs/Participation"
+        },
+        "source_scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "stopped_by": {
+          "enum": [
+            "violation",
+            "base_collapse",
+            "generation",
+            "max_transfer",
+            "max_points",
+            "cancelled"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "limit_mw",
+        "limited_by",
+        "limiting_contingency",
+        "limiting_element",
+        "resolution_mw",
+        "last_transfer_mw",
+        "stopped_by",
+        "nose_mw",
+        "source",
+        "sink",
+        "source_scaling",
+        "sink_scaling",
+        "major_step_mw",
+        "minor_step_mw",
+        "contingencies",
+        "already_out",
+        "failed_at_start",
+        "existing_problems",
+        "base_solves",
+        "contingency_solves",
+        "channels",
+        "results_file",
+        "results_bytes",
+        "results_rows",
+        "elapsed_ms",
+        "cancelled",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "SecureTransferSettings": {
+      "description": "A secure transfer limit study.",
+      "properties": {
+        "channels": {
+          "default": [],
+          "description": "More quantities recorded at every step.",
+          "items": {
+            "$ref": "#/$defs/Channel"
+          },
+          "type": "array"
+        },
+        "contingencies": {
+          "$ref": "#/$defs/ContingencySettings",
+          "default": {
+            "ac_count": 50,
+            "base_rating": "a",
+            "branches": true,
+            "buses": false,
+            "elements": null,
+            "generators": true,
+            "limit_pct": 100.0,
+            "lists": null,
+            "lists_text": null,
+            "method": "screen",
+            "monitors": null,
+            "monitors_text": null,
+            "pairs": false,
+            "planning": null,
+            "rating": "a",
+            "report_existing": false,
+            "skip_zero_impedance": false,
+            "solve": {
+              "adjust_dc_taps": true,
+              "adjust_phase_shifters": true,
+              "adjust_transformer_taps": true,
+              "area_interchange": "off",
+              "dc_model": "detailed",
+              "decoupled_iterations": 30,
+              "enforce_q_limits": true,
+              "max_iterations": 10,
+              "method": "auto",
+              "model": "ac",
+              "start": "last",
+              "switch_shunts": true,
+              "tolerance_mva": 2.0
+            },
+            "worse_by_pct": 1.0,
+            "worse_by_pu": 0.001,
+            "zero_impedance_pu": 0.0001
+          },
+          "description": "The contingencies, monitors and limits, as for a contingency run.\nEvery contingency is solved in AC at every step; `method` and\n`ac_count` are unused, and problems already there before the\ntransfer starts don't count unless they get worse by the\n`worse_by` margins."
+        },
+        "major_step_mw": {
+          "default": null,
+          "description": "The step the transfer grows by while nothing new is found, MW. 5%\nof what the sink starts with when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_points": {
+          "default": 200,
+          "description": "The most transfer steps solved.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_transfer_mw": {
+          "default": null,
+          "description": "Stop at this transfer, MW.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "minor_step_mw": {
+          "default": null,
+          "description": "The step that pins down where a problem starts, MW. A tenth of the\nmajor step when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "output": {
+          "default": null,
+          "description": "Where the results file goes. A new file in the temporary folder\nwhen absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "respect_generation_limits": {
+          "default": true,
+          "description": "Stop when the source or sink runs out of room, as transfer limits\ncount it. On by default.",
+          "type": "boolean"
+        },
+        "sink": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where the power goes."
+        },
+        "sink_scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "load",
+          "description": "How the sink shares out its part: its loads grow by default."
+        },
+        "source": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where the power comes from. Every bus when left empty."
+        },
+        "source_scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "generation",
+          "description": "How the source shares out its part: generation by default."
+        },
+        "stop_at_violation": {
+          "default": true,
+          "description": "Stop at the first problem. Off: carry on to the nose of the base\ncase or the largest transfer, logging each problem met.",
+          "type": "boolean"
+        },
+        "stop_on_thermal": {
+          "default": true,
+          "description": "New branch overloads and interfaces over their limit count as\nproblems that stop the run (and set the limit).",
+          "type": "boolean"
+        },
+        "stop_on_voltage": {
+          "default": true,
+          "description": "New bus voltages outside their limits count as problems that stop\nthe run (and set the limit).",
+          "type": "boolean"
+        },
+        "voltage_buses": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subsystem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Buses whose voltage is recorded at every step. The voltage\nmonitors' buses when the monitors name some, else the sink's\nbuses."
+        }
+      },
+      "type": "object"
+    },
+    "SecureViolation": {
+      "description": "A problem, the first time it was seen.",
+      "properties": {
+        "clean_mw": {
+          "format": "double",
+          "type": "number"
+        },
+        "contingency": {
+          "description": "The contingency's name; \"BASE CASE\" for the case with nothing out.",
+          "type": "string"
+        },
+        "contingency_index": {
+          "description": "Its index: 0 for the base case, then the contingencies in order.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "description": "The element over its limit, and its id; empty for not_converged.",
+          "type": "string"
+        },
+        "element_id": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "\"branch\", \"voltage\", \"interface\", or \"not_converged\" for a\ncontingency (or the base case) whose solve failed.",
+          "enum": [
+            "branch",
+            "voltage",
+            "interface",
+            "not_converged"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "stops": {
+          "description": "Counts towards stopping the run, as the settings choose.",
+          "type": "boolean"
+        },
+        "transfer_mw": {
+          "description": "The first transfer at which it was seen, MW, and the last clean\none before it.",
+          "format": "double",
+          "type": "number"
+        },
+        "value": {
+          "description": "Loading (percent) or voltage (p.u.) when first seen, and its limit.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "contingency",
+        "contingency_index",
+        "element",
+        "element_id",
+        "transfer_mw",
+        "clean_mw",
+        "value",
+        "limit",
+        "stops"
       ],
       "type": "object"
     },
@@ -8638,6 +9416,18 @@
       },
       "takes_case": false
     },
+    "cancel_secure_transfer": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the secure transfer study in progress.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "cancel_solve": {
       "action": false,
       "args": {
@@ -10053,6 +10843,36 @@
       },
       "takes_case": true
     },
+    "run_secure_transfer": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/SecureTransferSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Secure transfer limits: grows a transfer from source to sink by the\nmajor step, solving every contingency in AC at each step, until a\nnew thermal or voltage problem (as chosen) or a failed solve; then\npins it down with the minor step. Records the chosen channels for\nthe base case and every contingency at each step in a results file\n(`.stnr`). `cancel_secure_transfer` stops it and\n`secure_transfer_progress` follows it.",
+      "result": {
+        "$ref": "#/$defs/SecureResults"
+      },
+      "takes_case": true
+    },
     "run_transfer_limits": {
       "action": true,
       "args": {
@@ -10214,6 +11034,57 @@
         "$ref": "#/$defs/ScaleReport"
       },
       "takes_case": true
+    },
+    "secure_transfer_channel": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "contingencies": {
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "type": "object"
+      },
+      "doc": "One channel of a secure transfer study, read from its results file\n(the last run's when `path` is absent): the transfer at each step,\nand the channel's value there for the base case and each\ncontingency asked for by index (every one when absent).",
+      "result": {
+        "$ref": "#/$defs/ChannelCurves"
+      },
+      "takes_case": false
+    },
+    "secure_transfer_progress": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the secure transfer study in progress has got.",
+      "result": {
+        "$ref": "#/$defs/SecureProgress"
+      },
+      "takes_case": false
     },
     "sensitivity_responses": {
       "action": false,

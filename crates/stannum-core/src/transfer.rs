@@ -384,6 +384,38 @@ pub struct TransferJob {
     handle: RunHandle,
 }
 
+/// The branch and generator outages `c` picks, as transfer limits and PV
+/// curves study them: shunt and DC line outages are left out.
+pub(crate) fn branch_and_generator_outages(
+    power: &PowerCase,
+    c: &TransferContingencies,
+) -> Result<Vec<Outage>, String> {
+    let picker = ContingencySettings {
+        elements: c.elements.clone(),
+        branches: c.branches,
+        generators: c.generators,
+        skip_zero_impedance: c.skip_zero_impedance,
+        ..Default::default()
+    };
+    let (mut list, _, _) = contingency::outages(power, &picker)?;
+    if c.kv_min > 0.0 {
+        let case = &power.case;
+        let bus_row = bus_rows(case);
+        list.retain(|o| {
+            o.branch_rows.is_empty()
+                || o.branch_rows.iter().any(|&r| {
+                    let b = &case.branches[r];
+                    kv_at_least(case, &bus_row, b.from, c.kv_min)
+                        || kv_at_least(case, &bus_row, b.to, c.kv_min)
+                })
+        });
+    }
+    // Shunt and DC line outages don't move a transfer's factors; the base
+    // flows they move are left to contingency analysis.
+    list.retain(|o| !o.branch_rows.is_empty() || !o.generator_rows.is_empty());
+    Ok(list)
+}
+
 /// The transfer at which `flow` reaches `limit` with factor `d`.
 fn fcitc(flow: f64, limit: f64, d: f64) -> f64 {
     if d > 0.0 {
@@ -445,32 +477,7 @@ impl TransferJob {
                 list
             }
             None => Vec::new(),
-            Some(c) => {
-                let picker = ContingencySettings {
-                    elements: c.elements.clone(),
-                    branches: c.branches,
-                    generators: c.generators,
-                    skip_zero_impedance: c.skip_zero_impedance,
-                    ..Default::default()
-                };
-                let (mut list, _, _) = contingency::outages(power, &picker)?;
-                if c.kv_min > 0.0 {
-                    let case = &power.case;
-                    let bus_row = bus_rows(case);
-                    list.retain(|o| {
-                        o.branch_rows.is_empty()
-                            || o.branch_rows.iter().any(|&r| {
-                                let b = &case.branches[r];
-                                kv_at_least(case, &bus_row, b.from, c.kv_min)
-                                    || kv_at_least(case, &bus_row, b.to, c.kv_min)
-                            })
-                    });
-                }
-                // Shunt and DC line outages don't move a transfer's factors;
-                // the base flows they move are left to contingency analysis.
-                list.retain(|o| !o.branch_rows.is_empty() || !o.generator_rows.is_empty());
-                list
-            }
+            Some(c) => branch_and_generator_outages(power, c)?,
         };
         Ok(Self {
             power: power.clone(),

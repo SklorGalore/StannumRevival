@@ -214,6 +214,23 @@ fn a_client_opens_solves_and_reads_a_case() {
     assert!(qv["summary"]["weakest_margin_mvar"].is_number(), "{qv}");
     assert_eq!(qv["buses"]["columns"][0], "bus", "{qv}");
     assert!(!qv["points"]["rows"].as_array().unwrap().is_empty(), "{qv}");
+    let secure = c
+        .tool(
+            "secure_transfer",
+            json!({ "sink": { "buses": [5] }, "major_step_mw": 20.0, "minor_step_mw": 2.0, "respect_generation_limits": false, "max_rows": 3 }),
+        )
+        .unwrap();
+    assert!(secure["summary"]["limit_mw"].is_number(), "{secure}");
+    assert_eq!(secure["summary"]["stopped_by"], "violation", "{secure}");
+    assert!(
+        secure["violations"]["rows"].as_array().unwrap().len() <= 3,
+        "{secure}"
+    );
+    assert_eq!(
+        secure["limiting_contingencies"]["columns"][0], "name",
+        "{secure}"
+    );
+    let _ = std::fs::remove_file(secure["summary"]["results_file"].as_str().unwrap());
     let worst = c
         .tool("contingency_detail", json!({ "rank": 1, "limit": 3 }))
         .unwrap();

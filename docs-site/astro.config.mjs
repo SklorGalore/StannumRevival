@@ -79,6 +79,7 @@ export default defineConfig({
             { label: "Transfer limits (DFAX)", slug: "manual/transfer-limits" },
             { label: "PV curves (voltage stability)", slug: "manual/pv-curves" },
             { label: "QV curves (reactive margin)", slug: "manual/qv-curves" },
+            { label: "Secure transfer limits", slug: "manual/secure-transfer" },
             {
               label: "HVDC",
               items: [

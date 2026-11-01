@@ -33,12 +33,13 @@ create_exception!(
 const SIGNAL_POLL: Duration = Duration::from_millis(50);
 
 /// The commands that stop long work. Each is harmless when nothing runs.
-const CANCEL: [&str; 6] = [
+const CANCEL: [&str; 7] = [
     "cancel_solve",
     "cancel_contingencies",
     "cancel_transfer_limits",
     "cancel_pv_curve",
     "cancel_qv_curve",
+    "cancel_secure_transfer",
     "cancel_run_file",
 ];
 

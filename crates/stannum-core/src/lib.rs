@@ -56,6 +56,7 @@ pub mod run_file;
 pub mod samples;
 pub mod scaling;
 pub mod schema;
+pub mod secure;
 pub mod stn;
 pub mod study;
 pub mod study_file;
