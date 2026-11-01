@@ -13,7 +13,7 @@ map uses MapLibre. Entry points are `index.html` → `src/main.tsx` →
 
 | Folder | Holds |
 | --- | --- |
-| `shell/` | The frame around every module: `ModuleRail`, `CaseBar`, `CommandPalette` (Ctrl+K), `LogDock`, `RunFileBar`, `StudyFileControls`, the result and selection chips, `WindowControls` (Windows title bar), and side-by-side layout in `Shell.tsx`. |
+| `shell/` | The frame around every module: `ModuleRail`, `CaseBar` (toolbar), `ContextBar` (shown result and selection), `CommandPalette` (Ctrl+K), `LogDock`, `RunFileBar`, `StudyFileControls`, the result and selection chips, `WindowControls` (Windows title bar), and side-by-side layout in `Shell.tsx`. |
 | `modules/` | One folder per rail entry: `diagram/` (one-line, network and map styles, layers, tables), `power/` (power flow, sensitivities, contingencies, warnings, VSC grids), `records/`, `diff/`. `topology/` holds the network graph and field filter code the Diagram uses. |
 | `lib/analysis/` | Everything that talks to the core: `api.ts`, the generated `commands.gen.ts`, `types.ts`, and decoders for column tables (`wire.ts`, `topologyWire.ts`). |
 | `lib/` (other) | Pure logic with unit tests next to it: diagram generation and routing (`diagram/`), map model (`map/`), exports (`export/`), study files (`study/`), shared element ids (`elements.ts`), search (`search.ts`), the log model (`log/`). |

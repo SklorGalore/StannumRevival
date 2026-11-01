@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
-import { Columns2, FlaskConical, FolderOpen, ListChecks, Play, Search, Sigma } from "lucide-react";
-import { useStudy } from "../store/studyStore";
+import { Columns2, FolderOpen, ListChecks, Play, Search, Sigma } from "lucide-react";
 import { SPLIT_PARTNER, useWorkspace } from "../store/workspaceStore";
-import { SelectionChip } from "./SelectionChip";
-import { ResultChip } from "./ResultChip";
 import { ScriptChip } from "./ScriptChip";
 import { useWidth } from "../ui/useWidth";
 import { StudyFileButton } from "./StudyFileControls";
@@ -55,7 +52,7 @@ function ToolButton({
   );
 }
 
-/** The toolbar under the menu bar: the everyday actions, then what is selected and shown. */
+/** The toolbar under the menu bar: the everyday actions. What is shown and selected sits in the ContextBar below it. */
 export function CaseBar() {
   const summary = useWorkspace((s) => s.caseSummary);
   const opening = useWorkspace((s) => s.opening);
@@ -70,13 +67,10 @@ export function CaseBar() {
   const requestSensitivities = useWorkspace((s) => s.requestSensitivities);
   const showPowerTab = useWorkspace((s) => s.showPowerTab);
   const solved = useWorkspace((s) => !!s.solveReport);
-  const edits = useStudy((s) => s.entries.length);
-  const showStudy = useStudy((s) => s.show);
   const power = !!summary?.power.available;
   const noPower = summary ? "This case has no power flow data" : "Open a case first";
 
-  // In a narrow window the buttons drop their labels, and the selection's
-  // "Show in" links fold into a menu, rather than running into each other.
+  // In a narrow window the buttons drop their labels rather than running into each other.
   const [ref, width] = useWidth<HTMLDivElement>(1440);
   const narrow = width < 1100;
   return (
@@ -152,19 +146,6 @@ export function CaseBar() {
             {openError}
           </span>
         )}
-        {summary && edits > 0 && (
-          <button
-            type="button"
-            onClick={showStudy}
-            className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
-            title="Power flow is solving this case with study edits. Click to see them."
-            data-testid="study-badge"
-          >
-            <FlaskConical size={12} /> {edits} edit{edits === 1 ? "" : "s"}
-          </button>
-        )}
-        {summary && <ResultChip />}
-        <SelectionChip />
         <ScriptChip />
       </div>
     </div>
