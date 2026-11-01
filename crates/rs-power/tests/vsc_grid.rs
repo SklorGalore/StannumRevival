@@ -406,7 +406,7 @@ fn works_with_loose_tolerances_and_generator_limits() {
     let grids = grids();
     let tight = solve_dc_grids(&case, &tight(), &grids, &DcGridSettings::default()).unwrap();
     for enforce_q_limits in [false, true] {
-        // Stannum's default: 2 MVA on a 100 MVA base.
+        // A loose 2 MVA on a 100 MVA base (Stannum's default before 1.1).
         let opt = PowerFlowOptions {
             tolerance: 0.02,
             enforce_q_limits,

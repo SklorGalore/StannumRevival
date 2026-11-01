@@ -7427,7 +7427,7 @@
               "model": "ac",
               "start": "last",
               "switch_shunts": true,
-              "tolerance_mva": 2.0
+              "tolerance_mva": 0.1
             },
             "worse_by_pct": 1.0,
             "worse_by_pu": 0.001,
