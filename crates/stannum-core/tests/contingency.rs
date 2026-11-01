@@ -1100,3 +1100,81 @@ fn outages_are_named_by_bus_names_and_numbers() {
     let rows = open.contingency_rows(0, 10).unwrap().0;
     assert_eq!(rows[0].name, "Loss of 1-2");
 }
+
+/// With pickup by Pmax, a tripped unit's MW is shared among the units left:
+/// the reference unit moves only by the change in losses, and the linear
+/// screen's flows agree with the AC solve better than with the reference
+/// bus taking it all.
+#[test]
+fn lost_generation_can_be_shared_by_pmax() {
+    use stannum_core::contingency::Pickup;
+    let run = |pickup: Pickup, method: Method| {
+        let mut ws = solved("case30.m");
+        let open = ws.current_mut().unwrap();
+        let base = open.result("base").unwrap();
+        open.run_contingencies(ContingencySettings {
+            branches: false,
+            generators: true,
+            pickup,
+            ac_count: 0,
+            ..settings(method)
+        })
+        .unwrap();
+        let rows = open.contingency_rows(0, 1000).unwrap();
+        let mut out = Vec::new();
+        for row in rows.iter().filter(|r| r.converged != Some(false)) {
+            let after = open.result(&format!("contingency {}", row.rank)).unwrap();
+            out.push((row.element.clone(), row.clone(), after));
+        }
+        (base, out)
+    };
+    let reference_pg = |r: &stannum_core::power::SolveReport| -> f64 {
+        // case30's reference unit is at bus 1.
+        r.generators.iter().find(|g| g.bus == 1).unwrap().pg
+    };
+    let (base, shared) = run(Pickup::Pmax, Method::Ac);
+    let (_, alone) = run(Pickup::Reference, Method::Ac);
+    assert!(shared.len() >= 5, "{} generator outages", shared.len());
+    let before = reference_pg(&base);
+    for (element, _, s) in &shared {
+        let (_, _, a) = alone.iter().find(|(e, _, _)| e == element).unwrap();
+        if element == "generator:1:1" {
+            continue;
+        }
+        let tripped = base
+            .generators
+            .iter()
+            .find(|g| g.element == *element)
+            .unwrap()
+            .pg;
+        let moved_alone = reference_pg(a) - before;
+        let moved_shared = reference_pg(s) - before;
+        assert!(
+            moved_alone > 0.8 * tripped,
+            "{element}: reference took {moved_alone:.1} of {tripped:.1} MW alone"
+        );
+        assert!(
+            moved_shared.abs() < 0.5 * moved_alone,
+            "{element}: reference took {moved_shared:.1} MW shared, {moved_alone:.1} alone"
+        );
+    }
+    // The screen spreads the same MW, so its worst loading tracks the AC one.
+    let (_, linear) = run(Pickup::Pmax, Method::Screen);
+    let ac: std::collections::HashMap<_, _> = shared
+        .iter()
+        .map(|(e, row, _)| (e.clone(), row.worst.as_ref().map(|w| w.element.clone())))
+        .collect();
+    let same = linear
+        .iter()
+        .filter(|(e, row, _)| {
+            row.checked == "linear"
+                && ac.get(e).cloned().flatten() == row.worst.as_ref().map(|w| w.element.clone())
+        })
+        .count();
+    let screened = linear
+        .iter()
+        .filter(|(_, r, _)| r.checked == "linear")
+        .count();
+    assert!(screened >= 5, "{screened} screened");
+    assert!(same * 2 >= screened, "{same} of {screened} agree");
+}

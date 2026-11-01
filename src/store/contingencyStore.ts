@@ -15,6 +15,7 @@ import type {
   SolveSettings,
 } from "../lib/analysis/types";
 import type { Rating } from "../lib/analysis/ratings";
+import type { Pickup } from "../lib/analysis/commands.gen";
 import { monitorsText, outagesText, type SetupSubsystem } from "../lib/analysis/stnl";
 
 /** AC solve options the setup can set apart from the Power flow tab's. */
@@ -49,6 +50,7 @@ export interface ContingencyChoice {
   categories: string[];
   kvMin: number;
   method: ContingencyMethod;
+  pickup: Pickup;
   acCount: number;
   limitPct: number;
   /** Points an overload already there before the outage must gain to be reported. */
@@ -85,6 +87,7 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
   method: "auto",
+  pickup: "reference",
   acCount: 50,
   limitPct: 100,
   worseByPct: 1,
@@ -170,6 +173,7 @@ export function contingencySettings(c: ContingencyChoice, solve: SolveSettings, 
     skip_zero_impedance: c.skipZeroImpedance,
     zero_impedance_pu: c.zeroImpedancePu,
     method: c.method,
+    pickup: c.pickup,
     ac_count: c.acCount,
     limit_pct: c.limitPct,
     worse_by_pct: c.worseByPct,

@@ -1892,6 +1892,11 @@
           "description": "N-2: take the chosen branches and generators out two at a time,\nevery pair once, instead of one at a time. Buses stay one at a time.",
           "type": "boolean"
         },
+        "pickup": {
+          "$ref": "#/$defs/Pickup",
+          "default": "reference",
+          "description": "Which generators make up the MW an outage loses: the reference bus\n(the default), or every online unit left by Pmax or by headroom."
+        },
         "planning": {
           "anyOf": [
             {
@@ -5475,6 +5480,26 @@
       ],
       "type": "object"
     },
+    "Pickup": {
+      "description": "Which generators make up the MW an outage loses: tripped units and the\ngeneration (net of load) in a part of the network it cuts off.",
+      "oneOf": [
+        {
+          "const": "reference",
+          "description": "The reference (swing) bus alone.",
+          "type": "string"
+        },
+        {
+          "const": "pmax",
+          "description": "Every online generator left, in proportion to its Pmax.",
+          "type": "string"
+        },
+        {
+          "const": "headroom",
+          "description": "Every online generator left, in proportion to its room to Pmax.",
+          "type": "string"
+        }
+      ]
+    },
     "PlanningSettings": {
       "description": "Which planning events to generate.",
       "properties": {
@@ -7569,6 +7594,7 @@
             "monitors": null,
             "monitors_text": null,
             "pairs": false,
+            "pickup": "reference",
             "planning": null,
             "rating": "a",
             "report_existing": false,

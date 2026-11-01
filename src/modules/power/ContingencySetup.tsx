@@ -6,7 +6,7 @@ import { FileText, FolderOpen, Play, Plus, Save, Trash2 } from "lucide-react";
 import { PLANNING_CATEGORIES, useContingencies, type ContingencyChoice, type ContingencySource, type SolveOverrides } from "../../store/contingencyStore";
 import { LISTS_FILTERS, api, pickFile, saveTextExport } from "../../lib/analysis/api";
 import type { CategoryCount, SolveReport, SolveSettings } from "../../lib/analysis/types";
-import type { ListedSubsystem } from "../../lib/analysis/commands.gen";
+import type { ListedSubsystem, Pickup } from "../../lib/analysis/commands.gen";
 import { count } from "../../lib/analysis/format";
 import { RATINGS, ratingLabel, type Rating } from "../../lib/analysis/ratings";
 import { describeSubsystem, subsystemId, subsystemsText, type SetupSubsystem } from "../../lib/analysis/stnl";
@@ -80,6 +80,7 @@ export function setupSummary(c: ContingencyChoice, scoped: boolean): string {
         ? `AC for every outage up to ${count(AUTO_AC_OUTAGES)}, else linear screen and AC for the worst ${count(c.acCount)}`
         : `linear screen, AC for the worst ${count(c.acCount)}`
   );
+  if (c.pickup !== "reference") parts.push(`lost MW shared by ${c.pickup === "pmax" ? "Pmax" : "headroom"}`);
   return parts.join(" · ");
 }
 
@@ -818,6 +819,22 @@ function SolutionPanel({ solve }: { solve: SolveSettings }) {
             />
           </Field>
         )}
+      </Group>
+      <Group
+        title="Lost generation"
+        note={
+          c.pickup === "reference"
+            ? "The reference bus makes up what an outage loses: a tripped unit's output, or the generation net of load in a part it cuts off."
+            : `Every online unit left makes up what an outage loses, in proportion to its ${c.pickup === "pmax" ? "Pmax" : "room up to Pmax"}, in the screen and the AC solves. A unit stops at its limit; the reference bus takes the rest and the change in losses.`
+        }
+      >
+        <Field label="Made up by">
+          <select className={inputClass} value={c.pickup} onChange={(e) => s.setChoice({ pickup: e.target.value as Pickup })} aria-label="Lost generation made up by" data-testid="contingency-pickup">
+            <option value="reference">The reference bus</option>
+            <option value="pmax">Every unit, by Pmax</option>
+            <option value="headroom">Every unit, by headroom</option>
+          </select>
+        </Field>
       </Group>
       <Group title="AC solves" note="Each outage starts from the base case's AC solution. Anything left on Same as Power flow follows the Power flow tab's settings.">
         {SOLVE_OPTIONS.map((o) => {

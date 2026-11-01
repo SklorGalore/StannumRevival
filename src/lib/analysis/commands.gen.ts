@@ -488,6 +488,11 @@ export type ContingencySettings = {
    */
   pairs?: boolean;
   /**
+   * Which generators make up the MW an outage loses: the reference bus
+   * (the default), or every online unit left by Pmax or by headroom.
+   */
+  pickup?: Pickup;
+  /**
    * Run these NERC TPL-001 planning events instead of every branch and
    * generator; `elements`, `branches` and `generators` are then unused.
    */
@@ -1499,6 +1504,12 @@ export type Path = {
   hops: number;
   node_ids: string[];
 };
+
+/**
+ * Which generators make up the MW an outage loses: tripped units and the
+ * generation (net of load) in a part of the network it cuts off.
+ */
+export type Pickup = "reference" | "pmax" | "headroom";
 
 /** Which planning events to generate. */
 export type PlanningSettings = {

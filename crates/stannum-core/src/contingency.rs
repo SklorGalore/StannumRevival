@@ -51,6 +51,22 @@ impl Method {
     }
 }
 
+/// Which generators make up the MW an outage loses: tripped units and the
+/// generation (net of load) in a part of the network it cuts off.
+#[derive(
+    Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Pickup {
+    /// The reference (swing) bus alone.
+    #[default]
+    Reference,
+    /// Every online generator left, in proportion to its Pmax.
+    Pmax,
+    /// Every online generator left, in proportion to its room to Pmax.
+    Headroom,
+}
+
 /// Which of a branch's three ratings a loading is measured against.
 #[derive(
     Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Default, schemars::JsonSchema,
@@ -129,6 +145,10 @@ pub struct ContingencySettings {
     pub zero_impedance_pu: f64,
     #[serde(default)]
     pub method: Method,
+    /// Which generators make up the MW an outage loses: the reference bus
+    /// (the default), or every online unit left by Pmax or by headroom.
+    #[serde(default)]
+    pub pickup: Pickup,
     /// How many of the worst screened outages get an AC solve.
     #[serde(default = "default_ac_count")]
     pub ac_count: usize,
@@ -208,6 +228,7 @@ impl Default for ContingencySettings {
             skip_zero_impedance: false,
             zero_impedance_pu: default_zero_impedance(),
             method: Method::default(),
+            pickup: Pickup::default(),
             ac_count: default_ac_count(),
             limit_pct: default_limit(),
             worse_by_pct: default_worse_by_pct(),
@@ -1578,6 +1599,7 @@ struct Context<'a> {
     report_existing: bool,
     rating: Rating,
     base_rating: Rating,
+    pickup: Pickup,
     /// Base flows at the from and to ends.
     pf: Vec<f64>,
     qf: Vec<f64>,
@@ -1654,6 +1676,7 @@ impl<'a> Context<'a> {
             report_existing: settings.report_existing,
             rating: settings.rating,
             base_rating,
+            pickup: settings.pickup,
             pf: flows.iter().map(|f| f[0]).collect(),
             qf: flows.iter().map(|f| f[1]).collect(),
             pt: flows.iter().map(|f| f[2]).collect(),
@@ -1806,13 +1829,21 @@ impl<'a> Context<'a> {
     fn linear_flows(&self, outage: &Outage) -> (Vec<f64>, Vec<usize>) {
         let case = self.case();
         let mut flows = self.pf.clone();
-        // Generators taken out: their output moves to the reference bus.
+        // Generators taken out: their output moves to the reference bus, or
+        // is shared among the units left.
         let mut lost: Vec<(u32, f64)> = outage
             .generator_rows
             .iter()
             .filter(|&&r| case.generators[r].online)
             .map(|&r| (case.generators[r].bus, -self.base.case.generators[r].pg))
             .collect();
+        let tripped: f64 = lost.iter().map(|(_, mw)| -mw).sum();
+        if tripped != 0.0 {
+            let none = std::collections::HashSet::new();
+            for (g, share) in self.pickup_shares(&outage.generator_rows, &none) {
+                lost.push((case.generators[g].bus, tripped * share));
+            }
+        }
         lost.extend(self.other_injections(outage));
         if !lost.is_empty() {
             for (f, d) in flows.iter_mut().zip(self.factors.injection_flows(&lost)) {
@@ -1848,8 +1879,13 @@ impl<'a> Context<'a> {
                         (true, true) => {}
                     }
                 }
-                if let Some(pickup) = pickup {
-                    let total: f64 = injections.iter().map(|(_, mw)| mw).sum();
+                let total: f64 = injections.iter().map(|(_, mw)| mw).sum();
+                let shares = self.pickup_shares(&outage.generator_rows, &ids);
+                if !shares.is_empty() {
+                    for (g, share) in shares {
+                        injections.push((case.generators[g].bus, -total * share));
+                    }
+                } else if let Some(pickup) = pickup {
                     injections.push((pickup, -total));
                 }
                 for (f, d) in flows
@@ -1914,6 +1950,37 @@ impl<'a> Context<'a> {
             out.push((line[1] as u32, to_change));
         }
         out
+    }
+
+    /// The generator rows that make up lost MW and each one's share (summing
+    /// to 1): every online unit not tripped (`tripped` rows) or cut off
+    /// (`cut` bus ids), by Pmax or headroom. Empty for the reference bus,
+    /// or when no unit has any.
+    fn pickup_shares(
+        &self,
+        tripped: &[usize],
+        cut: &std::collections::HashSet<u32>,
+    ) -> Vec<(usize, f64)> {
+        let solved = &self.base.case.generators;
+        let weight = |r: usize, g: &rs_power::Generator| match self.pickup {
+            Pickup::Reference => 0.0,
+            Pickup::Pmax => g.pmax.max(0.0),
+            Pickup::Headroom => (g.pmax - solved.get(r).map_or(g.pg, |s| s.pg)).max(0.0),
+        };
+        let weights: Vec<(usize, f64)> = self
+            .case()
+            .generators
+            .iter()
+            .enumerate()
+            .filter(|(r, g)| g.online && !tripped.contains(r) && !cut.contains(&g.bus))
+            .map(|(r, g)| (r, weight(r, g)))
+            .filter(|&(_, w)| w > 0.0 && w.is_finite())
+            .collect();
+        let total: f64 = weights.iter().map(|(_, w)| w).sum();
+        if total <= 1e-9 {
+            return vec![];
+        }
+        weights.into_iter().map(|(r, w)| (r, w / total)).collect()
     }
 
     /// The bus that takes up the slack in the part of the network that stays:
@@ -2091,6 +2158,29 @@ impl<'a> Context<'a> {
             }
         }
         let ids: std::collections::HashSet<u32> = cut.iter().map(|&b| case.buses[b].id).collect();
+        // Share what the outage loses (tripped units, and the generation
+        // net of load it cuts off) among the units left, before the solve,
+        // so the reference bus only takes up the change in losses. A unit
+        // stops at Pmax (or Pmin, when load is cut off); what it can't take
+        // stays with the reference.
+        let shares = self.pickup_shares(&outage.generator_rows, &ids);
+        if !shares.is_empty() {
+            let solved = &self.base.case.generators;
+            let pg = |r: usize| solved.get(r).map_or(self.case().generators[r].pg, |g| g.pg);
+            let tripped: f64 = outage
+                .generator_rows
+                .iter()
+                .filter(|&&r| self.case().generators[r].online)
+                .map(|&r| pg(r))
+                .sum();
+            let (load, generation) = self.lost(cut, outage);
+            let net = tripped + generation - load;
+            for (r, share) in shares {
+                let g = &mut case.generators[r];
+                let start = pg(r);
+                g.pg = (start + net * share).clamp(g.pmin.min(start), g.pmax.max(start));
+            }
+        }
         for &b in cut {
             case.buses[b].kind = BusType::Isolated;
         }
