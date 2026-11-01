@@ -1189,7 +1189,7 @@ export type LoadScaling = {
 };
 
 /** How each outage is checked. */
-export type Method = "screen" | "ac";
+export type Method = "auto" | "screen" | "ac";
 
 /**
  * How each AC pass finds the voltages. Every method stops at the same

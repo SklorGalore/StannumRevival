@@ -186,6 +186,12 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Contingencies solve every outage in AC on small runs.** The new default
+  method, Auto, solves every outage in AC when a run has at most 2,000 of
+  them (as PSS/E's ACCC does) and screens linearly first only above that, so
+  most N-1 runs check voltage after every outage. Screen and AC are still
+  there to pick.
+
 - **Default mismatch tolerance is now 0.1 MVA**, the usual PSS/E and
   PowerWorld setting, instead of 2 MVA. Results on small ratings now match
   a tight solve; raise it in Solve settings for quick screening of very

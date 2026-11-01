@@ -84,7 +84,7 @@ export const DEFAULT_CHOICE: ContingencyChoice = {
   monitorsPath: null,
   categories: PLANNING_CATEGORIES,
   kvMin: 100,
-  method: "screen",
+  method: "auto",
   acCount: 50,
   limitPct: 100,
   worseByPct: 1,

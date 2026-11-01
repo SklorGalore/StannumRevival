@@ -14,6 +14,9 @@ import { Button, ErrorBanner, inputClass } from "../../ui/primitives";
 import { Modal } from "../../ui/Modal";
 import { useCaseGroups, type CaseGroups } from "../../ui/useCaseGroups";
 
+/** Outages up to which the automatic method solves every one in AC (core AUTO_AC_OUTAGES). */
+export const AUTO_AC_OUTAGES = 2000;
+
 export type SetupTab = "outages" | "monitor" | "subsystems" | "limits" | "solution";
 
 const TABS: { id: SetupTab; label: string; hint: string }[] = [
@@ -70,7 +73,13 @@ export function setupSummary(c: ContingencyChoice, scoped: boolean): string {
   );
   const rating = c.rating === c.baseRating ? ratingLabel(c.rating) : `${ratingLabel(c.baseRating)} before, ${ratingLabel(c.rating)} after`;
   parts.push(`${rating} at ${c.limitPct}%${c.reportExisting ? ", existing problems included" : c.worseByPct !== 1 ? `, worse by ${c.worseByPct} pts` : ""}`);
-  parts.push(c.method === "ac" ? "AC for every outage" : `linear screen, AC for the worst ${count(c.acCount)}`);
+  parts.push(
+    c.method === "ac"
+      ? "AC for every outage"
+      : c.method === "auto"
+        ? `AC for every outage up to ${count(AUTO_AC_OUTAGES)}, else linear screen and AC for the worst ${count(c.acCount)}`
+        : `linear screen, AC for the worst ${count(c.acCount)}`
+  );
   return parts.join(" · ");
 }
 
@@ -782,18 +791,21 @@ function SolutionPanel({ solve }: { solve: SolveSettings }) {
       <Group
         title="Method"
         note={
-          c.method === "screen"
+          c.method === "auto"
+            ? `Up to ${count(AUTO_AC_OUTAGES)} outages, every one gets a full AC solve, as PSS/E's ACCC does. Above that, every outage is screened with linear factors and the worst are solved in full AC.`
+            : c.method === "screen"
             ? "Every outage is screened with linear factors from one factorization, then the worst are solved in full AC. The base case and the largest shunt outages are always solved in AC."
             : "Every outage gets a full AC solve: slower, and finds voltage problems everywhere."
         }
       >
         <Field label="Method">
-          <select className={inputClass} value={c.method} onChange={(e) => s.setChoice({ method: e.target.value as "screen" | "ac" })} aria-label="Method" data-testid="contingency-method">
+          <select className={inputClass} value={c.method} onChange={(e) => s.setChoice({ method: e.target.value as "auto" | "screen" | "ac" })} aria-label="Method" data-testid="contingency-method">
+            <option value="auto">Automatic: AC for every outage up to {count(AUTO_AC_OUTAGES)}</option>
             <option value="screen">Linear screen, then AC for the worst</option>
             <option value="ac">AC solve of every outage</option>
           </select>
         </Field>
-        {c.method === "screen" && (
+        {c.method !== "ac" && (
           <Field label="Worst checked in AC">
             <input
               className={`${inputClass} w-24`}

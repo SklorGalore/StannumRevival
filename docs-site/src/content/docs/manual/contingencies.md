@@ -56,7 +56,9 @@ base solution's DC flow is used.
 
 ## AC check
 
-The worst screened outages (or all of them) are solved with the full AC
+With method Auto, a run of at most 2,000 outages solves all of them in AC
+and skips the screen; a larger run screens first. The worst screened
+outages (or all of them) are solved with the full AC
 Newton power flow and the base case's solve settings. Each starts from the
 base solution, as in [Starting
 point](/StannumRevival/manual/ac-power-flow/#starting-point), with the outage applied:
