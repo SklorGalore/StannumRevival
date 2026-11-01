@@ -39,6 +39,20 @@ section into the next version's when a release is cut (see
   match PYPOWER with the same condenser within 1e-7 Mvar on the
   [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
   page ([manual](https://sklorgalore.github.io/StannumRevival/manual/qv-curves/)).
+- **Secure transfer limits, preview.** A transfer from a source to a sink
+  grows by a major step, with the base case and every contingency solved
+  in full AC at each step, until a new thermal or voltage problem (each
+  chosen to stop or not) or a failed solve; the run then goes back and
+  pins it down with a minor step. With stop at violation off it carries
+  on to the nose and logs every problem. Problems already there with no
+  transfer don't count. Contingencies and monitors are those of a
+  contingency run (lists files too). Every step's values of the chosen
+  channels (bus voltages, branch flows and loadings, generator outputs,
+  interface flows) for the base case and every contingency stream to a
+  `.stnr` results file (Arrow IPC), read back a channel at a time. Runs
+  from run files (`run_secure_transfer`), Python (`Case.secure_transfer`,
+  `Case.secure_transfer_channel`) and the MCP server (`secure_transfer`)
+  ([manual](https://sklorgalore.github.io/StannumRevival/manual/secure-transfer/)).
 - **Scaling wizard.** Analysis → Scale load and generation… (also in
   Ctrl+K) scales load and generation at the buses of chosen areas, zones,
   owners and kV range, to a target total or by a change in MW or percent.

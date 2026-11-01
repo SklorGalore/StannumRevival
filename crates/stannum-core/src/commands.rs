@@ -127,6 +127,10 @@ pub struct Session {
     /// The PV curve study in progress, if one is running.
     pv: Mutex<Option<RunHandle>>,
     qv: Mutex<Option<RunHandle>>,
+    /// The secure transfer study in progress, and the last one's results
+    /// file.
+    secure: Mutex<Option<crate::secure::SecureHandle>>,
+    secure_file: Mutex<Option<String>>,
     /// The flag that stops the run file in progress, if one is running.
     running_file: Mutex<Option<Arc<AtomicBool>>>,
     /// Sorted, filtered orders of the tables being paged through, newest
@@ -419,6 +423,57 @@ impl Session {
         Ok(results?)
     }
 
+    /// A secure transfer study, run without the workspace lock.
+    fn secure_transfer(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::secure::SecureTransferSettings,
+    ) -> Result<crate::secure::SecureResults, Error> {
+        let job = self
+            .workspace()?
+            .case(case)?
+            .secure_transfer_job(settings)?;
+        *relock(&self.secure) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.secure) = None);
+        let results = job.run();
+        drop(clear);
+        let results = results?;
+        *relock(&self.secure_file) = Some(results.summary.results_file.clone());
+        Ok(results)
+    }
+
+    /// One channel's curves from a secure transfer results file: the last
+    /// run's when `path` is absent.
+    fn secure_transfer_channel(
+        &self,
+        path: Option<String>,
+        channel: usize,
+        contingencies: Option<Vec<usize>>,
+    ) -> Result<crate::secure::ChannelCurves, Error> {
+        let path = match path.or_else(|| relock(&self.secure_file).clone()) {
+            Some(p) => p,
+            None => return Err(Error::not_ready("Run a secure transfer study first.")),
+        };
+        Ok(crate::secure::read_channel(
+            &path,
+            channel,
+            contingencies.as_deref(),
+        )?)
+    }
+
+    fn cancel_secure(&self) {
+        if let Some(handle) = relock(&self.secure).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn secure_progress(&self) -> crate::secure::SecureProgress {
+        relock(&self.secure)
+            .as_ref()
+            .map(crate::secure::SecureHandle::progress)
+            .unwrap_or_default()
+    }
+
     /// Sensitivities, calculated without the workspace lock.
     fn sensitivities(
         &self,
@@ -618,6 +673,7 @@ impl Session {
             self.cancel_transfers();
             self.cancel_pv();
             self.cancel_qv();
+            self.cancel_secure();
         }
     }
 
@@ -1202,6 +1258,32 @@ commands! {
     /// How far the QV curve study in progress has got: buses done.
     qv_progress {} -> Progress => |s, _| Ok(s.qv_progress());
 
+    /// Secure transfer limits: grows a transfer from source to sink by the
+    /// major step, solving every contingency in AC at each step, until a
+    /// new thermal or voltage problem (as chosen) or a failed solve; then
+    /// pins it down with the minor step. Records the chosen channels for
+    /// the base case and every contingency at each step in a results file
+    /// (`.stnr`). `cancel_secure_transfer` stops it and
+    /// `secure_transfer_progress` follows it.
+    run_secure_transfer { case: Option<CaseId>, settings: crate::secure::SecureTransferSettings } -> crate::secure::SecureResults =>
+        |s, a| s.secure_transfer(a.case, a.settings);
+
+    /// Stop the secure transfer study in progress.
+    cancel_secure_transfer {} -> () => |s, _| {
+        s.cancel_secure();
+        Ok(())
+    };
+
+    /// How far the secure transfer study in progress has got.
+    secure_transfer_progress {} -> crate::secure::SecureProgress => |s, _| Ok(s.secure_progress());
+
+    /// One channel of a secure transfer study, read from its results file
+    /// (the last run's when `path` is absent): the transfer at each step,
+    /// and the channel's value there for the base case and each
+    /// contingency asked for by index (every one when absent).
+    secure_transfer_channel { path: Option<String>, channel: usize, contingencies: Option<Vec<usize>> } -> crate::secure::ChannelCurves =>
+        |s, a| s.secure_transfer_channel(a.path, a.channel, a.contingencies);
+
     /// The last contingency run's summary, or null.
     contingency_summary { case: Option<CaseId> } -> Option<ContingencySummary> =>
         |s, a| Ok(s.workspace()?.case(a.case)?.contingency_summary());
@@ -1477,7 +1559,10 @@ mod tests {
             for (name, _) in *names {
                 args.insert(camel(name), value(name));
             }
-            if c.name == "run_transfer_limits" || c.name == "run_pv_curve" {
+            if c.name == "run_transfer_limits"
+                || c.name == "run_pv_curve"
+                || c.name == "run_secure_transfer"
+            {
                 args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
             } else if c.name == "run_qv_curve" {
                 args.insert("settings".into(), json!({ "buses": [1] }));

@@ -149,6 +149,8 @@ fn answers_fit_their_schemas() {
     c.ok("cancel_pv_curve", json!({}));
     c.ok("qv_progress", json!({}));
     c.ok("cancel_qv_curve", json!({}));
+    c.ok("secure_transfer_progress", json!({}));
+    c.ok("cancel_secure_transfer", json!({}));
     c.ok("log_entries", json!({ "since": 0 }));
     c.ok("diagnostics", json!({}));
 
@@ -316,6 +318,19 @@ fn answers_fit_their_schemas() {
         json!({ "settings": { "buses": [5], "step_pu": 0.05 } }),
     );
     assert!(qv["curves"][0]["margin_mvar"].is_number(), "{qv}");
+    let secure = c.ok(
+        "run_secure_transfer",
+        json!({ "settings": {
+            "sink": { "areas": [1] },
+            "major_step_mw": 20.0,
+            "stop_at_violation": false,
+            "max_points": 6,
+        } }),
+    );
+    assert!(secure["summary"]["limit_mw"].is_number(), "{secure}");
+    let curves = c.ok("secure_transfer_channel", json!({ "channel": 0 }));
+    assert_eq!(curves["curves"][0]["name"], "BASE CASE", "{curves}");
+    let _ = std::fs::remove_file(secure["summary"]["results_file"].as_str().unwrap());
     c.ok(
         "set_study_edits",
         json!({ "edits": [{ "kind": "generation", "element": generator, "mw": 10.0 }] }),

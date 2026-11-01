@@ -726,6 +726,29 @@ impl OpenCase {
         )?)
     }
 
+    /// A secure transfer study of the case from its AC solve, with that
+    /// solve's settings, to run without the workspace.
+    pub fn secure_transfer_job(
+        &self,
+        settings: crate::secure::SecureTransferSettings,
+    ) -> Result<crate::secure::SecureTransferJob, Error> {
+        let power = self.power_case()?;
+        let solved = resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: secure transfer limits start from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("Secure transfer limits leave out the attached VSC DC grids");
+        }
+        let job = crate::secure::SecureTransferJob::new(power, &solved.0, &solved.1, settings)?;
+        log::info!(
+            "Studying a secure transfer under {} contingencies",
+            job.len()
+        );
+        Ok(job)
+    }
+
     /// A QV curve study of the case from its AC solve, with that solve's
     /// settings, to run without the workspace.
     pub fn qv_job(&self, settings: crate::qv::QvSettings) -> Result<crate::qv::QvJob, Error> {

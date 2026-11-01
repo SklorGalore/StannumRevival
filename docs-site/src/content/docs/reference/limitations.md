@@ -13,7 +13,9 @@ keep.
 - [PV curves](/StannumRevival/manual/pv-curves/) step up to the nose with
   full AC solves, in the base case only; they don't trace the lower half of
   the curve. [QV curves](/StannumRevival/manual/qv-curves/) are in the base
-  case only too.
+  case only too. [Secure transfer limits](/StannumRevival/manual/secure-transfer/)
+  solve every contingency in AC at every step; there is no linear screen
+  to skip the ones far from their limits.
 - [Contingency analysis](/StannumRevival/manual/contingencies/) takes out one
   branch or generator at a time (a three-winding transformer counts as one),
   two at a time (N-2, up to 250,000 pairs), each bus on its own, or the

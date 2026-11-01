@@ -73,6 +73,8 @@ CLASSES: dict[str, dict[str, str]] = {
         "path": "property",
         "pv_curve": "(self, sink, source=None, settings=None, **options)",
         "qv_curve": "(self, buses, settings=None, **options)",
+        "secure_transfer": "(self, sink, source=None, settings=None, **options)",
+        "secure_transfer_channel": "(self, channel, contingencies=None, path=None)",
         "records": "(self, section=None)",
         "responses": "(self, column, quantity, engineering=True)",
         "result": "(self, name)",
