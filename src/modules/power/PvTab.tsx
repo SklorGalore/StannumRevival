@@ -22,13 +22,13 @@ const KINDS: { value: SideKind; label: string }[] = [
   { value: "buses", label: "Buses" },
 ];
 
-const SINK_SCALINGS: { value: Scaling; label: string; hint: string }[] = [
+export const SINK_SCALINGS: { value: Scaling; label: string; hint: string }[] = [
   { value: "load", label: "Load grows", hint: "Every load in the sink grows by the same factor, at constant power factor" },
   { value: "generation", label: "Generation drops", hint: "The sink's online generators lower their output, in proportion to their MW" },
   { value: "reserve", label: "Generation drops (to Pmin)", hint: "The sink's online generators lower their output, in proportion to their room to Pmin" },
 ];
 
-const SOURCE_SCALINGS: { value: Scaling; label: string; hint: string }[] = [
+export const SOURCE_SCALINGS: { value: Scaling; label: string; hint: string }[] = [
   { value: "generation", label: "Generation output", hint: "Online generators raise output in proportion to their MW now" },
   { value: "reserve", label: "Generation reserve", hint: "Online generators raise output in proportion to their room to Pmax" },
   { value: "load", label: "Load drops", hint: "The source's loads drop, in proportion to their MW" },
@@ -48,7 +48,7 @@ function mw(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${fixed(v, 1)} MW`;
 }
 
-function SidePicker({
+export function SidePicker({
   label,
   side,
   onChange,

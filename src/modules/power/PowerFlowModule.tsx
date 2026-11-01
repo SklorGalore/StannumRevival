@@ -55,6 +55,8 @@ import { PvTab } from "./PvTab";
 import { usePv } from "../../store/pvStore";
 import { QvTab } from "./QvTab";
 import { useQv } from "../../store/qvStore";
+import { SecureTab } from "./SecureTab";
+import { useSecure } from "../../store/secureStore";
 import { useLayers } from "../../store/layerStore";
 import { ElementInspector, inspectorClass } from "../../ui/ElementInspector";
 import type { FilterRule } from "../../lib/filters";
@@ -79,11 +81,12 @@ type Tab =
   | "transfers"
   | "pv"
   | "qv"
+  | "secure"
   | "study"
   | "warnings";
 
 /** Tabs with nothing to solve: the solve settings fold to their narrow rail there. */
-const QUIET_TABS = new Set<Tab>(["contingencies", "transfers", "pv", "qv", "study", "vsc", "warnings"]);
+const QUIET_TABS = new Set<Tab>(["contingencies", "transfers", "pv", "qv", "secure", "study", "vsc", "warnings"]);
 
 
 const busColumns: Column<BusRow>[] = [
@@ -1330,6 +1333,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useTransfers.getState().clear();
     usePv.getState().clear();
     useQv.getState().clear();
+    useSecure.getState().clear();
   }, [caseVersion]);
 
   const power = summary?.power;
@@ -1400,6 +1404,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
     useTransfers.getState().clear();
     usePv.getState().clear();
     useQv.getState().clear();
+    useSecure.getState().clear();
     // A script that changed the study solves when it wants to.
     if (latest && power?.available && !useStudy.getState().fromScript) void solve();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1495,6 +1500,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
       { id: "transfers" as const, label: "Transfers", count: transferCount, disabled: !latest },
       { id: "pv" as const, label: "PV curve", disabled: !latest },
       { id: "qv" as const, label: "QV curve", disabled: !latest },
+      { id: "secure" as const, label: "Secure transfer", disabled: !latest },
       ...(tab === "warnings" && warnings.length
         ? [{ id: "warnings" as const, label: "Import warnings", count: warnings.length, disabled: false }]
         : []),
@@ -1756,6 +1762,7 @@ export function PowerFlowModule({ active }: { active: boolean }) {
               {tab === "transfers" && <TransferTab report={latest} onPick={pick} />}
               {tab === "pv" && <PvTab report={latest} onPick={pick} />}
               {tab === "qv" && <QvTab report={latest} onPick={pick} />}
+              {tab === "secure" && <SecureTab report={latest} settings={settings} scope={contingencyScope} onPick={pick} />}
               {tab === "study" && <StudyPanel onShow={pick} report={latest} stale={stale} />}
               {tab === "warnings" && (
                 <WarningsTab

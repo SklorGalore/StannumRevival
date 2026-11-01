@@ -13,7 +13,8 @@ the transfer grows step by step, and at every step the base case is solved
 and then every contingency is solved from it, as PSS/E's PV analysis with
 contingencies and VSAT's transfer analysis do.
 
-It runs from [run files](/StannumRevival/guide/run-files/) and the command
+It runs from the **Secure transfer** tab in
+[Power flow](/StannumRevival/guide/secure-transfer/), [run files](/StannumRevival/guide/run-files/) and the command
 registry (`run_secure_transfer`),
 [Python](/StannumRevival/guide/python/#secure-transfer-limits)
 (`Case.secure_transfer`) and the
