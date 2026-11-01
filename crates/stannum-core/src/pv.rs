@@ -145,7 +145,8 @@ pub struct PvCurve {
     pub vm_pu: Vec<f64>,
     /// How far its voltage fell from the base case to the last point, p.u.
     pub drop_pu: f64,
-    /// Voltage drop per 100 MW of transfer over the last step: the largest
+    /// Voltage drop per 100 MW of transfer over the last tenth of the curve
+    /// (from the last point at or below 90% of the largest transfer): the largest
     /// is the weakest bus at the nose.
     pub sensitivity_pu_per_100mw: f64,
     /// The transfer at which it falls below its low limit, MW, linear
@@ -169,7 +170,8 @@ pub struct PvSummary {
     pub voltage_limit_mw: Option<f64>,
     /// The bus that sets `voltage_limit_mw`.
     pub voltage_limit_bus: Option<u32>,
-    /// The bus whose voltage falls fastest at the last step.
+    /// The bus whose voltage falls fastest near the end of the curve (the
+    /// largest `sensitivity_pu_per_100mw`).
     pub weakest_bus: Option<u32>,
     pub weakest_bus_name: String,
     /// What the source and sink could move, as for transfer limits.
@@ -548,15 +550,13 @@ impl PvJob {
             options.max_iterations = options.max_iterations.max(MIN_ITERATIONS);
             solves += 1;
             self.handle.step();
-            // From the last step's solution, generators it held at a
-            // reactive limit stay held; when that fails, look at every
-            // limit afresh from the same voltages before calling it a
-            // failed step.
-            let mut outcome = solve_step(&warm, &options);
-            if matches!(outcome, Err(Some(_))) {
-                options.initialization = rs_power::Initialization::Case;
-                outcome = solve_step(&warm, &options);
-            }
+            // From the last step's voltages, but with every generator
+            // reactive limit looked at afresh, as a normal solve does: holding
+            // the units the last step held at a limit there can strand the
+            // solve short of the nose, and a retry that let them go would
+            // put a jump in the curve.
+            options.initialization = rs_power::Initialization::Case;
+            let outcome = solve_step(&warm, &options);
             let outcome = match outcome {
                 Ok(r) => Ok(r),
                 Err(None) => break "cancelled",
@@ -629,15 +629,19 @@ impl PvJob {
             }
         }
         let drop = |k: usize| (voltages[0][k] - voltages[n - 1][k]) as f64;
+        // The slope over the last tenth of the curve: the steps there are
+        // small, and a shunt switching or a tap moving in the very last one
+        // would otherwise decide it.
+        let from = (0..n.saturating_sub(1))
+            .rev()
+            .find(|&i| transfers[i] <= transfers[n - 1] * 0.9)
+            .unwrap_or(0);
         let sensitivity = |k: usize| {
-            if n < 2 {
+            let dt = transfers[n - 1] - transfers[from];
+            if n < 2 || dt <= 0.0 {
                 return 0.0;
             }
-            let dt = transfers[n - 1] - transfers[n - 2];
-            if dt <= 0.0 {
-                return 0.0;
-            }
-            (voltages[n - 2][k] - voltages[n - 1][k]) as f64 / dt * 100.0
+            (voltages[from][k] - voltages[n - 1][k]) as f64 / dt * 100.0
         };
         let weakest = (n >= 2)
             .then(|| {

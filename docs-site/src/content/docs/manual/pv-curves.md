@@ -16,7 +16,9 @@ study's edits, and solves every step with the full AC power flow and the
 same settings: every control (taps, switched shunts, phase shifters, DC
 lines) and generator reactive limits act as in a normal solve.
 
-It runs from [run files](/StannumRevival/guide/run-files/) and the command
+It runs from the **PV curve** tab in
+[Power flow](/StannumRevival/guide/pv-curves/),
+[run files](/StannumRevival/guide/run-files/) and the command
 registry (`run_pv_curve`),
 [Python](/StannumRevival/guide/python/#pv-curves) (`Case.pv_curve`) and the
 [MCP server](/StannumRevival/guide/ai-assistants/) (`pv_curve`).
@@ -61,12 +63,15 @@ the lower half, past the nose, is not a state the system can operate at.
 
 Each step solves with full Newton (at least 30 iterations a pass, as it
 converges ever more slowly near the nose), whatever method the last solve
-used. A step starts with the generators the step before held at a reactive
-limit still held there, which is fast; when that fails, it is solved again
-from the same voltages looking at every limit afresh, before it counts as
-failed. The mismatch tolerance is a 20th of the smallest step at the bus it
-moves most, or the solve tolerance when that is tighter, so that a small
-step can't pass without moving the case.
+used. It starts from the step before's voltages and looks at every
+generator reactive limit afresh, as a normal solve does: holding the units
+the step before held at a limit can strand the solve short of the nose. The
+mismatch tolerance is a 20th of the smallest step at the bus it moves most,
+or the solve tolerance when that is tighter, so that a small step can't pass
+without moving the case.
+
+Switched shunts and taps step as the voltages fall, so a curve can rise a
+little where one switches in.
 
 With generator reactive limits on, the nose is often where the last
 reactive reserve near the sink runs out rather than a smooth turn of the
@@ -84,15 +89,15 @@ lists the generators held at a limit and the reserve left (`q_limited`,
   - `voltage_limit_mw` and `voltage_limit_bus`: the transfer at which a
     monitored bus first falls below its low limit (linear between steps),
     and that bus;
-  - `weakest_bus`: the bus whose voltage falls fastest at the last step,
-    which is the bus nearest collapse;
+  - `weakest_bus`: the bus whose voltage falls fastest over the last tenth
+    of the curve, which is the bus nearest collapse;
   - each side's buses, units and room, solves made and failed, and notes.
 - `points`: one row per converged step, the base case first: the transfer,
   the sink's load, the losses, the lowest monitored voltage and its bus,
   the generators held at a reactive limit and the reactive reserve left.
 - `curves`: for each bus in `buses`, then the `max_curves` buses whose
   voltage falls furthest, the voltage at every point, the drop, the drop
-  per 100 MW over the last step, and the transfer at which it crosses its
+  per 100 MW over the last tenth of the curve, and the transfer at which it crosses its
   low limit.
 
 The low limit is `vmin_pu` for every bus, or each bus's own normal low

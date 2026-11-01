@@ -16,7 +16,11 @@ section into the next version's when a release is cut (see
   when one fails, until the nose: the most the network can carry. It
   reports the nose, the transfer at which a monitored bus first drops below
   its low voltage limit, the weakest bus and the voltage curves of the
-  buses that fall furthest. Runs from run files (`run_pv_curve`), Python
+  buses that fall furthest. The **PV curve** tab in Power flow (Analysis
+  menu and Ctrl+K) sets it up and draws the curves with the nose and low
+  voltage limit marked
+  ([guide](https://sklorgalore.github.io/StannumRevival/guide/pv-curves/)).
+  Also runs from run files (`run_pv_curve`), Python
   (`Case.pv_curve`) and the MCP server (`pv_curve`); the noses match an
   independent arclength continuation within 0.01 MW on the
   [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
