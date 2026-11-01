@@ -10,6 +10,17 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **PV curves (voltage stability), preview.** A study grows the load in a
+  sink subsystem, or a transfer from a source to the sink, step by step
+  with full AC solves (every control and Q limit kept), halving the step
+  when one fails, until the nose: the most the network can carry. It
+  reports the nose, the transfer at which a monitored bus first drops below
+  its low voltage limit, the weakest bus and the voltage curves of the
+  buses that fall furthest. Runs from run files (`run_pv_curve`), Python
+  (`Case.pv_curve`) and the MCP server (`pv_curve`); the noses match an
+  independent arclength continuation within 0.01 MW on the
+  [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
+  page ([manual](https://sklorgalore.github.io/StannumRevival/manual/pv-curves/)).
 - **Scaling wizard.** Analysis → Scale load and generation… (also in
   Ctrl+K) scales load and generation at the buses of chosen areas, zones,
   owners and kV range, to a target total or by a change in MW or percent.

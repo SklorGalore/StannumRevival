@@ -45,6 +45,7 @@ pub mod logbook;
 pub mod paging;
 pub mod planning;
 pub mod power;
+pub mod pv;
 pub mod raw_export;
 pub mod record_edit;
 pub mod records;

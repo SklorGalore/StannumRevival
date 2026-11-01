@@ -407,6 +407,54 @@ class Case:
         result["summary"] = Answer(result["summary"])
         return result
 
+    # PV curves
+
+    def pv_curve(
+        self,
+        sink: Mapping[str, Any],
+        source: Mapping[str, Any] | None = None,
+        settings: Mapping[str, Any] | None = None,
+        **options: Any,
+    ) -> Answer:
+        """A PV curve: grow the ``sink``'s load (or a transfer from
+        ``source`` to ``sink``) step by step with full AC solves until the
+        network can't carry more, the nose of the curve. Solve with the AC
+        model first; each step keeps that solve's settings and controls.
+
+        ``sink`` and ``source`` are subsystems, as for
+        :meth:`transfer_limits`. With no ``source``, all generation picks
+        up.
+
+        Options (all optional): ``sink_scaling`` ("load", the default,
+        "generation" or "reserve"), ``source_scaling`` ("generation", the
+        default, "reserve" or "load"), ``step_mw``, ``min_step_mw``,
+        ``max_transfer_mw``, ``respect_generation_limits``, ``monitor`` (a
+        subsystem of buses to watch), ``vmin_pu``, ``buses`` (always given
+        a curve), ``max_curves`` and ``max_points``.
+
+        Returns the ``summary`` (``nose_mw``, ``limited_by``,
+        ``voltage_limit_mw``, ``weakest_bus``, ``notes``, ...), ``points``
+        (one row per converged step), ``curves`` (one row per bus with a
+        curve) and ``voltages``: ``transfer_mw`` and one column of voltages
+        per curve's bus, named by its number, ready to plot.
+        """
+        merged = _settings(settings, options) or {}
+        merged["sink"] = dict(sink)
+        if source is not None:
+            merged["source"] = dict(source)
+        result = self.call("run_pv_curve", settings=merged)
+        points = result.get("points") or []
+        curves = result.get("curves") or []
+        voltages: dict[str, Any] = {"transfer_mw": [p["transfer_mw"] for p in points]}
+        for c in curves:
+            voltages[str(c["bus"])] = c["vm_pu"]
+        result["voltages"] = Table(voltages, count=len(points))
+        rows = [{k: v for k, v in c.items() if k != "vm_pu"} for c in curves]
+        result["curves"] = Table.from_rows(rows) if rows else Table({})
+        result["points"] = Table.from_rows(points) if points else Table({})
+        result["summary"] = Answer(result["summary"])
+        return result
+
     # Records and elements
 
     def records(self, section: str | None = None) -> Any:

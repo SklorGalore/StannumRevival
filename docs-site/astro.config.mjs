@@ -75,6 +75,7 @@ export default defineConfig({
             { label: "Sensitivities, PTDF and LODF", slug: "manual/sensitivities" },
             { label: "Contingency analysis", slug: "manual/contingencies" },
             { label: "Transfer limits (DFAX)", slug: "manual/transfer-limits" },
+            { label: "PV curves (voltage stability)", slug: "manual/pv-curves" },
             {
               label: "HVDC",
               items: [

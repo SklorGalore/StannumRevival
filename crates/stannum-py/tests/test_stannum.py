@@ -166,6 +166,21 @@ def test_transfer_limits_from_a_lists_file(case9: sn.Case, tmp_path) -> None:
         case9.transfer_limits(lists=str(lists), transfer="west")
 
 
+def test_pv_curve(case9: sn.Case) -> None:
+    case9.solve()
+    run = case9.pv_curve({"buses": [5]}, respect_generation_limits=False, max_curves=3)
+    assert run.summary.limited_by == "collapse"
+    assert run.summary.nose_mw > 100
+    assert run.points["transfer_mw"][-1] == run.summary.nose_mw
+    assert np.all(np.diff(run.points["transfer_mw"]) > 0)
+    # Bus 5 falls furthest; its voltage column follows the points.
+    assert run.curves["bus"][0] == 5
+    assert len(run.voltages["5"]) == len(run.points)
+    assert np.all(np.diff(run.voltages["5"]) <= 1e-6)
+    with pytest.raises(sn.StannumError):
+        case9.pv_curve({})
+
+
 def test_records_and_record_edits(case9: sn.Case) -> None:
     book = case9.records()
     assert [s["id"] for s in book.sections][:3] == ["bus", "gen", "branch"]

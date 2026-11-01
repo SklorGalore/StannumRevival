@@ -5308,6 +5308,395 @@
       ],
       "type": "object"
     },
+    "PvCurve": {
+      "description": "The voltage of one bus at each point of the curve.",
+      "properties": {
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "drop_pu": {
+          "description": "How far its voltage fell from the base case to the last point, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sensitivity_pu_per_100mw": {
+          "description": "Voltage drop per 100 MW of transfer over the last step: the largest\nis the weakest bus at the nose.",
+          "format": "double",
+          "type": "number"
+        },
+        "vm_pu": {
+          "description": "Voltage at each point of `points`, p.u.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "vmin_pu": {
+          "description": "The bus's low voltage limit used, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "vmin_transfer_mw": {
+          "description": "The transfer at which it falls below its low limit, MW, linear\nbetween points; `None` when it stays above it (or starts below).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bus",
+        "name",
+        "base_kv",
+        "vmin_pu",
+        "vm_pu",
+        "drop_pu",
+        "sensitivity_pu_per_100mw",
+        "vmin_transfer_mw"
+      ],
+      "type": "object"
+    },
+    "PvPoint": {
+      "description": "One converged step of the curve.",
+      "properties": {
+        "iterations": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "losses_mw": {
+          "description": "Total generation less total load, MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_vm_bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_vm_pu": {
+          "description": "The lowest monitored voltage and its bus.",
+          "format": "double",
+          "type": "number"
+        },
+        "q_limited": {
+          "description": "Online generators held at a reactive power limit (on voltage\ncontrol buses), and their reactive reserve left (room to Qmax), Mvar.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "q_reserve_mvar": {
+          "format": "double",
+          "type": "number"
+        },
+        "sink_load_mw": {
+          "description": "The sink's total load at this step, MW, at the solved voltages.",
+          "format": "double",
+          "type": "number"
+        },
+        "transfer_mw": {
+          "description": "Transfer added since the base case, MW.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "transfer_mw",
+        "sink_load_mw",
+        "losses_mw",
+        "min_vm_pu",
+        "min_vm_bus",
+        "q_limited",
+        "q_reserve_mvar",
+        "iterations"
+      ],
+      "type": "object"
+    },
+    "PvResults": {
+      "properties": {
+        "curves": {
+          "description": "Curves of the buses asked for, then of the buses whose voltage fell\nfurthest, furthest first.",
+          "items": {
+            "$ref": "#/$defs/PvCurve"
+          },
+          "type": "array"
+        },
+        "points": {
+          "description": "Every converged step, the base case first.",
+          "items": {
+            "$ref": "#/$defs/PvPoint"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/PvSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "points",
+        "curves"
+      ],
+      "type": "object"
+    },
+    "PvSettings": {
+      "description": "A PV curve study.",
+      "properties": {
+        "buses": {
+          "default": [],
+          "description": "Buses that always get a curve, as well as the ones whose voltage\nfalls furthest.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "max_curves": {
+          "default": 10,
+          "description": "How many of the buses whose voltage falls furthest get a curve.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_points": {
+          "default": 400,
+          "description": "The most steps solved, failed ones included.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_transfer_mw": {
+          "default": null,
+          "description": "Stop at this transfer, MW, even when the network could carry more.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min_step_mw": {
+          "default": null,
+          "description": "The smallest step tried before the last converged step counts as the\nnose, MW. A 32nd of the first step when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "monitor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subsystem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Buses whose voltages are watched: every energized bus when absent."
+        },
+        "respect_generation_limits": {
+          "default": true,
+          "description": "Stop when the source or sink runs out of room (generators at Pmax\nor Pmin, loads at zero), as transfer limits count it. On by default.",
+          "type": "boolean"
+        },
+        "sink": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where the power goes."
+        },
+        "sink_scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "load",
+          "description": "How the sink shares out its part: its loads grow, at constant power\nfactor, by default."
+        },
+        "source": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Where the extra power comes from. Every bus when left empty, so a\nload increase in the sink is picked up by all generation."
+        },
+        "source_scaling": {
+          "$ref": "#/$defs/Scaling",
+          "default": "generation",
+          "description": "How the source shares out its part: generation by default."
+        },
+        "step_mw": {
+          "default": null,
+          "description": "The transfer added at each step, MW. 5% of what the sink starts with\n(its load, or generation) when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "vmin_pu": {
+          "default": null,
+          "description": "Low voltage limit for every monitored bus, p.u. Each bus's own\nnormal low limit from the case when absent (0.9 p.u. when it has\nnone).",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PvSummary": {
+      "properties": {
+        "below_at_start": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "failed_solves": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limited_by": {
+          "description": "What stopped the curve.",
+          "enum": [
+            "collapse",
+            "generation",
+            "max_transfer",
+            "max_points",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        "monitored": {
+          "description": "Monitored buses, and how many of them start below their low limit\n(left out of `voltage_limit_mw`).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nose_mw": {
+          "description": "The largest transfer that converged, MW: the nose when the curve\nstopped because the network couldn't carry more.",
+          "format": "double",
+          "type": "number"
+        },
+        "notes": {
+          "description": "Things worth knowing about the setup, in words.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resolution_mw": {
+          "description": "The nose lies between `nose_mw` and `nose_mw` plus this, MW (the\nlast step that failed); 0 when the curve didn't stop at a nose.",
+          "format": "double",
+          "type": "number"
+        },
+        "sink": {
+          "$ref": "#/$defs/Participation"
+        },
+        "sink_scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "solves": {
+          "description": "Steps solved, and how many of them didn't converge.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/Participation",
+          "description": "What the source and sink could move, as for transfer limits."
+        },
+        "source_scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "step_mw": {
+          "description": "The first step, MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "voltage_limit_bus": {
+          "description": "The bus that sets `voltage_limit_mw`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "voltage_limit_mw": {
+          "description": "The transfer at which a monitored bus first falls below its low\nvoltage limit, MW; `None` when none does before the curve stops.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "weakest_bus": {
+          "description": "The bus whose voltage falls fastest at the last step.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "weakest_bus_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nose_mw",
+        "limited_by",
+        "resolution_mw",
+        "voltage_limit_mw",
+        "voltage_limit_bus",
+        "weakest_bus",
+        "weakest_bus_name",
+        "source",
+        "sink",
+        "source_scaling",
+        "sink_scaling",
+        "step_mw",
+        "solves",
+        "failed_solves",
+        "monitored",
+        "below_at_start",
+        "elapsed_ms",
+        "cancelled",
+        "notes"
+      ],
+      "type": "object"
+    },
     "QuantityInfo": {
       "properties": {
         "key": {
@@ -7953,6 +8342,18 @@
       },
       "takes_case": false
     },
+    "cancel_pv_curve": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the PV curve study in progress.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "cancel_run_file": {
       "action": false,
       "args": {
@@ -8841,6 +9242,18 @@
       },
       "takes_case": true
     },
+    "pv_progress": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the PV curve study in progress has got: solves so far.",
+      "result": {
+        "$ref": "#/$defs/Progress"
+      },
+      "takes_case": false
+    },
     "record_fields": {
       "action": false,
       "args": {
@@ -9295,6 +9708,36 @@
         "type": "string"
       },
       "takes_case": false
+    },
+    "run_pv_curve": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/PvSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "PV curve (continuation power flow): grows a transfer, or the sink's\nload, step by step with full AC solves from the last AC solve until\nthe network can't carry more (the nose), and records the monitored\nbus voltages on the way. `cancel_pv_curve` stops it and\n`pv_progress` counts its solves.",
+      "result": {
+        "$ref": "#/$defs/PvResults"
+      },
+      "takes_case": true
     },
     "run_transfer_limits": {
       "action": true,

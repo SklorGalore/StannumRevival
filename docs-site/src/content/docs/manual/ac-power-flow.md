@@ -182,6 +182,8 @@ reported as errors rather than results.
 
 ## Not included
 
-Optimal power flow, continuation power flow, alternative AC formulations,
-radial methods and three-phase models are outside the solver. See [What isn't
+Optimal power flow, alternative AC formulations, radial methods and
+three-phase models are outside the solver. [PV
+curves](/StannumRevival/manual/pv-curves/) run the solver step by step up to
+the nose. See [What isn't
 modelled](/StannumRevival/reference/limitations/).

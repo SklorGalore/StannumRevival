@@ -23,6 +23,7 @@ pub const SUITES: &[&str] = &[
     "matacdc",
     "contingency",
     "transfer",
+    "pv",
     "transformer-detail",
 ];
 

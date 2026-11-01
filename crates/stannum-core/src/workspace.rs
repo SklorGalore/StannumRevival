@@ -708,6 +708,24 @@ impl OpenCase {
         Ok(job)
     }
 
+    /// A PV curve study of the case from its AC solve, with that solve's
+    /// settings, to run without the workspace.
+    pub fn pv_job(&self, settings: crate::pv::PvSettings) -> Result<crate::pv::PvJob, Error> {
+        let power = self.power_case()?;
+        let solved = resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: PV curves start from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("PV curves leave out the attached VSC DC grids");
+        }
+        log::info!("Tracing a PV curve");
+        Ok(crate::pv::PvJob::new(
+            power, &solved.0, &solved.1, settings,
+        )?)
+    }
+
     /// How many planning events each category asked for gives on the case
     /// as the study has it, before running them.
     pub fn planning_event_counts(
