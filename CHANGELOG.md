@@ -10,6 +10,12 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Compare with the file's voltages.** After an AC solve, the Power flow
+  overview sets the voltages saved in the case file (the solution of
+  PSS/E, PowerWorld or whatever tool saved it) beside Stannum's: mean and
+  largest differences, how many buses agree within 0.001 and 0.01 p.u.,
+  and the 20 largest differences, each a link to its bus. Also the
+  `compare_file_voltages` command for Python, run files and MCP.
 - **PV curves (voltage stability), preview.** A study grows the load in a
   sink subsystem, or a transfer from a source to the sink, step by step
   with full AC solves (every control and Q limit kept), halving the step
@@ -222,6 +228,20 @@ section into the next version's when a release is cut (see
   figure shows three decimals of MVA, like the residual.
 
 ### Fixed
+
+- **Continuous switched shunts no longer stick at a limit.** A continuous
+  (MODSW 2) shunt that reached an end of its range during a solve stayed
+  fixed there even when the voltage fell back past its setpoint, and a
+  second continuous shunt at the same bus never moved. They now return to
+  voltage control, and shunts at one bus share it (holding the higher
+  setpoint). The Texas 2000-bus case now matches its saved PowerWorld
+  solution within 0.0005 p.u. at every bus (it was 0.036 p.u. at bus 3051).
+- **A line with the same buses and circuit as a transformer** is taken out
+  of service with an import warning, as PSS/E and PowerWorld keep one
+  branch per circuit. The Memphis 993-bus case now matches its saved
+  solution within 0.0001 p.u.
+- The saved-solution checks on the Verification page now hold every bus to
+  0.001 p.u. and 0.05 degrees.
 
 - **Confirm prompts in the app.** Questions such as "Discard unsaved
   changes?" and "Restart to update?" failed with "dialog.message not

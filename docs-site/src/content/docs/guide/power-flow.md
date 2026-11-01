@@ -51,6 +51,17 @@ it:
 - **Operating limits**: voltage limits, generator reactive limits and branch
   loading against rate A. Each check is a link that opens the matching rows,
   worst first.
+- **Against the voltages in the file** (AC solves): a case saved solved by
+  PSS/E, PowerWorld or another tool holds that tool's voltage at every bus.
+  **Compare with the file** sets them beside this solve: how many buses,
+  the mean and largest magnitude difference, the largest angle difference
+  (lined up at the reference bus), how many buses agree within 0.001 and
+  0.01 p.u., and the 20 largest differences, each a link to its bus. It is
+  the quickest way to check Stannum against your tool of record on your
+  own case. Differences can come from models and settings as well as the
+  solver; [What isn't modelled](/StannumRevival/reference/limitations/)
+  lists the gaps. From Python, run files or the MCP server, call
+  `compare_file_voltages` (`limit` sets how many rows; 200 by default).
 - **Voltage profile** and **Most loaded branches** charts.
 
 ![Checks leading to the voltage violations, worst first](../../../assets/screens/findings-violations.png)

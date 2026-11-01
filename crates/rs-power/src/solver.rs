@@ -2376,6 +2376,9 @@ fn solve_core(
                 // A continuous shunt at an end of its range is a fixed shunt
                 // from then on, so its output follows the voltage squared.
                 fixed |= controller.fix_continuous(&mut case, net.external[i], g, limit);
+                // It holds the voltage again if the voltage later passes
+                // its setpoint, as a generator does.
+                released[i] = Some(upper);
                 continue;
             }
             case.generators[g].qg = limit;
@@ -2389,7 +2392,7 @@ fn solve_core(
                 // the now fixed injection, so the bus restarts from the
                 // voltage of the bus it held.
                 v[i] = v[held[k]];
-            } else if g < setup.limited_from {
+            } else {
                 released[i] = Some(upper);
             }
         }
@@ -2400,6 +2403,11 @@ fn solve_core(
             );
         }
         for i in restored_local {
+            for &g in &net.gens[i] {
+                if controller.is_fixed(g) {
+                    fixed |= controller.release_continuous(&mut case, net.external[i], g);
+                }
+            }
             kinds[i] = BusType::Pv;
             released[i] = None;
             local_restores[i] += 1;

@@ -257,6 +257,45 @@ pub struct BranchSource {
     pub line: usize,
 }
 
+/// A non-transformer branch with the same buses and circuit identifier as
+/// a two-winding transformer is one element twice: PSS/E and PowerWorld
+/// keep a single branch per bus pair and circuit. Such a line is taken out
+/// of service (the transformer stays), with a warning. PowerWorld writes
+/// files like this, and solves them without the line (the Memphis 993-bus
+/// case matches its saved solution only that way).
+fn take_out_lines_duplicating_transformers(
+    case: &mut Case,
+    sources: &[BranchSource],
+    ctx: &mut Context<'_>,
+) -> Result<(), Error> {
+    let key = |s: &BranchSource| {
+        let (a, b) = (s.buses[0], s.buses[1]);
+        (a.min(b), a.max(b), s.circuit.clone())
+    };
+    let transformers: std::collections::HashSet<_> = sources
+        .iter()
+        .filter(|s| s.kind == BranchKind::Transformer && s.buses.len() == 2)
+        .map(key)
+        .collect();
+    for (row, s) in sources.iter().enumerate() {
+        if s.kind != BranchKind::Line || s.buses.len() < 2 || !case.branches[row].online {
+            continue;
+        }
+        if transformers.contains(&key(s)) {
+            case.branches[row].online = false;
+            ctx.warn(
+                s.line,
+                true,
+                format!(
+                    "line {}-{} circuit '{}' has the same buses and circuit as a transformer; taken out of service, as PSS/E and PowerWorld keep one branch per circuit",
+                    s.buses[0], s.buses[1], s.circuit
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// The RAW record a converted generator came from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneratorSource {
@@ -1148,6 +1187,7 @@ fn convert(
         &mut voltage_controls.taps,
         &mut flow_controls,
     )?;
+    take_out_lines_duplicating_transformers(&mut case, &branch_sources, &mut ctx)?;
     // After the transformers, so branch rows of files that have none keep
     // the numbers they had before switching devices were read.
     let switching_devices = convert_switching_devices(
