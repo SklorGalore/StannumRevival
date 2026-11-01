@@ -1869,7 +1869,7 @@
         },
         "method": {
           "$ref": "#/$defs/Method",
-          "default": "screen"
+          "default": "auto"
         },
         "monitors": {
           "default": null,
@@ -4444,6 +4444,11 @@
     "Method": {
       "description": "How each outage is checked.",
       "oneOf": [
+        {
+          "const": "auto",
+          "description": "An AC solve of every outage when there are at most\n[`AUTO_AC_OUTAGES`], as PSS/E's ACCC does; otherwise the linear\nscreen, then an AC solve of the worst ones.",
+          "type": "string"
+        },
         {
           "const": "screen",
           "description": "Linear screen of every outage, then an AC solve of the worst ones.",
@@ -7560,7 +7565,7 @@
             "limit_pct": 100.0,
             "lists": null,
             "lists_text": null,
-            "method": "screen",
+            "method": "auto",
             "monitors": null,
             "monitors_text": null,
             "pairs": false,

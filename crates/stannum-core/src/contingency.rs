@@ -26,11 +26,29 @@ use std::time::Instant;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Method {
-    /// Linear screen of every outage, then an AC solve of the worst ones.
+    /// An AC solve of every outage when there are at most
+    /// [`AUTO_AC_OUTAGES`], as PSS/E's ACCC does; otherwise the linear
+    /// screen, then an AC solve of the worst ones.
     #[default]
+    Auto,
+    /// Linear screen of every outage, then an AC solve of the worst ones.
     Screen,
     /// An AC solve of every outage.
     Ac,
+}
+
+/// Outages up to which [`Method::Auto`] solves every one in AC.
+pub const AUTO_AC_OUTAGES: usize = 2_000;
+
+impl Method {
+    /// What `Auto` means for a run of `outages`.
+    pub fn resolve(self, outages: usize) -> Method {
+        match self {
+            Method::Auto if outages <= AUTO_AC_OUTAGES => Method::Ac,
+            Method::Auto => Method::Screen,
+            m => m,
+        }
+    }
 }
 
 /// Which of a branch's three ratings a loading is measured against.
@@ -1151,6 +1169,8 @@ impl ContingencyJob {
             None => Watch::default(),
         };
         cap_notes(&mut notes);
+        let mut settings = settings;
+        settings.method = settings.method.resolve(outages.len());
         if outages.is_empty() {
             return Err(if settings.planning.is_some() {
                 "Nothing to take out: no in-service element fits the planning event filters.".into()
@@ -1208,7 +1228,7 @@ impl ContingencyJob {
                     .total_cmp(&severity(rows[a].as_ref().map(|r| &r.0)))
             });
             let count = match self.settings.method {
-                Method::Ac => n,
+                Method::Ac | Method::Auto => n,
                 Method::Screen => self.settings.ac_count.min(n),
             };
             // The screen can't judge a shunt outage, which moves voltages
