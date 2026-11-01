@@ -1490,8 +1490,8 @@ export type Problem = {
 export type Progress = {
   done: number;
   /**
-   * "idle", "screening", "ac" or "contingencies" (PV and QV curves
-   * studying their outages).
+   * "idle", "screening", "ac" or "contingencies" (a secure transfer
+   * step solving its contingencies).
    */
   phase: "idle" | "screening" | "ac" | "contingencies";
   total: number;

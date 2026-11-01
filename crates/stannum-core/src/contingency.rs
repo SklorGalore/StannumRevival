@@ -409,8 +409,8 @@ pub struct ContingencyDetail {
 /// Progress of the run in hand, for a progress bar.
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct Progress {
-    /// "idle", "screening", "ac" or "contingencies" (PV and QV curves
-    /// studying their outages).
+    /// "idle", "screening", "ac" or "contingencies" (a secure transfer
+    /// step solving its contingencies).
     #[schemars(extend("enum" = ["idle", "screening", "ac", "contingencies"]))]
     pub phase: &'static str,
     pub done: usize,

@@ -5410,7 +5410,7 @@
           "type": "integer"
         },
         "phase": {
-          "description": "\"idle\", \"screening\", \"ac\" or \"contingencies\" (PV and QV curves\nstudying their outages).",
+          "description": "\"idle\", \"screening\", \"ac\" or \"contingencies\" (a secure transfer\nstep solving its contingencies).",
           "enum": [
             "idle",
             "screening",
