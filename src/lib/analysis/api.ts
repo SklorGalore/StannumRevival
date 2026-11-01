@@ -51,6 +51,8 @@ import type {
   CoreError,
   CoreResult,
   ListedSubsystem,
+  PvResults,
+  PvSettings,
   Rating,
   RunReport,
   SampleCase,
@@ -420,6 +422,11 @@ export const api = {
   cancelTransferLimits: () => invokeCore("cancel_transfer_limits"),
   transferProgress: (): Promise<ContingencyProgress> =>
     invokeCore("transfer_progress"),
+  /** A PV curve (continuation power flow) from the latest AC solve. */
+  runPvCurve: (settings: PvSettings): Promise<PvResults> =>
+    call("run_pv_curve", { settings }),
+  cancelPvCurve: () => invokeCore("cancel_pv_curve"),
+  pvProgress: (): Promise<ContingencyProgress> => invokeCore("pv_progress"),
   contingencyProgress: (): Promise<ContingencyProgress> =>
     invokeCore("contingency_progress"),
   contingencyRows: async (

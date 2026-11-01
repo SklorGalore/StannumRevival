@@ -12,6 +12,7 @@ import { paletteCommands } from "../shell/CommandPalette";
 import { centreBus } from "../ui/DrawAround";
 import { FIRST_PAGE, useContingencies } from "./contingencyStore";
 import { useTransfers } from "./transferStore";
+import { usePv } from "./pvStore";
 import { useLog } from "./logStore";
 import { useStudy } from "./studyStore";
 import { useTheme } from "./themeStore";
@@ -152,6 +153,7 @@ export async function catchUp(command: string, args: Record<string, unknown>, an
     }));
     useContingencies.getState().clear();
     useTransfers.getState().clear();
+    usePv.getState().clear();
     // The new case version cleared the study; a run file may have left edits.
     if (summary?.power.available) await adoptStudyEdits();
     return;

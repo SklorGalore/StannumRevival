@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   ArrowRightLeft,
+  TrendingDown,
   ArrowBigRightDash,
   ArrowDownCircle,
   BellOff,
@@ -169,6 +170,8 @@ export function paletteCommands(): Command[] {
     list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });
   if (w.solveReport)
     list.push({ id: "transfers", title: "Show transfer limits", icon: <ArrowRightLeft size={14} />, keywords: "dfax fcitc atc ttc transfer capability ptdf otdf source sink", run: () => w.showPowerTab("transfers") });
+  if (w.solveReport)
+    list.push({ id: "pv", title: "Show PV curve", icon: <TrendingDown size={14} />, keywords: "pv curve voltage stability collapse nose continuation power flow cpf loadability margin", run: () => w.showPowerTab("pv") });
   for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
   if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
   else

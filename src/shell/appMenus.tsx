@@ -197,6 +197,10 @@ function analysisMenu(): MenuEntry[] {
       disabled: !w.solveReport,
       title: w.solveReport ? undefined : "Solve the case first",
     }),
+    item("pv", "PV curve (voltage stability)", () => w.showPowerTab("pv"), {
+      disabled: !w.solveReport,
+      title: w.solveReport ? undefined : "Solve the case first",
+    }),
     sep,
     item("scale", "Scale load and generation…", openScaling, {
       disabled: !power,
