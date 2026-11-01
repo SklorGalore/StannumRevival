@@ -25,7 +25,7 @@ fn a_run_that_works_exits_zero() {
     let file = dir.join("solve.stnrun");
     std::fs::write(
         &file,
-        "open_case path=case9.m\nsolve_power_flow\nexport_matpower path=solved9.m solved=true\n",
+        "open_case path=case9.m\nsolve_power_flow method=newton start=flat\nexport_matpower path=solved9.m solved=true\n",
     )
     .unwrap();
     let out = cli().arg("run").arg(&file).output().unwrap();
@@ -39,6 +39,7 @@ fn a_run_that_works_exits_zero() {
     let out = cli().args(["run", "--json"]).arg(&file).output().unwrap();
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["outcomes"][1]["result"]["converged"], true);
+    assert_eq!(report["outcomes"][1]["result"]["method"], "newton");
 }
 
 #[test]

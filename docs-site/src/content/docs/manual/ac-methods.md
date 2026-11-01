@@ -149,7 +149,7 @@ In run files and Python the setting is `method`, and the limits are
 `max_iterations` (Newton) and `decoupled_iterations`:
 
 ```
-solve_power_flow settings={"method": "fast_decoupled_bx", "decoupled_iterations": 50}
+solve_power_flow method=fast_decoupled_bx decoupled_iterations=50
 ```
 
 ```python

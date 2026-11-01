@@ -44,7 +44,7 @@ Usage:
 
 A run file holds one command per line, then its arguments as name=value:
   open_case path=case30.m
-  solve_power_flow settings={\"start\": \"flat\"}
+  solve_power_flow method=newton start=flat tolerance_mva=0.5
   export_matpower path=case30_solved.m solved=true
 ";
 

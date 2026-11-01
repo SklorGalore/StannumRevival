@@ -70,15 +70,20 @@ function changedSettings(settings: unknown): Record<string, unknown> | null {
   return changed.length ? Object.fromEntries(changed) : null;
 }
 
-/** One step as a short line for the list: `solve_power_flow settings={…}`. */
+/** One step as a short line for the list: `solve_power_flow method=newton`.
+ * Solve settings that changed are written one by one, as in a saved run file. */
 export function stepLine(entry: Pick<HistoryEntry, "command" | "args">): string {
   const parts = [entry.command as string];
   const solves = entry.command === "solve_power_flow" || entry.command === "calculate_sensitivities";
-  for (const [key, given] of Object.entries(entry.args)) {
-    const value = solves && key === "settings" ? changedSettings(given) : given;
-    if (value === null || value === undefined) continue;
+  const push = (key: string, value: unknown) => {
+    if (value === null || value === undefined) return;
     const text = typeof value === "string" && /^[^\s"#[{]+$/.test(value) ? value : JSON.stringify(value);
     parts.push(`${key}=${text}`);
+  };
+  for (const [key, given] of Object.entries(entry.args)) {
+    if (solves && key === "settings") {
+      for (const [name, value] of Object.entries(changedSettings(given) ?? {})) push(name, value);
+    } else push(key, given);
   }
   return parts.join(" ");
 }

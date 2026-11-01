@@ -61,6 +61,6 @@ describe("stepLine", () => {
 
   it("leaves out solve settings at their defaults", () => {
     expect(stepLine({ command: "solve_power_flow", args: { settings: DEFAULT_SOLVE_SETTINGS } })).toBe("solve_power_flow");
-    expect(stepLine({ command: "solve_power_flow", args: { settings: { ...DEFAULT_SOLVE_SETTINGS, model: "dc" } } })).toBe('solve_power_flow settings={"model":"dc"}');
+    expect(stepLine({ command: "solve_power_flow", args: { settings: { ...DEFAULT_SOLVE_SETTINGS, model: "dc" } } })).toBe("solve_power_flow model=dc");
   });
 });

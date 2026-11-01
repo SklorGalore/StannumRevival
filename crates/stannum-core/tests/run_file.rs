@@ -114,8 +114,10 @@ fn a_mistake_anywhere_stops_the_file_before_it_starts() {
     let e = s.invoke("run_file", json!({ "path": file })).unwrap_err();
     assert_eq!(e.kind, ErrorKind::Failed);
     assert!(
-        e.message
-            .ends_with("Line 2: solve_power_flow has no argument setings. It takes settings."),
+        e.message.contains(
+            "Line 2: solve_power_flow has no argument setings. It takes settings, \
+             or each solve setting on its own: adjust_dc_taps,"
+        ),
         "{e}"
     );
     let e = s

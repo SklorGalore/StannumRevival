@@ -64,7 +64,7 @@ stdout (the MCP stdio transport).
 | Area | Tools |
 |---|---|
 | Cases | `list_sample_cases`, `open_case` (a path or a built-in sample), `case_summary` |
-| Power flow | `solve_power_flow` (the same settings as the Power flow module), `find_violations`, `query_results` (buses, branches or generators, filtered, sorted and paged), `element_detail` |
+| Power flow | `solve_power_flow` (the same settings as the Power flow module, each on its own such as `method` or `tolerance_mva`), `find_violations`, `query_results` (buses, branches or generators, filtered, sorted and paged), `element_detail` |
 | What-if | `get_study_edits`, `set_study_edits` (outages, dispatch and loads applied on top of the case) |
 | Contingencies | `run_contingencies` (N-1 or NERC planning events), `planning_event_counts`, `query_contingencies`, `contingency_detail`, `trip_and_compare` |
 | Transfer limits | `transfer_limits` (DFAX and FCITC from a source to a sink, in the base case and after each contingency) |

@@ -6,7 +6,7 @@
 //! ```text
 //! # Solve the case with and without the new generator.
 //! open_case path=cases/case30.m
-//! solve_power_flow settings={"model": "ac", "start": "flat"}
+//! solve_power_flow method=newton start=flat tolerance_mva=0.1
 //! set_study_edits edits=[{"kind": "generation", "element": "gen:22:1", "mw": 40}]
 //! solve_power_flow
 //! export_matpower path=out/case30-solved.m solved=true
@@ -16,6 +16,9 @@
 //!   a bare word with no spaces, which reads as text. A `[...]` or `{...}`
 //!   value may run over several lines.
 //! - Argument names are the commands' own (`case_path` or `casePath`).
+//!   `solve_power_flow` and `calculate_sensitivities` also take each solve
+//!   setting on its own (`method=newton`), as well as all of them in
+//!   `settings={...}`.
 //! - `#` starts a comment, at the start of a line or after a space.
 //! - A relative file path is read from the run file's folder.
 //! - The `case` argument is left out: every line works on the case that is
@@ -29,7 +32,7 @@
 //! on line 40 stops the file before line 1 changes anything. The run stops
 //! at the first command that fails unless `keep_going` is set.
 
-use crate::commands::{COMMANDS, command_args};
+use crate::commands::{COMMANDS, command_args, flat_settings};
 use crate::error::{Error, ErrorKind};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -194,28 +197,43 @@ pub fn parse(text: &str) -> Result<Vec<Step>, Error> {
         let mut args = Map::new();
         while let Some((name, value)) = lexer.next_arg(line)? {
             let key = camel(&name);
-            if !declared.iter().any(|(field, _)| camel(field) == key) {
+            let flat = flat_settings(&command);
+            if !declared.iter().any(|(field, _)| camel(field) == key)
+                && !flat.iter().any(|field| camel(field) == key)
+            {
                 let known: Vec<_> = declared
                     .iter()
                     .filter(|(f, _)| *f != "case")
                     .map(|(f, _)| *f)
                     .collect();
-                return Err(line_error(
-                    line,
-                    if known.is_empty() {
-                        format!("{command} takes no arguments, but {name} was given.")
-                    } else {
-                        format!(
-                            "{command} has no argument {name}. It takes {}.",
-                            known.join(", ")
-                        )
-                    },
-                ));
+                let mut message = if known.is_empty() {
+                    format!("{command} takes no arguments, but {name} was given.")
+                } else {
+                    format!(
+                        "{command} has no argument {name}. It takes {}.",
+                        known.join(", ")
+                    )
+                };
+                if !flat.is_empty() {
+                    message.pop();
+                    message.push_str(&format!(
+                        ", or each solve setting on its own: {}.",
+                        flat.join(", ")
+                    ));
+                }
+                return Err(line_error(line, message));
             }
             if args.insert(key, value).is_some() {
                 return Err(line_error(line, format!("{name} is given twice.")));
             }
         }
+        // Settings given one by one are kept in `settings`, as every
+        // other caller passes them.
+        let args = match crate::commands::lift_settings(&command, Value::Object(args)) {
+            Ok(Value::Object(args)) => args,
+            Ok(_) => Map::new(),
+            Err(e) => return Err(line_error(line, e.message)),
+        };
         steps.push(Step {
             line,
             command,
@@ -275,7 +293,23 @@ pub fn format(steps: &[Step], folder: Option<&Path>, heading: &str) -> Result<St
             )));
         };
         let mut line = step.command.clone();
-        for (key, _) in &step.args {
+        // Settings given one by one join `settings`, which is then written
+        // out one by one again: `solve_power_flow method=newton`.
+        let flat = flat_settings(&step.command);
+        let lifted;
+        let args = if flat.is_empty() {
+            &step.args
+        } else {
+            lifted = match crate::commands::lift_settings(
+                &step.command,
+                Value::Object(step.args.clone()),
+            )? {
+                Value::Object(map) => map,
+                _ => Map::new(),
+            };
+            &lifted
+        };
+        for (key, _) in args {
             if !declared.iter().any(|(f, _)| camel(f) == *key) {
                 return Err(Error::invalid_arguments(format!(
                     "{} has no argument {key}.",
@@ -288,10 +322,29 @@ pub fn format(steps: &[Step], folder: Option<&Path>, heading: &str) -> Result<St
             if *field == "case" {
                 continue;
             }
-            let Some(value) = step.args.get(&camel(field)) else {
+            let Some(value) = args.get(&camel(field)) else {
                 continue;
             };
             if value.is_null() {
+                continue;
+            }
+            if *field == "settings"
+                && let Some(settings) = value.as_object()
+                && !flat.is_empty()
+            {
+                let mut rest = settings.clone();
+                for name in flat {
+                    if let Some(value) = rest.remove(name) {
+                        line.push(' ');
+                        line.push_str(name);
+                        line.push('=');
+                        line.push_str(&write_value(&value));
+                    }
+                }
+                if !rest.is_empty() {
+                    line.push_str(" settings=");
+                    line.push_str(&write_value(&Value::Object(rest)));
+                }
                 continue;
             }
             let value = match (is_path, value, folder) {
@@ -732,7 +785,7 @@ mod tests {
             "# stannum-run-file version 1\n\
              # Recorded by Stannum\n\n\
              open_case path=\"cases/a b.raw\"\n\
-             solve_power_flow settings={\"model\": \"ac\", \"tolerance_mva\": 2.0}\n\
+             solve_power_flow model=ac tolerance_mva=2.0\n\
              trip_and_compare element=line:1-2-1 limit_pct=100.0\n\
              export_matpower path=/elsewhere/x.m solved=true\n"
         );
@@ -746,6 +799,57 @@ mod tests {
         assert!(!back[1].args.contains_key("case"));
         assert_eq!(back[2].args, steps[2].args);
         assert_eq!(back[3].args, steps[3].args);
+    }
+
+    #[test]
+    fn solve_settings_can_be_given_one_by_one() {
+        let steps = parse(
+            "solve_power_flow method=newton start=flat toleranceMva=0.1 enforce_q_limits=false\n\
+             solve_power_flow method=newton settings={\"switch_shunts\": false}\n\
+             calculate_sensitivities model=dc\n",
+        )
+        .unwrap();
+        assert_eq!(
+            steps[0].args,
+            *json!({ "settings": {
+                "method": "newton", "start": "flat", "tolerance_mva": 0.1, "enforce_q_limits": false
+            } })
+            .as_object()
+            .unwrap()
+        );
+        assert_eq!(
+            steps[1].args["settings"],
+            json!({ "method": "newton", "switch_shunts": false })
+        );
+        assert_eq!(steps[2].args["settings"], json!({ "model": "dc" }));
+        // Written back one by one.
+        let text = format(&steps, None, "").unwrap();
+        assert!(text.contains(
+            "solve_power_flow enforce_q_limits=false method=newton start=flat tolerance_mva=0.1\n"
+        ));
+        assert!(text.contains("solve_power_flow method=newton switch_shunts=false\n"));
+
+        let e =
+            parse("solve_power_flow method=newton settings={\"method\": \"auto\"}\n").unwrap_err();
+        assert!(
+            e.message.contains("both on its own and in settings"),
+            "{}",
+            e.message
+        );
+        let e = parse("solve_power_flow tolerance_mva=1 toleranceMva=2\n").unwrap_err();
+        assert!(e.message.contains("given twice"), "{}", e.message);
+        let e = parse("solve_power_flow speed=fast\n").unwrap_err();
+        assert!(
+            e.message.contains("method") && e.message.contains("tolerance_mva"),
+            "{}",
+            e.message
+        );
+        let e = parse("export_raw method=newton\n").unwrap_err();
+        assert!(
+            e.message.contains("has no argument method"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]

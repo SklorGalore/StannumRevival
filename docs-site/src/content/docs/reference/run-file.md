@@ -16,7 +16,7 @@ arguments.
 # Solve case9 as filed, then with generator 2 backed down to 120 MW,
 # and write the solved study case out as MATPOWER.
 open_case path=../case9.m
-solve_power_flow settings={"start": "flat"}
+solve_power_flow start=flat
 
 set_study_edits edits=[
   {"kind": "generation", "element": "generator:2:1", "mw": 120}
@@ -59,9 +59,11 @@ from the run file, wherever the folder is moved.
 
 ## Settings
 
-`solve_power_flow`, `calculate_sensitivities` and `run_contingencies` take
-their settings as a JSON object. The whole argument, and any field in it,
-may be left out: a missing field takes its default.
+`solve_power_flow` and `calculate_sensitivities` take each solve setting on
+its own, as `name=value` (`solve_power_flow method=newton tolerance_mva=0.5`),
+or all of them as a JSON object in `settings`. `run_contingencies` takes its
+settings as a JSON object. Any setting may be left out: a missing one takes
+its default. A setting given both on its own and in `settings` is an error.
 
 | Setting | Default |
 | --- | --- |
@@ -76,8 +78,10 @@ may be left out: a missing field takes its default.
 | `adjust_dc_taps`, `switch_shunts`, `adjust_transformer_taps`, `adjust_phase_shifters` | `true`; `false` locks them where they are |
 | `area_interchange` | `"off"` (or `"tie_lines"`, `"tie_lines_and_loads"`); see [Area interchange control](/StannumRevival/manual/area-interchange/) |
 
-For example, `solve_power_flow settings={"method": "fast_decoupled_xb", "adjust_transformer_taps": false}`
-solves with the fast decoupled method and the transformer taps locked.
+For example, `solve_power_flow method=fast_decoupled_xb adjust_transformer_taps=false`
+solves with the fast decoupled method and the transformer taps locked. It is
+the same as `solve_power_flow settings={"method": "fast_decoupled_xb", "adjust_transformer_taps": false}`.
+Run files Stannum saves write changed solve settings one by one.
 
 `run_contingencies` settings: `method` (`"screen"`, the default, or `"ac"`),
 `branches` and `generators` (both `true`), `elements` (a list of ids, instead

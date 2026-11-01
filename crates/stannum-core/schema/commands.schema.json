@@ -7845,6 +7845,26 @@
       "args": {
         "additionalProperties": false,
         "properties": {
+          "adjust_dc_taps": {
+            "default": true,
+            "description": "Step DC converter taps, and the transformers that some converters\nstep instead (COD 4); detailed model only.",
+            "type": "boolean"
+          },
+          "adjust_phase_shifters": {
+            "default": true,
+            "description": "Move phase shifters in active power flow control (AC only). When\nfalse they are locked, like taps.",
+            "type": "boolean"
+          },
+          "adjust_transformer_taps": {
+            "default": true,
+            "description": "Step transformer taps in voltage control (COD 1) and reactive flow\ncontrol (COD 2) (AC only). When false they are locked, like shunts.",
+            "type": "boolean"
+          },
+          "area_interchange": {
+            "$ref": "#/$defs/InterchangeChoice",
+            "default": "off",
+            "description": "Hold each area's net interchange at its desired value with the\narea slack generation (AC only; RAW area data). Off by default."
+          },
           "case": {
             "anyOf": [
               {
@@ -7855,6 +7875,38 @@
               }
             ]
           },
+          "dc_model": {
+            "$ref": "#/$defs/DcModelChoice",
+            "default": "detailed"
+          },
+          "decoupled_iterations": {
+            "default": 30,
+            "description": "Decoupled iterations per pass (fixed-slope and fast decoupled, and\nthe decoupled stage of the automatic method).",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enforce_q_limits": {
+            "default": true,
+            "description": "Hold generators at their reactive limits (and regulate remote buses).\nOn by default, as real cases are solved in PSS/E and PowerWorld.",
+            "type": "boolean"
+          },
+          "max_iterations": {
+            "default": 10,
+            "description": "Newton iterations per pass.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "method": {
+            "$ref": "#/$defs/MethodChoice",
+            "default": "auto",
+            "description": "AC solution method."
+          },
+          "model": {
+            "$ref": "#/$defs/ModelChoice",
+            "default": "ac"
+          },
           "settings": {
             "anyOf": [
               {
@@ -7864,11 +7916,26 @@
                 "type": "null"
               }
             ]
+          },
+          "start": {
+            "$ref": "#/$defs/StartChoice",
+            "default": "last"
+          },
+          "switch_shunts": {
+            "default": true,
+            "description": "Switch shunts in voltage control (AC only). When false they are\nlocked: they stay where they are, which is where the last solve left\nthem when starting from it, and at their case values otherwise.",
+            "type": "boolean"
+          },
+          "tolerance_mva": {
+            "default": 2.0,
+            "description": "Largest power mismatch allowed at any bus, in MVA. It converts to per\nunit on each case's own base at solve time, so the same setting means\nthe same MW and Mvar on every case.",
+            "format": "double",
+            "type": "number"
           }
         },
         "type": "object"
       },
-      "doc": "Calculate sensitivities at the solved operating point.",
+      "doc": "Calculate sensitivities at the solved operating point. Takes the same\nsettings as `solve_power_flow`, in `settings` or one by one.",
       "result": {
         "$ref": "#/$defs/SensitivitySummary"
       },
@@ -9469,6 +9536,26 @@
       "args": {
         "additionalProperties": false,
         "properties": {
+          "adjust_dc_taps": {
+            "default": true,
+            "description": "Step DC converter taps, and the transformers that some converters\nstep instead (COD 4); detailed model only.",
+            "type": "boolean"
+          },
+          "adjust_phase_shifters": {
+            "default": true,
+            "description": "Move phase shifters in active power flow control (AC only). When\nfalse they are locked, like taps.",
+            "type": "boolean"
+          },
+          "adjust_transformer_taps": {
+            "default": true,
+            "description": "Step transformer taps in voltage control (COD 1) and reactive flow\ncontrol (COD 2) (AC only). When false they are locked, like shunts.",
+            "type": "boolean"
+          },
+          "area_interchange": {
+            "$ref": "#/$defs/InterchangeChoice",
+            "default": "off",
+            "description": "Hold each area's net interchange at its desired value with the\narea slack generation (AC only; RAW area data). Off by default."
+          },
           "case": {
             "anyOf": [
               {
@@ -9479,6 +9566,38 @@
               }
             ]
           },
+          "dc_model": {
+            "$ref": "#/$defs/DcModelChoice",
+            "default": "detailed"
+          },
+          "decoupled_iterations": {
+            "default": 30,
+            "description": "Decoupled iterations per pass (fixed-slope and fast decoupled, and\nthe decoupled stage of the automatic method).",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enforce_q_limits": {
+            "default": true,
+            "description": "Hold generators at their reactive limits (and regulate remote buses).\nOn by default, as real cases are solved in PSS/E and PowerWorld.",
+            "type": "boolean"
+          },
+          "max_iterations": {
+            "default": 10,
+            "description": "Newton iterations per pass.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "method": {
+            "$ref": "#/$defs/MethodChoice",
+            "default": "auto",
+            "description": "AC solution method."
+          },
+          "model": {
+            "$ref": "#/$defs/ModelChoice",
+            "default": "ac"
+          },
           "settings": {
             "anyOf": [
               {
@@ -9488,11 +9607,26 @@
                 "type": "null"
               }
             ]
+          },
+          "start": {
+            "$ref": "#/$defs/StartChoice",
+            "default": "last"
+          },
+          "switch_shunts": {
+            "default": true,
+            "description": "Switch shunts in voltage control (AC only). When false they are\nlocked: they stay where they are, which is where the last solve left\nthem when starting from it, and at their case values otherwise.",
+            "type": "boolean"
+          },
+          "tolerance_mva": {
+            "default": 2.0,
+            "description": "Largest power mismatch allowed at any bus, in MVA. It converts to per\nunit on each case's own base at solve time, so the same setting means\nthe same MW and Mvar on every case.",
+            "format": "double",
+            "type": "number"
           }
         },
         "type": "object"
       },
-      "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.\nSettings left out take their defaults.",
+      "doc": "Solve the power flow with the study's edits. `cancel_solve` stops it.\nSettings go in `settings` or one by one beside it (`method`,\n`tolerance_mva`, `start`, `enforce_q_limits`, `switch_shunts`, ...);\nsettings left out take their defaults.",
       "result": {
         "$ref": "#/$defs/SolveReport"
       },
