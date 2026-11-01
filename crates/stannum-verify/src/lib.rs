@@ -24,6 +24,7 @@ pub const SUITES: &[&str] = &[
     "contingency",
     "transfer",
     "pv",
+    "qv",
     "transformer-detail",
 ];
 

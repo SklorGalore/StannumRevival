@@ -726,6 +726,24 @@ impl OpenCase {
         )?)
     }
 
+    /// A QV curve study of the case from its AC solve, with that solve's
+    /// settings, to run without the workspace.
+    pub fn qv_job(&self, settings: crate::qv::QvSettings) -> Result<crate::qv::QvJob, Error> {
+        let power = self.power_case()?;
+        let solved = resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: QV curves start from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("QV curves leave out the attached VSC DC grids");
+        }
+        log::info!("Drawing QV curves at {} buses", settings.buses.len());
+        Ok(crate::qv::QvJob::new(
+            power, &solved.0, &solved.1, settings,
+        )?)
+    }
+
     /// How many planning events each category asked for gives on the case
     /// as the study has it, before running them.
     pub fn planning_event_counts(

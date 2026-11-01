@@ -74,6 +74,7 @@ const ACTIONS: &[&str] = &[
     "trip_and_compare",
     "run_transfer_limits",
     "run_pv_curve",
+    "run_qv_curve",
 ];
 
 /// Commands a run file can't hold: running or writing run files from inside one.

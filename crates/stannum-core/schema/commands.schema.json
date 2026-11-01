@@ -5712,6 +5712,266 @@
       ],
       "type": "object"
     },
+    "QvCurve": {
+      "description": "One bus's curve: the condenser's reactive output at each voltage.",
+      "properties": {
+        "base_kv": {
+          "format": "double",
+          "type": "number"
+        },
+        "base_vm_pu": {
+          "description": "The bus voltage in the last AC solve, p.u., where the condenser\ngives nothing.",
+          "format": "double",
+          "type": "number"
+        },
+        "bottom_found": {
+          "description": "False when the curve was still falling at its lowest point, so the\ntrue bottom is lower and the margin at least `margin_mvar`.",
+          "type": "boolean"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed_solves": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limited_by": {
+          "description": "What stopped the sweep down.",
+          "enum": [
+            "collapse",
+            "v_low",
+            "max_points",
+            "cancelled",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "margin_mvar": {
+          "description": "Reactive power margin, Mvar: how far the bottom lies below zero.\nNegative when the bottom is above zero, so the bus can't hold its\nvoltage unaided.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "q_limited": {
+          "description": "Online generators elsewhere held at a reactive limit at each point.",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "q_min_mvar": {
+          "description": "The bottom of the curve: the least reactive output, Mvar, and the\nvoltage there, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "q_mvar": {
+          "description": "The condenser's reactive output at each point, Mvar: positive when\nit injects (the bus needs support to sit at that voltage), negative\nwhen it absorbs.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "solves": {
+          "description": "Solves for this bus, and how many didn't converge.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v_at_q_min_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "v_pu": {
+          "description": "Voltage set at each point, p.u., lowest first.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bus",
+        "name",
+        "base_kv",
+        "base_vm_pu",
+        "v_pu",
+        "q_mvar",
+        "q_limited",
+        "q_min_mvar",
+        "v_at_q_min_pu",
+        "margin_mvar",
+        "bottom_found",
+        "limited_by",
+        "solves",
+        "failed_solves"
+      ],
+      "type": "object"
+    },
+    "QvResults": {
+      "properties": {
+        "curves": {
+          "description": "One curve per bus, in the order asked for.",
+          "items": {
+            "$ref": "#/$defs/QvCurve"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/QvSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "curves"
+      ],
+      "type": "object"
+    },
+    "QvSettings": {
+      "description": "A QV curve study.",
+      "properties": {
+        "buses": {
+          "description": "Buses to draw a curve for, each swept on its own.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "max_points": {
+          "default": 300,
+          "description": "The most solves for one bus, failed ones included.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_step_pu": {
+          "default": null,
+          "description": "The smallest step tried before the sweep down stops, p.u. An 8th of\nthe step when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "step_pu": {
+          "default": 0.01,
+          "description": "The voltage step, p.u. The steps land on multiples of it.",
+          "format": "double",
+          "type": "number"
+        },
+        "v_high_pu": {
+          "default": 1.1,
+          "description": "The highest voltage set, p.u.",
+          "format": "double",
+          "type": "number"
+        },
+        "v_low_pu": {
+          "default": 0.3,
+          "description": "The lowest voltage tried, p.u. The sweep usually stops before it,\nwhen the voltage is too low to solve.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "buses"
+      ],
+      "type": "object"
+    },
+    "QvSummary": {
+      "properties": {
+        "buses": {
+          "description": "Buses with a curve.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "failed_solves": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_step_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "notes": {
+          "description": "Things worth knowing about the setup, in words.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "solves": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "step_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "v_high_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "v_low_pu": {
+          "format": "double",
+          "type": "number"
+        },
+        "weakest_bus": {
+          "description": "The bus with the smallest reactive power margin, and that margin.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "weakest_bus_name": {
+          "type": "string"
+        },
+        "weakest_margin_mvar": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "buses",
+        "weakest_bus",
+        "weakest_bus_name",
+        "weakest_margin_mvar",
+        "v_high_pu",
+        "v_low_pu",
+        "step_pu",
+        "min_step_pu",
+        "solves",
+        "failed_solves",
+        "elapsed_ms",
+        "cancelled",
+        "notes"
+      ],
+      "type": "object"
+    },
     "Rating": {
       "description": "Which of a branch's three ratings a loading is measured against.",
       "oneOf": [
@@ -8354,6 +8614,18 @@
       },
       "takes_case": false
     },
+    "cancel_qv_curve": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "Stop the QV curve study in progress.",
+      "result": {
+        "type": "null"
+      },
+      "takes_case": false
+    },
     "cancel_run_file": {
       "action": false,
       "args": {
@@ -9254,6 +9526,18 @@
       },
       "takes_case": false
     },
+    "qv_progress": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "doc": "How far the QV curve study in progress has got: buses done.",
+      "result": {
+        "$ref": "#/$defs/Progress"
+      },
+      "takes_case": false
+    },
     "record_fields": {
       "action": false,
       "args": {
@@ -9736,6 +10020,36 @@
       "doc": "PV curve (continuation power flow): grows a transfer, or the sink's\nload, step by step with full AC solves from the last AC solve until\nthe network can't carry more (the nose), and records the monitored\nbus voltages on the way. `cancel_pv_curve` stops it and\n`pv_progress` counts its solves.",
       "result": {
         "$ref": "#/$defs/PvResults"
+      },
+      "takes_case": true
+    },
+    "run_qv_curve": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/QvSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "QV curves: a fictitious condenser holds each bus at one voltage\nafter another, from the last AC solve's voltage up and down, with\nfull AC solves; its reactive output at each voltage is the curve and\nthe depth of the curve's bottom is the bus's reactive power margin.\n`cancel_qv_curve` stops it and `qv_progress` counts the buses done.",
+      "result": {
+        "$ref": "#/$defs/QvResults"
       },
       "takes_case": true
     },

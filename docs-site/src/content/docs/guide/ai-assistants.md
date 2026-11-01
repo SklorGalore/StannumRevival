@@ -68,7 +68,7 @@ stdout (the MCP stdio transport).
 | What-if | `get_study_edits`, `set_study_edits` (outages, dispatch and loads applied on top of the case) |
 | Contingencies | `run_contingencies` (N-1 or NERC planning events), `planning_event_counts`, `query_contingencies`, `contingency_detail`, `trip_and_compare` |
 | Transfer limits | `transfer_limits` (DFAX and FCITC from a source to a sink, in the base case and after each contingency) |
-| Voltage stability | `pv_curve` (grows a sink's load, or a transfer, with AC solves up to the nose) |
+| Voltage stability | `pv_curve` (grows a sink's load, or a transfer, with AC solves up to the nose), `qv_curve` (each bus's reactive power margin, from a condenser holding it at one voltage after another) |
 | Topology | `topology_summary` (islands, bridges, articulation buses), `shortest_path` |
 | Records | `list_records`, `query_records`, `edit_records` |
 | Comparing | `compare_cases`, `diff_records` |

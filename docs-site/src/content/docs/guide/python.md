@@ -173,6 +173,30 @@ one, all generation picks up. The other settings, `sink_scaling`,
 `vmin_pu`, `buses`, `max_curves` and `max_points`, and the method are in
 [PV curves](/StannumRevival/manual/pv-curves/).
 
+## QV curves
+
+```python
+case.solve()
+run = case.qv_curve([7314, 7340])    # each bus swept on its own
+run.summary.weakest_bus              # the bus with the smallest margin
+run.curves                           # one row per bus: margin_mvar, v_at_q_min_pu, ...
+run.points                           # bus, v_pu, q_mvar, q_limited for every point
+```
+
+To plot them:
+
+```python
+import matplotlib.pyplot as plt
+
+for bus in run.curves["bus"]:
+    at = run.points["bus"] == bus
+    plt.plot(run.points["v_pu"][at], run.points["q_mvar"][at], label=str(bus))
+```
+
+The other settings, `v_high_pu`, `v_low_pu`, `step_pu`, `min_step_pu` and
+`max_points`, and the method are in
+[QV curves](/StannumRevival/manual/qv-curves/).
+
 ## Records, elements and topology
 
 ```python

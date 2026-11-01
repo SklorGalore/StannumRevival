@@ -25,6 +25,16 @@ section into the next version's when a release is cut (see
   independent arclength continuation within 0.01 MW on the
   [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
   page ([manual](https://sklorgalore.github.io/StannumRevival/manual/pv-curves/)).
+- **QV curves (reactive margin), preview.** A fictitious condenser holds
+  each chosen bus at one voltage after another, from its solved voltage up
+  to 1.1 p.u. and down until the voltage is too low to solve, with full AC
+  solves (every control and Q limit kept). Its reactive output at each
+  voltage is the curve, and how far the curve's bottom lies below zero is
+  the bus's reactive power margin. Runs from run files (`run_qv_curve`),
+  Python (`Case.qv_curve`) and the MCP server (`qv_curve`); the curves
+  match PYPOWER with the same condenser within 1e-7 Mvar on the
+  [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)
+  page ([manual](https://sklorgalore.github.io/StannumRevival/manual/qv-curves/)).
 - **Scaling wizard.** Analysis → Scale load and generation… (also in
   Ctrl+K) scales load and generation at the buses of chosen areas, zones,
   owners and kV range, to a target total or by a change in MW or percent.

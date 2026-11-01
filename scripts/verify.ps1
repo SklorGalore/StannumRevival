@@ -35,7 +35,7 @@ $runs = @(
     @('-p', 'rs-power', '--test', 'reference', '--test', 'raw_reference', '--test', 'transformer_detail'),
     @('-p', 'rs-power', '--lib', '--', 'vsc_grid::tests::reproduces_the_papers_converter_results'),
     @('-p', 'stannum-core', '--test', 'saved_solutions', '--test', 'matacdc_benchmark', '--test', 'contingency'),
-    @('-p', 'stannum-core', '--lib', '--', 'transfer::tests::factors_match_dc_solves', 'pv::tests::matches_an_arclength_continuation')
+    @('-p', 'stannum-core', '--lib', '--', 'transfer::tests::factors_match_dc_solves', 'pv::tests::matches_an_arclength_continuation', 'qv::tests::matches_pypower_with_a_condenser_added')
 )
 
 Push-Location $root

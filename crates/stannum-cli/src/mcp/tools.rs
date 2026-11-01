@@ -201,6 +201,16 @@ const TOOLS: &[Tool] = &[
         app: false,
         run: pv_curve,
     },
+    Tool {
+        name: "qv_curve",
+        title: "QV curve (reactive margin)",
+        description: "How much reactive power each of `buses` can give up before its voltage collapses: a fictitious condenser holds the bus at one voltage after another (from its solved voltage up to `v_high_pu` and down towards `v_low_pu`, `step_pu` apart) with full AC solves from the last AC solve, and its reactive output at each voltage is the curve. The depth of the curve's bottom below zero is the bus's reactive power margin (negative = the bus can't hold its voltage unaided). Solve with the AC model first. Answers the summary (weakest bus and margin, notes), one row per bus (margin, voltage at the bottom, whether the bottom was found) and points along each curve (about 16 a bus, always with the base and the bottom).",
+        input: qv_input,
+        read_only: false,
+        destructive: false,
+        app: false,
+        run: qv_curve,
+    },
     // Topology
     Tool {
         name: "topology_summary",
@@ -600,6 +610,10 @@ fn pv_input() -> Value {
     schema["properties"]["max_curves"]["description"] =
         json!("How many of the buses whose voltage falls furthest get a curve (default 5 here).");
     schema
+}
+
+fn qv_input() -> Value {
+    core_schema("QvSettings", false)
 }
 
 fn planning_input() -> Value {
@@ -1407,6 +1421,76 @@ fn pv_curve(c: &Call, args: &Value) -> Answer {
         "summary": summary,
         "points": point_rows.to_json(),
         "curves": curve_rows.to_json(),
+    }))
+}
+
+fn qv_curve(c: &Call, args: &Value) -> Answer {
+    let stop = AtomicBool::new(false);
+    let r = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut last = usize::MAX;
+            while !stop.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(p) = c.backend.side("qv_progress") else {
+                    continue;
+                };
+                let done = p["done"].as_u64().unwrap_or(0) as usize;
+                let total = p["total"].as_u64().map(|t| t as f64);
+                if p["phase"] == "idle" || done == last {
+                    continue;
+                }
+                (c.progress)(done as f64, total, &format!("buses done: {done}"));
+                last = done;
+            }
+        });
+        let _follow = Follow { stop: &stop };
+        c.backend.call("run_qv_curve", json!({ "settings": args }))
+    })?;
+    let curves = r["curves"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let mut buses = Vec::new();
+    let mut points = Vec::new();
+    for curve in curves {
+        buses.push(json!({
+            "bus": curve["bus"],
+            "name": curve["name"],
+            "base_kv": curve["base_kv"],
+            "base_vm_pu": curve["base_vm_pu"],
+            "margin_mvar": curve["margin_mvar"],
+            "v_at_q_min_pu": curve["v_at_q_min_pu"],
+            "bottom_found": curve["bottom_found"],
+            "limited_by": curve["limited_by"],
+        }));
+        let v = curve["v_pu"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        let q = curve["q_mvar"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        let base = curve["base_vm_pu"].as_f64();
+        let bottom = curve["v_at_q_min_pu"].as_f64();
+        let n = v.len().min(q.len());
+        let keep = n.div_ceil(16).max(1);
+        for (i, (vi, qi)) in v.iter().zip(q).enumerate() {
+            let at = vi.as_f64();
+            if i % keep == 0 || i + 1 == n || at == base || at == bottom {
+                points.push(json!({ "bus": curve["bus"], "v_pu": vi, "q_mvar": qi }));
+            }
+        }
+    }
+    let mut bus_rows = Rows::from_records(&buses);
+    bus_rows.lead(&["bus", "name", "margin_mvar", "v_at_q_min_pu"]);
+    let mut point_rows = Rows::from_records(&points);
+    point_rows.lead(&["bus", "v_pu", "q_mvar"]);
+    let mut summary = r["summary"].clone();
+    if let Some(o) = summary.as_object_mut() {
+        o.remove("elapsed_ms");
+    }
+    if c.cancelled.load(Ordering::SeqCst) || summary["cancelled"].as_bool() == Some(true) {
+        summary["note"] = json!("Cancelled: buses not reached have no curve.");
+    }
+    Ok(json!({
+        "summary": summary,
+        "buses": bus_rows.to_json(),
+        "points": point_rows.to_json(),
     }))
 }
 
