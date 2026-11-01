@@ -113,6 +113,13 @@ section into the next version's when a release is cut (see
   open and save as 1.0, a newer minor version (1.1 and on) opens and keeps
   what this release doesn't know, and only a newer major version is
   refused. MATPOWER cases still save as `.m`; export them as a Stannum case.
+- **Context bar.** What every module is showing and what is selected now sit
+  in their own bar under the toolbar, labelled **Showing** and **Selected**,
+  instead of squeezed onto the toolbar's right end. It says "Not solved yet"
+  before the first solve, and the selection chip's "Show in" links stay
+  unfolded at 1280 pixels wide. First step of the workspaces layout (plan
+  phase 2.1).
+
 - **The violations CSV opens with metadata rows.** Scripts that read it
   skip the first `header_rows` rows (the number is in the first row).
 
