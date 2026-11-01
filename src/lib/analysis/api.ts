@@ -287,7 +287,7 @@ export const DEFAULT_SOLVE_SETTINGS: SolveSettings = {
   method: "auto",
   start: "last",
   // The same MW and Mvar on every case, whatever its base.
-  tolerance_mva: 2,
+  tolerance_mva: 0.1,
   max_iterations: 10,
   decoupled_iterations: 30,
   enforce_q_limits: true,

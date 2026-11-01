@@ -467,7 +467,7 @@ fn solve_settings_move_or_lock_phase_shifters() {
 #[test]
 fn transformer_tap_setting_moves_or_locks_reactive_flow_taps() {
     // five_bus with its 2-4 transformer in reactive flow control (COD 2),
-    // holding 21.0-21.6 Mvar into it at bus 2; ratio 1.0 gives 22.4.
+    // holding 22.2-22.5 Mvar into it at bus 2; ratio 1.0 gives 22.85.
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/five_bus_reactive_tap.raw");
     let mut ws = open(path);
@@ -495,13 +495,13 @@ fn transformer_tap_setting_moves_or_locks_reactive_flow_taps() {
     assert_eq!(locked.taps_moved, 0);
     let (before, tap) = flow(&locked);
     assert_eq!(tap, 1.0);
-    assert!(!(21.0..=21.6).contains(&before), "{before}");
+    assert!(!(22.2..=22.5).contains(&before), "{before}");
     let moved = solve(true, Flat);
     assert!(moved.converged);
     assert_eq!(moved.taps_moved, 1);
     assert!(moved.flow_control_passes > 0);
     let (after, tap) = flow(&moved);
-    assert!((20.9..=21.7).contains(&after), "{after} at tap {tap}");
+    assert!((22.1..=22.6).contains(&after), "{after} at tap {tap}");
     assert!(tap != 1.0);
     let kept = solve(false, Last);
     assert_eq!(kept.flow_control_passes, 0);

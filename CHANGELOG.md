@@ -162,6 +162,22 @@ section into the next version's when a release is cut (see
 
 ### Changed
 
+- **Default mismatch tolerance is now 0.1 MVA**, the usual PSS/E and
+  PowerWorld setting, instead of 2 MVA. Results on small ratings now match
+  a tight solve; raise it in Solve settings for quick screening of very
+  large cases.
+- **Contingency summaries say what was checked.** When only some outages
+  are solved in AC, the Voltage problems card says how many were checked
+  and how many had the linear screen only, and the log line says the same.
+- **Transfer limits say when the first limit is already near its rating.**
+  The sentence under the results gives its loading before any transfer when
+  it is 95% or more, and the new **Already past from** setting
+  (`past_limit_pct`, 100 by default) lists elements at or above that
+  loading apart, as it does for elements already past their limit.
+- **Docs.** A CEII caution on the AI assistants page, a new [How it is
+  built and tested](https://sklorgalore.github.io/StannumRevival/reference/how-it-is-built/)
+  page, and the README and Python install example brought up to date.
+
 - **Study files are retired; save work as a run file, and keep a history.**
   **Save study** is now **Save as run file**: a `.stnrun` that opens the
   case, attaches its DC grid and bus coordinates files, sets the study edits

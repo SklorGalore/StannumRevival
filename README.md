@@ -51,13 +51,20 @@ working. The [user guide](https://sklorgalore.github.io/StannumRevival/guide/she
   can be locked where they are.
   Result tables page from the core, so they stay quick on 80,000-bus cases.
   See [Power flow](https://sklorgalore.github.io/StannumRevival/guide/power-flow/).
-- **Contingencies.** N-1 outages of branches and generators, screened with
-  linear outage factors and the worst checked in AC, ranked by the overloads
-  and voltage problems they cause, and shown on the diagram. See
+- **Contingencies.** N-1, N-2, bus outages, NERC TPL-001 events P1, P2.1
+  and P7.2, and your own lists, checked against rate A, B or C, screened
+  with linear outage factors and the worst checked in AC (or all of them in
+  AC), ranked by the overloads and voltage problems they cause, and shown on
+  the diagram. See
   [Contingencies](https://sklorgalore.github.io/StannumRevival/guide/contingencies/).
+- **Transfer and voltage limits.** FCITC with PTDFs and OTDFs between areas,
+  zones or bus sets; PV curves to the nose; QV curves for reactive margin.
+  See [Transfer limits](https://sklorgalore.github.io/StannumRevival/guide/transfers/),
+  [PV curves](https://sklorgalore.github.io/StannumRevival/guide/pv-curves/) and
+  [QV curves](https://sklorgalore.github.io/StannumRevival/guide/qv-curves/).
 - **Studies.** Edits every solve uses without changing the file (outages,
-  generator output, loads, switch states), with saved solves to compare,
-  kept in a study file. See
+  generator output, loads, switch states), with saved solves to compare.
+  Every change is kept in the History and can be saved as a run file. See
   [Studies](https://sklorgalore.github.io/StannumRevival/guide/studies/).
 - **Records.** Every record and field of the case, sorted, searched and
   filtered in the core; edits are written back into the case. See

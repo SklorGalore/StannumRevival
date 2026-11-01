@@ -44,7 +44,7 @@ fn matpower_case_solves_and_reports_limits() {
     let worst = report.limits.worst_branch.unwrap();
     assert!(worst.2 > 0.0 && worst.2 < 100.0);
     // Generation balances load plus losses, to within the bus mismatches
-    // the default 2 MVA tolerance leaves.
+    // the default 0.1 MVA tolerance leaves.
     let balance = report.total_generation_mw - report.total_load_mw - report.total_losses_mw;
     let allowed = report.buses.len() as f64 * report.residual_mva + 1e-6;
     assert!(
@@ -357,7 +357,7 @@ fn study_edits_change_what_is_solved() {
     let mut ws = Workspace::default();
     ws.open(&fixture("case9.m")).unwrap();
     let case = ws.current_mut().unwrap();
-    // Results are compared to 1e-6, so solve tighter than the 2 MVA default.
+    // Results are compared to 1e-6, so solve tighter than the 0.1 MVA default.
     let tight = || SolveSettings {
         tolerance_mva: 1e-6,
         ..SolveSettings::default()
@@ -522,16 +522,16 @@ fn every_solve_starts_from_the_last_one_by_default() {
 }
 
 #[test]
-fn the_default_tolerance_is_2_mva_on_any_base() {
+fn the_default_tolerance_is_0_1_mva_on_any_base() {
     let settings = SolveSettings::default();
-    assert_eq!(settings.tolerance_mva, 2.0);
+    assert_eq!(settings.tolerance_mva, 0.1);
     // Per unit on each case's own base, so the MW and Mvar stay the same.
-    for (base, pu) in [(100.0, 0.02), (1000.0, 0.002), (10.0, 0.2)] {
+    for (base, pu) in [(100.0, 0.001), (1000.0, 0.0001), (10.0, 0.01)] {
         let tol = settings.options(base).tolerance;
         assert!((tol - pu).abs() < 1e-15, "{base} MVA base: {tol} p.u.");
     }
     // A case with no base falls back to 100 MVA.
-    assert_eq!(settings.options(0.0).tolerance, 0.02);
+    assert_eq!(settings.options(0.0).tolerance, 0.001);
 }
 
 #[test]

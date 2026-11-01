@@ -893,8 +893,18 @@ export function ContingencyTab({
             <Metric
               label="Voltage problems"
               value={count(summary.with_voltage_problems)}
-              tone={summary.with_voltage_problems ? "warn" : "good"}
-              detail="From the AC solves"
+              tone={
+                summary.with_voltage_problems
+                  ? "warn"
+                  : summary.ac_checked < summary.total
+                    ? "neutral"
+                    : "good"
+              }
+              detail={
+                summary.ac_checked < summary.total
+                  ? `In the ${count(summary.ac_checked)} AC solves; ${count(summary.total - summary.ac_checked)} not checked for voltage`
+                  : "Every outage solved in AC"
+              }
             />
             <Metric
               label="Not converged"

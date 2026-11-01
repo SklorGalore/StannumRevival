@@ -222,6 +222,12 @@ pub struct TransferSettings {
     /// element within its limit past it.
     #[serde(default)]
     pub include_past_limits: bool,
+    /// Loading, in percent of the limit, at or above which an element the
+    /// transfer pushes further counts as already past its limit. 100 by
+    /// default; lower it (say to 95) to keep elements that sit at their
+    /// limit before any transfer from setting a near-zero FCITC.
+    #[serde(default = "default_limit")]
+    pub past_limit_pct: f64,
     /// A lists file (`.stnl`). Its contingencies and contingency sets,
     /// when it has any, are the outages studied instead of
     /// `contingencies`; its flow and interface monitors, when it has any,
@@ -591,6 +597,7 @@ impl TransferJob {
         };
         let cutoff = s.cutoff;
         let include_past = s.include_past_limits;
+        let past_pct = s.past_limit_pct;
         // Each limit with the index of what was out (0 for the base case),
         // so that equal limits keep the earlier one whatever thread found it.
         type Best = Vec<Option<(usize, TransferLimit)>>;
@@ -634,9 +641,15 @@ impl TransferJob {
                                 }
                                 let f = m.of(&after);
                                 let t = fcitc(f, lim, d);
-                                // Already past the limit before any transfer:
-                                // kept apart unless asked for.
-                                let slot = if t < 0.0 && !include_past {
+                                // Already past the limit before any transfer
+                                // (or within past_limit_pct of it, pushed
+                                // further by the transfer): kept apart unless
+                                // asked for.
+                                let past_it = t < 0.0
+                                    || (past_pct < 100.0
+                                        && f * d > 0.0
+                                        && f.abs() >= lim * past_pct / 100.0);
+                                let slot = if past_it && !include_past {
                                     &mut past[k]
                                 } else {
                                     &mut best[k]
@@ -660,7 +673,7 @@ impl TransferJob {
                                         },
                                     ));
                                 }
-                                if (t >= 0.0 || include_past)
+                                if (!past_it || include_past)
                                     && lowest.as_ref().is_none_or(|l| t < l.fcitc_mw)
                                 {
                                     lowest = Some(ContingencyLimit {
@@ -758,8 +771,13 @@ impl TransferJob {
             past_limits.len()
         };
         if past > 0 {
+            let at = if past_pct < 100.0 && !include_past {
+                format!("at or above {past_pct:.0}% of")
+            } else {
+                "already past".to_string()
+            };
             notes.push(format!(
-                "{past} monitored element{} already past {} limit before any transfer, in the base case or after a contingency{}.",
+                "{past} monitored element{} {at} {} limit before any transfer, in the base case or after a contingency{}.",
                 if past == 1 { " is" } else { "s are" },
                 if past == 1 { "its" } else { "their" },
                 if include_past {
@@ -1147,6 +1165,7 @@ mod tests {
             limit_pct: 100.0,
             max_rows: 200,
             include_past_limits: false,
+            past_limit_pct: 100.0,
             lists: None,
             transfer: None,
         }
@@ -1517,6 +1536,48 @@ mod tests {
         let together = TransferJob::new(&power, &base, s).unwrap().run().unwrap();
         assert!(together.past_limits.is_empty());
         assert!(together.summary.fcitc_mw.unwrap() < 0.0);
+    }
+
+    #[test]
+    fn elements_near_their_limit_can_be_set_aside() {
+        // Rate the limiting line so it sits at 98% where it limits.
+        let (mut power, base) = case9();
+        let r = TransferJob::new(&power, &base, settings(2, 3))
+            .unwrap()
+            .run()
+            .unwrap();
+        let first = r.summary.limiting.clone().unwrap();
+        let row = power
+            .elements
+            .branches
+            .iter()
+            .position(|e| e.element == first.monitored)
+            .unwrap();
+        power.case.branches[row].rate_a = first.flow_mw.abs() / 0.98;
+        let near = TransferJob::new(&power, &base, settings(2, 3))
+            .unwrap()
+            .run()
+            .unwrap();
+        let tight = near.summary.fcitc_mw.unwrap();
+        assert!(tight >= 0.0 && tight < 0.05 * first.limit_mw / first.factor.abs());
+        assert!(near.past_limits.is_empty());
+        let mut s = settings(2, 3);
+        s.past_limit_pct = 95.0;
+        let apart = TransferJob::new(&power, &base, s).unwrap().run().unwrap();
+        assert!(
+            apart
+                .past_limits
+                .iter()
+                .any(|l| l.monitored == first.monitored && l.contingency == first.contingency)
+        );
+        assert!(apart.summary.fcitc_mw.unwrap() > tight);
+        assert!(
+            apart
+                .summary
+                .notes
+                .iter()
+                .any(|n| n.contains("at or above 95%"))
+        );
     }
 
     #[test]

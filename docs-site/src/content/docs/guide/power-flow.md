@@ -17,7 +17,7 @@ a narrow strip with **Solve** in it. The settings are:
 | --- | --- | --- |
 | **Model** | **AC** power flow, or **DC** linear flow | AC |
 | **AC method** | **Auto**, **Full Newton**, **Fixed-slope decoupled (FDNS)**, **Fast decoupled (XB)** or **Fast decoupled (BX)**. Every method stops at the same mismatch tolerance; see [AC solution methods](/StannumRevival/manual/ac-methods/) | Auto |
-| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 2, on any case's base |
+| **Mismatch tolerance (MVA)** | Largest power mismatch allowed at any bus, in MW or Mvar. Hover it to see the value in per unit on the case's base. | 0.1, on any case's base (the usual PSS/E and PowerWorld setting). Raise it, for example to 2, for quick screening of very large cases |
 | **Newton iterations per pass** | Newton steps allowed in each pass (Auto and Full Newton) | 10 |
 | **Decoupled iterations per pass** | Decoupled iterations allowed in each pass (every method but Full Newton) | 30 |
 | **Flat start** | Start from 1 p.u. and reference angles. When it is off, each solve starts where the last one ended, with shunts, taps and generators at Q limits where it left them, and the first solve starts from the voltages saved in the file | Off |

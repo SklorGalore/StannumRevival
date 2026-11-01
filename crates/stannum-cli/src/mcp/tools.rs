@@ -71,7 +71,7 @@ const TOOLS: &[Tool] = &[
     Tool {
         name: "solve_power_flow",
         title: "Solve power flow",
-        description: "Solve the power flow of the open case with the study's edits. Pass any setting on its own (method, tolerance_mva, start, enforce_q_limits, switch_shunts, adjust_transformer_taps, area_interchange, ...) or all in `settings`. Settings left out take their defaults: AC, automatic method, from the last solution, 2 MVA tolerance, reactive limits held, every control on. Answers a summary: convergence, totals, how controls moved and counts of limit problems. Then use find_violations and query_results.",
+        description: "Solve the power flow of the open case with the study's edits. Pass any setting on its own (method, tolerance_mva, start, enforce_q_limits, switch_shunts, adjust_transformer_taps, area_interchange, ...) or all in `settings`. Settings left out take their defaults: AC, automatic method, from the last solution, 0.1 MVA tolerance, reactive limits held, every control on. Answers a summary: convergence, totals, how controls moved and counts of limit problems. Then use find_violations and query_results.",
         input: solve_input,
         read_only: false,
         destructive: false,

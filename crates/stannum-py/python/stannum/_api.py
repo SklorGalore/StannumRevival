@@ -225,7 +225,7 @@ class Case:
         Options (all optional): ``model`` ("ac" or "dc"), ``method``
         ("auto", the default, "newton", "fixed_slope",
         "fast_decoupled_xb" or "fast_decoupled_bx"), ``start`` ("last",
-        "flat" or "case"), ``tolerance_mva`` (2 by default),
+        "flat" or "case"), ``tolerance_mva`` (0.1 by default),
         ``max_iterations`` (Newton, 10), ``decoupled_iterations`` (30),
         ``enforce_q_limits`` (True by default), ``dc_model`` ("detailed" or "simplified"),
         ``adjust_dc_taps``, ``switch_shunts``, ``adjust_transformer_taps``,
@@ -377,7 +377,9 @@ class Case:
         ``kv_min``, ``skip_zero_impedance``; the base case only when left
         out), ``cutoff`` (smallest distribution factor that limits, 0.05),
         ``rating`` and ``base_rating`` ("a", "b" or "c"), ``limit_pct``,
-        ``include_past_limits`` and ``max_rows``.
+        ``include_past_limits``, ``past_limit_pct`` (loading, percent of
+        the limit, at or above which an element counts as already past it;
+        100) and ``max_rows``.
 
         ``lists`` (a ``.stnl`` path) takes the outages from the file's
         contingencies and contingency sets and what is watched from its flow
