@@ -7,25 +7,26 @@ import { useWidth } from "../../ui/useWidth";
 import type { PvResults } from "../../lib/analysis/commands.gen";
 import { fixed } from "../../lib/analysis/format";
 
-/** Line colours, in the app's palette (they follow the dark theme). */
+/** Line colours, in the app's palette (they follow the dark theme); teal
+ * and emerald, which look alike, are furthest apart. */
 export const CURVE_COLOURS = [
   "stroke-teal-600",
   "stroke-blue-600",
   "stroke-amber-600",
   "stroke-red-600",
-  "stroke-emerald-600",
-  "stroke-sky-600",
-  "stroke-orange-600",
   "stroke-slate-500",
+  "stroke-orange-600",
+  "stroke-sky-600",
+  "stroke-emerald-600",
 ];
 /** The same colours as backgrounds, spelled out so Tailwind keeps them. */
-const DOTS = ["bg-teal-600", "bg-blue-600", "bg-amber-600", "bg-red-600", "bg-emerald-600", "bg-sky-600", "bg-orange-600", "bg-slate-500"];
+export const DOTS = ["bg-teal-600", "bg-blue-600", "bg-amber-600", "bg-red-600", "bg-slate-500", "bg-orange-600", "bg-sky-600", "bg-emerald-600"];
 
 const H = 300;
 const PAD = { left: 48, right: 16, top: 14, bottom: 34 };
 
 /** Round axis steps: 1, 2 or 5 times a power of ten. */
-function ticks(lo: number, hi: number, n: number): number[] {
+export function ticks(lo: number, hi: number, n: number): number[] {
   const span = hi - lo || 1;
   const raw = span / n;
   const p = 10 ** Math.floor(Math.log10(raw));

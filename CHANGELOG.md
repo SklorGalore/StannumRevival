@@ -30,7 +30,11 @@ section into the next version's when a release is cut (see
   to 1.1 p.u. and down until the voltage is too low to solve, with full AC
   solves (every control and Q limit kept). Its reactive output at each
   voltage is the curve, and how far the curve's bottom lies below zero is
-  the bus's reactive power margin. Runs from run files (`run_qv_curve`),
+  the bus's reactive power margin. The **QV curve** tab in Power flow
+  (Analysis menu and Ctrl+K) takes typed buses or the lowest-voltage load
+  buses of an area and draws the curves with each bottom marked
+  ([guide](https://sklorgalore.github.io/StannumRevival/guide/qv-curves/)).
+  Also runs from run files (`run_qv_curve`),
   Python (`Case.qv_curve`) and the MCP server (`qv_curve`); the curves
   match PYPOWER with the same condenser within 1e-7 Mvar on the
   [Verification](https://sklorgalore.github.io/StannumRevival/reference/verification/)

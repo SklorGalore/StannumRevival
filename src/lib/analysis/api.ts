@@ -53,6 +53,8 @@ import type {
   ListedSubsystem,
   PvResults,
   PvSettings,
+  QvResults,
+  QvSettings,
   Rating,
   RunReport,
   SampleCase,
@@ -427,6 +429,11 @@ export const api = {
     call("run_pv_curve", { settings }),
   cancelPvCurve: () => invokeCore("cancel_pv_curve"),
   pvProgress: (): Promise<ContingencyProgress> => invokeCore("pv_progress"),
+  /** QV curves (reactive power margin) from the latest AC solve. */
+  runQvCurve: (settings: QvSettings): Promise<QvResults> =>
+    call("run_qv_curve", { settings }),
+  cancelQvCurve: () => invokeCore("cancel_qv_curve"),
+  qvProgress: (): Promise<ContingencyProgress> => invokeCore("qv_progress"),
   contingencyProgress: (): Promise<ContingencyProgress> =>
     invokeCore("contingency_progress"),
   contingencyRows: async (
