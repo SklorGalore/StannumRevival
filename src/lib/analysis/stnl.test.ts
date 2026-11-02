@@ -12,7 +12,7 @@ describe("stnl", () => {
   });
   it("writes subsystems, quoting names", () => {
     expect(subsystemsText([north, { ...north, id: "q", name: 'Say "hi"', areas: [], buses: [1, 2], kvMin: null, kvMax: 230 }])).toBe(
-      'stannum-lists 0.1\nsubsystem north name="North 138" areas=[1] kv_min=100\nsubsystem q name="Say \\"hi\\"" buses=[1, 2] kv_max=230\n'
+      'stannum-lists 1.0\nsubsystem north name="North 138" areas=[1] kv_min=100\nsubsystem q name="Say \\"hi\\"" buses=[1, 2] kv_max=230\n'
     );
   });
   it("writes contingency sets for a subsystem", () => {
@@ -23,7 +23,7 @@ describe("stnl", () => {
   });
   it("writes monitors for a subsystem", () => {
     expect(monitorsText([north], "north", 95, false)).toBe(
-      'stannum-lists 0.1\nsubsystem north name="North 138" areas=[1] kv_min=100\nmonitor flows subsystem=north limit_pct=95\n'
+      'stannum-lists 1.0\nsubsystem north name="North 138" areas=[1] kv_min=100\nmonitor flows subsystem=north limit_pct=95\n'
     );
     expect(monitorsText([north], "north", 100, true)).toContain("monitor voltages kind=voltage subsystem=north");
   });

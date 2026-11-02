@@ -1,0 +1,52 @@
+stannum-case 0.1
+
+# case
+case main name="Stannum five-bus test case with a fixed shunt, a switched shunt and a STATCOM" description="Two areas, one transformer, one radial 69 kV spur"
+
+# area
+area 1 number=1 name=North slack_bus=1 tolerance_mw=1
+area 2 number=2 name=East slack_bus=3 tolerance_mw=1
+
+# zone
+zone 1 number=1 name=1
+
+# owner
+owner 1 number=1 name=1
+
+# bus
+bus 1 number=1 name=North_138 kv=138 type=ref vm_pu=1.04
+bus 2 number=2 name=Central_138 kv=138 va_deg=-2
+bus 3 number=3 name=East_138 kv=138 type=pv area=2 vm_pu=1.02 va_deg=-1
+bus 4 number=4 name=Central_69 kv=69 va_deg=-4
+bus 5 number=5 name=Spur_69 kv=69 area=2 vm_pu=0.99 va_deg=-5
+
+# load
+load 2:1 bus=2 p_mw=90 q_mvar=30 dgen_on=true
+load 4:1 bus=4 p_mw=40 q_mvar=12 dgen_on=true
+load 5:1 bus=5 area=1 p_mw=20 q_mvar=6 dgen_on=true
+
+# shunt
+shunt 4:1 bus=4 b_mvar=15
+
+# generator
+generator 1:1 bus=1 qmax_mvar=200 qmin_mvar=-100 vset_pu=1.04 source_x_pu=0.2 pmax_mw=300 pmin_mw=0 dispatch=down_only
+generator 3:1 bus=3 p_mw=80 qmax_mvar=100 qmin_mvar=-50 vset_pu=1.02 source_x_pu=0.2 pmax_mw=300 pmin_mw=0 dispatch=down_only
+
+# line
+line 1:2:1 from=1 to=2 r_pu=0.01 x_pu=0.06 b_pu=0.03 rate1_mva=150 rate2_mva=150 rate3_mva=150
+line 1:3:1 from=1 to=3 r_pu=0.015 x_pu=0.08 b_pu=0.02 rate1_mva=100 rate2_mva=100 rate3_mva=100
+line 2:3:1 from=2 to=3 r_pu=0.012 x_pu=0.07 b_pu=0.025 rate1_mva=120 rate2_mva=120 rate3_mva=120
+line 4:5:1 from=4 to=5 r_pu=0.02 x_pu=0.05 rate1_mva=40 rate2_mva=40 rate3_mva=40
+
+# transformer
+transformer 2:4:1 from=2 to=4 r_pu=0.00382 x_pu=0.11262 w1_kv=138 w2_kv=69 rate1_mva=146.6 rate2_mva=146.6 rate3_mva=146.6 adjust_max=1.5 adjust_min=0.51 band_max=1.5 band_min=0.51 steps=159
+
+# switched_shunt
+switched_shunt 5:1 bus=5 vmax_pu=1.05 vmin_pu=0.95 reg_bus=5 b_init_mvar=10 blocks=[[2, 10]]
+
+# facts
+facts STATCOM_3 name=STATCOM_3 from=3 vset_pu=1.02 shunt_max_mva=50
+
+# x.psse.lines
+x.psse.lines system_wide:1 section=SYSTEM-WIDE text=["GENERAL, THRSHZ=0.0001, PQBRAK=0.7, BLOWUP=5.0"]
+x.psse.lines system_wide:2 section=SYSTEM-WIDE text=["RATING, 1, \"RATE1 \", \"Normal rating                   \""]

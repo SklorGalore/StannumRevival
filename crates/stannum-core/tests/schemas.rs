@@ -285,7 +285,7 @@ fn answers_fit_their_schemas() {
     let stnl = std::env::temp_dir().join(format!("stannum-subsystems-{}.stnl", std::process::id()));
     std::fs::write(
         &stnl,
-        "stannum-lists 0.1\nsubsystem a name=\"A\" areas=[1] kv_min=100\n",
+        "stannum-lists 1.0\nsubsystem a name=\"A\" areas=[1] kv_min=100\n",
     )
     .unwrap();
     let subs = c.ok("lists_subsystems", json!({ "path": stnl }));

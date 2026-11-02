@@ -3,9 +3,10 @@ title: Lists file format (.stnl)
 description: "The .stnl text format: subsystems, contingencies, monitored elements, interfaces and transfers, kept apart from the case so they run against any case."
 ---
 
-:::caution[Preview]
-The lists format is a **preview** (format version 0.1), like the
-[case format](/StannumRevival/reference/case-file/). The contingency module
+:::note
+Format version 1.0, frozen with Stannum 2.0 like the
+[case format](/StannumRevival/reference/case-file/); files from the 0.x
+preview still read. The contingency module
 runs a file's `contingency` records (`open` and `trip_bus` events) and its
 `contingency_set` rules, and checks what its `monitor` records name,
 including interfaces. Transfer limits run its `transfer` records. `close`, `set_p_mw` and `set_q_mvar` events, and

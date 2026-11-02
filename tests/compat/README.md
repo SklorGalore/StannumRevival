@@ -5,13 +5,14 @@ file that a 1.x release wrote. The files here were written by released
 versions of the app, and the tests open them on every change:
 
 - `crates/stannum-core/tests/compat.rs` runs the run files, attaches the
-  coordinates and finds each study's case;
+  coordinates, finds each study's case and opens the Stannum cases;
 - `src/lib/compat/compat.test.ts` opens the studies and diagrams.
 
 | Folder | Written by | Files |
 | --- | --- | --- |
 | `0.3.0/` | Stannum 0.3.0 | `case9-outage.stannum` (two study edits, a saved solve, a generated drawing), `five_bus.sld` |
 | `0.4.1/` | Stannum 0.4.1 | the same two, the study with bus coordinates attached; `case9_outage.stnrun` (recorded in the app); `case9_study.stnrun` (the 0.4.1 run file example, written by hand); `case9-coordinates.csv` (written by hand) |
+| `1.0.0/` | Stannum 1.0.0 | `five_bus_devices.stn` and `five_bus_devices.stnb` (case format preview 0.1), converted from `crates/stannum-core/tests/fixtures/five_bus_devices.raw` with that release's `stannum-cli convert` |
 
 The studies, diagrams and recorded run file were saved by the browser smoke
 test (`tests/browser/smoke.mjs`) of each release, run against that release's

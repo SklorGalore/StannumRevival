@@ -686,7 +686,7 @@ fn zero_impedance_lines_can_be_left_out() {
 /// generate; what the case lacks or can't be applied is noted and skipped.
 #[test]
 fn a_lists_file_runs_its_contingencies() {
-    let lists = "stannum-lists 0.1\n\
+    let lists = "stannum-lists 1.0\n\
         subsystem one name=\"Area 1\" areas=[1]\n\
         contingency \"Line 1-2\" category=P1 events=[[open, line:2:1:1]]\n\
         contingency \"Two lines\" category=P2 events=[[open, line:1:2:1], [open, line:1:3:1]]\n\
@@ -776,7 +776,7 @@ fn a_lists_file_monitors_what_it_names() {
     let run = |open: &mut stannum_core::workspace::OpenCase, limit: &str| {
         // The watched branch is written with its buses swapped.
         let lists = format!(
-            "stannum-lists 0.1\n\
+            "stannum-lists 1.0\n\
              monitor one element=line:{}:{}:1 limit_pct=50\n\
              monitor v8 kind=voltage element=bus:8 vmin_pu=0.99\n\
              monitor bad element=line:98:99:1\n\
@@ -1021,7 +1021,7 @@ fn results_file_matches_the_csv() {
 fn inline_lists_match_a_lists_file() {
     let mut ws = solved("case30.m");
     let open = ws.current_mut().unwrap();
-    let text = "stannum-lists 0.1\n\
+    let text = "stannum-lists 1.0\n\
                 subsystem two name=\"Area 2\" areas=[2] kv_min=1\n\
                 contingency_set n1 kind=n_1_branches subsystem=two\n\
                 monitor flows subsystem=two limit_pct=90\n\
@@ -1118,7 +1118,7 @@ fn outages_are_named_by_bus_names_and_numbers() {
     let path = std::env::temp_dir().join(format!("stannum-names-{}.stnl", std::process::id()));
     std::fs::write(
         &path,
-        "stannum-lists 0.1\ncontingency \"Loss of 1-2\" events=[[open, line:1:2:1]]\n",
+        "stannum-lists 1.0\ncontingency \"Loss of 1-2\" events=[[open, line:1:2:1]]\n",
     )
     .unwrap();
     open.run_contingencies(ContingencySettings {

@@ -10,7 +10,7 @@
 # unless set, and absent means "none".
 
 format = "stannum-case"
-version = "0.1"
+version = "1.0"
 doc = "Stannum case: the network and its operating state."
 
 [[table]]

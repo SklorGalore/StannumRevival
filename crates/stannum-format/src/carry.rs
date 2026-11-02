@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn ids_comments_and_extensions_come_back() {
         let source = read_case(
-            "stannum-case 0.1\n# Planning case.\n\n\
+            "stannum-case 1.0\n# Planning case.\n\n\
              # Renumbered from 101 in 2026.\n\
              bus north number=105 kv=138 x.note=\"keep\"\n\
              bus 200 number=200 kv=138\n\
@@ -232,7 +232,7 @@ mod tests {
         // As rebuilt from RAW: natural ids, no comments, a load changed and
         // the 200-300 line gone.
         let mut rebuilt = read_case(
-            "stannum-case 0.1\n\
+            "stannum-case 1.0\n\
              bus 105 number=105 kv=138\n\
              bus 200 number=200 kv=138\n\
              bus 300 number=300 kv=138\n\
@@ -246,7 +246,7 @@ mod tests {
         let text = write(&rebuilt).unwrap();
         assert_eq!(
             text,
-            "stannum-case 0.1\n# Planning case.\n\n\
+            "stannum-case 1.0\n# Planning case.\n\n\
              # area\narea 1 number=1 slack_bus=north\n\n\
              # bus\n# Renumbered from 101 in 2026.\n\
              bus north number=105 kv=138 x.note=keep\n\

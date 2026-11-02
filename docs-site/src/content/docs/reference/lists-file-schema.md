@@ -1,13 +1,11 @@
 ---
 title: Lists file tables
-description: "Every table and field of the stannum-lists 0.1 format: type, unit and default."
+description: "Every table and field of the stannum-lists 1.0 format: type, unit and default."
 ---
 
 <!-- Written by the stannum-format tests from crates/stannum-format/schema/stannum-lists.toml; don't edit it here. -->
 
-:::caution[Preview]
-Format version 0.1 is a preview: it may change in any Stannum release until it reaches 1.0. See [Lists file (.stnl)](/StannumRevival/reference/lists-file/).
-:::
+Format version 1.0. A newer minor version only adds optional tables and fields; see [Lists file (.stnl)](/StannumRevival/reference/lists-file/).
 
 Stannum lists: subsystems, contingencies, monitored elements and interfaces, reusable across cases. Elements are named by natural keys (bus numbers and circuit or machine ids).
 

@@ -1,7 +1,7 @@
 //! Reading and writing the text form.
 //!
 //! ```text
-//! stannum-case 0.1
+//! stannum-case 1.0
 //! # A comment just above a record belongs to it.
 //! bus 101 number=101 name="GEN A" kv=13.8 type=ref
 //! ```
@@ -559,7 +559,8 @@ pub fn read(text: &str, schema: &'static Schema) -> Result<Document, ReadError> 
     }
     let mut doc = Document::new(schema);
     doc.version = version;
-    let strict = version.major == ours.major && version.minor <= ours.minor;
+    // Unknown names are mistakes unless the file is a newer minor version.
+    let strict = version <= ours;
     // Lines are read in chunks side by side; comments, the preamble and
     // table order are then settled in file order.
     let rest: Vec<(usize, &str)> = lines.collect();
@@ -759,7 +760,7 @@ pub(crate) fn check(doc: &Document, issues: &mut Vec<Issue>) {
 /// Fails on a NaN, which has no text.
 pub fn write(doc: &Document) -> Result<String, String> {
     let schema = doc.schema;
-    let mut out = format!("{} {}\n", schema.format, schema.version);
+    let mut out = format!("{} {}\n", schema.format, doc.written_version());
     for c in &doc.preamble {
         push_comment(&mut out, c);
     }
@@ -897,7 +898,7 @@ mod tests {
 
     #[test]
     fn reads_and_writes_canonically() {
-        let text = "stannum-case 0.1\n\
+        let text = "stannum-case 1.0\n\
             bus 205 number=205 kv=230 name=\"HILL 230\" vm_pu=1.0113\n\
             bus 101 number=101 type=ref   kv=13.8\n\
             # Rebuilt 2024.\n\
@@ -906,7 +907,7 @@ mod tests {
         let out = write(&doc).unwrap();
         assert_eq!(
             out,
-            "stannum-case 0.1\n\n# bus\n\
+            "stannum-case 1.0\n\n# bus\n\
              bus 101 number=101 kv=13.8 type=ref\n\
              bus 205 number=205 name=\"HILL 230\" kv=230 vm_pu=1.0113\n\n# line\n\
              # Rebuilt 2024.\n# trailing\n\
@@ -918,12 +919,12 @@ mod tests {
 
     #[test]
     fn lists_and_tuples() {
-        let text = "stannum-case 0.1\nbus 1 number=1\nswitched_shunt 1:1 bus=1 blocks=[[2, 20], [1, -30.5, off]]\n";
+        let text = "stannum-case 1.0\nbus 1 number=1\nswitched_shunt 1:1 bus=1 blocks=[[2, 20], [1, -30.5, off]]\n";
         let doc = read_case(text).unwrap();
         let blocks = doc.records("switched_shunt")[0].get("blocks").unwrap();
         assert_eq!(blocks.to_text(), "[[2, 20], [1, -30.5, off]]");
         assert!(
-            messages("stannum-case 0.1\nbus 1 number=1\nswitched_shunt 1:1 bus=1 blocks=[[2]]\n")
+            messages("stannum-case 1.0\nbus 1 number=1\nswitched_shunt 1:1 bus=1 blocks=[[2]]\n")
                 [0]
             .contains("expected 2 to 3 values")
         );
@@ -932,7 +933,7 @@ mod tests {
     #[test]
     fn problems_have_lines_and_columns() {
         let m = messages(
-            "stannum-case 0.1\nbus 1 number=x\nbus 1 number=1\nload 7:1 bus=7\nbus 2 number=2 colour=red\nbus 3 type=bogus\n",
+            "stannum-case 1.0\nbus 1 number=x\nbus 1 number=1\nload 7:1 bus=7\nbus 2 number=2 colour=red\nbus 3 type=bogus\n",
         );
         assert_eq!(
             m,
@@ -949,27 +950,37 @@ mod tests {
 
     #[test]
     fn header_and_versions() {
-        assert!(messages("bus 1 number=1\n")[0].contains("first line must be `stannum-case 0.1`"));
-        assert!(messages("stannum-case 0.2\n")[0].contains("newer than the 0.1"));
-        assert!(messages("stannum-case 1.0\n")[0].contains("newer"));
+        assert!(messages("bus 1 number=1\n")[0].contains("first line must be `stannum-case 1.0`"));
+        assert!(messages("stannum-case 2.0\n")[0].contains("newer than the 1.0"));
+        assert!(read_case("stannum-case 1.0\n").is_ok());
+        // Preview files still open; a newer minor keeps what it adds.
         assert!(read_case("stannum-case 0.1\n").is_ok());
-        assert!(read_case("stannum-case 0.0\n").is_ok());
-        assert!(read_lists("stannum-case 0.1\n").is_err());
+        let doc = read_case("stannum-case 1.3\nbus 1 number=1 later=2\n").unwrap();
+        assert!(write(&doc).unwrap().starts_with("stannum-case 1.3\n"));
+        assert!(
+            messages("stannum-case 1.0\nbus 1 number=1 later=2\n")[0].contains("no field `later`")
+        );
+        assert!(
+            write(&read_case("stannum-case 0.1\n").unwrap())
+                .unwrap()
+                .starts_with("stannum-case 1.0\n")
+        );
+        assert!(read_lists("stannum-case 1.0\n").is_err());
     }
 
     #[test]
     fn extensions_and_unknown_tables_are_kept() {
-        let text = "stannum-case 0.1\nbus 1 number=1 x.psse.cw=1 x.note=\"hand edit\"\nx.psse.gne G1 lines=[\"a, b\", \"c\"] n=0010\n";
+        let text = "stannum-case 1.0\nbus 1 number=1 x.psse.cw=1 x.note=\"hand edit\"\nx.psse.gne G1 lines=[\"a, b\", \"c\"] n=0010\n";
         let doc = read_case(text).unwrap();
         let out = write(&doc).unwrap();
         assert!(out.contains("bus 1 number=1 x.note=\"hand edit\" x.psse.cw=1\n"));
         assert!(out.contains("x.psse.gne G1 lines=[\"a, b\", c] n=0010\n"));
-        assert!(messages("stannum-case 0.1\nfoo 1\n")[0].contains("unknown table `foo`"));
+        assert!(messages("stannum-case 1.0\nfoo 1\n")[0].contains("unknown table `foo`"));
     }
 
     #[test]
     fn default_ids_follow_the_template() {
-        let doc = read_case("stannum-case 0.1\nbus 310 number=310\nbus 205 number=205\n").unwrap();
+        let doc = read_case("stannum-case 1.0\nbus 310 number=310\nbus 205 number=205\n").unwrap();
         let line = Record::new("")
             .with("from", Value::Str("310".into()))
             .with("to", Value::Str("205".into()))
@@ -981,7 +992,7 @@ mod tests {
 
     #[test]
     fn preamble_and_table_markers() {
-        let text = "stannum-case 0.1\n# Summer peak 2027.\n\n# bus\nbus 1 number=1\n\n# A loose comment.\n\n# bus\n# Own comment.\nbus 2 number=2\n";
+        let text = "stannum-case 1.0\n# Summer peak 2027.\n\n# bus\nbus 1 number=1\n\n# A loose comment.\n\n# bus\n# Own comment.\nbus 2 number=2\n";
         let doc = read_case(text).unwrap();
         assert_eq!(doc.preamble, ["Summer peak 2027."]);
         assert_eq!(doc.records("bus")[0].comments, Vec::<String>::new());

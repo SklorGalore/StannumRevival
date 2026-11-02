@@ -10,7 +10,7 @@
 # unless set, and absent means "none".
 
 format = "stannum-lists"
-version = "0.1"
+version = "1.0"
 doc = "Stannum lists: subsystems, contingencies, monitored elements and interfaces, reusable across cases. Elements are named by natural keys (bus numbers and circuit or machine ids)."
 
 [[table]]

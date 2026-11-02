@@ -10349,7 +10349,7 @@
         ],
         "type": "object"
       },
-      "doc": "Write the case, with its Records and study edits, as a Stannum case\nfile (format preview): binary when `path` ends in `.stnb`, else text\n(`.stn`). The answer lists anything converted or kept as RAW lines.",
+      "doc": "Write the case, with its Records and study edits, as a Stannum case\nfile: binary when `path` ends in `.stnb`, else text\n(`.stn`). The answer lists anything converted or kept as RAW lines.",
       "result": {
         "$ref": "#/$defs/StnExport"
       },

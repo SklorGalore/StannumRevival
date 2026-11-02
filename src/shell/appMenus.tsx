@@ -99,19 +99,21 @@ function fileMenu(): MenuEntry[] {
   ];
   if (summary) {
     const exports: MenuEntry[] = [];
+    exports.push(
+      item("export-stnb", "Stannum case (.stnb)…", () => void study.exportStn(true), {
+        title: "An open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is",
+      }),
+      item("export-stn", "Stannum case as text (.stn)…", () => void study.exportStn(false), {
+        title: "The same case as text, one record per line: readable, and diffs well in version control",
+      })
+    );
     if (summary.power.available) {
       exports.push(item("export-matpower", "MATPOWER…", () => void study.exportMatpower(false)));
       if (w.solveReport) exports.push(item("export-matpower-solved", "MATPOWER, with the latest results…", () => void study.exportMatpower(true)));
     }
     exports.push(
       item("export-raw-35", "PSS/E RAW 35…", () => void study.exportRaw(35), { title: RAW_TITLE }),
-      item("export-raw-33", "PSS/E RAW 33…", () => void study.exportRaw(33), { title: RAW_TITLE }),
-      item("export-stnb", "Binary Stannum case (.stnb, preview)…", () => void study.exportStn(true), {
-        title: "An open Stannum case in columns (Apache Arrow): small, quick to open, and read by pyarrow and pandas as it is",
-      }),
-      item("export-stn", "Stannum case (.stn, preview)…", () => void study.exportStn(false), {
-        title: "The same case as text, one record per line: readable, and diffs well in version control",
-      })
+      item("export-raw-33", "PSS/E RAW 33…", () => void study.exportRaw(33), { title: RAW_TITLE })
     );
     list.push(
       sep,

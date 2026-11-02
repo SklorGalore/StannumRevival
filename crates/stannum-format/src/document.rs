@@ -88,6 +88,17 @@ impl Document {
         }
     }
 
+    /// The version a writer puts in the header: the schema's, or the file's
+    /// when it is a newer minor version whose extra fields were kept.
+    pub fn written_version(&self) -> Version {
+        let ours = self.schema.version;
+        if self.version.major == ours.major && self.version > ours {
+            self.version
+        } else {
+            ours
+        }
+    }
+
     pub fn table(&self, name: &str) -> Option<&Table> {
         self.tables.iter().find(|t| t.name == name)
     }

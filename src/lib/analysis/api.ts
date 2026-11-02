@@ -312,7 +312,7 @@ export const CASE_FILTERS = [
   { name: "Power system case", extensions: ["raw", "RAW", "m", "stn", "stnb"] },
   { name: "PSS/E RAW", extensions: ["raw", "RAW"] },
   { name: "MATPOWER", extensions: ["m"] },
-  { name: "Stannum case (preview)", extensions: ["stn", "stnb"] },
+  { name: "Stannum case", extensions: ["stnb", "stn"] },
 ];
 export const DC_GRID_FILTERS = [
   { name: "Stannum DC grids", extensions: ["json"] },
@@ -322,13 +322,13 @@ export const COORDINATE_FILTERS = [
 ];
 export const RAW_FILTERS = [{ name: "PSS/E RAW", extensions: ["raw", "RAW"] }];
 export const STN_FILTERS = [
-  { name: "Stannum case (preview)", extensions: ["stn"] },
+  { name: "Stannum case (text)", extensions: ["stn"] },
 ];
 export const STNB_FILTERS = [
-  { name: "Binary Stannum case (preview)", extensions: ["stnb"] },
+  { name: "Stannum case", extensions: ["stnb"] },
 ];
 export const LISTS_FILTERS = [
-  { name: "Stannum lists (preview)", extensions: ["stnl"] },
+  { name: "Stannum lists", extensions: ["stnl"] },
 ];
 export const RUN_FILE_FILTERS = [
   { name: "Stannum run file", extensions: ["stnrun"] },

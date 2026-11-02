@@ -3,13 +3,11 @@ title: Case file format (.stn, .stnb)
 description: "The .stn text format and its .stnb binary form: Stannum's own open case format, one record per line with named fields, stable ids and units in the names."
 ---
 
-:::caution[Preview]
-The Stannum case format is a **preview** (format version 0.1). Any Stannum
-release may change it until format 1.0, which is planned to freeze with
-Stannum 2.0. Keep the RAW or MATPOWER file you converted from, and convert
-again after an update if a file stops opening. PSS/E RAW and MATPOWER stay
-fully supported for reading and writing.
-:::
+Format version 1.0, frozen with Stannum 2.0. It is Stannum's default save
+format: **Save case as…** offers `.stnb` first, and a `.stn` case keeps its
+text form. PSS/E RAW and MATPOWER stay fully supported for reading and
+writing. Files from the format preview (0.x, written by Stannum 1.x) still
+open, and save as 1.0.
 
 A Stannum case file (`.stn`) holds a whole case, the network and its
 operating state, as UTF-8 text. It is meant to be read, edited and compared
@@ -175,10 +173,12 @@ Stannum uses `x.psse` for PSS/E data that has no place in the format yet:
 
 ## Versions
 
-The header carries `MAJOR.MINOR`. While the format is in preview (0.x),
-Stannum refuses a file with a newer version than it reads and says to
-update. From format 1.0, a minor version only adds optional tables and
-fields, which older readers skip, and a major version is a breaking change.
+The header carries `MAJOR.MINOR`. A minor version only adds optional
+tables and fields. A reader reads a newer minor version, keeps the tables
+and fields it doesn't know, and writes them back under that version; a file
+no newer than the reader must not have names its schema lacks. A major
+version is a breaking change, and a reader refuses a newer one, saying to
+update. Preview files (0.x) read with the 1.0 schema.
 See [Versions and compatibility](/StannumRevival/reference/versioning/).
 
 ## Binary form (.stnb)
@@ -204,9 +204,9 @@ of the file, and each table with its entry and row count:
 ```json
 {
   "format": "stannum-case",
-  "version": "0.1",
+  "version": "1.0",
   "schema_sha256": "…",
-  "app": "Stannum 1.0.0",
+  "app": "Stannum 2.0.0",
   "preamble": ["Summer peak, base case."],
   "tables": [
     { "name": "bus", "path": "tables/bus.arrow", "rows": 82134 },
@@ -290,7 +290,9 @@ can test against:
   file, for text and for `.stnb`;
 - `raw/`: RAW and MATPOWER cases with the `.stn` file each converts to.
 
-## Still to come
+## Version history
 
-Applying lists files to the contingency module, and a reader in the Python
-package, are planned for the next preview.
+| Version | Stannum | Changes |
+| --- | --- | --- |
+| 1.0 | 2.0 | Frozen; the default save format. Same tables and fields as 0.1. |
+| 0.1 | 1.0 | Preview. |

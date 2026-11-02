@@ -17,7 +17,7 @@ export interface SetupSubsystem {
 }
 
 /** The header every lists file starts with. */
-export const LISTS_HEADER = "stannum-lists 0.1";
+export const LISTS_HEADER = "stannum-lists 1.0";
 
 /** An id the format accepts, made from any name. */
 export function subsystemId(name: string, taken: Iterable<string> = []): string {

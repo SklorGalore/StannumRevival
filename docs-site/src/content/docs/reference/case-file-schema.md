@@ -1,13 +1,11 @@
 ---
 title: Case file tables
-description: "Every table and field of the stannum-case 0.1 format: type, unit and default."
+description: "Every table and field of the stannum-case 1.0 format: type, unit and default."
 ---
 
 <!-- Written by the stannum-format tests from crates/stannum-format/schema/stannum-case.toml; don't edit it here. -->
 
-:::caution[Preview]
-Format version 0.1 is a preview: it may change in any Stannum release until it reaches 1.0. See [Case file (.stn)](/StannumRevival/reference/case-file/).
-:::
+Format version 1.0. A newer minor version only adds optional tables and fields; see [Case file (.stn)](/StannumRevival/reference/case-file/).
 
 Stannum case: the network and its operating state.
 

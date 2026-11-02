@@ -97,8 +97,8 @@ function CaseTitle() {
       ? "MATPOWER"
       : summary.format === "stn"
         ? /\.stnb$/i.test(summary.name)
-          ? "Binary Stannum case (preview)"
-          : "Stannum case (preview)"
+          ? "Stannum case"
+          : "Stannum case (text)"
         : `PSS/E RAW${revision ? ` v${revision}` : ""}`;
   const size = counts
     ? ` · ${count(counts.buses)} buses · ${count(counts.generators)} generators · ${count(counts.branches)} branches · ${counts.base_mva} MVA base`

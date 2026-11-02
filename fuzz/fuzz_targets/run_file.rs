@@ -7,14 +7,19 @@ use stannum_core::run_file::{self, Step};
 use std::path::Path;
 
 /// What a written run file keeps: no line numbers, `case` or empty
-/// arguments.
+/// arguments. An empty `settings` object means the defaults, as no
+/// `settings` does, so a writer may leave it out.
 fn kept(steps: &[Step]) -> Vec<Step> {
     steps
         .iter()
         .map(|s| {
             let mut s = s.clone();
             s.line = 0;
-            s.args.retain(|k, v| k != "case" && !v.is_null());
+            s.args.retain(|k, v| {
+                k != "case"
+                    && !v.is_null()
+                    && !(k == "settings" && v.as_object().is_some_and(|m| m.is_empty()))
+            });
             s
         })
         .collect()

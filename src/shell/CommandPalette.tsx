@@ -140,7 +140,7 @@ export function paletteCommands(): Command[] {
     for (const binary of [true, false])
       list.push({
         id: binary ? "export-stnb" : "export-stn",
-        title: binary ? "Export case as binary Stannum case (.stnb, preview)…" : "Export case as Stannum case (.stn, preview)…",
+        title: binary ? "Export case as Stannum case (.stnb)…" : "Export case as Stannum case text (.stn)…",
         icon: <Download size={14} />,
         keywords: binary ? "export stnb stannum binary arrow columnar large fast file save write convert" : "export stn stannum open text format file save write convert",
         run: () => void studyFile.exportStn(binary),

@@ -34,7 +34,7 @@ Usage:
       List the commands a run file can use.
   stannum-cli convert <from> <to>
       Convert a case: RAW, MATPOWER or Stannum (.stn, .stnb) in; a Stannum
-      case (.stn text or .stnb binary, format preview) or PSS/E RAW 35
+      case (.stnb binary or .stn text) or PSS/E RAW 35
       (.raw) out.
   stannum-cli mcp [--attach] [--pid <pid>]
       Serve Stannum to an AI client (Claude and others) as a Model Context

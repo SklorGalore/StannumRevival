@@ -1198,7 +1198,7 @@ mod tests {
     #[test]
     fn a_lists_file_transfer_runs_as_written() {
         let (power, base) = case9();
-        let text = "stannum-lists 0.1\n\
+        let text = "stannum-lists 1.0\n\
             subsystem a buses=[2]\n\
             subsystem b buses=[3]\n\
             contingency_set n1 kind=n_1_branches\n\
@@ -1262,7 +1262,7 @@ mod tests {
         let line = power.elements.branches[3].element.clone();
         let other = power.elements.branches[4].element.clone();
         let text = format!(
-            "stannum-lists 0.1\n\
+            "stannum-lists 1.0\n\
             subsystem a buses=[2]\n\
             subsystem b buses=[3]\n\
             monitor one element={line}\n\

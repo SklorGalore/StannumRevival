@@ -1,4 +1,4 @@
-stannum-case 0.1
+stannum-case 1.0
 bus 5 number=5 kv=69 x.planning.note="added 2027"
 bus 4 number=4 kv=69
 switched_shunt 5:1 bus=5 reg_bus=5 blocks=[[2, 10], [1, -15.5]]

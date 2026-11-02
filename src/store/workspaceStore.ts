@@ -298,19 +298,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const binary = /\.stnb$/i.test(summary.name);
     const base = summary.name.replace(/\.(raw|m|stnb?)$/i, "");
     // RAW and Stannum cases save as either; the extension picks the format.
-    // A Stannum case keeps its form; otherwise binary is offered first.
+    // The binary Stannum case is the default save format; a .stn case keeps
+    // its readable text form. A RAW case saved in the open format gets a new
+    // extension, so it keeps its name.
     const raw = { name: "PSS/E RAW", extensions: ["raw", "RAW"] };
-    const stnFilter = { name: "Stannum case (preview)", extensions: ["stn"] };
-    const stnbFilter = { name: "Binary Stannum case (preview)", extensions: ["stnb"] };
+    const stnFilter = { name: "Stannum case (text)", extensions: ["stn"] };
+    const stnbFilter = { name: "Stannum case", extensions: ["stnb"] };
+    const ext = matpower ? "m" : stn && !binary ? "stn" : "stnb";
+    const sameFormat = matpower || stn;
     const path = await pickSavePath(
-      `${base}${base.endsWith("-edited") ? "" : "-edited"}.${matpower ? "m" : binary ? "stnb" : stn ? "stn" : "raw"}`,
-      matpower
-        ? [{ name: "MATPOWER", extensions: ["m"] }]
-        : binary
-          ? [stnbFilter, stnFilter, raw]
-          : stn
-            ? [stnFilter, stnbFilter, raw]
-            : [raw, stnbFilter, stnFilter]
+      `${base}${sameFormat && !base.endsWith("-edited") ? "-edited" : ""}.${ext}`,
+      matpower ? [{ name: "MATPOWER", extensions: ["m"] }] : stn && !binary ? [stnFilter, stnbFilter, raw] : [stnbFilter, stnFilter, raw]
     );
     if (!path) return false;
     const saved = await api.saveCaseAs(path);

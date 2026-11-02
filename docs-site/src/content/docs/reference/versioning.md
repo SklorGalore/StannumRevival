@@ -53,9 +53,11 @@ The [study](/StannumRevival/reference/study-file/) (`.stannum`),
   `tests/compat` folder, and the tests open them on every change.
 
 The [Stannum case](/StannumRevival/reference/case-file/) (`.stn`, `.stnb`) and
-[lists](/StannumRevival/reference/lists-file/) (`.stnl`) formats are in
-preview and outside this promise until their format version reaches 1.0,
-planned with Stannum 2.0. Until then any release may change them.
+[lists](/StannumRevival/reference/lists-file/) (`.stnl`) formats reached
+format version 1.0 with Stannum 2.0 and are under this promise from then
+on, with one difference: a release reads a newer *minor* version of them,
+keeping what it doesn't know, and refuses only a newer major version. The
+0.x preview files that Stannum 1.x wrote still open.
 
 ### Files Stannum reads from other tools
 

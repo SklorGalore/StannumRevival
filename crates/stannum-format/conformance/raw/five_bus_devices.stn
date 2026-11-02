@@ -1,4 +1,4 @@
-stannum-case 0.1
+stannum-case 1.0
 
 # case
 case main name="Stannum five-bus test case with a fixed shunt, a switched shunt and a STATCOM" description="Two areas, one transformer, one radial 69 kV spur"
