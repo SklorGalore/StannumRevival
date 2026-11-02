@@ -726,6 +726,20 @@ impl OpenCase {
         )?)
     }
 
+    /// The case and its AC solve, for redispatch.
+    pub fn redispatch_inputs(&self) -> Result<(Arc<PowerCase>, Arc<Solved>), Error> {
+        let power = self.power_case_shared()?;
+        let solved = resumable(&self.solved).cloned().ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: redispatch starts from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("Redispatch leaves out the attached VSC DC grids");
+        }
+        Ok((power, solved))
+    }
+
     /// A secure transfer study of the case from its AC solve, with that
     /// solve's settings, to run without the workspace.
     pub fn secure_transfer_job(
@@ -746,6 +760,23 @@ impl OpenCase {
             "Studying a secure transfer under {} contingencies",
             job.len()
         );
+        Ok(job)
+    }
+
+    /// An N-1-1 run of the case from its AC solve, with that solve's
+    /// settings, to run without the workspace.
+    pub fn n11_job(&self, settings: crate::n11::N11Settings) -> Result<crate::n11::N11Job, Error> {
+        let power = self.power_case()?;
+        let solved = resumable(&self.solved).ok_or_else(|| {
+            Error::not_ready(
+                "Solve the case with the AC model first: N-1-1 starts from that solution.",
+            )
+        })?;
+        if self.dc_grids.is_some() {
+            log::warn!("N-1-1 leaves out the attached VSC DC grids");
+        }
+        let job = crate::n11::N11Job::new(power, &solved.0, &solved.1, settings)?;
+        log::info!("Running N-1-1 from {} first outages", job.len());
         Ok(job)
     }
 

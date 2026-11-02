@@ -1,6 +1,26 @@
 // Generated from the core's command schemas (stannum_core::commands::schemas).
 // Don't edit: run `pwsh scripts/update-schemas.ps1` after changing a command.
 
+/** What happens between the first outage and the second. */
+export type Adjustment = "none" | "redispatch";
+
+/** The adjustment after one first outage. */
+export type AdjustmentSummary = {
+  moved_mw: number;
+  over_after: number;
+  /** Branches over the redispatch limit before and after. */
+  over_before: number;
+  /**
+   * As the redispatch's: `relieved`, `partly`, `nothing_to_do` or
+   * `failed`.
+   */
+  status: string;
+  units_moved: number;
+  worst_after_name: string | null;
+  /** The most loaded branch after, percent of its rating. */
+  worst_after_pct: number | null;
+};
+
 export type AnalysisWire = {
   absorbed_equipment: number;
   active_buses: number;
@@ -53,6 +73,28 @@ export type BranchChange = {
   pct: number | null;
   to: number;
   tripped: boolean;
+};
+
+/** One branch's loading before and after. */
+export type BranchLoading = {
+  element: string;
+  from: number;
+  /**
+   * The loading this branch must end at or below, percent: the limit,
+   * or its loading before when it was already over and not chosen.
+   */
+  limit_pct: number;
+  mw_after: number;
+  /** Active flow at the from end, MW. */
+  mw_before: number;
+  name: string;
+  pct_after: number;
+  pct_before: number;
+  /** The rating, MVA. */
+  rating_mva: number;
+  /** One of the branches to relieve. */
+  target: boolean;
+  to: number;
 };
 
 /** BranchRow rows as columns: one array per field, each `count` long. */
@@ -1020,6 +1062,39 @@ export type Fingerprint = {
   size: number;
 };
 
+/** One first outage and what followed it. */
+export type FirstOutage = {
+  /** The adjustment, when one ran. */
+  adjustment: AdjustmentSummary | null;
+  /** Whether the first outage's AC solve converged. */
+  converged: boolean;
+  element: string;
+  kind: string;
+  name: string;
+  note: string | null;
+  /**
+   * What the first outage alone leaves over its limits, against the
+   * base case.
+   */
+  overloads: number;
+  /**
+   * Second outages checked from the adjusted case, how many of them
+   * found a problem, and how many didn't converge.
+   */
+  seconds: number;
+  seconds_not_converged: number;
+  seconds_with_problems: number;
+  /**
+   * Higher is worse: the worst pair it starts that solved. Null
+   * (infinitely bad) when the first outage's AC solve failed.
+   */
+  severity: number | null;
+  voltage_violations: number;
+  worst: Overload | null;
+  /** The worst second outage, by name. */
+  worst_second: string | null;
+};
+
 export type GenerationScaling = {
   mw: ScaleAmount;
   participation?: ScaleParticipation;
@@ -1244,6 +1319,18 @@ export type MonitorSettings = {
   subsystem?: Subsystem | null;
 };
 
+/** One generator the redispatch moves. */
+export type MovedUnit = {
+  area: number;
+  bus: number;
+  element: string;
+  mw_after: number;
+  mw_before: number;
+  name: string;
+  pmax: number;
+  pmin: number;
+};
+
 /**
  * One converter of a multi-terminal DC system under the detailed model, as
  * shown on the row that links it to the voltage-controlling converter.
@@ -1264,6 +1351,73 @@ export type MtdcDetail = {
   /** The system's name. */
   system: string;
   tap: number;
+};
+
+/**
+ * How far an N-1-1 run has got: first outages done, and the second
+ * outage run of the one it is on.
+ */
+export type N11Progress = {
+  firsts_done: number;
+  firsts_total: number;
+  seconds: Progress;
+};
+
+export type N11Results = {
+  /**
+   * Those that don't solve first, then by how many second outages
+   * found a problem.
+   */
+  firsts: FirstOutage[];
+  /** Worst first, at most `keep_pairs`. */
+  pairs: PairRow[];
+  summary: N11Summary;
+};
+
+/** What an N-1-1 run takes out, and how it adjusts in between. */
+export type N11Settings = {
+  adjustment?: Adjustment;
+  /**
+   * The second outages, what is checked and against which limits, as
+   * for an N-1 run. `pairs` and `planning` are not used.
+   */
+  contingencies?: ContingencySettings;
+  /**
+   * The first outages (element ids, as `contingencies.elements`). The
+   * same outages as the second ones when absent.
+   */
+  first?: string[] | null;
+  /** Pairs kept in the results, worst first. 2000 by default. */
+  keep_pairs?: number;
+  /**
+   * How the redispatch adjusts: which generators may move, the limit it
+   * brings branches within. Its AC check is always on.
+   */
+  redispatch?: RedispatchSettings;
+};
+
+export type N11Summary = {
+  adjustment: Adjustment;
+  cancelled: boolean;
+  elapsed_ms: number;
+  firsts: number;
+  /** First outages after which the redispatch moved generators. */
+  firsts_adjusted: number;
+  /** First outages whose AC solve didn't converge (no pairs follow). */
+  firsts_not_converged: number;
+  /** First outages the redispatch couldn't fully relieve. */
+  firsts_still_over: number;
+  /** Pairs in `pairs`, the worst ones when there were more. */
+  kept_pairs: number;
+  limit_pct: number;
+  notes: string[];
+  pairs: number;
+  pairs_ac: number;
+  pairs_not_converged: number;
+  pairs_with_overloads: number;
+  pairs_with_voltage_problems: number;
+  rating: Rating;
+  worst: PairRow | null;
 };
 
 export type NetworkBranch = {
@@ -1486,6 +1640,32 @@ export type PageQuery = {
   search?: string;
   /** Sort by one field. Left out, rows keep the table's own order. */
   sort?: Sort | null;
+};
+
+/** One pair: the first outage, the adjustment, then the second. */
+export type PairRow = {
+  /** "ac" when solved in AC, "linear" when only screened. */
+  checked: "ac" | "linear";
+  converged: boolean | null;
+  cut_off_buses: number;
+  first: string;
+  first_name: string;
+  lost_load_mw: number;
+  note: string | null;
+  /** Overloads new or worse than after the first outage and adjustment. */
+  overloads: number;
+  /** Position in the ranked list, from 1. */
+  rank: number;
+  second: string;
+  second_name: string;
+  /**
+   * Higher is worse, as for a contingency row. Null (infinitely bad)
+   * when the AC solve failed.
+   */
+  severity: number | null;
+  voltage_violations: number;
+  worst: Overload | null;
+  worst_voltage: VoltageProblem | null;
 };
 
 /**
@@ -1903,6 +2083,83 @@ export type RecordTable = {
   rows: RecordRowColumns;
   /** Records in the file that couldn't be read into this table. */
   skipped: number;
+};
+
+/** What redispatch would do, or did. */
+export type RedispatchReport = {
+  /**
+   * Branches to relieve, then any other branch over its limit before or
+   * after, or held at its limit by the program; most loaded after first.
+   */
+  branches: BranchLoading[];
+  notes: string[];
+  summary: RedispatchSummary;
+  /** Largest moves first. */
+  units: MovedUnit[];
+};
+
+/** What to relieve and what may move. */
+export type RedispatchSettings = {
+  /**
+   * Check each pass with an AC solve, moving units again while a branch
+   * is still over in AC. Without it the answer is the DC estimate.
+   */
+  ac_check?: boolean;
+  /**
+   * Relieve only these branches (element ids such as `line:1:2:1`). Other
+   * monitored branches may not go over their limit, nor further over it
+   * if they already are.
+   */
+  branches?: string[] | null;
+  /** Generators at these buses may move (every bus when empty). */
+  generators?: Subsystem;
+  /**
+   * Loading, in percent of the rating, that no monitored branch may end
+   * above.
+   */
+  limit_pct?: number;
+  /** The most AC passes. */
+  max_passes?: number;
+  /**
+   * Branches with an end at these buses are monitored (every bus when
+   * empty).
+   */
+  monitor?: Subsystem;
+  /** The rating limits are taken from. */
+  rating?: Rating;
+};
+
+/** How the redispatch went. */
+export type RedispatchSummary = {
+  /** The loadings after come from an AC solve (else the DC estimate). */
+  ac_checked: boolean;
+  elapsed_ms: number;
+  monitored: number;
+  movable: number;
+  /** Megawatts raised in all (as much is lowered). */
+  moved_mw: number;
+  over_after: number;
+  /** Monitored branches over their limit, before and after. */
+  over_before: number;
+  /** AC passes run (zero without the AC check). */
+  passes: number;
+  /** Linear programs solved. */
+  programs: number;
+  /**
+   * `relieved` (every monitored branch within its limit), `partly` (some
+   * still over: no room left to move), `nothing_to_do`, or `failed`
+   * (the AC solve didn't converge; the moves are the last good pass's).
+   */
+  status: string;
+  units_moved: number;
+  worst_after: BranchLoading | null;
+  worst_before: BranchLoading | null;
+};
+
+/** What `redispatch` answers: what changed, and the case after. */
+export type Redispatched = {
+  case: CaseSummary;
+  report: RedispatchReport;
 };
 
 export type Response = {
@@ -2887,6 +3144,11 @@ export interface CoreCommands {
     args: Record<string, never>;
     result: null;
   };
+  /** Stop the N-1-1 run in progress. */
+  cancel_n11: {
+    args: Record<string, never>;
+    result: null;
+  };
   /** Stop the PV curve study in progress. */
   cancel_pv_curve: {
     args: Record<string, never>;
@@ -3196,6 +3458,11 @@ export interface CoreCommands {
     };
     result: Entry[];
   };
+  /** How far the N-1-1 run in progress has got. */
+  n11_progress: {
+    args: Record<string, never>;
+    result: N11Progress;
+  };
   /** Open a case file (PSS/E RAW or MATPOWER). It replaces the open case. */
   open_case: {
     args: {
@@ -3281,6 +3548,31 @@ export interface CoreCommands {
       section: string;
     };
     result: unknown[];
+  };
+  /**
+   * Move generators as little as possible (DC optimal power flow with
+   * enforced branch limits, checked in AC) so that monitored branches
+   * end within their limit, and write the new outputs into the case's
+   * records. Starts from the last AC solve.
+   */
+  redispatch: {
+    args: {
+      case?: CaseId | null;
+      settings: RedispatchSettings;
+    };
+    result: Redispatched;
+  };
+  /**
+   * What `redispatch` would change, without changing anything: the
+   * generator moves that relieve branch overloads in the last AC solve,
+   * and each branch's loading before and after (checked in AC).
+   */
+  redispatch_preview: {
+    args: {
+      case?: CaseId | null;
+      settings: RedispatchSettings;
+    };
+    result: RedispatchReport;
   };
   /**
    * A page of a result's branches. `busRules` keep the branches with an
@@ -3381,6 +3673,20 @@ export interface CoreCommands {
       steps: Step[];
     };
     result: string;
+  };
+  /**
+   * N-1-1: each first outage solved in AC, then (by default) a
+   * redispatch that brings branches back within their limit, then every
+   * second outage as a contingency run from the adjusted case, so its
+   * problems are judged against it. Ranks the pairs worst first.
+   * `cancel_n11` stops it and `n11_progress` follows it.
+   */
+  run_n11: {
+    args: {
+      case?: CaseId | null;
+      settings?: N11Settings | null;
+    };
+    result: N11Results;
   };
   /**
    * PV curve (continuation power flow): grows a transfer, or the sink's
@@ -3689,7 +3995,9 @@ export const ACTION_COMMANDS: readonly CoreCommand[] = [
   "load_dc_grids",
   "open_case",
   "open_sample",
+  "redispatch",
   "run_contingencies",
+  "run_n11",
   "run_pv_curve",
   "run_qv_curve",
   "run_secure_transfer",

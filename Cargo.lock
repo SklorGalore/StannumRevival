@@ -2693,6 +2693,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "microlp"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0923d9e791375ceb064da7bb52b51e287dd194545f4294f7d6e855e5a37ce8d"
+dependencies = [
+ "log",
+ "sprs",
+ "web-time",
+]
+
+[[package]]
 name = "mimalloc"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4530,6 +4541,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sprs"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59468ff1d42d9e2439415c7dbb6d9d965253dac6986f29dbcda72c2e36e94fb7"
+dependencies = [
+ "ndarray",
+ "num-complex",
+ "num-traits",
+ "smallvec",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4574,6 +4597,7 @@ dependencies = [
  "encoding_rs",
  "getrandom 0.4.3",
  "log",
+ "microlp",
  "mimalloc",
  "nodal",
  "num-complex",

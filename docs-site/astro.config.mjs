@@ -53,6 +53,8 @@ export default defineConfig({
             { label: "QV curves", slug: "guide/qv-curves" },
             { label: "Secure transfer limits", slug: "guide/secure-transfer" },
             { label: "Scaling load and generation", slug: "guide/scaling" },
+            { label: "Redispatch to relieve overloads", slug: "guide/redispatch" },
+            { label: "N-1-1", slug: "guide/n11" },
             { label: "Records", slug: "guide/records" },
             { label: "Topology", slug: "guide/topology" },
             { label: "Case diff", slug: "guide/case-diff" },
@@ -83,6 +85,8 @@ export default defineConfig({
             { label: "PV curves (voltage stability)", slug: "manual/pv-curves" },
             { label: "QV curves (reactive margin)", slug: "manual/qv-curves" },
             { label: "Secure transfer limits", slug: "manual/secure-transfer" },
+            { label: "Redispatch (DC OPF)", slug: "manual/redispatch" },
+            { label: "N-1-1 with system adjustment", slug: "manual/n11" },
             {
               label: "HVDC",
               items: [

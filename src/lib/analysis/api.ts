@@ -53,6 +53,9 @@ import type {
   ListedSubsystem,
   PvResults,
   PvSettings,
+  N11Progress,
+  N11Results,
+  N11Settings,
   QvResults,
   QvSettings,
   ChannelCurves,
@@ -64,6 +67,9 @@ import type {
   SampleCase,
   ScaleReport,
   ScaleSettings,
+  RedispatchSettings,
+  RedispatchReport,
+  Redispatched,
   Scaled,
   Step,
   TransferResults,
@@ -165,6 +171,8 @@ const LOG_LABELS: Record<
     label: "Scaling load and generation",
     done: "Scaled load and generation",
   },
+  redispatch_preview: { label: "Working out the redispatch" },
+  redispatch: { label: "Redispatching generation", done: "Redispatched generation" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
   topology_source: { label: "Reading the record", quiet: true },
@@ -461,6 +469,10 @@ export const api = {
     call("run_qv_curve", { settings }),
   cancelQvCurve: () => invokeCore("cancel_qv_curve"),
   qvProgress: (): Promise<ContingencyProgress> => invokeCore("qv_progress"),
+  /** N-1-1: each first outage, the adjustment, then every second outage. */
+  runN11: (settings: N11Settings): Promise<N11Results> => call("run_n11", { settings }),
+  cancelN11: () => invokeCore("cancel_n11"),
+  n11Progress: (): Promise<N11Progress> => invokeCore("n11_progress"),
   /** A secure transfer study: every contingency at every transfer step. */
   runSecureTransfer: (settings: SecureTransferSettings): Promise<SecureResults> =>
     call("run_secure_transfer", { settings }),
@@ -577,6 +589,10 @@ export const api = {
     call("scale_preview", { settings }),
   scaleLoadGeneration: (settings: ScaleSettings): Promise<Scaled> =>
     call("scale_load_generation", { settings }),
+  redispatchPreview: (settings: RedispatchSettings): Promise<RedispatchReport> =>
+    call("redispatch_preview", { settings }),
+  redispatch: (settings: RedispatchSettings): Promise<Redispatched> =>
+    call("redispatch", { settings }),
 
   readTextFile: (path: string) => shell<string>("load_diagram", { path }),
   writeTextFile: (path: string, content: string) =>

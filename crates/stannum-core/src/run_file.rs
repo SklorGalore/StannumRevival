@@ -66,6 +66,7 @@ const ACTIONS: &[&str] = &[
     "export_stn",
     "apply_record_edits",
     "scale_load_generation",
+    "redispatch",
     "save_case_as",
     "topology_set_merge",
     "diff_compare",
@@ -76,6 +77,7 @@ const ACTIONS: &[&str] = &[
     "run_pv_curve",
     "run_qv_curve",
     "run_secure_transfer",
+    "run_n11",
 ];
 
 /// Commands a run file can't hold: running or writing run files from inside one.

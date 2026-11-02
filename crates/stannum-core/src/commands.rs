@@ -127,6 +127,7 @@ pub struct Session {
     /// The PV curve study in progress, if one is running.
     pv: Mutex<Option<RunHandle>>,
     qv: Mutex<Option<RunHandle>>,
+    n11: Mutex<Option<crate::n11::N11Handle>>,
     /// The secure transfer study in progress, and the last one's results
     /// file.
     secure: Mutex<Option<crate::secure::SecureHandle>>,
@@ -423,6 +424,20 @@ impl Session {
         Ok(results?)
     }
 
+    /// An N-1-1 run, without the workspace lock.
+    fn n11(
+        &self,
+        case: Option<CaseId>,
+        settings: crate::n11::N11Settings,
+    ) -> Result<crate::n11::N11Results, Error> {
+        let job = self.workspace()?.case(case)?.n11_job(settings)?;
+        *relock(&self.n11) = Some(job.handle());
+        let clear = OnDrop(|| *relock(&self.n11) = None);
+        let results = job.run();
+        drop(clear);
+        Ok(results?)
+    }
+
     /// A secure transfer study, run without the workspace lock.
     fn secure_transfer(
         &self,
@@ -557,6 +572,23 @@ impl Session {
         }
         let power = self.workspace()?.case(case)?.power.clone()?;
         Ok(crate::scaling::plan(&records, &power, settings)?)
+    }
+
+    fn redispatch_plan(
+        &self,
+        case: Option<CaseId>,
+        settings: &crate::redispatch::RedispatchSettings,
+    ) -> Result<crate::redispatch::RedispatchReport, Error> {
+        let records = self.records(case)?;
+        let (power, solved) = self.workspace()?.case(case)?.redispatch_inputs()?;
+        let editable = records.editable.then_some(&*records);
+        let report = crate::redispatch::plan(editable, &power, &solved.0, &solved.1, settings)?;
+        if !records.editable && !report.units.is_empty() {
+            return Err(Error::unsupported(
+                "This case's records can't be edited, so its generators can't be moved: Stannum writes RAW revisions 33 and 35, and MATPOWER.",
+            ));
+        }
+        Ok(report)
     }
 
     /// Run a run file's steps in order, telling `each` how every step went
@@ -699,6 +731,19 @@ impl Session {
         if let Some(handle) = relock(&self.qv).clone() {
             handle.cancel();
         }
+    }
+
+    fn cancel_n11(&self) {
+        if let Some(handle) = relock(&self.n11).clone() {
+            handle.cancel();
+        }
+    }
+
+    fn n11_progress(&self) -> crate::n11::N11Progress {
+        relock(&self.n11)
+            .as_ref()
+            .map(crate::n11::N11Handle::progress)
+            .unwrap_or_default()
     }
 
     fn qv_progress(&self) -> Progress {
@@ -1149,6 +1194,23 @@ commands! {
             Ok(crate::scaling::Scaled { report, case: summary })
         };
 
+    /// What `redispatch` would change, without changing anything: the
+    /// generator moves that relieve branch overloads in the last AC solve,
+    /// and each branch's loading before and after (checked in AC).
+    redispatch_preview { case: Option<CaseId>, settings: crate::redispatch::RedispatchSettings } -> crate::redispatch::RedispatchReport =>
+        |s, a| s.redispatch_plan(a.case, &a.settings);
+
+    /// Move generators as little as possible (DC optimal power flow with
+    /// enforced branch limits, checked in AC) so that monitored branches
+    /// end within their limit, and write the new outputs into the case's
+    /// records. Starts from the last AC solve.
+    redispatch { case: Option<CaseId>, settings: crate::redispatch::RedispatchSettings } -> crate::redispatch::Redispatched =>
+        |s, a| {
+            let report = s.redispatch_plan(a.case, &a.settings)?;
+            let summary = s.apply_record_edits(a.case, &report.edits)?;
+            Ok(crate::redispatch::Redispatched { report, case: summary })
+        };
+
     /// Save the case, with its edits, to a new file.
     save_case_as { case: Option<CaseId>, path: PathBuf } -> crate::CaseSummary =>
         |s, a| s.workspace()?.case_mut(a.case)?.save_as(&a.path);
@@ -1264,6 +1326,23 @@ commands! {
 
     /// How far the QV curve study in progress has got: buses done.
     qv_progress {} -> Progress => |s, _| Ok(s.qv_progress());
+
+    /// N-1-1: each first outage solved in AC, then (by default) a
+    /// redispatch that brings branches back within their limit, then every
+    /// second outage as a contingency run from the adjusted case, so its
+    /// problems are judged against it. Ranks the pairs worst first.
+    /// `cancel_n11` stops it and `n11_progress` follows it.
+    run_n11 { case: Option<CaseId>, settings: Option<crate::n11::N11Settings> } -> crate::n11::N11Results =>
+        |s, a| s.n11(a.case, a.settings.unwrap_or_default());
+
+    /// Stop the N-1-1 run in progress.
+    cancel_n11 {} -> () => |s, _| {
+        s.cancel_n11();
+        Ok(())
+    };
+
+    /// How far the N-1-1 run in progress has got.
+    n11_progress {} -> crate::n11::N11Progress => |s, _| Ok(s.n11_progress());
 
     /// Secure transfer limits: grows a transfer from source to sink by the
     /// major step, solving every contingency in AC at each step, until a
@@ -1588,7 +1667,10 @@ mod tests {
                 args.insert("settings".into(), json!({ "source": {}, "sink": {} }));
             } else if c.name == "run_qv_curve" {
                 args.insert("settings".into(), json!({ "buses": [1] }));
-            } else if c.name != "run_contingencies" && args.contains_key("settings") {
+            } else if c.name != "run_contingencies"
+                && c.name != "run_n11"
+                && args.contains_key("settings")
+            {
                 args.insert("settings".into(), json!(SolveSettings::default()));
             }
             args.insert("case".into(), json!(id + 1));

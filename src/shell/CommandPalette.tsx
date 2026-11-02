@@ -35,6 +35,7 @@ import {
   Search,
   Sheet,
   Scale,
+  Shuffle,
   Sigma,
   ListChecks,
   Sun,
@@ -60,6 +61,7 @@ import { useShortcuts } from "./ShortcutsDialog";
 import { knownSampleCases } from "../ui/SampleCases";
 import { saveCaseAs } from "./appMenus";
 import { openScaling } from "../modules/power/ScaleDialog";
+import { openRedispatch } from "../modules/power/RedispatchDialog";
 
 export interface Command {
   id: string;
@@ -169,12 +171,21 @@ export function paletteCommands(): Command[] {
       }
     );
   if (w.solveReport)
+    list.push({
+      id: "redispatch",
+      title: "Redispatch to relieve overloads…",
+      icon: <Shuffle size={14} />,
+      keywords: "redispatch opf dc optimal power flow overload relieve generation shift move generators enforced limits congestion",
+      run: openRedispatch,
+    });
+  if (w.solveReport)
     list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });
   if (w.solveReport)
     list.push({ id: "transfers", title: "Show transfer limits", icon: <ArrowRightLeft size={14} />, keywords: "dfax fcitc atc ttc transfer capability ptdf otdf source sink", run: () => w.showPowerTab("transfers") });
   if (w.solveReport)
     list.push({ id: "pv", title: "Show PV curve", icon: <TrendingDown size={14} />, keywords: "pv curve voltage stability collapse nose continuation power flow cpf loadability margin", run: () => w.showPowerTab("pv") });
     list.push({ id: "qv", title: "Show QV curve", icon: <Activity size={14} />, keywords: "qv curve reactive power margin voltage collapse condenser var stability", run: () => w.showPowerTab("qv") });
+    list.push({ id: "n11", title: "Show N-1-1", icon: <Layers size={14} />, keywords: "n-1-1 n11 p6 double contingency system adjustment redispatch outage tpl", run: () => w.showPowerTab("n11") });
     list.push({ id: "secure", title: "Show secure transfer limit", icon: <ShieldCheck size={14} />, keywords: "secure transfer limit contingency every step pv curve vsat voltage thermal channels", run: () => w.showPowerTab("secure") });
   for (const m of MODULE_COMMANDS) list.push({ id: `go-${m.id}`, title: m.title, icon: m.icon, keywords: "module switch show", run: () => w.setModule(m.id) });
   if (split) list.push({ id: "split-close", title: "Close side by side", icon: <Columns2 size={14} />, keywords: "split view pane single", run: () => w.setSplit(null) });
