@@ -12,6 +12,7 @@ import {
   BellOff,
   Circle,
   History,
+  Siren,
   Columns2,
   AlertTriangle,
   Cable,
@@ -279,6 +280,13 @@ export function paletteCommands(): Command[] {
     icon: next === "dark" ? <Moon size={14} /> : <Sun size={14} />,
     keywords: "theme dark light appearance colour",
     run: () => useTheme.getState().setPreference(next),
+  });
+  list.push({
+    id: "alerts",
+    title: "Show alerts",
+    icon: <Siren size={14} />,
+    keywords: "violations overloads limits voltage critical marginal problems",
+    run: () => useLog.getState().showAlerts(),
   });
   list.push({
     id: "log",
