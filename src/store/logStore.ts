@@ -14,6 +14,8 @@ export interface Activity {
   started: number;
 }
 
+export type DockTab = "log" | "history" | "alerts";
+
 interface LogState {
   entries: LogEntry[];
   running: Activity[];
@@ -23,11 +25,13 @@ interface LogState {
   unseen: { warn: number; error: number };
   open: boolean;
   setOpen: (open: boolean) => void;
-  /** Which page the drawer shows: the log lines, or the history of changes. */
-  tab: "log" | "history";
-  setTab: (tab: "log" | "history") => void;
+  /** Which page the drawer shows: the log lines, the history of changes, or the alerts for the shown result. */
+  tab: DockTab;
+  setTab: (tab: DockTab) => void;
   /** Open the drawer on the history. */
   showHistory: () => void;
+  /** Open the drawer on the alerts. */
+  showAlerts: () => void;
   add: (level: LogLevel, message: string, source?: string) => void;
   ingest: (lines: CoreEntry[]) => void;
   clear: () => void;
@@ -64,6 +68,7 @@ export const useLog = create<LogState>((set, get) => ({
   tab: "log",
   setTab: (tab) => set({ tab }),
   showHistory: () => set({ open: true, tab: "history", unseen: { warn: 0, error: 0 } }),
+  showAlerts: () => set({ open: true, tab: "alerts" }),
   add: (level, message, source = "app") => {
     const line: LogEntry = { key: ++key, time: Date.now(), level, source, message };
     set((s) => ({ entries: trim([...s.entries, line]), unseen: bump(s.unseen, [line], s.open) }));

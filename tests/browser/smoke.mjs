@@ -970,6 +970,16 @@ if (STANNUM_VIOLATIONS) {
   assert(violations > 0, "the case has voltage violations");
   await shot("findings-overview");
 
+  // The strip counts the same voltage violations as critical alerts (case300
+  // has no ratings or Q violations), and the Alerts tab lists them, worst first.
+  const qChecks = Number((await page.getByTestId("check-generators").locator("td").nth(1).innerText()).replace(/,/g, "")) || 0;
+  await page.getByTestId("alerts-badge").filter({ hasText: `${violations + qChecks} critical` }).click();
+  const alerts = page.getByTestId("alerts");
+  await alerts.locator("tbody tr").first().waitFor();
+  assert.equal(await alerts.locator('tbody tr[data-level="critical"]').count(), violations + qChecks, "every violation is a critical alert");
+  await page.getByTestId("alerts-badge").click();
+  await alerts.waitFor({ state: "detached" });
+
   // The overview pictures every bus voltage against its limits, and the
   // branches carrying the most (case300 has no ratings, so the largest flows).
   const profile = page.getByTestId("voltage-profile");

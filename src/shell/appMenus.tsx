@@ -179,6 +179,7 @@ function viewMenu(): MenuEntry[] {
   list.push(
     sep,
     item("log", "Log", () => log.setOpen(!log.open), { checked: log.open }),
+    item("alerts", "Alerts", () => log.showAlerts(), { title: "Critical and marginal limit problems in the shown result" }),
     { kind: "submenu", id: "theme", label: "Theme", items: THEMES.map((t) => item(`theme-${t.id}`, t.label, () => theme.setPreference(t.id), { checked: theme.preference === t.id })) }
   );
   return list;

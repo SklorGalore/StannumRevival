@@ -10,6 +10,14 @@ section into the next version's when a release is cut (see
 
 ### Added
 
+- **Alerts.** The panel at the bottom of the window gains an **Alerts** tab
+  next to Log and History, the same in every module: the limit problems in
+  the shown result, critical (past a limit, as the overview counts them) or
+  marginal (95 % loading or 0.01 pu from a voltage limit by default, both
+  adjustable), worst first. A row shows its element everywhere, and the
+  strip counts critical and marginal alerts. Second step of the workspaces
+  layout (plan phase 2.1).
+
 - **Share lost generation among the units left.** A contingency setting,
   **Lost generation made up by** (`pickup`), shares a tripped unit's output,
   and what a split-off part was exchanging, among every online unit by Pmax

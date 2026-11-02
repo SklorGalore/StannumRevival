@@ -111,3 +111,7 @@ that draws everything in black for printing and export.
 
 The strip along the bottom says what Stannum is doing. Click it, or press
 <kbd>Ctrl</kbd>+<kbd>`</kbd>, to open the [log](/StannumRevival/guide/log/).
+Its right end counts the critical and marginal
+[alerts](/StannumRevival/guide/log/#alerts) in the shown result; click the
+count to list them. The panel's tabs are **Log**, **History** and
+**Alerts**, the same in every module.

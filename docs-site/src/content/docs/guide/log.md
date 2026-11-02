@@ -1,9 +1,10 @@
 ---
 title: Log
-description: What Stannum is doing, every step it took, and a solver output window for power flow.
+description: What Stannum is doing, every step it took, a solver output window for power flow, and the alerts for the shown result.
 ---
 
-The strip along the bottom of the window says what Stannum is doing: the step
+The strip along the bottom of the window says what Stannum is doing, and at
+its right end how many [alerts](#alerts) the shown result has. The step
 in progress with a running timer (opening, solving, comparing, drawing), or
 the latest message. A count appears on it when warnings or errors arrive that
 you haven't seen. It counts the open case only: opening another case starts
@@ -49,6 +50,25 @@ The log keeps the latest 5,000 lines.
 The drawer's **History** tab lists every change and export in run file form,
 to copy or save as a run file. See
 [Run files](/StannumRevival/guide/run-files/#history).
+
+## Alerts
+
+The **Alerts** tab lists the limit problems in the result every view shows
+(the latest solve, or an outage picked under **Showing** in the context bar),
+worst first:
+
+- **Critical**: past a limit. A branch loaded past 100 % of rate A, a bus
+  outside its voltage limits, or a generator outside its reactive limits.
+  These are the same problems the Power flow overview counts.
+- **Marginal**: close to a limit. By default a branch at 95 % of rate A or
+  more, or a bus within 0.01 pu of a voltage limit. Change both in the tab's
+  header; Stannum remembers them on this computer.
+
+Click a row to show its element in every module. The count of critical and
+marginal alerts sits at the right of the strip; click it to open the tab.
+The tab draws the worst 500 rows; the Power flow tables list them all.
+**View → Alerts** and **Show alerts** in <kbd>Ctrl</kbd>+<kbd>K</kbd> open it
+too.
 
 ## When something goes wrong inside Stannum
 

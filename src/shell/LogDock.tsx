@@ -1,14 +1,17 @@
-// The log: a one-line strip under every module that says what the app is
-// doing, opening into a drawer with the full record (Ctrl+`).
+// The bottom panel: a one-line strip under every module that says what the
+// app is doing and how many alerts the shown result has, opening into a
+// drawer with the log, the history of changes and the alerts (Ctrl+`).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Copy, Download, LifeBuoy, Loader2, OctagonX, Terminal, Trash2 } from "lucide-react";
-import { startLogStream, useLog } from "../store/logStore";
+import { AlertTriangle, ChevronDown, ChevronUp, Copy, Download, LifeBuoy, Loader2, OctagonX, Siren, Terminal, Trash2 } from "lucide-react";
+import { startLogStream, useLog, type DockTab } from "../store/logStore";
 import { useWorkspace } from "../store/workspaceStore";
 import { asText, clock, duration, linkify, shown, type LevelFilter, type LogEntry } from "../lib/log/log";
 import { saveTextExport } from "../lib/analysis/api";
 import { saveDiagnostics } from "../lib/diagnostics/save";
 import { SearchBox } from "../ui/primitives";
 import { HistoryPanel } from "./HistoryPanel";
+import { AlertsPanel, useShownAlerts } from "./AlertsPanel";
+import { alertCounts } from "../lib/analysis/alerts";
 
 const HEIGHT_KEY = "stannum-log-height";
 /** Lines drawn at once; the rest stay in the log and in Copy and Save. */
@@ -95,7 +98,10 @@ export function LogDock() {
           <LogDrawer height={height} onClose={() => setOpen(false)} />
         </>
       )}
-      <LogStrip open={open} onToggle={() => setOpen(!open)} />
+      <div className="flex items-stretch">
+        <LogStrip open={open} onToggle={() => setOpen(!open)} />
+        <AlertsBadge />
+      </div>
     </div>
   );
 }
@@ -120,7 +126,7 @@ function LogStrip({ open, onToggle }: { open: boolean; onToggle: () => void }) {
       onClick={onToggle}
       aria-expanded={open}
       title={`${open ? "Hide" : "Show"} the log (${SHORTCUT})`}
-      className="h-7 w-full flex items-center gap-2 px-3 text-[11px] text-slate-500 hover:bg-slate-50 text-left"
+      className="h-7 flex-1 min-w-0 flex items-center gap-2 px-3 text-[11px] text-slate-500 hover:bg-slate-50 text-left"
     >
       <Terminal size={12} className="shrink-0 text-slate-500" />
       <span className="font-medium text-slate-600 shrink-0">Log</span>
@@ -162,13 +168,48 @@ const FILTERS: { id: LevelFilter; label: string }[] = [
   { id: "error", label: "Errors" },
 ];
 
-/** Log and History, the drawer's two pages. */
+const TAB_LABEL: Record<DockTab, string> = { log: "Log", history: "History", alerts: "Alerts" };
+
+/** Alerts for the shown result, in the strip: opens the Alerts page. */
+function AlertsBadge() {
+  const { alerts, note } = useShownAlerts();
+  const showAlerts = useLog((s) => s.showAlerts);
+  const open = useLog((s) => s.open && s.tab === "alerts");
+  const setOpen = useLog((s) => s.setOpen);
+  const hasCase = useWorkspace((s) => !!s.caseSummary);
+  if (!hasCase) return null;
+  const { critical, marginal } = alertCounts(alerts);
+  return (
+    <button
+      type="button"
+      onClick={() => (open ? setOpen(false) : showAlerts())}
+      aria-expanded={open}
+      data-testid="alerts-badge"
+      title={note ?? `${critical} critical and ${marginal} marginal in the shown result. ${open ? "Hide" : "Show"} them.`}
+      className="h-7 shrink-0 flex items-center gap-2 px-3 border-l border-slate-200 text-[11px] text-slate-600 hover:bg-slate-50"
+    >
+      <Siren size={12} className={critical ? "text-red-700" : "text-slate-500"} />
+      <span className="font-medium">Alerts</span>
+      {note ? (
+        <span className="text-slate-500">—</span>
+      ) : (
+        <span className="tabular-nums">
+          <span className={critical ? "font-semibold text-red-700" : "text-slate-500"}>{critical} critical</span>
+          <span className="text-slate-400"> · </span>
+          <span className={marginal ? "font-semibold text-amber-700" : "text-slate-500"}>{marginal} marginal</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Log, History and Alerts, the drawer's pages. */
 function DrawerTabs() {
   const tab = useLog((s) => s.tab);
   const setTab = useLog((s) => s.setTab);
   return (
-    <div role="tablist" aria-label="Log drawer" className="flex shrink-0">
-      {(["log", "history"] as const).map((t) => (
+    <div role="tablist" aria-label="Bottom panel" className="flex shrink-0">
+      {(["log", "history", "alerts"] as const).map((t) => (
         <button
           key={t}
           role="tab"
@@ -178,7 +219,7 @@ function DrawerTabs() {
             tab === t ? "border-teal-700 text-slate-800" : "border-transparent text-slate-500 hover:text-slate-700"
           }`}
         >
-          {t === "log" ? "Log" : "History"}
+          {TAB_LABEL[t]}
         </button>
       ))}
     </div>
@@ -187,6 +228,19 @@ function DrawerTabs() {
 
 function LogDrawer({ height, onClose }: { height: number; onClose: () => void }) {
   const tab = useLog((s) => s.tab);
+  if (tab === "alerts")
+    return (
+      <section aria-label="Alerts" className="flex flex-col min-h-0" style={{ height: `min(${height}px, 70vh)` }}>
+        <header className="flex items-center gap-2 px-3 py-1 border-b border-slate-200">
+          <DrawerTabs />
+          <span className="text-[11px] text-slate-500 truncate">Limit problems in the result every view shows.</span>
+          <button className="ml-auto inline-flex items-center rounded px-2 py-1 text-slate-600 hover:bg-slate-100" onClick={onClose} aria-label="Close panel">
+            <ChevronDown size={13} />
+          </button>
+        </header>
+        <AlertsPanel />
+      </section>
+    );
   if (tab === "history")
     return (
       <section aria-label="History" className="flex flex-col min-h-0" style={{ height: `min(${height}px, 70vh)` }}>
