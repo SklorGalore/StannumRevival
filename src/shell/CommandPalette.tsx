@@ -35,6 +35,7 @@ import {
   Search,
   Sheet,
   Scale,
+  Shuffle,
   Sigma,
   ListChecks,
   Sun,
@@ -60,6 +61,7 @@ import { useShortcuts } from "./ShortcutsDialog";
 import { knownSampleCases } from "../ui/SampleCases";
 import { saveCaseAs } from "./appMenus";
 import { openScaling } from "../modules/power/ScaleDialog";
+import { openRedispatch } from "../modules/power/RedispatchDialog";
 
 export interface Command {
   id: string;
@@ -168,6 +170,14 @@ export function paletteCommands(): Command[] {
         run: openScaling,
       }
     );
+  if (w.solveReport)
+    list.push({
+      id: "redispatch",
+      title: "Redispatch to relieve overloads…",
+      icon: <Shuffle size={14} />,
+      keywords: "redispatch opf dc optimal power flow overload relieve generation shift move generators enforced limits congestion",
+      run: openRedispatch,
+    });
   if (w.solveReport)
     list.push({ id: "contingencies", title: "Show contingencies", icon: <ListChecks size={14} />, keywords: "n-1 outage contingency analysis security", run: () => w.showPowerTab("contingencies") });
   if (w.solveReport)

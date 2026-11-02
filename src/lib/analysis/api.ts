@@ -64,6 +64,9 @@ import type {
   SampleCase,
   ScaleReport,
   ScaleSettings,
+  RedispatchSettings,
+  RedispatchReport,
+  Redispatched,
   Scaled,
   Step,
   TransferResults,
@@ -165,6 +168,8 @@ const LOG_LABELS: Record<
     label: "Scaling load and generation",
     done: "Scaled load and generation",
   },
+  redispatch_preview: { label: "Working out the redispatch" },
+  redispatch: { label: "Redispatching generation", done: "Redispatched generation" },
   save_case_as: { label: "Saving case", done: "Saved case" },
   topology_shortest_path: { label: "Finding a path", quiet: true },
   topology_source: { label: "Reading the record", quiet: true },
@@ -577,6 +582,10 @@ export const api = {
     call("scale_preview", { settings }),
   scaleLoadGeneration: (settings: ScaleSettings): Promise<Scaled> =>
     call("scale_load_generation", { settings }),
+  redispatchPreview: (settings: RedispatchSettings): Promise<RedispatchReport> =>
+    call("redispatch_preview", { settings }),
+  redispatch: (settings: RedispatchSettings): Promise<Redispatched> =>
+    call("redispatch", { settings }),
 
   readTextFile: (path: string) => shell<string>("load_diagram", { path }),
   writeTextFile: (path: string, content: string) =>

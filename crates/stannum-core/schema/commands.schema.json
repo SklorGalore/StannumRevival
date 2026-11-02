@@ -217,6 +217,72 @@
       ],
       "type": "object"
     },
+    "BranchLoading": {
+      "description": "One branch's loading before and after.",
+      "properties": {
+        "element": {
+          "type": "string"
+        },
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "limit_pct": {
+          "description": "The loading this branch must end at or below, percent: the limit,\nor its loading before when it was already over and not chosen.",
+          "format": "double",
+          "type": "number"
+        },
+        "mw_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_before": {
+          "description": "Active flow at the from end, MW.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pct_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "pct_before": {
+          "format": "double",
+          "type": "number"
+        },
+        "rating_mva": {
+          "description": "The rating, MVA.",
+          "format": "double",
+          "type": "number"
+        },
+        "target": {
+          "description": "One of the branches to relieve.",
+          "type": "boolean"
+        },
+        "to": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "element",
+        "name",
+        "from",
+        "to",
+        "rating_mva",
+        "limit_pct",
+        "pct_before",
+        "pct_after",
+        "mw_before",
+        "mw_after",
+        "target"
+      ],
+      "type": "object"
+    },
     "BranchRowColumns": {
       "description": "BranchRow rows as columns: one array per field, each `count` long.",
       "properties": {
@@ -4626,6 +4692,54 @@
       },
       "type": "object"
     },
+    "MovedUnit": {
+      "description": "One generator the redispatch moves.",
+      "properties": {
+        "area": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "element": {
+          "type": "string"
+        },
+        "mw_after": {
+          "format": "double",
+          "type": "number"
+        },
+        "mw_before": {
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pmax": {
+          "format": "double",
+          "type": "number"
+        },
+        "pmin": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "element",
+        "name",
+        "bus",
+        "area",
+        "mw_before",
+        "mw_after",
+        "pmin",
+        "pmax"
+      ],
+      "type": "object"
+    },
     "MtdcDetail": {
       "description": "One converter of a multi-terminal DC system under the detailed model, as\nshown on the row that links it to the voltage-controlling converter.",
       "properties": {
@@ -6640,6 +6754,217 @@
         "rows",
         "skipped",
         "note"
+      ],
+      "type": "object"
+    },
+    "RedispatchReport": {
+      "description": "What redispatch would do, or did.",
+      "properties": {
+        "branches": {
+          "description": "Branches to relieve, then any other branch over its limit before or\nafter, or held at its limit by the program; most loaded after first.",
+          "items": {
+            "$ref": "#/$defs/BranchLoading"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/RedispatchSummary"
+        },
+        "units": {
+          "description": "Largest moves first.",
+          "items": {
+            "$ref": "#/$defs/MovedUnit"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary",
+        "units",
+        "branches",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "RedispatchSettings": {
+      "description": "What to relieve and what may move.",
+      "properties": {
+        "ac_check": {
+          "default": true,
+          "description": "Check each pass with an AC solve, moving units again while a branch\nis still over in AC. Without it the answer is the DC estimate.",
+          "type": "boolean"
+        },
+        "branches": {
+          "default": null,
+          "description": "Relieve only these branches (element ids such as `line:1:2:1`). Other\nmonitored branches may not go over their limit, nor further over it\nif they already are.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "generators": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Generators at these buses may move (every bus when empty)."
+        },
+        "limit_pct": {
+          "default": 100.0,
+          "description": "Loading, in percent of the rating, that no monitored branch may end\nabove.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_passes": {
+          "default": 4,
+          "description": "The most AC passes.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "monitor": {
+          "$ref": "#/$defs/Subsystem",
+          "default": {
+            "areas": [],
+            "buses": [],
+            "kv_max": null,
+            "kv_min": null,
+            "owners": [],
+            "zones": []
+          },
+          "description": "Branches with an end at these buses are monitored (every bus when\nempty)."
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating",
+          "default": "a",
+          "description": "The rating limits are taken from."
+        }
+      },
+      "type": "object"
+    },
+    "RedispatchSummary": {
+      "description": "How the redispatch went.",
+      "properties": {
+        "ac_checked": {
+          "description": "The loadings after come from an AC solve (else the DC estimate).",
+          "type": "boolean"
+        },
+        "elapsed_ms": {
+          "format": "double",
+          "type": "number"
+        },
+        "monitored": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "movable": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "moved_mw": {
+          "description": "Megawatts raised in all (as much is lowered).",
+          "format": "double",
+          "type": "number"
+        },
+        "over_after": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "over_before": {
+          "description": "Monitored branches over their limit, before and after.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "passes": {
+          "description": "AC passes run (zero without the AC check).",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "programs": {
+          "description": "Linear programs solved.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "description": "`relieved` (every monitored branch within its limit), `partly` (some\nstill over: no room left to move), `nothing_to_do`, or `failed`\n(the AC solve didn't converge; the moves are the last good pass's).",
+          "type": "string"
+        },
+        "units_moved": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "worst_after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BranchLoading"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "worst_before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BranchLoading"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "moved_mw",
+        "units_moved",
+        "over_before",
+        "over_after",
+        "worst_before",
+        "worst_after",
+        "passes",
+        "ac_checked",
+        "programs",
+        "monitored",
+        "movable",
+        "elapsed_ms"
+      ],
+      "type": "object"
+    },
+    "Redispatched": {
+      "description": "What `redispatch` answers: what changed, and the case after.",
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/CaseSummary"
+        },
+        "report": {
+          "$ref": "#/$defs/RedispatchReport"
+        }
+      },
+      "required": [
+        "report",
+        "case"
       ],
       "type": "object"
     },
@@ -10745,6 +11070,66 @@
       "result": {
         "items": true,
         "type": "array"
+      },
+      "takes_case": true
+    },
+    "redispatch": {
+      "action": true,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/RedispatchSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "Move generators as little as possible (DC optimal power flow with\nenforced branch limits, checked in AC) so that monitored branches\nend within their limit, and write the new outputs into the case's\nrecords. Starts from the last AC solve.",
+      "result": {
+        "$ref": "#/$defs/Redispatched"
+      },
+      "takes_case": true
+    },
+    "redispatch_preview": {
+      "action": false,
+      "args": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CaseId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "$ref": "#/$defs/RedispatchSettings"
+          }
+        },
+        "required": [
+          "settings"
+        ],
+        "type": "object"
+      },
+      "doc": "What `redispatch` would change, without changing anything: the\ngenerator moves that relieve branch overloads in the last AC solve,\nand each branch's loading before and after (checked in AC).",
+      "result": {
+        "$ref": "#/$defs/RedispatchReport"
       },
       "takes_case": true
     },

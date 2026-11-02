@@ -2,7 +2,7 @@ import { useLog } from "./logStore";
 import { create } from "zustand";
 import { api, CASE_FILTERS, COORDINATE_FILTERS, pickFile, pickSavePath } from "../lib/analysis/api";
 import type { CaseSummary, RecordEdit, SolveReport } from "../lib/analysis/types";
-import type { ScaleReport, ScaleSettings } from "../lib/analysis/commands.gen";
+import type { RedispatchReport, RedispatchSettings, ScaleReport, ScaleSettings } from "../lib/analysis/commands.gen";
 import { addRecent } from "../lib/study/recent";
 import { confirmDialog } from "../lib/tauri/commands";
 
@@ -120,6 +120,8 @@ interface WorkspaceState {
   applyRecordEdits: (edits: RecordEdit[]) => Promise<void>;
   /** Scale load and generation into the case's records, like Records edits. */
   scaleLoadGeneration: (settings: ScaleSettings) => Promise<ScaleReport>;
+  /** Move generators to relieve overloads and write their new outputs into the case. */
+  redispatch: (settings: RedispatchSettings) => Promise<RedispatchReport>;
   /** Save the edited case to a new file, which then becomes the open case. */
   saveCaseAs: () => Promise<boolean>;
   /**
@@ -268,6 +270,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   scaleLoadGeneration: async (settings) => {
     const { report, case: summary } = await api.scaleLoadGeneration(settings);
     if (report.changed > 0)
+      set((s) => ({
+        caseSummary: summary,
+        caseVersion: s.caseVersion + 1,
+        editedVersion: s.caseVersion + 1,
+        solveReport: null,
+        shown: null,
+        drawRequest: null,
+      }));
+    return report;
+  },
+  redispatch: async (settings) => {
+    const { report, case: summary } = await api.redispatch(settings);
+    if (report.summary.units_moved > 0)
       set((s) => ({
         caseSummary: summary,
         caseVersion: s.caseVersion + 1,

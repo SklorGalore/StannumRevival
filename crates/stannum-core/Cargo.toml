@@ -29,6 +29,8 @@ schemars = "1"
 log = "0.4"
 sha2 = "0.11"
 getrandom = "0.4"
+# Linear programs for redispatch (simplex, so few units move).
+microlp = "0.7"
 
 [dev-dependencies]
 # Reference tests record their largest differences for the docs.
