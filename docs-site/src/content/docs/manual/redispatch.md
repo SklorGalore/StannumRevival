@@ -1,6 +1,6 @@
 ---
 title: Redispatch (DC OPF)
-description: How Stannum relieves branch overloads by moving generation: a linear program on DC distribution factors, with AC passes that correct the estimate.
+description: How Stannum relieves branch overloads by moving generation, using a linear program on DC distribution factors and AC passes that correct the estimate.
 ---
 
 Redispatch starts from the last converged AC solve and moves generator
